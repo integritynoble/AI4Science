@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+build/
+dist/
+.eggs/
+*.so
+
+# Virtual envs
+.venv/
+venv/
+env/
+.python-version
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Pytest / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.mypy_cache/
+
+# Runtime artifacts (large; never commit)
+*.npy
+*.npz
+*.h5
+*.zip
+ai4science_submission_*.zip
+
+# Workspace state (kept in user's contribution dirs, not the repo)
+.ai4science/
+.venv/
