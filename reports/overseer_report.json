@@ -1,0 +1,41 @@
+{
+  "schema_version": "0.1",
+  "submission_id": "AI4Science",
+  "timestamp": "2026-05-27T21:52:20Z",
+  "validate": {
+    "ok": true,
+    "files": {
+      "principle.md": {
+        "status": "absent"
+      },
+      "spec.md": {
+        "status": "absent"
+      },
+      "benchmark.md": {
+        "status": "absent"
+      },
+      "solution.md": {
+        "status": "absent"
+      }
+    }
+  },
+  "judge": {
+    "domain": "unknown",
+    "s1_status": "not_run",
+    "s2_status": "not_run",
+    "s3_status": "not_run",
+    "s4_status": "not_run",
+    "silent_failure": false,
+    "final_decision": "not_run"
+  },
+  "suspicions": [],
+  "claims_check": {
+    "claim_count": 0,
+    "results_present": false,
+    "numeric_compared": 0,
+    "notes": [
+      "could not read solution.md: file not found: /home/spiritai/pwm/Physics_World_Model/AI4Science/solution.md"
+    ]
+  },
+  "recommendation": "NEEDS_REVISION"
+}

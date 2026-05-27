@@ -17,11 +17,8 @@ import shutil
 from pathlib import Path
 from typing import List, Optional
 
+from ai4science.agents._context import compose_prompt
 from ai4science.agents.base import AgentResult, BaseAgent
-
-# How much context to include per file. Keeps prompts bounded for v0.2.
-PER_FILE_CHAR_BUDGET = 8_000
-MAX_FILES_INLINED = 8
 
 DEFAULT_MODEL: Optional[str] = None   # None → SDK picks the default
 
@@ -79,18 +76,8 @@ class ClaudeAgent(BaseAgent):
                          "install the `claude` CLI, then re-run."),
             )
 
-        # Build the inlined-context blob (read-only — we pass file contents,
-        # we don't give the agent file-system access).
-        ctx_blob = _build_context_blob(workspace, context_files)
-        full_prompt = (
-            f"{prompt}\n\n"
-            f"## Workspace context (read-only)\n"
-            f"workspace: `{workspace}`\n\n"
-            f"{ctx_blob}\n"
-            f"## Output format\n"
-            f"Respond with helpful text. DO NOT attempt to write files; the "
-            f"user will copy what they want into their editor."
-        )
+        # Claude SDK accepts a separate system_prompt; don't embed it inline.
+        full_prompt = compose_prompt(prompt, workspace, context_files, embed_system="")
 
         try:
             from ai4science.prompts import load_system_prompt
@@ -139,20 +126,3 @@ async def _run_query(prompt: str, system_prompt: str, workspace: Path) -> str:
     return "".join(chunks).strip()
 
 
-def _build_context_blob(workspace: Path, context_files: List[Path]) -> str:
-    """Inline up to MAX_FILES_INLINED files (truncated to PER_FILE_CHAR_BUDGET each)."""
-    blobs: List[str] = []
-    for cf in context_files[:MAX_FILES_INLINED]:
-        try:
-            text = cf.read_text(encoding="utf-8")
-        except Exception as e:
-            blobs.append(f"\n### {cf.name} (unreadable: {e})\n")
-            continue
-        truncated = len(text) > PER_FILE_CHAR_BUDGET
-        if truncated:
-            text = text[:PER_FILE_CHAR_BUDGET] + "\n[...truncated...]"
-        rel = cf.relative_to(workspace) if cf.is_relative_to(workspace) else cf
-        blobs.append(f"\n### `{rel}`\n```\n{text}\n```\n")
-    if len(context_files) > MAX_FILES_INLINED:
-        blobs.append(f"\n[{len(context_files) - MAX_FILES_INLINED} more files omitted]\n")
-    return "".join(blobs) if blobs else "_(no context files attached)_\n"
