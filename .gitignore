@@ -38,3 +38,8 @@ ai4science_submission_*.zip
 # Workspace state (kept in user's contribution dirs, not the repo)
 .ai4science/
 .venv/
+
+# Runtime artifacts inside a workspace — never commit
+reports/
+data/measurement_*.npy
+results/
