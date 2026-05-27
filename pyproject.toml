@@ -35,6 +35,12 @@ dev = [
   "pytest>=8.0",
   "pytest-cov>=4.1",
 ]
+claude = [
+  # Real Claude integration. Also requires the `claude` CLI on PATH
+  # (`npm install -g @anthropic-ai/claude-code`) and either ANTHROPIC_API_KEY
+  # in env OR `claude login` for subscription-based auth.
+  "claude-agent-sdk>=0.1",
+]
 
 [project.scripts]
 ai4science = "ai4science.cli:main"
@@ -49,7 +55,7 @@ include = ["ai4science*"]
 exclude = ["tests*", "examples*"]
 
 [tool.setuptools.package-data]
-ai4science = ["templates/*.md", "examples/**/*.md"]
+ai4science = ["templates/*.md", "examples/**/*.md", "prompts/*.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

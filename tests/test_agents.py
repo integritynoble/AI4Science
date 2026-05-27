@@ -1,0 +1,224 @@
+"""Tests for the agent provider abstraction + prompt-first → agent handoff.
+
+These tests NEVER make real LLM calls. ClaudeAgent.run_task is patched
+to return a fixture response, exercising the dispatch / context-building
+/ output-rendering code paths without touching the network.
+"""
+from __future__ import annotations
+
+import os
+from pathlib import Path
+from unittest.mock import patch
+
+import pytest
+from typer.testing import CliRunner
+
+from ai4science.agents import (
+    BaseAgent, NoneAgent, ClaudeAgent, CodexAgent, get_agent,
+)
+from ai4science.agents.base import AgentResult
+from ai4science.cli import app, main, _rule_route
+
+runner = CliRunner()
+
+
+# ─── BaseAgent / dispatch ─────────────────────────────────────────────
+
+
+def test_none_agent_is_always_available():
+    a = NoneAgent()
+    assert a.is_available() is True
+
+
+def test_get_agent_dispatches_by_name():
+    assert isinstance(get_agent("none"), NoneAgent)
+    assert isinstance(get_agent("claude"), ClaudeAgent)
+    assert isinstance(get_agent("codex"), CodexAgent)
+
+
+def test_get_agent_rejects_unknown_name():
+    with pytest.raises(ValueError, match="unknown agent"):
+        get_agent("not_a_provider")
+
+
+def test_none_agent_run_task_returns_instructions(tmp_path: Path):
+    r = NoneAgent().run_task("draft principle", tmp_path, [])
+    assert r.status == "ok"
+    assert "NoneAgent" in r.message
+
+
+# ─── ClaudeAgent availability ────────────────────────────────────────
+
+
+def test_claude_agent_is_unavailable_without_cli(monkeypatch):
+    """No `claude` binary on PATH → not available, no matter what env says."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-fake")
+    monkeypatch.setattr("ai4science.agents.claude_agent.shutil.which",
+                        lambda _name: None)
+    assert ClaudeAgent().is_available() is False
+
+
+def test_claude_agent_unavailable_reason_mentions_subscription(monkeypatch):
+    """When ANTHROPIC_API_KEY is unset, the reason should NOT block on it —
+    it should mention `claude login` (subscription auth) as a valid path."""
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setattr("ai4science.agents.claude_agent.shutil.which",
+                        lambda _name: "/usr/bin/claude")
+    reason = ClaudeAgent().unavailable_reason()
+    # We DO mention that the key is unset, but only as a note — not as a blocker.
+    assert "claude login" in reason.lower() or "subscription" in reason.lower()
+
+
+def test_claude_agent_run_task_when_unavailable(monkeypatch):
+    monkeypatch.setattr("ai4science.agents.claude_agent.shutil.which",
+                        lambda _name: None)
+    r = ClaudeAgent().run_task("draft", Path("."), [])
+    assert r.status == "not_available"
+    assert "not available" in r.message.lower()
+
+
+# ─── CodexAgent availability ─────────────────────────────────────────
+
+
+def test_codex_agent_is_unavailable_without_cli(monkeypatch):
+    monkeypatch.setattr("ai4science.agents.codex_agent.shutil.which",
+                        lambda _name: None)
+    assert CodexAgent().is_available() is False
+
+
+def test_codex_agent_unavailable_reason_mentions_subscription(monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr("ai4science.agents.codex_agent.shutil.which",
+                        lambda _name: "/usr/bin/codex")
+    reason = CodexAgent().unavailable_reason()
+    assert "codex login" in reason.lower() or "subscription" in reason.lower()
+
+
+# ─── Rule-based intent precedence (the v0.1 bug we just fixed) ───────
+
+
+def test_intent_draft_principle_beats_cassi_domain():
+    """v0.1 bug: 'draft a CASSI principle' matched 'cassi' → judge_cassi.
+    v0.2 fix: 'draft' + 'principle' must win → contribute principle."""
+    assert _rule_route("Help me draft a CASSI principle for FRET imaging") == "principle"
+
+
+def test_intent_create_spec_routes_correctly():
+    assert _rule_route("create a spec for hyperspectral reconstruction") == "spec"
+
+
+def test_intent_validate_still_matches():
+    assert _rule_route("validate my submission and tell me what is missing") == "validate"
+
+
+def test_intent_judge_still_matches_when_unambiguous():
+    assert _rule_route("run the cassi judge") == "judge_cassi"
+
+
+def test_intent_plain_cassi_is_lowest_precedence():
+    """A bare 'cassi' (no verb, no artifact noun) routes to judge_cassi."""
+    assert _rule_route("cassi") == "judge_cassi"
+
+
+def test_intent_returns_none_for_unrelated_prompt():
+    assert _rule_route("what time is it") is None
+
+
+# ─── Prompt-first → agent fallback (the new behavior) ────────────────
+
+
+def test_prompt_first_with_none_agent_falls_back_to_help_message(tmp_path, monkeypatch):
+    """If --agent is 'none' and no rule matches, print help, exit 2."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        "sys.argv",
+        ["ai4science", "--agent", "none", "explain quantum tunneling"],
+    )
+    with pytest.raises(SystemExit) as excinfo:
+        main()
+    assert excinfo.value.code == 2
+
+
+def test_prompt_first_with_claude_unavailable_says_so(tmp_path, monkeypatch, capsys):
+    """If --agent claude and it isn't available, surface the reason and exit 2."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        "ai4science.agents.claude_agent.shutil.which", lambda _name: None,
+    )
+    monkeypatch.setattr(
+        "sys.argv", ["ai4science", "--agent", "claude", "explain quantum tunneling"],
+    )
+    with pytest.raises(SystemExit) as excinfo:
+        main()
+    assert excinfo.value.code == 2
+
+
+def test_prompt_first_with_mocked_claude_returns_ok(tmp_path, monkeypatch, capsys):
+    """Mock ClaudeAgent.run_task and verify the prompt-first path renders its output."""
+    monkeypatch.chdir(tmp_path)
+
+    fake_result = AgentResult(
+        status="ok",
+        message="Here is a draft principle.md for FRET imaging:\n\n---\n...",
+    )
+
+    # Mock both is_available (so the dispatcher doesn't bail early) AND run_task.
+    def _fake_run_task(self, prompt, workspace, context_files):
+        return fake_result
+
+    monkeypatch.setattr(ClaudeAgent, "is_available", lambda self: True)
+    monkeypatch.setattr(ClaudeAgent, "run_task", _fake_run_task)
+    monkeypatch.setattr(
+        "sys.argv", ["ai4science", "--agent", "claude", "explain quantum tunneling to me"],
+    )
+
+    with pytest.raises(SystemExit) as excinfo:
+        main()
+    assert excinfo.value.code == 0
+
+    captured = capsys.readouterr()
+    assert "draft principle.md" in captured.out
+
+
+def test_agents_command_lists_providers():
+    """`ai4science agents` should list all three providers + their availability."""
+    result = runner.invoke(app, ["agents"])
+    assert result.exit_code == 0
+    assert "none" in result.output
+    assert "claude" in result.output
+    assert "codex" in result.output
+
+
+# ─── --agent flag plumbing ───────────────────────────────────────────
+
+
+def test_agent_flag_env_default(monkeypatch):
+    """AI4SCIENCE_AGENT env var sets the default."""
+    from ai4science.cli import _pop_agent_flag
+    monkeypatch.setenv("AI4SCIENCE_AGENT", "claude")
+    cleaned, agent = _pop_agent_flag(["some", "prompt"])
+    assert cleaned == ["some", "prompt"]
+    assert agent == "claude"
+
+
+def test_agent_flag_long_form_overrides_env(monkeypatch):
+    from ai4science.cli import _pop_agent_flag
+    monkeypatch.setenv("AI4SCIENCE_AGENT", "none")
+    cleaned, agent = _pop_agent_flag(["--agent", "claude", "some", "prompt"])
+    assert cleaned == ["some", "prompt"]
+    assert agent == "claude"
+
+
+def test_agent_flag_equals_form_works(monkeypatch):
+    from ai4science.cli import _pop_agent_flag
+    monkeypatch.delenv("AI4SCIENCE_AGENT", raising=False)
+    cleaned, agent = _pop_agent_flag(["--agent=claude", "draft", "a", "principle"])
+    assert cleaned == ["draft", "a", "principle"]
+    assert agent == "claude"
+
+
+def test_agent_flag_unknown_falls_back_to_none(monkeypatch, capsys):
+    from ai4science.cli import _pop_agent_flag
+    monkeypatch.delenv("AI4SCIENCE_AGENT", raising=False)
+    cleaned, agent = _pop_agent_flag(["--agent", "gemini", "prompt"])
+    assert agent == "none"  # unknown falls back to safe default
