@@ -218,11 +218,56 @@ def test_agent_flag_equals_form_works(monkeypatch):
     assert agent == "claude"
 
 
-def test_agent_flag_unknown_falls_back_to_none(monkeypatch, capsys):
+def test_agent_flag_unknown_falls_back_to_auto(monkeypatch, capsys):
     from ai4science.cli import _pop_agent_flag
     monkeypatch.delenv("AI4SCIENCE_AGENT", raising=False)
     cleaned, agent, _, _, _ = _pop_agent_flag(["--agent", "gemini", "prompt"])
-    assert agent == "none"  # unknown falls back to safe default
+    # An explicit (but unknown) --agent value signals the user wants an agent,
+    # so we fall back to 'auto' (pick best available real agent) rather than
+    # 'none'. 'auto' resolves to claude → codex → none at dispatch time.
+    assert agent == "auto"
+
+
+def test_agent_flag_default_is_auto(monkeypatch):
+    """With no --agent and no env override, the default is 'auto'."""
+    from ai4science.cli import _pop_agent_flag
+    monkeypatch.delenv("AI4SCIENCE_AGENT", raising=False)
+    cleaned, agent, _, _, _ = _pop_agent_flag(["some prompt"])
+    assert agent == "auto"
+
+
+def test_resolve_agent_passthrough_for_explicit_names():
+    """_resolve_agent only rewrites the 'auto' sentinel; explicit names pass through."""
+    from ai4science.cli import _resolve_agent
+    assert _resolve_agent("none") == "none"
+    assert _resolve_agent("claude") == "claude"
+    assert _resolve_agent("codex") == "codex"
+
+
+def test_resolve_agent_auto_picks_available(monkeypatch):
+    """'auto' resolves to the first available agent in claude → codex → none order."""
+    import ai4science.cli as cli_mod
+
+    class _Stub:
+        def __init__(self, ok):
+            self._ok = ok
+        def is_available(self):
+            return self._ok
+
+    # claude available → auto picks claude
+    monkeypatch.setattr(cli_mod, "get_agent",
+                        lambda n, **k: _Stub(n == "claude"))
+    assert cli_mod._resolve_agent("auto") == "claude"
+
+    # only codex available → auto picks codex
+    monkeypatch.setattr(cli_mod, "get_agent",
+                        lambda n, **k: _Stub(n == "codex"))
+    assert cli_mod._resolve_agent("auto") == "codex"
+
+    # nothing available → auto falls back to none
+    monkeypatch.setattr(cli_mod, "get_agent",
+                        lambda n, **k: _Stub(False))
+    assert cli_mod._resolve_agent("auto") == "none"
 
 
 def test_read_only_flag_parsed(monkeypatch):
