@@ -9,12 +9,18 @@
 
 Create, validate, package, and submit Principles, Specs, Benchmarks, and Solutions for verified AI4Science workflows — from your terminal.
 
+**Install (one line, no root / pipx / admin needed):**
+
 ```bash
-pipx install pwm-ai4science      # one command, global — then use `ai4science`
+# Linux / macOS
+curl -fsSL https://raw.githubusercontent.com/integritynoble/AI4Science/main/install.sh | bash
+```
+```powershell
+# Windows PowerShell
+irm https://raw.githubusercontent.com/integritynoble/AI4Science/main/install.ps1 | iex
 ```
 
-> Not published to PyPI yet? Install from source — still one command:
-> `pipx install "git+https://github.com/integritynoble/AI4Science.git"`
+Then run `ai4science --help`. The installer sets up an isolated environment under `~/.ai4science` and puts the `ai4science` command on your PATH — works on locked-down HPC login nodes too. (Once published, `pipx install pwm-ai4science` or `pip install pwm-ai4science` also work.)
 
 ---
 
