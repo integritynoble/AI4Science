@@ -208,7 +208,12 @@ ai4science "Validate my PWM contribution and tell me what is missing"
 ai4science "Prepare a solution submission for this benchmark"
 ```
 
-v0.1 routes prompts via a **simple rule-based intent detector** — no LLM yet. Phase A2 will swap the router for a real agent backend (Claude Agent SDK for the contributor role, OpenAI Codex for the Overseer role).
+Prompt routing is two-tier:
+
+1. **Utility prompts** (validate / judge / package / submit / status / overseer) always dispatch to the deterministic command — an LLM adds nothing, and it costs you nothing. `ai4science "validate my contribution"` just runs `validate`.
+2. **Open-ended prompts** (drafting, questions, edits) route to a **real agent**. By default the agent is `auto`: it picks the best available backend in order **claude → codex → none**. So if you have the Claude backend installed (`pip install 'ai4science[claude]'` + `claude login`), a bare `ai4science "draft a CASSI principle"` behaves like `claude "…"`. If no agent is available, it falls back to the rule-based template router.
+
+Override the auto-selection with `--agent claude` / `--agent codex` / `--agent none`, or set `AI4SCIENCE_AGENT`. Utility prompts stay deterministic regardless of agent.
 
 ## 7. Template-based usage
 

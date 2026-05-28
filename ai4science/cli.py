@@ -257,20 +257,36 @@ def _route_prompt(prompt: str, agent_name: str,
     """
     console.print(f"[purple]✨ AI4Science[/purple]: [italic]{prompt!r}[/italic]")
 
-    # Tier 1: utility commands — always deterministic.
+    # Tier 1: utility commands — always deterministic (no LLM cost regardless
+    # of agent selection). Resolve this BEFORE probing agent availability so
+    # `ai4science "validate my contribution"` never imports an agent SDK.
     util = _route_utility(prompt)
     if util is not None:
         return _dispatch_rule(util)
 
+    # Resolve the 'auto' default to the best available real agent now that we
+    # know this is an open-ended (non-utility) prompt.
+    resolved = _resolve_agent(agent_name)
+    if agent_name == "auto" and resolved != "none":
+        console.print(f"[dim]→ auto-selected agent: {resolved!r} "
+                      f"(set --agent or AI4SCIENCE_AGENT to override)[/dim]")
+    agent_name = resolved
+
     # Tier 2: drafting / open-ended.
     if agent_name == "none":
-        # No agent selected: try the template-based contribute rules.
+        # No agent available (either explicitly --agent none, or auto-detect
+        # found neither claude nor codex). Try the template-based contribute
+        # rules; otherwise explain how to enable a real agent.
         draft = _route_drafting(prompt)
         if draft is not None:
             return _dispatch_rule(draft)
         console.print(
-            "[yellow]No rule matched and --agent is 'none'.[/yellow]\n"
-            "Pick an agent (`--agent claude` or `--agent codex`) or use one of:\n"
+            "[yellow]No rule matched and no agent is available.[/yellow]\n"
+            "Enable a real agent (works like Claude Code):\n"
+            "  • Claude:  [cyan]pip install 'ai4science[claude]'[/cyan] then [cyan]claude login[/cyan]\n"
+            "  • Codex:   install the [cyan]codex[/cyan] CLI then [cyan]codex login[/cyan]\n"
+            "Then re-run, or pass [cyan]--agent claude[/cyan] / [cyan]--agent codex[/cyan] explicitly.\n"
+            "Or use a deterministic command directly:\n"
             "  ai4science contribute principle | spec | benchmark | solution\n"
             "  ai4science validate / judge cassi / overseer review / package / submit"
         )
@@ -347,12 +363,12 @@ def _pop_agent_flag(argv: List[str]) -> tuple[List[str], str, bool, bool, bool]:
     Returns (cleaned_argv, agent_name, read_only, auto_yes, plan_mode).
 
     Env defaults:
-      AI4SCIENCE_AGENT      — agent name (default 'none')
+      AI4SCIENCE_AGENT      — agent name (default 'auto')
       AI4SCIENCE_READ_ONLY  — '1' to default to read-only mode
       AI4SCIENCE_AUTO_YES   — '1' to default to auto-approve edits
       AI4SCIENCE_PLAN       — '1' to default to plan mode
     """
-    agent = os.environ.get("AI4SCIENCE_AGENT", "none").lower()
+    agent = os.environ.get("AI4SCIENCE_AGENT", "auto").lower()
     read_only = os.environ.get("AI4SCIENCE_READ_ONLY") == "1"
     auto_yes = os.environ.get("AI4SCIENCE_AUTO_YES") == "1"
     plan_mode = os.environ.get("AI4SCIENCE_PLAN") == "1"
@@ -383,10 +399,33 @@ def _pop_agent_flag(argv: List[str]) -> tuple[List[str], str, bool, bool, bool]:
             continue
         cleaned.append(a)
         i += 1
-    if agent not in ("none", "claude", "codex"):
-        console.print(f"[yellow]Unknown --agent value {agent!r}; falling back to 'none'.[/yellow]")
-        agent = "none"
+    if agent not in ("none", "claude", "codex", "auto"):
+        console.print(f"[yellow]Unknown --agent value {agent!r}; falling back to 'auto'.[/yellow]")
+        agent = "auto"
     return cleaned, agent, read_only, auto_yes, plan_mode
+
+
+def _resolve_agent(name: str) -> str:
+    """Resolve the 'auto' sentinel to the best available real agent.
+
+    Preference order: claude → codex → none. This makes a bare
+    ``ai4science "draft a principle"`` behave like ``claude "…"`` — it uses a
+    real agent when one is installed and authenticated, instead of falling
+    back to the rule-based template router. Explicit ``--agent`` / the
+    ``AI4SCIENCE_AGENT`` env var always win (they never resolve to 'auto').
+
+    Only called on the prompt-first path, so subcommands like ``validate``
+    don't pay the import cost of probing agent availability.
+    """
+    if name != "auto":
+        return name
+    for candidate in ("claude", "codex"):
+        try:
+            if get_agent(candidate).is_available():
+                return candidate
+        except Exception:
+            continue
+    return "none"
 
 
 def main() -> None:
