@@ -289,6 +289,29 @@ When an agent provider actually runs (Phase A2+), these rules are non-negotiable
 
 You can fork the CLI; you cannot fork the protocol.
 
+## 11b. GPU compute providers (Phase 0)
+
+The agent can dispatch a real solver run to a **wallet-bound GPU provider** and reward it for **verified** work. Design: [`docs/COMPUTE_PROVIDERS_DESIGN.md`](docs/COMPUTE_PROVIDERS_DESIGN.md).
+
+**Why it's safe to use untrusted GPU:** the deterministic Physics Judge re-verifies every result independently (recomputes `A(x_hat)` + the S1–S4 gates). A provider that returns fake or broken results fails S4 → earns nothing. Providers are *verified*, not *trusted*.
+
+```bash
+# Bind a GPU provider to a wallet (founder tier)
+ai4science compute providers-add \
+    --id founder-1-subgpu \
+    --wallet 0x… \
+    --endpoint ~/.ai4science/compute_jobs --tier founder
+
+ai4science compute providers                      # list
+ai4science compute dispatch -p founder-1-subgpu \ # send a job (file-inbox)
+    --benchmark L3-003-001-001-T1
+ai4science compute status <job_id> -p founder-1-subgpu
+ai4science compute verify <job_id> -p founder-1-subgpu   # judge re-verifies → credit
+ai4science compute credits                        # verified-job credits per wallet
+```
+
+The provider runs the solver on its GPU and returns a result manifest via the file-inbox handshake (the same pattern as `baseline_runs/`). `compute verify` runs the deterministic judge locally; a **pass** records one verified-job credit bound to the provider's wallet, a **fail** records zero. Credits are unit-less in v1 — the PWM-per-credit conversion and on-chain settlement are platform-owned governance decisions; **the CLI never moves tokens.**
+
 ## 12. Roadmap
 
 **v0.1 (this release)** — local CLI with deterministic CASSI judge + agent stubs.

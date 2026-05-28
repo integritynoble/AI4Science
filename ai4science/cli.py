@@ -74,6 +74,10 @@ app.add_typer(judge_cmd.app, name="judge",
 app.add_typer(overseer_cmd.app, name="overseer",
               help="Local Overseer review combining validate + judge + claim checks.")
 
+from ai4science.commands import compute as compute_cmd
+app.add_typer(compute_cmd.app, name="compute",
+              help="Wallet-bound GPU compute providers (dispatch + judge-verified rewards).")
+
 # Single-command leaves
 app.command("init", help="Create a new contribution workspace.")(init_cmd.init)
 app.command("validate", help="Validate YAML front matter and required fields.")(validate_cmd.validate)
@@ -382,6 +386,7 @@ def main() -> None:
         registered = {
             "init", "contribute", "validate", "judge", "overseer",
             "package", "submit", "status", "version", "agents", "chat",
+            "compute",
         }
         if argv[0] not in registered:
             # Prompt-first mode. Treat the whole argv as the user's prompt.
