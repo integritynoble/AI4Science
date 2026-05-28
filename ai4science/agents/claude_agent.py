@@ -25,19 +25,28 @@ from ai4science.agents.base import AgentResult, BaseAgent
 DEFAULT_MODEL: Optional[str] = None   # None → SDK picks the default
 
 # Tools the agent may consider. Auto-approved reads + confirmed edits.
-DEFAULT_ALLOWED_TOOLS = ["Read", "Grep", "Glob", "Edit", "Write", "Bash", "MultiEdit"]
+# Task is added automatically by the SDK when sub-agents are registered;
+# we include it here so it shows up in --read-only mode too if we ever
+# allow read-only delegation.
+DEFAULT_ALLOWED_TOOLS = ["Read", "Grep", "Glob", "Edit", "Write", "Bash",
+                         "MultiEdit", "Task"]
 
 
 class ClaudeAgent(BaseAgent):
     name = "claude"
 
     def __init__(self, read_only: bool = False, auto_yes: bool = False,
-                 plan_mode: bool = False):
+                 plan_mode: bool = False,
+                 enable_subagents: bool = True,
+                 enable_mcp: bool = True):
         # Plan mode dominates: when on, read_only is implied (no edits possible)
         # AND a planning-specific system prompt is used.
         self.read_only = read_only
         self.auto_yes = auto_yes
         self.plan_mode = plan_mode
+        # Optional capabilities — both default ON but can be disabled per call.
+        self.enable_subagents = enable_subagents
+        self.enable_mcp = enable_mcp
 
     def is_available(self) -> bool:
         """Available iff `claude` CLI on PATH AND claude-agent-sdk importable.
@@ -115,6 +124,8 @@ class ClaudeAgent(BaseAgent):
                     read_only=self.read_only,
                     auto_yes=self.auto_yes,
                     plan_mode=self.plan_mode,
+                    enable_subagents=self.enable_subagents,
+                    enable_mcp=self.enable_mcp,
                 )
             )
         except KeyboardInterrupt:
@@ -127,29 +138,46 @@ class ClaudeAgent(BaseAgent):
 
 
 async def _run_query(*, full_prompt: str, system_prompt: str, workspace: Path,
-                     read_only: bool, auto_yes: bool, plan_mode: bool = False):
+                     read_only: bool, auto_yes: bool, plan_mode: bool = False,
+                     enable_subagents: bool = True,
+                     enable_mcp: bool = True):
     """Run a one-shot query through the SDK with appropriate tool/permission gates."""
     from claude_agent_sdk import (   # type: ignore
         query, ClaudeAgentOptions, AssistantMessage,
     )
+    from ai4science.agents.subagents import build_pwm_subagents
+    from ai4science.agents.mcp_pwm import build_pwm_mcp_server, PWM_MCP_TOOL_NAMES
 
     workspace = workspace.resolve()
+
+    # Capability bundles — built lazily so an SDK-less environment is fine.
+    subagents = build_pwm_subagents() if enable_subagents else {}
+    pwm_mcp = build_pwm_mcp_server() if enable_mcp else None
+    extra_allowed_tools = list(PWM_MCP_TOOL_NAMES) if enable_mcp else []
+
+    mcp_kw: dict = {"mcp_servers": {"pwm": pwm_mcp}} if pwm_mcp is not None else {}
 
     if plan_mode:
         # Plan mode: SDK's permission_mode="plan" enforces no edits at the
         # protocol level. We still allow Read/Grep/Glob so the agent can
-        # investigate the workspace before producing a plan.
+        # investigate the workspace before producing a plan, AND the PWM
+        # MCP tools (all of which are read-only operations) so the agent
+        # can call pwm_status / pwm_lookup_artifact during planning.
         options = ClaudeAgentOptions(
             system_prompt=system_prompt,
-            allowed_tools=["Read", "Grep", "Glob"],
+            allowed_tools=["Read", "Grep", "Glob"] + extra_allowed_tools,
             permission_mode="plan",
             cwd=str(workspace),
             max_turns=15,
             model=DEFAULT_MODEL,
+            agents=subagents,
+            **mcp_kw,
         )
         prompt_arg = full_prompt
     elif read_only:
         # Strict v0.2 behavior — no tool calls at all; text-only output.
+        # Sub-agents and MCP are also off in this mode (they'd be useless
+        # without tools to act on the result anyway).
         options = ClaudeAgentOptions(
             system_prompt=system_prompt,
             allowed_tools=[],
@@ -161,16 +189,19 @@ async def _run_query(*, full_prompt: str, system_prompt: str, workspace: Path,
         prompt_arg = full_prompt   # static string is OK without can_use_tool
     else:
         # v0.3 default: tool use ON, every change confirmed.
+        # v0.7: PWM sub-agents + PWM MCP tools also wired in.
         from ai4science.agents.permissions import make_workspace_permission_callback
         can_use_tool = make_workspace_permission_callback(workspace, auto_yes=auto_yes)
         options = ClaudeAgentOptions(
             system_prompt=system_prompt,
-            allowed_tools=DEFAULT_ALLOWED_TOOLS,
+            allowed_tools=DEFAULT_ALLOWED_TOOLS + extra_allowed_tools,
             permission_mode="default",
             can_use_tool=can_use_tool,
             cwd=str(workspace),
             max_turns=25,   # agentic loops need room
             model=DEFAULT_MODEL,
+            agents=subagents,
+            **mcp_kw,
         )
         # The SDK requires streaming mode (AsyncIterable prompt) whenever a
         # can_use_tool callback is configured, so wrap the single message.

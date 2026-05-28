@@ -55,6 +55,16 @@ def chat(
         help="Whole-session plan mode: no edits, agent produces plans only. "
              "Use the in-REPL /plan command for single-turn plan mode.",
     ),
+    no_subagents: bool = typer.Option(
+        False, "--no-subagents",
+        help="Disable PWM sub-agent delegation (physics-reviewer, "
+             "schema-validator, benchmark-architect).",
+    ),
+    no_mcp: bool = typer.Option(
+        False, "--no-mcp",
+        help="Disable the in-process PWM MCP tools (pwm_validate, "
+             "pwm_judge_cassi, pwm_status, pwm_lookup_artifact).",
+    ),
 ) -> None:
     """Open a persistent chat session with the agent."""
     if agent.lower() != "claude":
@@ -75,19 +85,25 @@ def chat(
     workspace = workspace.resolve()
     try:
         asyncio.run(_run_chat(workspace=workspace, read_only=read_only,
-                               auto_yes=yes, plan_mode=plan))
+                               auto_yes=yes, plan_mode=plan,
+                               enable_subagents=not no_subagents,
+                               enable_mcp=not no_mcp))
     except KeyboardInterrupt:
         console.print("\n[dim](Ctrl-C — exiting)[/dim]")
         raise typer.Exit(0)
 
 
 async def _run_chat(*, workspace: Path, read_only: bool, auto_yes: bool,
-                     plan_mode: bool = False) -> None:
+                     plan_mode: bool = False,
+                     enable_subagents: bool = True,
+                     enable_mcp: bool = True) -> None:
     """Async event loop for the REPL."""
     from claude_agent_sdk import (   # type: ignore
         ClaudeSDKClient, ClaudeAgentOptions, AssistantMessage, ResultMessage,
     )
     from ai4science.agents.permissions import make_workspace_permission_callback
+    from ai4science.agents.subagents import build_pwm_subagents
+    from ai4science.agents.mcp_pwm import build_pwm_mcp_server, PWM_MCP_TOOL_NAMES
     from ai4science.prompts import load_system_prompt
 
     # System prompt: plan > read_only > full tool-use.
@@ -99,8 +115,13 @@ async def _run_chat(*, workspace: Path, read_only: bool, auto_yes: bool,
         sysprompt_name = "ai4science_system"
     system_prompt = load_system_prompt(sysprompt_name)
 
+    # Capability bundles
+    subagents = build_pwm_subagents() if enable_subagents else {}
+    pwm_mcp = build_pwm_mcp_server() if enable_mcp else None
+    mcp_tool_names = list(PWM_MCP_TOOL_NAMES) if enable_mcp else []
+
     if plan_mode:
-        allowed_tools: List[str] = ["Read", "Grep", "Glob"]
+        allowed_tools: List[str] = ["Read", "Grep", "Glob"] + mcp_tool_names
         can_use_tool = None
         permission_mode_initial = "plan"
     elif read_only:
@@ -108,10 +129,12 @@ async def _run_chat(*, workspace: Path, read_only: bool, auto_yes: bool,
         can_use_tool = None
         permission_mode_initial = "default"
     else:
-        allowed_tools = ["Read", "Grep", "Glob", "Edit", "Write", "Bash", "MultiEdit"]
+        allowed_tools = ["Read", "Grep", "Glob", "Edit", "Write", "Bash",
+                         "MultiEdit", "Task"] + mcp_tool_names
         can_use_tool = make_workspace_permission_callback(workspace, auto_yes=auto_yes)
         permission_mode_initial = "default"
 
+    mcp_kw: dict = {"mcp_servers": {"pwm": pwm_mcp}} if pwm_mcp is not None else {}
     options = ClaudeAgentOptions(
         system_prompt=system_prompt,
         allowed_tools=allowed_tools,
@@ -119,6 +142,8 @@ async def _run_chat(*, workspace: Path, read_only: bool, auto_yes: bool,
         can_use_tool=can_use_tool,
         cwd=str(workspace),
         max_turns=50,   # interactive sessions need plenty of room
+        agents=subagents,
+        **mcp_kw,
     )
 
     # Initial context: inline existing artifact files so the agent starts

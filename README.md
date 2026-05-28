@@ -147,6 +147,33 @@ In plan mode:
 
 When mixing flags, the precedence is **plan > read-only > tool-use** — `--plan` always disables editing regardless of `--yes`.
 
+### Sub-agents
+
+The main agent can delegate focused tasks to specialized PWM sub-agents (via the SDK's `Task` tool). Each sub-agent has its own system prompt and a restricted tool set, so it can't accidentally edit files the main agent didn't ask about.
+
+| Sub-agent | Tools | Job |
+|---|---|---|
+| `physics-reviewer` | Read, Grep, Glob | Critique a submission for physical realism — noise-model consistency, ε realism, claim plausibility under spec constraints |
+| `schema-validator` | Read, Grep, Glob, Edit | Check YAML front matter against canonical PWM schemas and apply minimal-edit fixes for violations only |
+| `benchmark-architect` | Read, Grep, Glob | Design a new L3 benchmark tier (T2 / T3 / ...) — produces a plan with success threshold calibrated against existing baselines |
+
+Sub-agents are on by default for `--agent claude`. Disable with `--no-subagents`. The main agent decides when to delegate based on each sub-agent's `description`.
+
+### PWM MCP tools
+
+An in-process MCP server (built with `claude-agent-sdk`'s `create_sdk_mcp_server`) exposes PWM-specific deterministic tools to the agent:
+
+| Tool | Purpose |
+|---|---|
+| `pwm_validate` | Run the deterministic ai4science validator and return a structured report |
+| `pwm_judge_cassi` | Invoke the CASSI Physics Judge and return the same JSON as `reports/judge_report.json` |
+| `pwm_status` | Workspace summary (artifacts, dirs, reports, config) |
+| `pwm_lookup_artifact` | Read one canonical artifact file (principle / spec / benchmark / solution) with parsed YAML |
+
+All four tools are **deterministic** — no LLM under the hood. The PWM moat is preserved: the agent can _call_ `pwm_judge_cassi`, but it cannot override the judge's output.
+
+MCP is on by default. Disable with `--no-mcp`.
+
 ## 6. Prompt-first usage
 
 Like `claude` or `codex`, you can invoke `ai4science` with a free-form English prompt in quotes:

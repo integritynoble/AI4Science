@@ -33,6 +33,8 @@ def get_agent(name: str, **kwargs) -> BaseAgent:
             read_only=kwargs.get("read_only", False),
             auto_yes=kwargs.get("auto_yes", False),
             plan_mode=kwargs.get("plan_mode", False),
+            enable_subagents=kwargs.get("enable_subagents", True),
+            enable_mcp=kwargs.get("enable_mcp", True),
         )
     if name == "codex":
         return CodexAgent()
