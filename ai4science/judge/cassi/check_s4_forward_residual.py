@@ -1,19 +1,24 @@
 """S4a — forward-residual consistency check.
 
 If both data/measurement_y.npy and results/reconstruction_xhat.npy are
-present (and shapes line up), compute the simple residual:
+present, compute the relative forward residual:
 
-    r = ||y - sum_c x_hat[:,:,c]||_2 / ||y||_2
+    r = ||y - A(x_hat)||_2 / ||y||_2
 
-v0.1 uses a deliberately minimal "forward operator": a per-channel sum,
-which mimics CASSI's spatial-multiplex aggregation without requiring the
-calibrated Phi to be shipped. This is a coarse but deterministic signal:
+Where A is the forward operator. Two modes:
 
-  - r < tolerance_epsilon  → pass
-  - tolerance_epsilon <= r < 10*tolerance_epsilon  → warning
-  - r >= 10*tolerance_epsilon  → fail
+  - **CASSI mode** (preferred): if data/coded_aperture_phi.npy exists,
+    the judge applies its OWN SD-CASSI forward operator (independent of
+    the contributor's code). This is the physically meaningful check.
+  - **channel-sum fallback**: if no mask is shipped, A is approximated by
+    a per-channel sum. Coarse, but lets the check run on minimal data.
 
-If either file is missing, returns 'not_available' with a clear reason.
+Verdict bands (relative to the spec's tolerance_epsilon):
+  r < tol            → pass
+  tol <= r < 10*tol  → warning
+  r >= 10*tol        → fail
+
+If either array is missing, returns 'not_available' with the reason.
 """
 from __future__ import annotations
 
@@ -22,12 +27,14 @@ from pathlib import Path
 import numpy as np
 
 from ai4science.judge import CheckResult
+from ai4science.judge.cassi.forward import cassi_forward, infer_channels
 from ai4science.schemas import parse_front_matter
 
 
 def check_s4_forward_residual(workspace: Path) -> CheckResult:
     y_path = workspace / "data" / "measurement_y.npy"
     x_path = workspace / "results" / "reconstruction_xhat.npy"
+    mask_path = workspace / "data" / "coded_aperture_phi.npy"
 
     if not y_path.exists() or not x_path.exists():
         present, missing = [], []
@@ -41,31 +48,23 @@ def check_s4_forward_residual(workspace: Path) -> CheckResult:
         )
 
     try:
-        y = np.load(y_path)
-        x = np.load(x_path)
+        y = np.load(y_path).astype(np.float64)
+        x = np.load(x_path).astype(np.float64)
     except Exception as e:
         return CheckResult("fail", f"could not load measurement / reconstruction: {e}")
 
-    # v0.1 toy forward: channel sum (last axis if 3-D, identity if 2-D).
-    if x.ndim == 3:
-        y_pred = x.sum(axis=-1)
-    elif x.ndim == 2:
-        y_pred = x
-    else:
-        return CheckResult(
-            "fail",
-            f"unexpected reconstruction shape {x.shape!r}; expected 2-D or 3-D array",
-        )
+    y_pred, forward_kind, err = _apply_forward(x, y, mask_path)
+    if err is not None:
+        return CheckResult("fail", err)
 
-    # Spatial broadcast: trim or pad y_pred to match y's spatial extent.
+    # Align shapes if a fallback forward produced a mismatch.
     if y_pred.shape != y.shape:
-        # Try a simple center-crop fallback. If shapes are wildly different, fail.
         if y_pred.ndim != y.ndim:
             return CheckResult(
                 "fail",
-                f"shape mismatch: y={y.shape}, y_pred (channel-sum)={y_pred.shape}",
+                f"shape mismatch: y={y.shape}, A(x_hat)={y_pred.shape} "
+                f"(forward={forward_kind})",
             )
-        # Crop to the min in each axis.
         slices = tuple(slice(0, min(a, b)) for a, b in zip(y_pred.shape, y.shape))
         y_pred = y_pred[slices]
         y = y[slices]
@@ -74,29 +73,46 @@ def check_s4_forward_residual(workspace: Path) -> CheckResult:
     y_norm = float(np.linalg.norm(y) + eps)
     r = float(np.linalg.norm(y - y_pred) / y_norm)
 
-    # Look up tolerance from spec.md if available; else default 0.01.
-    spec_path = workspace / "spec.md"
-    data, _ = parse_front_matter(spec_path)
-    tol = float((data or {}).get("tolerance_epsilon", 0.01))
+    spec_data, _ = parse_front_matter(workspace / "spec.md")
+    tol = float((spec_data or {}).get("tolerance_epsilon", 0.01))
 
     evidence = {
         "residual": r,
         "tolerance": tol,
-        "y_norm": y_norm,
+        "forward": forward_kind,
         "y_shape": list(y.shape),
         "x_shape": list(x.shape),
     }
 
     if r < tol:
-        return CheckResult("pass", f"forward residual {r:.4g} < tol {tol:.4g}", evidence)
+        return CheckResult("pass", f"forward residual {r:.4g} < tol {tol:.4g} "
+                                   f"(forward={forward_kind})", evidence)
     if r < 10 * tol:
-        return CheckResult(
-            "warning",
-            f"forward residual {r:.4g} in [{tol:.4g}, {10*tol:.4g})",
-            evidence,
-        )
-    return CheckResult(
-        "fail",
-        f"forward residual {r:.4g} >= 10x tolerance ({10*tol:.4g})",
-        evidence,
-    )
+        return CheckResult("warning", f"forward residual {r:.4g} in "
+                                      f"[{tol:.4g}, {10*tol:.4g}) (forward={forward_kind})",
+                           evidence)
+    return CheckResult("fail", f"forward residual {r:.4g} >= 10x tolerance "
+                               f"({10*tol:.4g}) (forward={forward_kind})", evidence)
+
+
+def _apply_forward(x: np.ndarray, y: np.ndarray, mask_path: Path):
+    """Return (y_pred, forward_kind, error_message)."""
+    if mask_path.exists() and x.ndim == 3:
+        try:
+            mask = np.load(mask_path).astype(np.float64)
+        except Exception as e:
+            return None, "cassi", f"could not load coded aperture: {e}"
+        # Verify the mask is dimensionally consistent with x.
+        H, W, C = x.shape
+        if mask.shape == (H, W):
+            try:
+                return cassi_forward(x, mask), "cassi", None
+            except ValueError as e:
+                return None, "cassi", f"CASSI forward failed: {e}"
+        # Mask present but wrong shape — fall through to channel-sum.
+    # Fallback: channel sum.
+    if x.ndim == 3:
+        return x.sum(axis=-1), "channel-sum", None
+    if x.ndim == 2:
+        return x, "identity", None
+    return None, "unknown", f"unexpected reconstruction shape {x.shape!r}"

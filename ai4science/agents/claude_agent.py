@@ -104,6 +104,7 @@ class ClaudeAgent(BaseAgent):
 
         try:
             from ai4science.prompts import load_system_prompt
+            from ai4science.memory import augment_system_prompt
             if self.plan_mode:
                 sysprompt_name = "ai4science_system_plan"
             elif self.read_only:
@@ -111,6 +112,8 @@ class ClaudeAgent(BaseAgent):
             else:
                 sysprompt_name = "ai4science_system"
             system_prompt = load_system_prompt(sysprompt_name)
+            # Project memory (CLAUDE.md / AI4SCIENCE.md / AGENTS.md), like Claude Code.
+            system_prompt = augment_system_prompt(system_prompt, workspace)
         except Exception as e:
             return AgentResult(status="error",
                                message=f"could not load system prompt: {e}")

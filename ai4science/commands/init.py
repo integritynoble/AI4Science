@@ -63,6 +63,16 @@ def _seed_from_package(rel_dir: str, target: Path) -> None:
     for fname in ("principle.md", "spec.md", "benchmark.md", "solution.md"):
         contents = (src / fname).read_text(encoding="utf-8")
         (target / fname).write_text(contents, encoding="utf-8")
+    # Copy the reference solver code/ if the example ships one, so the full
+    # generate → solve → judge pipeline works out of the box.
+    code_src = src / "code"
+    if code_src.is_dir():
+        code_dst = target / "code"
+        code_dst.mkdir(exist_ok=True)
+        for entry in code_src.iterdir():
+            if entry.name.endswith(".py"):
+                (code_dst / entry.name).write_text(
+                    entry.read_text(encoding="utf-8"), encoding="utf-8")
 
 
 def _seed_blank(target: Path) -> None:

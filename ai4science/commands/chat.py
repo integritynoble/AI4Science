@@ -65,6 +65,10 @@ def chat(
         help="Disable the in-process PWM MCP tools (pwm_validate, "
              "pwm_judge_cassi, pwm_status, pwm_lookup_artifact).",
     ),
+    continue_session: bool = typer.Option(
+        False, "--continue", "-c",
+        help="Resume the most recent conversation in this workspace.",
+    ),
 ) -> None:
     """Open a persistent chat session with the agent."""
     if agent.lower() != "claude":
@@ -87,7 +91,8 @@ def chat(
         asyncio.run(_run_chat(workspace=workspace, read_only=read_only,
                                auto_yes=yes, plan_mode=plan,
                                enable_subagents=not no_subagents,
-                               enable_mcp=not no_mcp))
+                               enable_mcp=not no_mcp,
+                               continue_session=continue_session))
     except KeyboardInterrupt:
         console.print("\n[dim](Ctrl-C — exiting)[/dim]")
         raise typer.Exit(0)
@@ -96,7 +101,8 @@ def chat(
 async def _run_chat(*, workspace: Path, read_only: bool, auto_yes: bool,
                      plan_mode: bool = False,
                      enable_subagents: bool = True,
-                     enable_mcp: bool = True) -> None:
+                     enable_mcp: bool = True,
+                     continue_session: bool = False) -> None:
     """Async event loop for the REPL."""
     from claude_agent_sdk import (   # type: ignore
         ClaudeSDKClient, ClaudeAgentOptions, AssistantMessage, ResultMessage,
@@ -104,6 +110,7 @@ async def _run_chat(*, workspace: Path, read_only: bool, auto_yes: bool,
     from ai4science.agents.permissions import make_workspace_permission_callback
     from ai4science.agents.subagents import build_pwm_subagents
     from ai4science.agents.mcp_pwm import build_pwm_mcp_server, PWM_MCP_TOOL_NAMES
+    from ai4science.memory import augment_system_prompt, find_memory_file
     from ai4science.prompts import load_system_prompt
 
     # System prompt: plan > read_only > full tool-use.
@@ -114,6 +121,9 @@ async def _run_chat(*, workspace: Path, read_only: bool, auto_yes: bool,
     else:
         sysprompt_name = "ai4science_system"
     system_prompt = load_system_prompt(sysprompt_name)
+    # Project memory (CLAUDE.md / AI4SCIENCE.md / AGENTS.md) — like Claude Code.
+    system_prompt = augment_system_prompt(system_prompt, workspace)
+    memory_file = find_memory_file(workspace)
 
     # Capability bundles
     subagents = build_pwm_subagents() if enable_subagents else {}
@@ -143,6 +153,8 @@ async def _run_chat(*, workspace: Path, read_only: bool, auto_yes: bool,
         cwd=str(workspace),
         max_turns=50,   # interactive sessions need plenty of room
         agents=subagents,
+        include_partial_messages=True,   # token-level streaming
+        continue_conversation=continue_session,
         **mcp_kw,
     )
 
@@ -152,13 +164,14 @@ async def _run_chat(*, workspace: Path, read_only: bool, auto_yes: bool,
 
     async with ClaudeSDKClient(options=options) as client:
         _print_welcome(workspace, read_only, auto_yes, context_files,
-                        plan_mode=plan_mode)
+                        plan_mode=plan_mode, memory_file=memory_file,
+                        continue_session=continue_session)
 
-        # Send the workspace context as a system-side first message so the
-        # agent has it without consuming a user turn. The SDK doesn't have
-        # a separate "context inject" API, so we issue a single "/load"-style
-        # turn first.
-        if context_files:
+        # Seed the workspace context as a first turn — but ONLY for a fresh
+        # session. When --continue resumes a prior conversation, re-seeding
+        # would re-frame it as new and make the agent forget the carried-over
+        # history. The resumed session already has the earlier context.
+        if context_files and not continue_session:
             seed = (
                 "[ai4science] Workspace context for this session:\n\n"
                 + _format_files_for_context(context_files, workspace)
@@ -273,25 +286,77 @@ async def _read_line(prompt: str) -> str:
 
 
 async def _stream_response(client, cancel_flag: dict) -> None:
-    """Iterate `receive_response()` and render text blocks as they arrive."""
+    """Stream the response with live markdown + inline tool-call visibility.
+
+    - StreamEvent text deltas → appended to a live-updating Markdown block
+      (token-level streaming).
+    - ToolUseBlock → a discrete "⏺ Tool(args)" line.
+    - ToolResultBlock → a discrete "⎿ result" line.
+    - Falls back to rendering whole TextBlocks if partial streaming yields
+      nothing (older SDK / disabled partial messages).
+    """
     from claude_agent_sdk import (   # type: ignore
-        AssistantMessage, ResultMessage,
+        AssistantMessage, UserMessage, ResultMessage, StreamEvent,
+        TextBlock, ToolUseBlock, ToolResultBlock,
+    )
+    from rich.live import Live
+    from rich.markdown import Markdown
+    from rich.console import Group
+    from rich.text import Text
+    from ai4science.agents.streaming import (
+        extract_text_delta, format_tool_use, format_tool_result,
     )
 
-    first_text = True
-    async for msg in client.receive_response():
-        if isinstance(msg, AssistantMessage):
-            for block in getattr(msg, "content", []):
-                text = getattr(block, "text", None)
-                if text:
-                    if first_text:
-                        console.print()   # blank line before first response
-                        first_text = False
-                    console.print(text, end="")
-            console.print()  # newline after each AssistantMessage
-        elif isinstance(msg, ResultMessage):
-            # End of this turn. Maybe surface usage on /cost later.
-            break
+    segments: list = []        # finalized renderables (markdown blocks + tool lines)
+    current: list[str] = []    # in-progress streamed text
+    streamed_any = False
+
+    def render():
+        parts = list(segments)
+        if current:
+            parts.append(Markdown("".join(current)))
+        return Group(*parts) if parts else Text("")
+
+    def flush_text():
+        nonlocal current
+        if current:
+            segments.append(Markdown("".join(current)))
+            current = []
+
+    console.print()  # blank line before the response
+    with Live(render(), console=console, refresh_per_second=12,
+              vertical_overflow="visible") as live:
+        async for msg in client.receive_response():
+            if isinstance(msg, StreamEvent):
+                delta = extract_text_delta(getattr(msg, "event", None))
+                if delta:
+                    current.append(delta)
+                    streamed_any = True
+                    live.update(render())
+            elif isinstance(msg, AssistantMessage):
+                for block in getattr(msg, "content", []):
+                    if isinstance(block, ToolUseBlock):
+                        flush_text()
+                        segments.append(Text.from_markup(
+                            format_tool_use(block.name, block.input)))
+                        live.update(render())
+                    elif isinstance(block, TextBlock):
+                        # Fallback only — if nothing streamed for this turn,
+                        # render the complete block text.
+                        if not streamed_any and not current:
+                            current.append(block.text)
+                            live.update(render())
+            elif isinstance(msg, UserMessage):
+                for block in getattr(msg, "content", []):
+                    if isinstance(block, ToolResultBlock):
+                        flush_text()
+                        segments.append(Text.from_markup(format_tool_result(
+                            block.content, getattr(block, "is_error", False))))
+                        live.update(render())
+            elif isinstance(msg, ResultMessage):
+                break
+        flush_text()
+        live.update(render())
 
 
 def _handle_slash(line: str, workspace: Path, *, auto_yes: bool,
@@ -396,7 +461,9 @@ def _run_local_subcommand(name: str, workspace: Path) -> tuple[bool, bool, Optio
 
 
 def _print_welcome(workspace: Path, read_only: bool, auto_yes: bool,
-                   context_files: List[Path], plan_mode: bool = False) -> None:
+                   context_files: List[Path], plan_mode: bool = False,
+                   memory_file: Optional[Path] = None,
+                   continue_session: bool = False) -> None:
     if plan_mode:
         mode = "plan"
     elif read_only:
@@ -409,6 +476,10 @@ def _print_welcome(workspace: Path, read_only: bool, auto_yes: bool,
     console.print(f"  workspace:  [cyan]{workspace}[/cyan]")
     console.print(f"  agent:      claude ({mode}{yes_note})")
     console.print(f"  context:    {len(context_files)} artifact file(s) inlined")
+    if memory_file is not None:
+        console.print(f"  memory:     [green]{memory_file.name}[/green] loaded")
+    if continue_session:
+        console.print(f"  session:    [yellow]resuming previous conversation[/yellow]")
     console.print()
     console.print(
         "[dim]Type a request to chat. Type [/dim][cyan]/help[/cyan][dim] for slash "
