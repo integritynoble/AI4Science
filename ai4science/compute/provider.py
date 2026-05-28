@@ -212,8 +212,13 @@ def poll_once(provider: Dict[str, Any], allow_exec: bool) -> List[str]:
 
 
 def serve(provider: Dict[str, Any], *, interval_s: int = 5, once: bool = False,
-          allow_exec: bool = False, on_event=None) -> None:
-    """Poll loop. on_event(kind, payload) is an optional callback for logging."""
+          allow_exec: bool = False, git_sync: bool = False, on_event=None) -> None:
+    """Poll loop. on_event(kind, payload) is an optional callback for logging.
+
+    When ``git_sync`` is set, the inbox lives in a git repo shared with the
+    dispatcher: each pass runs ``git pull`` before scanning (to receive new
+    requests) and ``git add/commit/push`` after each result (to publish it).
+    """
     inbox = Path(provider["endpoint_path"]).expanduser()
     inbox.mkdir(parents=True, exist_ok=True)
 
@@ -221,8 +226,21 @@ def serve(provider: Dict[str, Any], *, interval_s: int = 5, once: bool = False,
         if on_event:
             on_event(kind, payload)
 
-    emit("start", {"inbox": str(inbox), "allow_exec": allow_exec})
+    repo = None
+    if git_sync:
+        from ai4science.compute import gitsync
+        repo = gitsync.find_repo_root(inbox)
+        if repo is None:
+            emit("sync_warn", {"error": f"git-sync on but {inbox} is not in a git repo "
+                                        "— falling back to local-only inbox"})
+
+    emit("start", {"inbox": str(inbox), "allow_exec": allow_exec,
+                   "git_sync": repo is not None})
     while True:
+        if repo is not None:
+            from ai4science.compute import gitsync
+            ok, msg = gitsync.pull(repo)
+            emit("sync_pull", {"ok": ok, "msg": msg})
         for req in pending_jobs(inbox):
             job_id = req.name[len("job_"):-len(".request.json")]
             emit("job_start", {"job_id": job_id})
@@ -231,6 +249,15 @@ def serve(provider: Dict[str, Any], *, interval_s: int = 5, once: bool = False,
                 emit("job_done", {"job_id": job_id,
                                   "solver_ran": manifest.get("solver_ran"),
                                   "certificate_hash": manifest.get("certificate_hash")})
+                if repo is not None:
+                    from ai4science.compute import gitsync
+                    files = [inbox / f"job_{job_id}.ack.json",
+                             inbox / f"job_{job_id}.result.json"]
+                    ok, msg = gitsync.commit_push(
+                        repo, files,
+                        f"compute: result for job {job_id} "
+                        f"({provider.get('provider_id', '?')})")
+                    emit("sync_push", {"job_id": job_id, "ok": ok, "msg": msg})
             except Exception as e:  # never let one bad job kill the poller
                 emit("job_error", {"job_id": job_id, "error": f"{type(e).__name__}: {e}"})
         if once:

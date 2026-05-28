@@ -105,15 +105,41 @@ Pick whichever matches your topology:
 If you dispatch and serve on the same Windows box, just use a local path
 (`C:\pwm\compute_jobs`). Nothing else to do.
 
-### Option B — Git-synced inbox (matches your existing baseline_runs flow)
+### Option B — Git-synced inbox (recommended; matches your baseline_runs flow)
 You already coordinate the sub-GPU via the git inbox
-(`pwm-team/coordination/agent-coord/inbox/baseline_runs/`). Reuse that:
+(`pwm-team/coordination/agent-coord/inbox/baseline_runs/`). The compute
+inbox lives right next to it in the **same `pwm` repo**:
 
-- Point `--endpoint` at a `compute_jobs/` folder inside the repo working tree.
-- The dispatcher commits+pushes the request; the GPU box `git pull`s,
-  runs, commits+pushes the result; the dispatcher pulls to verify.
-- Simple, auditable, no extra infra. Slightly higher latency (a pull/push
-  per step). Good for batch work.
+```
+pwm-team/coordination/agent-coord/inbox/compute_jobs/
+```
+
+Both boxes clone the `pwm` repo, and the `--git-sync` flag does the git
+work for you — **no manual `git pull`/`push`**:
+
+- Dispatcher: `ai4science compute dispatch ... --git-sync` pulls, writes the
+  request, then commits+pushes it.
+- GPU box: `ai4science compute serve ... --git-sync` pulls new requests each
+  pass, runs them, then commits+pushes each `result.json` back.
+- Dispatcher: `ai4science compute status/verify ... --git-sync` pulls first
+  so it sees the GPU's result.
+
+On this Windows box, clone the repo and point `--endpoint` at the
+compute_jobs folder inside the working tree:
+
+```powershell
+cd C:\pwm
+git clone <your-pwm-remote> pwm   # if not already cloned
+ai4science compute providers-add `
+  --id founder-1-subgpu `
+  --wallet 0xf1Fa5803daAAaFf89932592ad54F4e7F5e3f7DEE `
+  --endpoint C:\pwm\pwm\pwm-team\coordination\agent-coord\inbox\compute_jobs `
+  --label "Director (Yang) sub-GPU - Ledger Nano S Plus" --tier founder
+git config -C C:\pwm\pwm core.autocrlf false   # keep JSON as LF
+```
+
+Simple, auditable, no extra infra. Slightly higher latency (a pull/push
+per step). Good for batch work. The handshake README lives in that folder.
 
 ### Option C — Cloud-synced folder (lowest latency)
 Use a synced folder both machines mount: Syncthing, Dropbox, OneDrive,
@@ -150,7 +176,10 @@ Two common setups:
 
 ```powershell
 .\.venv\Scripts\Activate.ps1
-ai4science compute serve --provider founder-1-subgpu --allow-exec
+# git-synced inbox (Option B) — pulls requests + pushes results each pass:
+ai4science compute serve --provider founder-1-subgpu --allow-exec --git-sync
+# local / cloud-synced folder (Option A/C) — drop --git-sync:
+# ai4science compute serve --provider founder-1-subgpu --allow-exec
 ```
 
 You'll see:
@@ -171,6 +200,7 @@ Flags:
 | Flag | Meaning |
 |---|---|
 | `--allow-exec` | **Required** to actually run dispatched solver code. Without it the poller acks jobs but won't execute. |
+| `--git-sync` | Inbox is in a git repo shared with the dispatcher: `git pull` new requests each pass, commit+push each result. Use for Option B. |
 | `--once` | Process pending jobs and exit (good for Task Scheduler / cron). |
 | `--interval N` | Poll every N seconds (default 5). |
 
@@ -190,7 +220,7 @@ Create a `.bat` launcher `C:\pwm\run_poller.bat`:
 @echo off
 cd /d C:\pwm\AI4Science
 call .venv\Scripts\activate.bat
-ai4science compute serve --provider founder-1-subgpu --once --allow-exec
+ai4science compute serve --provider founder-1-subgpu --once --allow-exec --git-sync
 ```
 
 Then register a scheduled task that runs it every 2 minutes:
@@ -209,7 +239,7 @@ For a continuously-polling service, use [NSSM](https://nssm.cc/):
 
 ```powershell
 nssm install ai4science-poller "C:\pwm\AI4Science\.venv\Scripts\ai4science.exe" `
-  "compute serve --provider founder-1-subgpu --allow-exec"
+  "compute serve --provider founder-1-subgpu --allow-exec --git-sync"
 nssm set ai4science-poller AppDirectory "C:\pwm\AI4Science"
 nssm start ai4science-poller
 ```
@@ -240,10 +270,14 @@ If the poller is running, within a few seconds you'll see it pick the job
 up. Then verify and check credits:
 
 ```powershell
-ai4science compute status <job_id> --provider founder-1-subgpu
-ai4science compute verify <job_id> --provider founder-1-subgpu
+ai4science compute status <job_id> --provider founder-1-subgpu --git-sync
+ai4science compute verify <job_id> --provider founder-1-subgpu --git-sync
 ai4science compute credits
 ```
+
+> Drop `--git-sync` from the test commands if you used a local/cloud-synced
+> folder (Option A/C). For the cross-machine git inbox (Option B), keep it on
+> dispatch / serve / status / verify so each step pulls the other box's files.
 
 A judge **pass** adds one verified-job credit to your wallet in
 `reports/compute_attributions.jsonl`.

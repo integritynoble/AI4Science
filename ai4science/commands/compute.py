@@ -25,6 +25,7 @@ from rich.table import Table
 from ai4science.compute import (
     ComputeProvider, add_provider, load_registry, is_valid_eth_address,
 )
+from ai4science.compute import gitsync
 from ai4science.compute.registry import get_provider, default_registry_path
 from ai4science.compute.dispatch import dispatch_job, job_state, read_result
 from ai4science.compute.attribution import verify_and_attribute, credit_summary
@@ -91,6 +92,10 @@ def dispatch(
     solver_code: str = typer.Option("code/", "--solver", help="Solver code path."),
     run_command: str = typer.Option("python code/run_solver.py", "--run-command"),
     dataset_ref: str = typer.Option("", "--dataset", help="Dataset reference (gs:// or local)."),
+    git_sync: bool = typer.Option(
+        False, "--git-sync",
+        help="Inbox is a git-shared dir: pull before writing, commit+push the "
+             "request so a provider on another machine receives it."),
 ) -> None:
     """Write a job request into the provider's inbox."""
     provider = get_provider(provider_id)
@@ -98,6 +103,17 @@ def dispatch(
         console.print(f"[red]No such provider:[/red] {provider_id}. "
                       "List with [cyan]ai4science compute providers[/cyan].")
         raise typer.Exit(2)
+
+    repo = None
+    if git_sync:
+        repo = gitsync.find_repo_root(Path(provider.endpoint_path))
+        if repo is None:
+            console.print(f"[yellow]⚠ --git-sync:[/yellow] {provider.endpoint_path} "
+                          "is not in a git repo; writing locally only.")
+        else:
+            ok, msg = gitsync.pull(repo)
+            console.print(f"[dim]git pull: {'ok' if ok else 'FAILED — ' + msg}[/dim]")
+
     job = dispatch_job(
         provider=provider, workspace=workspace.resolve(),
         benchmark_id=benchmark, solver_code_path=solver_code,
@@ -107,20 +123,38 @@ def dispatch(
                   f"to [magenta]{provider_id}[/magenta]")
     console.print(f"  inbox:   {provider.endpoint_path}/job_{job.job_id}.request.json")
     console.print(f"  wallet:  {provider.wallet_address}")
+
+    if repo is not None:
+        req = Path(provider.endpoint_path).expanduser() / f"job_{job.job_id}.request.json"
+        ok, msg = gitsync.commit_push(repo, [req],
+                                      f"compute: dispatch job {job.job_id} → {provider_id}")
+        if ok:
+            console.print("[green]✓[/green] Pushed request to git "
+                          "(provider will pull it on next poll).")
+        else:
+            console.print(f"[yellow]⚠ git push failed:[/yellow] {msg}")
+
     console.print(f"\n[dim]Poll with:[/dim] ai4science compute status {job.job_id} "
-                  f"--provider {provider_id}")
+                  f"--provider {provider_id}" + (" --git-sync" if git_sync else ""))
 
 
 @app.command("status")
 def status(
     job_id: str = typer.Argument(..., help="Job id from dispatch."),
     provider_id: str = typer.Option(..., "--provider", "-p"),
+    git_sync: bool = typer.Option(
+        False, "--git-sync", help="git pull first to see a remote provider's progress."),
 ) -> None:
     """Show the file-inbox handshake state for a job."""
     provider = get_provider(provider_id)
     if provider is None:
         console.print(f"[red]No such provider:[/red] {provider_id}")
         raise typer.Exit(2)
+    if git_sync:
+        repo = gitsync.find_repo_root(Path(provider.endpoint_path))
+        if repo is not None:
+            ok, msg = gitsync.pull(repo)
+            console.print(f"[dim]git pull: {'ok' if ok else 'FAILED — ' + msg}[/dim]")
     st = job_state(Path(provider.endpoint_path), job_id)
     color = {"requested": "yellow", "acked": "cyan",
              "completed": "green", "missing": "red"}.get(st["state"], "white")
@@ -138,12 +172,19 @@ def verify(
     workspace: Path = typer.Option(Path("."), "--workspace", "-w"),
     benchmark: str = typer.Option(None, "--benchmark", "-b",
                                    help="Benchmark tier file to judge (default benchmark.md)."),
+    git_sync: bool = typer.Option(
+        False, "--git-sync", help="git pull first to fetch the provider's result."),
 ) -> None:
     """Re-verify a returned result with the Physics Judge + record attribution."""
     provider = get_provider(provider_id)
     if provider is None:
         console.print(f"[red]No such provider:[/red] {provider_id}")
         raise typer.Exit(2)
+    if git_sync:
+        repo = gitsync.find_repo_root(Path(provider.endpoint_path))
+        if repo is not None:
+            ok, msg = gitsync.pull(repo)
+            console.print(f"[dim]git pull: {'ok' if ok else 'FAILED — ' + msg}[/dim]")
     st = job_state(Path(provider.endpoint_path), job_id)
     result_manifest = st.get("result")
     job_meta = st.get("request") or {
@@ -179,6 +220,10 @@ def serve(
         False, "--allow-exec",
         help="REQUIRED to actually run dispatched solver commands. Without it "
              "the poller acks jobs but refuses to execute code (safety gate)."),
+    git_sync: bool = typer.Option(
+        False, "--git-sync",
+        help="Inbox is a git-shared dir: pull new requests each pass, push "
+             "results back. Use this when the dispatcher is on another machine."),
 ) -> None:
     """Run the provider-side poller on this GPU box.
 
@@ -200,17 +245,31 @@ def serve(
                       "[cyan]--allow-exec[/cyan] on a trusted host to execute them.")
 
     provider_dict = provider.model_dump()
+    sync_label = "[green]git-synced[/green]" if git_sync else "local-only"
     console.print(f"[bold purple]ai4science compute serve[/bold purple] — "
                   f"provider [cyan]{provider_id}[/cyan]")
     console.print(f"  wallet:  [magenta]{provider.wallet_address}[/magenta]")
-    console.print(f"  inbox:   {provider.endpoint_path}")
+    console.print(f"  inbox:   {provider.endpoint_path}  ({sync_label})")
     console.print(f"  exec:    "
                   f"{'[green]enabled[/green]' if allow_exec else '[yellow]disabled[/yellow]'}")
     console.print(f"  mode:    "
                   f"{'once' if once else f'polling every {interval}s (Ctrl-C to stop)'}\n")
 
     def _log(kind: str, payload: dict):
-        if kind == "job_start":
+        if kind == "start" and payload.get("git_sync") is False and git_sync:
+            console.print("[yellow]⚠ --git-sync requested but inbox is not in a git "
+                          "repo — running local-only.[/yellow]")
+        elif kind == "sync_warn":
+            console.print(f"[yellow]⚠ {payload['error']}[/yellow]")
+        elif kind == "sync_pull" and not payload.get("ok"):
+            console.print(f"[yellow]⚠ git pull failed: {payload.get('msg', '')}[/yellow]")
+        elif kind == "sync_push":
+            if payload.get("ok"):
+                console.print(f"  [green]↥ pushed result for {payload['job_id']}[/green]")
+            else:
+                console.print(f"  [yellow]⚠ push failed for {payload['job_id']}: "
+                              f"{payload.get('msg', '')}[/yellow]")
+        elif kind == "job_start":
             console.print(f"[cyan]▶ job {payload['job_id']}[/cyan] picked up")
         elif kind == "job_done":
             ran = payload.get("solver_ran")
@@ -222,7 +281,7 @@ def serve(
 
     try:
         serve_loop(provider_dict, interval_s=interval, once=once,
-                   allow_exec=allow_exec, on_event=_log)
+                   allow_exec=allow_exec, git_sync=git_sync, on_event=_log)
     except KeyboardInterrupt:
         console.print("\n[dim](stopped)[/dim]")
 
