@@ -428,6 +428,27 @@ def _resolve_agent(name: str) -> str:
     return "none"
 
 
+# Sub-subcommands that live under a group. Used to turn a mistyped
+# `ai4science dispatch …` (group prefix omitted) into a "did you mean
+# `ai4science compute dispatch …`" suggestion instead of routing it to the LLM.
+_SUBCOMMAND_PARENTS = {
+    "providers": "compute", "providers-add": "compute", "dispatch": "compute",
+    "verify": "compute", "serve": "compute", "credits": "compute",
+    "cassi": "judge", "review": "overseer",
+    "principle": "contribute", "spec": "contribute",
+    "benchmark": "contribute", "solution": "contribute",
+}
+
+
+def _suggest_subcommand(argv: List[str]) -> Optional[str]:
+    """If argv[0] is a known group sub-subcommand, return the corrected
+    `ai4science <group> <argv…>` invocation; otherwise None."""
+    parent = _SUBCOMMAND_PARENTS.get(argv[0])
+    if parent is None:
+        return None
+    return " ".join(["ai4science", parent, *argv])
+
+
 def _bare_launch(read_only: bool, auto_yes: bool, plan_mode: bool) -> None:
     """Bare `ai4science` (no subcommand/prompt) → interactive chat, like `claude`.
 
@@ -484,6 +505,22 @@ def main() -> None:
             "compute",
         }
         if argv[0] not in registered:
+            # A mistyped subcommand (e.g. `ai4science dispatch --provider …`,
+            # meaning `ai4science compute dispatch …`) must fail fast — not get
+            # silently routed to the LLM as a prompt. Signal: an unregistered
+            # first token followed by CLI-style flags is a command, not English.
+            # Genuine prompts are quoted (one argv element) or plain words with
+            # no standalone `--flags`.
+            if any(tok.startswith("-") for tok in argv[1:]):
+                console.print(f"[red]Unknown command:[/red] {argv[0]!r}")
+                suggestion = _suggest_subcommand(argv)
+                if suggestion:
+                    console.print(f"Did you mean:  [cyan]{suggestion}[/cyan]")
+                else:
+                    console.print("Run [cyan]ai4science --help[/cyan] to list commands.")
+                console.print("[dim]To send a free-form prompt to the agent, quote it:  "
+                              f"[cyan]ai4science \"{' '.join(argv)}\"[/cyan][/dim]")
+                sys.exit(2)
             # Prompt-first mode. Treat the whole argv as the user's prompt.
             prompt = " ".join(argv)
             sys.exit(_route_prompt(prompt, agent_name,
