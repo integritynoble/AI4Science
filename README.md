@@ -1,8 +1,20 @@
 # AI4Science CLI
 
+[![PyPI](https://img.shields.io/pypi/v/pwm-ai4science.svg)](https://pypi.org/project/pwm-ai4science/)
+[![Python](https://img.shields.io/pypi/pyversions/pwm-ai4science.svg)](https://pypi.org/project/pwm-ai4science/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![CI](https://github.com/integritynoble/AI4Science/actions/workflows/ci.yml/badge.svg)](https://github.com/integritynoble/AI4Science/actions/workflows/ci.yml)
+
 **Open-source contribution tool for Physics World Model (PWM).**
 
 Create, validate, package, and submit Principles, Specs, Benchmarks, and Solutions for verified AI4Science workflows — from your terminal.
+
+```bash
+pipx install pwm-ai4science      # one command, global — then use `ai4science`
+```
+
+> Not published to PyPI yet? Install from source — still one command:
+> `pipx install "git+https://github.com/integritynoble/AI4Science.git"`
 
 ---
 
