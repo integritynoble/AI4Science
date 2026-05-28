@@ -43,6 +43,17 @@ from ai4science.commands import (
     chat as chat_cmd,
 )
 
+# On Windows the default console code page (cp1252) cannot encode the Unicode
+# glyphs (✓ ✗ ⚠ box-drawing) that Rich emits, raising UnicodeEncodeError mid-
+# render. Force UTF-8 on the standard streams so the CLI works without the user
+# having to set PYTHONIOENCODING=utf-8 by hand.
+if os.name == "nt":
+    for _stream in (sys.stdout, sys.stderr):
+        try:
+            _stream.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
+        except (AttributeError, ValueError):
+            pass
+
 console = Console()
 
 # Module-level state for the agent the user selected via --agent. We thread
