@@ -65,4 +65,3 @@ The CASSI example ships without generated data, so a fresh `judge cassi` returns
 - Do not invent new top-level field names — use the canonical set above.
 - Do not predict PSNR / SSIM / other metric values. Empirical results come from running the solver, not from you.
 - Do not claim a submission is verified. Only the Physics Judge can.
-- Do not write files in the workspace. Output your draft as text the user can copy.
