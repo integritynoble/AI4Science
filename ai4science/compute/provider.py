@@ -171,6 +171,28 @@ def build_result_manifest(job: Dict[str, Any], workspace: Path,
     }
 
 
+def _resolve_workspace(job: Dict[str, Any], inbox: Path) -> Path:
+    """Resolve the job's workspace on THIS host.
+
+    Prefers the absolute ``workspace`` when it exists locally (same-machine
+    dispatch). Otherwise, when ``workspace_repo_relative`` is set, resolves it
+    against the local checkout of the shared repo (the one holding the inbox),
+    so a job dispatched from another machine still finds its workspace.
+    """
+    abs_ws = Path(job.get("workspace", "")).expanduser()
+    if abs_ws.is_dir():
+        return abs_ws
+    rel = (job.get("workspace_repo_relative") or "").strip()
+    if rel:
+        from ai4science.compute import gitsync
+        repo = gitsync.find_repo_root(inbox)
+        if repo is not None:
+            candidate = repo / rel
+            if candidate.is_dir():
+                return candidate
+    return abs_ws  # not reachable — caller reports a clear error
+
+
 def process_job(req_path: Path, provider: Dict[str, Any],
                 allow_exec: bool) -> Dict[str, Any]:
     """Ack, run the solver, and write the result for one job request."""
@@ -183,7 +205,7 @@ def process_job(req_path: Path, provider: Dict[str, Any],
            "provider_id": provider.get("provider_id")}
     (inbox / f"job_{job_id}.ack.json").write_text(json.dumps(ack, indent=2), encoding="utf-8")
 
-    workspace = Path(job.get("workspace", "")).expanduser()
+    workspace = _resolve_workspace(job, inbox)
     t0 = time.monotonic()
 
     if not allow_exec:
