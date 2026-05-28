@@ -6,19 +6,77 @@ A verified pass yields a unit-less "credit" (1) bound to the provider's
 wallet; the PWM-per-credit conversion is a later governance decision and
 is intentionally NOT encoded here. The CLI never moves tokens.
 
-Attribution records are appended to an off-chain log:
-  <workspace>/reports/compute_attributions.jsonl
+Attribution records are appended to two places:
+  - the **canonical aggregate ledger** (source of truth for ``credits``):
+      ~/.config/ai4science/compute_attributions.jsonl
+    (XDG_CONFIG_HOME-aware; override with AI4SCIENCE_COMPUTE_LEDGER)
+  - a per-workspace local audit copy:
+      <workspace>/reports/compute_attributions.jsonl
+
+``credits`` reads the canonical ledger so it aggregates every verified job
+regardless of which workspace each ran in. Reading with an explicit
+workspace still returns just that workspace's local copy.
 """
 from __future__ import annotations
 
 import datetime as dt
 import json
+import os
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 
 def _utcnow() -> str:
     return dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def default_ledger_path() -> Path:
+    """Canonical aggregate attribution ledger.
+
+    ~/.config/ai4science/compute_attributions.jsonl, mirroring the provider
+    registry's location. Override with AI4SCIENCE_COMPUTE_LEDGER; honors
+    XDG_CONFIG_HOME.
+    """
+    override = os.environ.get("AI4SCIENCE_COMPUTE_LEDGER")
+    if override:
+        return Path(override)
+    base = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
+    return base / "ai4science" / "compute_attributions.jsonl"
+
+
+def _append_jsonl(path: Path, record: Dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(record) + "\n")
+
+
+def _read_jsonl(path: Path) -> list[Dict[str, Any]]:
+    if not path.exists():
+        return []
+    out: list[Dict[str, Any]] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line:
+            try:
+                out.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+    return out
+
+
+def _resolve_log(source: "Path | str | None") -> Path:
+    """Map a read source to a JSONL path.
+
+    None             → canonical aggregate ledger
+    a directory      → that workspace's reports/compute_attributions.jsonl
+    a file path      → that file directly
+    """
+    if source is None:
+        return default_ledger_path()
+    p = Path(source).resolve()
+    if p.is_dir():
+        return p / "reports" / "compute_attributions.jsonl"
+    return p
 
 
 def verify_and_attribute(*, workspace: Path, job: Dict[str, Any],
@@ -52,33 +110,32 @@ def verify_and_attribute(*, workspace: Path, job: Dict[str, Any],
                  "moves no tokens."),
     }
 
-    log = workspace / "reports" / "compute_attributions.jsonl"
-    log.parent.mkdir(parents=True, exist_ok=True)
-    with log.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(attribution) + "\n")
+    # Canonical aggregate ledger — source of truth for `credits`.
+    _append_jsonl(default_ledger_path(), attribution)
+    # Per-workspace local audit copy.
+    _append_jsonl(workspace / "reports" / "compute_attributions.jsonl", attribution)
 
     return attribution
 
 
-def read_attributions(workspace: Path) -> list[Dict[str, Any]]:
-    log = Path(workspace).resolve() / "reports" / "compute_attributions.jsonl"
-    if not log.exists():
-        return []
-    out = []
-    for line in log.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if line:
-            try:
-                out.append(json.loads(line))
-            except json.JSONDecodeError:
-                continue
-    return out
+def read_attributions(source: "Path | str | None" = None) -> list[Dict[str, Any]]:
+    """Read attribution records.
+
+    ``source=None`` reads the canonical aggregate ledger (all jobs). Passing a
+    workspace directory reads just that workspace's local copy (backward
+    compatible with callers that pass a workspace path).
+    """
+    return _read_jsonl(_resolve_log(source))
 
 
-def credit_summary(workspace: Path) -> Dict[str, int]:
-    """Total verified-job credits per wallet."""
+def credit_summary(source: "Path | str | None" = None) -> Dict[str, int]:
+    """Total verified-job credits per wallet.
+
+    ``source=None`` aggregates the canonical ledger; a workspace path sums just
+    that workspace's local copy.
+    """
     totals: Dict[str, int] = {}
-    for a in read_attributions(workspace):
+    for a in read_attributions(source):
         w = a.get("wallet_address") or "unknown"
         totals[w] = totals.get(w, 0) + int(a.get("credit", 0))
     return totals
