@@ -50,6 +50,11 @@ def chat(
         False, "--yes", "-y",
         help="Auto-approve all tool calls (Edit/Write/Bash) in this session.",
     ),
+    plan: bool = typer.Option(
+        False, "--plan",
+        help="Whole-session plan mode: no edits, agent produces plans only. "
+             "Use the in-REPL /plan command for single-turn plan mode.",
+    ),
 ) -> None:
     """Open a persistent chat session with the agent."""
     if agent.lower() != "claude":
@@ -62,20 +67,22 @@ def chat(
 
     # Reuse ClaudeAgent.is_available for the same gate as one-shot mode.
     from ai4science.agents import ClaudeAgent
-    probe = ClaudeAgent(read_only=read_only, auto_yes=yes)
+    probe = ClaudeAgent(read_only=read_only, auto_yes=yes, plan_mode=plan)
     if not probe.is_available():
         console.print(f"[red]Claude agent not available:[/red] {probe.unavailable_reason()}")
         raise typer.Exit(2)
 
     workspace = workspace.resolve()
     try:
-        asyncio.run(_run_chat(workspace=workspace, read_only=read_only, auto_yes=yes))
+        asyncio.run(_run_chat(workspace=workspace, read_only=read_only,
+                               auto_yes=yes, plan_mode=plan))
     except KeyboardInterrupt:
         console.print("\n[dim](Ctrl-C — exiting)[/dim]")
         raise typer.Exit(0)
 
 
-async def _run_chat(*, workspace: Path, read_only: bool, auto_yes: bool) -> None:
+async def _run_chat(*, workspace: Path, read_only: bool, auto_yes: bool,
+                     plan_mode: bool = False) -> None:
     """Async event loop for the REPL."""
     from claude_agent_sdk import (   # type: ignore
         ClaudeSDKClient, ClaudeAgentOptions, AssistantMessage, ResultMessage,
@@ -83,21 +90,32 @@ async def _run_chat(*, workspace: Path, read_only: bool, auto_yes: bool) -> None
     from ai4science.agents.permissions import make_workspace_permission_callback
     from ai4science.prompts import load_system_prompt
 
-    # Build options + permission callback (parallel to claude_agent.py).
-    sysprompt_name = "ai4science_system_readonly" if read_only else "ai4science_system"
+    # System prompt: plan > read_only > full tool-use.
+    if plan_mode:
+        sysprompt_name = "ai4science_system_plan"
+    elif read_only:
+        sysprompt_name = "ai4science_system_readonly"
+    else:
+        sysprompt_name = "ai4science_system"
     system_prompt = load_system_prompt(sysprompt_name)
 
-    if read_only:
-        allowed_tools: List[str] = []
+    if plan_mode:
+        allowed_tools: List[str] = ["Read", "Grep", "Glob"]
         can_use_tool = None
+        permission_mode_initial = "plan"
+    elif read_only:
+        allowed_tools = []
+        can_use_tool = None
+        permission_mode_initial = "default"
     else:
         allowed_tools = ["Read", "Grep", "Glob", "Edit", "Write", "Bash", "MultiEdit"]
         can_use_tool = make_workspace_permission_callback(workspace, auto_yes=auto_yes)
+        permission_mode_initial = "default"
 
     options = ClaudeAgentOptions(
         system_prompt=system_prompt,
         allowed_tools=allowed_tools,
-        permission_mode="default",
+        permission_mode=permission_mode_initial,
         can_use_tool=can_use_tool,
         cwd=str(workspace),
         max_turns=50,   # interactive sessions need plenty of room
@@ -108,7 +126,8 @@ async def _run_chat(*, workspace: Path, read_only: bool, auto_yes: bool) -> None
     context_files = _workspace_artifacts(workspace)
 
     async with ClaudeSDKClient(options=options) as client:
-        _print_welcome(workspace, read_only, auto_yes, context_files)
+        _print_welcome(workspace, read_only, auto_yes, context_files,
+                        plan_mode=plan_mode)
 
         # Send the workspace context as a system-side first message so the
         # agent has it without consuming a user turn. The SDK doesn't have
@@ -141,36 +160,75 @@ async def _run_chat(*, workspace: Path, read_only: bool, auto_yes: bool) -> None
             if not line:
                 continue
 
-            # Slash commands first.
+            # Slash commands first — /plan returns the actual user prompt to
+            # forward (with plan-mode prefix attached) when a prompt is given;
+            # other slash commands handle themselves and skip the LLM.
+            single_turn_plan_prompt: Optional[str] = None
             if line.startswith("/"):
-                handled, should_exit = _handle_slash(line, workspace,
-                                                     auto_yes=auto_yes,
-                                                     read_only=read_only,
-                                                     client=client)
+                handled, should_exit, plan_prompt = _handle_slash(
+                    line, workspace,
+                    auto_yes=auto_yes, read_only=read_only,
+                    plan_mode_active=plan_mode, client=client,
+                )
                 if should_exit:
                     break
-                if handled:
+                if plan_prompt is not None:
+                    # /plan <prompt> → send the prompt under plan mode for ONE turn.
+                    single_turn_plan_prompt = plan_prompt
+                elif handled:
                     continue
+
+            # Resolve the outgoing prompt: either the original line, or the
+            # /plan-extracted prompt for a single-turn plan call.
+            raw_prompt = single_turn_plan_prompt if single_turn_plan_prompt else line
 
             # Expand @-mentions: any `@path/to/file` that resolves to an
             # existing file inside the workspace is attached inline.
             from ai4science.agents.mentions import expand_mentions_inline
-            outgoing, attached = expand_mentions_inline(line, workspace)
+            outgoing, attached = expand_mentions_inline(raw_prompt, workspace)
             if attached:
                 rels = [str(p.relative_to(workspace.resolve())) for p in attached]
                 console.print(f"[dim]📎 attached: {', '.join(rels)}[/dim]")
+
+            # Plan-mode toggle for this turn only.
+            if single_turn_plan_prompt is not None and not plan_mode:
+                try:
+                    client.set_permission_mode("plan")
+                except Exception:
+                    pass
+                outgoing = (
+                    "[Plan mode for this turn]\n\n"
+                    "Use Read/Grep/Glob to investigate, then return a structured "
+                    "plan with concrete file paths and actions. Do NOT edit any "
+                    "files — the user will review your plan and re-issue if they "
+                    "want execution.\n\n"
+                    "## Request\n\n"
+                    + outgoing
+                )
 
             # Send to agent + stream response.
             try:
                 await client.query(outgoing)
             except Exception as e:
                 console.print(f"[red]query error:[/red] {type(e).__name__}: {e}")
+                if single_turn_plan_prompt is not None and not plan_mode:
+                    try:
+                        client.set_permission_mode("default")
+                    except Exception:
+                        pass
                 continue
 
             try:
                 await _stream_response(client, cancel_flag)
             except Exception as e:
                 console.print(f"[red]stream error:[/red] {type(e).__name__}: {e}")
+            finally:
+                # Restore default permission mode after a single-turn /plan.
+                if single_turn_plan_prompt is not None and not plan_mode:
+                    try:
+                        client.set_permission_mode("default")
+                    except Exception:
+                        pass
 
 
 # ─── helpers ───────────────────────────────────────────────────────────
@@ -212,21 +270,44 @@ async def _stream_response(client, cancel_flag: dict) -> None:
 
 
 def _handle_slash(line: str, workspace: Path, *, auto_yes: bool,
-                  read_only: bool, client) -> tuple[bool, bool]:
-    """Return (handled, should_exit)."""
+                  read_only: bool, client,
+                  plan_mode_active: bool = False
+                  ) -> tuple[bool, bool, Optional[str]]:
+    """Return (handled, should_exit, plan_prompt_to_forward).
+
+    If the third element is non-None, it means the user typed
+    ``/plan <prompt>`` — the caller should forward that prompt under
+    plan-mode framing for a single turn.
+    """
     cmd, _, _arg = line[1:].partition(" ")
     cmd = cmd.lower().strip()
+    arg = _arg.strip()
 
     if cmd in ("exit", "quit", "q"):
-        return (True, True)
+        return (True, True, None)
 
     if cmd in ("help", "?"):
         _print_help()
-        return (True, False)
+        return (True, False, None)
 
     if cmd == "clear":
         os.system("clear" if os.name != "nt" else "cls")
-        return (True, False)
+        return (True, False, None)
+
+    if cmd == "plan":
+        if not arg:
+            console.print(
+                "[bold]/plan <your request>[/bold] — run the next request in "
+                "plan mode (read-only; agent produces a plan). "
+                "For a whole-session plan, exit and re-launch with "
+                "[cyan]ai4science chat --plan[/cyan]."
+            )
+            return (True, False, None)
+        if plan_mode_active or read_only:
+            # Already restricted; just forward the prompt as-is via normal flow.
+            console.print("[dim](already in plan/read-only mode — sending request normally)[/dim]")
+            return (True, False, arg)
+        return (True, False, arg)
 
     if cmd == "files":
         files = _workspace_artifacts(workspace)
@@ -236,26 +317,26 @@ def _handle_slash(line: str, workspace: Path, *, auto_yes: bool,
             console.print("[bold]Workspace artifact files:[/bold]")
             for f in files:
                 console.print(f"  - {f.relative_to(workspace) if f.is_relative_to(workspace) else f}")
-        return (True, False)
+        return (True, False, None)
 
     if cmd == "yes":
         console.print("[yellow]Note:[/yellow] /yes toggles need to be set at startup. "
                       "Exit, re-run with `--yes`, and start a new chat.")
-        return (True, False)
+        return (True, False, None)
 
     if cmd == "readonly":
         console.print("[yellow]Note:[/yellow] read-only mode is set at startup. "
                       "Exit, re-run with `--read-only`, and start a new chat.")
-        return (True, False)
+        return (True, False, None)
 
     if cmd == "cost":
         try:
             usage = client.get_context_usage()
         except Exception as e:
             console.print(f"[yellow]/cost not available:[/yellow] {e}")
-            return (True, False)
+            return (True, False, None)
         console.print(f"[bold]Context usage:[/bold] {usage}")
-        return (True, False)
+        return (True, False, None)
 
     if cmd == "validate":
         return _run_local_subcommand("validate", workspace)
@@ -268,10 +349,10 @@ def _handle_slash(line: str, workspace: Path, *, auto_yes: bool,
 
     console.print(f"[yellow]Unknown slash command:[/yellow] /{cmd} "
                   f"(try [cyan]/help[/cyan])")
-    return (True, False)
+    return (True, False, None)
 
 
-def _run_local_subcommand(name: str, workspace: Path) -> tuple[bool, bool]:
+def _run_local_subcommand(name: str, workspace: Path) -> tuple[bool, bool, Optional[str]]:
     """Run a deterministic command from inside the REPL without exiting."""
     from ai4science.commands import validate as v, status as s, judge as j
     try:
@@ -286,13 +367,18 @@ def _run_local_subcommand(name: str, workspace: Path) -> tuple[bool, bool]:
             console.print(f"[dim](command exited with code {e.exit_code})[/dim]")
     except Exception as e:
         console.print(f"[red]{name} error:[/red] {type(e).__name__}: {e}")
-    return (True, False)
+    return (True, False, None)
 
 
 def _print_welcome(workspace: Path, read_only: bool, auto_yes: bool,
-                   context_files: List[Path]) -> None:
-    mode = "read-only" if read_only else "tool-use"
-    yes_note = " + auto-approve" if (auto_yes and not read_only) else ""
+                   context_files: List[Path], plan_mode: bool = False) -> None:
+    if plan_mode:
+        mode = "plan"
+    elif read_only:
+        mode = "read-only"
+    else:
+        mode = "tool-use"
+    yes_note = " + auto-approve" if (auto_yes and not read_only and not plan_mode) else ""
     console.print()
     console.print(f"[bold purple]ai4science chat[/bold purple]  v{__version__}")
     console.print(f"  workspace:  [cyan]{workspace}[/cyan]")
@@ -315,6 +401,7 @@ def _print_help() -> None:
         ("/exit, /quit, /q",   "leave the session"),
         ("/clear",             "clear the terminal"),
         ("/files",             "list workspace artifact files"),
+        ("/plan <request>",    "single-turn plan mode (no edits, agent returns a plan)"),
         ("/validate",          "run `ai4science validate` (deterministic)"),
         ("/judge",             "run the CASSI Physics Judge"),
         ("/status",            "show workspace status"),

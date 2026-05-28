@@ -196,7 +196,7 @@ def test_agent_flag_env_default(monkeypatch):
     """AI4SCIENCE_AGENT env var sets the default."""
     from ai4science.cli import _pop_agent_flag
     monkeypatch.setenv("AI4SCIENCE_AGENT", "claude")
-    cleaned, agent, ro, yes = _pop_agent_flag(["some", "prompt"])
+    cleaned, agent, ro, yes, _ = _pop_agent_flag(["some", "prompt"])
     assert cleaned == ["some", "prompt"]
     assert agent == "claude"
     assert ro is False and yes is False
@@ -205,7 +205,7 @@ def test_agent_flag_env_default(monkeypatch):
 def test_agent_flag_long_form_overrides_env(monkeypatch):
     from ai4science.cli import _pop_agent_flag
     monkeypatch.setenv("AI4SCIENCE_AGENT", "none")
-    cleaned, agent, _, _ = _pop_agent_flag(["--agent", "claude", "some", "prompt"])
+    cleaned, agent, _, _, _ = _pop_agent_flag(["--agent", "claude", "some", "prompt"])
     assert cleaned == ["some", "prompt"]
     assert agent == "claude"
 
@@ -213,7 +213,7 @@ def test_agent_flag_long_form_overrides_env(monkeypatch):
 def test_agent_flag_equals_form_works(monkeypatch):
     from ai4science.cli import _pop_agent_flag
     monkeypatch.delenv("AI4SCIENCE_AGENT", raising=False)
-    cleaned, agent, _, _ = _pop_agent_flag(["--agent=claude", "draft", "a", "principle"])
+    cleaned, agent, _, _, _ = _pop_agent_flag(["--agent=claude", "draft", "a", "principle"])
     assert cleaned == ["draft", "a", "principle"]
     assert agent == "claude"
 
@@ -221,7 +221,7 @@ def test_agent_flag_equals_form_works(monkeypatch):
 def test_agent_flag_unknown_falls_back_to_none(monkeypatch, capsys):
     from ai4science.cli import _pop_agent_flag
     monkeypatch.delenv("AI4SCIENCE_AGENT", raising=False)
-    cleaned, agent, _, _ = _pop_agent_flag(["--agent", "gemini", "prompt"])
+    cleaned, agent, _, _, _ = _pop_agent_flag(["--agent", "gemini", "prompt"])
     assert agent == "none"  # unknown falls back to safe default
 
 
@@ -229,10 +229,10 @@ def test_read_only_flag_parsed(monkeypatch):
     """--read-only and --readonly both work; default is False."""
     from ai4science.cli import _pop_agent_flag
     monkeypatch.delenv("AI4SCIENCE_READ_ONLY", raising=False)
-    _, _, ro, _ = _pop_agent_flag(["--agent", "claude", "--read-only", "draft a spec"])
+    _, _, ro, _, _ = _pop_agent_flag(["--agent", "claude", "--read-only", "draft a spec"])
     assert ro is True
 
-    _, _, ro2, _ = _pop_agent_flag(["--agent", "claude", "--readonly", "draft"])
+    _, _, ro2, _, _ = _pop_agent_flag(["--agent", "claude", "--readonly", "draft"])
     assert ro2 is True
 
 
@@ -240,16 +240,16 @@ def test_yes_flag_parsed(monkeypatch):
     """--yes / -y both work."""
     from ai4science.cli import _pop_agent_flag
     monkeypatch.delenv("AI4SCIENCE_AUTO_YES", raising=False)
-    _, _, _, yes = _pop_agent_flag(["--agent", "claude", "--yes", "draft a spec"])
+    _, _, _, yes, _ = _pop_agent_flag(["--agent", "claude", "--yes", "draft a spec"])
     assert yes is True
-    _, _, _, yes2 = _pop_agent_flag(["--agent", "claude", "-y", "draft"])
+    _, _, _, yes2, _ = _pop_agent_flag(["--agent", "claude", "-y", "draft"])
     assert yes2 is True
 
 
 def test_read_only_env_default(monkeypatch):
     from ai4science.cli import _pop_agent_flag
     monkeypatch.setenv("AI4SCIENCE_READ_ONLY", "1")
-    _, _, ro, _ = _pop_agent_flag(["--agent", "claude", "draft"])
+    _, _, ro, _, _ = _pop_agent_flag(["--agent", "claude", "draft"])
     assert ro is True
 
 
@@ -267,3 +267,41 @@ def test_get_agent_default_claude_is_tool_use_mode():
     assert isinstance(a, ClaudeAgent)
     assert a.read_only is False
     assert a.auto_yes is False
+    assert a.plan_mode is False
+
+
+# ─── --plan flag plumbing (v0.6) ─────────────────────────────────────
+
+
+def test_plan_flag_parsed(monkeypatch):
+    from ai4science.cli import _pop_agent_flag
+    monkeypatch.delenv("AI4SCIENCE_PLAN", raising=False)
+    _, _, _, _, plan = _pop_agent_flag(["--agent", "claude", "--plan", "draft something"])
+    assert plan is True
+
+
+def test_plan_env_default(monkeypatch):
+    from ai4science.cli import _pop_agent_flag
+    monkeypatch.setenv("AI4SCIENCE_PLAN", "1")
+    _, _, _, _, plan = _pop_agent_flag(["--agent", "claude", "draft"])
+    assert plan is True
+
+
+def test_plan_default_is_false(monkeypatch):
+    from ai4science.cli import _pop_agent_flag
+    monkeypatch.delenv("AI4SCIENCE_PLAN", raising=False)
+    _, _, _, _, plan = _pop_agent_flag(["--agent", "claude", "draft"])
+    assert plan is False
+
+
+def test_get_agent_forwards_plan_mode():
+    a = get_agent("claude", plan_mode=True)
+    assert isinstance(a, ClaudeAgent)
+    assert a.plan_mode is True
+
+
+def test_get_agent_plan_mode_independent_of_read_only_and_auto_yes():
+    a = get_agent("claude", plan_mode=True, read_only=False, auto_yes=True)
+    assert a.plan_mode is True
+    assert a.read_only is False
+    assert a.auto_yes is True

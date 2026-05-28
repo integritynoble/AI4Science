@@ -124,6 +124,29 @@ ai4science --agent claude "@code/run_solver.py what's wrong here?"
 
 Sandbox rules: absolute paths (`@/etc/passwd`), traversal (`@../escape`), and references to non-existent files are silently ignored — so writing about the `@property` decorator or someone's `alice@example.com` won't accidentally attach anything.
 
+### Plan mode
+
+Sometimes you want a structured plan before any edits happen — what changes, where, in what order, with risks called out. Plan mode runs the agent with read-only tools and a planning-specific system prompt:
+
+```bash
+# One-shot plan
+ai4science --agent claude --plan "Add a T2 benchmark tier with mild calibration drift"
+
+# Whole-session plan mode in chat
+ai4science chat --plan
+
+# Single-turn plan inside a regular chat session
+ai4science> /plan refactor the solver to use ADMM instead of GAP-TV
+```
+
+In plan mode:
+- The agent can `Read` / `Grep` / `Glob` to investigate the workspace.
+- The agent **cannot** `Edit`, `Write`, or run `Bash` — the SDK enforces this via `permission_mode="plan"`.
+- The system prompt asks for a structured plan with concrete file paths, actions, rationale, and risks.
+- The output is a plan you review and approve — then re-run without `--plan` (or follow up in chat) to execute.
+
+When mixing flags, the precedence is **plan > read-only > tool-use** — `--plan` always disables editing regardless of `--yes`.
+
 ## 6. Prompt-first usage
 
 Like `claude` or `codex`, you can invoke `ai4science` with a free-form English prompt in quotes:

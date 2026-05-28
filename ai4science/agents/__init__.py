@@ -22,8 +22,8 @@ def get_agent(name: str, **kwargs) -> BaseAgent:
     """Resolve a provider name to an agent instance.
 
     Optional kwargs are forwarded to the agent constructor where supported.
-    For ClaudeAgent: ``read_only`` (bool) and ``auto_yes`` (bool).
-    Other agents ignore unknown kwargs.
+    For ClaudeAgent: ``read_only`` (bool), ``auto_yes`` (bool), and
+    ``plan_mode`` (bool). Other agents ignore unknown kwargs.
     """
     name = name.lower()
     if name == "none":
@@ -32,6 +32,7 @@ def get_agent(name: str, **kwargs) -> BaseAgent:
         return ClaudeAgent(
             read_only=kwargs.get("read_only", False),
             auto_yes=kwargs.get("auto_yes", False),
+            plan_mode=kwargs.get("plan_mode", False),
         )
     if name == "codex":
         return CodexAgent()

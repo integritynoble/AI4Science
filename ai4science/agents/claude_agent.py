@@ -31,9 +31,13 @@ DEFAULT_ALLOWED_TOOLS = ["Read", "Grep", "Glob", "Edit", "Write", "Bash", "Multi
 class ClaudeAgent(BaseAgent):
     name = "claude"
 
-    def __init__(self, read_only: bool = False, auto_yes: bool = False):
+    def __init__(self, read_only: bool = False, auto_yes: bool = False,
+                 plan_mode: bool = False):
+        # Plan mode dominates: when on, read_only is implied (no edits possible)
+        # AND a planning-specific system prompt is used.
         self.read_only = read_only
         self.auto_yes = auto_yes
+        self.plan_mode = plan_mode
 
     def is_available(self) -> bool:
         """Available iff `claude` CLI on PATH AND claude-agent-sdk importable.
@@ -77,15 +81,26 @@ class ClaudeAgent(BaseAgent):
                          "`claude` CLI, then re-run."),
             )
 
+        # Tool use is disabled in plan mode too (the SDK enforces this via
+        # permission_mode="plan", but we also suppress the "default to acting"
+        # output-format suffix that would otherwise contradict the plan-mode
+        # system prompt).
+        tools_enabled = not (self.read_only or self.plan_mode)
+
         full_prompt = compose_prompt(
             prompt, workspace, context_files,
             embed_system="",
-            tools_enabled=not self.read_only,
+            tools_enabled=tools_enabled,
         )
 
         try:
             from ai4science.prompts import load_system_prompt
-            sysprompt_name = "ai4science_system_readonly" if self.read_only else "ai4science_system"
+            if self.plan_mode:
+                sysprompt_name = "ai4science_system_plan"
+            elif self.read_only:
+                sysprompt_name = "ai4science_system_readonly"
+            else:
+                sysprompt_name = "ai4science_system"
             system_prompt = load_system_prompt(sysprompt_name)
         except Exception as e:
             return AgentResult(status="error",
@@ -99,6 +114,7 @@ class ClaudeAgent(BaseAgent):
                     workspace=workspace,
                     read_only=self.read_only,
                     auto_yes=self.auto_yes,
+                    plan_mode=self.plan_mode,
                 )
             )
         except KeyboardInterrupt:
@@ -111,7 +127,7 @@ class ClaudeAgent(BaseAgent):
 
 
 async def _run_query(*, full_prompt: str, system_prompt: str, workspace: Path,
-                     read_only: bool, auto_yes: bool):
+                     read_only: bool, auto_yes: bool, plan_mode: bool = False):
     """Run a one-shot query through the SDK with appropriate tool/permission gates."""
     from claude_agent_sdk import (   # type: ignore
         query, ClaudeAgentOptions, AssistantMessage,
@@ -119,7 +135,20 @@ async def _run_query(*, full_prompt: str, system_prompt: str, workspace: Path,
 
     workspace = workspace.resolve()
 
-    if read_only:
+    if plan_mode:
+        # Plan mode: SDK's permission_mode="plan" enforces no edits at the
+        # protocol level. We still allow Read/Grep/Glob so the agent can
+        # investigate the workspace before producing a plan.
+        options = ClaudeAgentOptions(
+            system_prompt=system_prompt,
+            allowed_tools=["Read", "Grep", "Glob"],
+            permission_mode="plan",
+            cwd=str(workspace),
+            max_turns=15,
+            model=DEFAULT_MODEL,
+        )
+        prompt_arg = full_prompt
+    elif read_only:
         # Strict v0.2 behavior — no tool calls at all; text-only output.
         options = ClaudeAgentOptions(
             system_prompt=system_prompt,

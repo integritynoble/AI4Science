@@ -228,7 +228,8 @@ def _dispatch_rule(name: str) -> int:
 
 
 def _route_prompt(prompt: str, agent_name: str,
-                  read_only: bool = False, auto_yes: bool = False) -> int:
+                  read_only: bool = False, auto_yes: bool = False,
+                  plan_mode: bool = False) -> int:
     """Two-tier routing:
        1. Utility commands (validate/judge/package/submit/status/overseer) always
           dispatch deterministically — an LLM adds nothing.
@@ -260,7 +261,8 @@ def _route_prompt(prompt: str, agent_name: str,
         )
         return 2
 
-    agent = get_agent(agent_name, read_only=read_only, auto_yes=auto_yes)
+    agent = get_agent(agent_name, read_only=read_only, auto_yes=auto_yes,
+                       plan_mode=plan_mode)
     if not agent.is_available():
         reason = getattr(agent, "unavailable_reason", lambda: "")()
         console.print(f"[red]Agent {agent_name!r} not available:[/red] {reason}")
@@ -284,7 +286,7 @@ def _route_prompt(prompt: str, agent_name: str,
         rels = [str(p.relative_to(workspace)) for p in extra]
         console.print(f"[dim]📎 @attached: {', '.join(rels)}[/dim]")
 
-    mode_label = "read-only" if read_only else "tool-use enabled"
+    mode_label = "plan" if plan_mode else ("read-only" if read_only else "tool-use enabled")
     console.print(f"[dim]→ delegating to {agent_name!r} agent "
                   f"(workspace={workspace.name}, context files={len(context_files)}, "
                   f"mode={mode_label})[/dim]")
@@ -324,19 +326,21 @@ def _route_prompt(prompt: str, agent_name: str,
         return 1
 
 
-def _pop_agent_flag(argv: List[str]) -> tuple[List[str], str, bool, bool]:
-    """Strip --agent/-a, --read-only, --yes from argv.
+def _pop_agent_flag(argv: List[str]) -> tuple[List[str], str, bool, bool, bool]:
+    """Strip agent-related flags from argv.
 
-    Returns (cleaned_argv, agent_name, read_only, auto_yes).
+    Returns (cleaned_argv, agent_name, read_only, auto_yes, plan_mode).
 
     Env defaults:
-      AI4SCIENCE_AGENT       — agent name (default 'none')
-      AI4SCIENCE_READ_ONLY   — '1' to default to read-only mode
-      AI4SCIENCE_AUTO_YES    — '1' to default to auto-approve edits
+      AI4SCIENCE_AGENT      — agent name (default 'none')
+      AI4SCIENCE_READ_ONLY  — '1' to default to read-only mode
+      AI4SCIENCE_AUTO_YES   — '1' to default to auto-approve edits
+      AI4SCIENCE_PLAN       — '1' to default to plan mode
     """
     agent = os.environ.get("AI4SCIENCE_AGENT", "none").lower()
     read_only = os.environ.get("AI4SCIENCE_READ_ONLY") == "1"
     auto_yes = os.environ.get("AI4SCIENCE_AUTO_YES") == "1"
+    plan_mode = os.environ.get("AI4SCIENCE_PLAN") == "1"
 
     cleaned: List[str] = []
     i = 0
@@ -358,17 +362,21 @@ def _pop_agent_flag(argv: List[str]) -> tuple[List[str], str, bool, bool]:
             auto_yes = True
             i += 1
             continue
+        if a in ("--plan",):
+            plan_mode = True
+            i += 1
+            continue
         cleaned.append(a)
         i += 1
     if agent not in ("none", "claude", "codex"):
         console.print(f"[yellow]Unknown --agent value {agent!r}; falling back to 'none'.[/yellow]")
         agent = "none"
-    return cleaned, agent, read_only, auto_yes
+    return cleaned, agent, read_only, auto_yes, plan_mode
 
 
 def main() -> None:
     """Entry point that supports both `ai4science <subcommand>` and `ai4science "prompt"`."""
-    argv, agent_name, read_only, auto_yes = _pop_agent_flag(sys.argv[1:])
+    argv, agent_name, read_only, auto_yes, plan_mode = _pop_agent_flag(sys.argv[1:])
 
     if argv and not argv[0].startswith("-"):
         registered = {
@@ -379,7 +387,8 @@ def main() -> None:
             # Prompt-first mode. Treat the whole argv as the user's prompt.
             prompt = " ".join(argv)
             sys.exit(_route_prompt(prompt, agent_name,
-                                    read_only=read_only, auto_yes=auto_yes))
+                                    read_only=read_only, auto_yes=auto_yes,
+                                    plan_mode=plan_mode))
 
     # Subcommand mode: hand off to Typer with the cleaned argv.
     sys.argv = [sys.argv[0]] + argv
