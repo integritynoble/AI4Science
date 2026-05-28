@@ -40,6 +40,7 @@ from ai4science.commands import (
     package as package_cmd,
     submit as submit_cmd,
     status as status_cmd,
+    chat as chat_cmd,
 )
 
 console = Console()
@@ -79,6 +80,7 @@ app.command("validate", help="Validate YAML front matter and required fields.")(
 app.command("package", help="Package the submission and generate hashes.")(package_cmd.package)
 app.command("submit", help="Submit (dry-run for v0.1).")(submit_cmd.submit)
 app.command("status", help="Show local workspace status.")(status_cmd.status)
+app.command("chat", help="Open a persistent REPL chat session with the agent.")(chat_cmd.chat)
 
 
 @app.command("version", help="Print the AI4Science CLI version.")
@@ -362,7 +364,7 @@ def main() -> None:
     if argv and not argv[0].startswith("-"):
         registered = {
             "init", "contribute", "validate", "judge", "overseer",
-            "package", "submit", "status", "version", "agents",
+            "package", "submit", "status", "version", "agents", "chat",
         }
         if argv[0] not in registered:
             # Prompt-first mode. Treat the whole argv as the user's prompt.

@@ -84,6 +84,32 @@ ai4science submit --dry-run         # show what would be submitted
 
 After `judge` you'll find `reports/judge_report.json`. After `overseer`, `reports/overseer_report.{md,json}`. After `package`, an `ai4science_submission_<timestamp>.{zip,manifest.json}` pair.
 
+### Interactive REPL chat (Claude Code-like)
+
+For a persistent conversation with the agent — preserves state across follow-ups, supports tool use with confirmation prompts, has slash commands:
+
+```bash
+ai4science chat                       # opens a REPL with --agent claude
+ai4science chat --read-only           # text-only; no file edits
+ai4science chat --yes                 # auto-approve all Edit/Write/Bash
+```
+
+Inside the session:
+
+```
+ai4science> What does spec.md currently declare for tolerance_epsilon?
+[Claude reads the file and answers]
+
+ai4science> Change it to 0.005 and update the table row too
+[Claude proposes Edit(s); you confirm y/N for each unless --yes]
+
+ai4science> /validate          # run deterministic validate without leaving
+ai4science> /help              # list slash commands
+ai4science> /exit              # leave
+```
+
+Slash commands: `/help`, `/exit`, `/clear`, `/files`, `/validate`, `/judge`, `/status`, `/cost`. The conversation state and the SDK's Read/Edit/Write/Bash tools are all preserved across turns within a session.
+
 ## 6. Prompt-first usage
 
 Like `claude` or `codex`, you can invoke `ai4science` with a free-form English prompt in quotes:
