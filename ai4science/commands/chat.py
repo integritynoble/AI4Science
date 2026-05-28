@@ -152,9 +152,17 @@ async def _run_chat(*, workspace: Path, read_only: bool, auto_yes: bool) -> None
                 if handled:
                     continue
 
+            # Expand @-mentions: any `@path/to/file` that resolves to an
+            # existing file inside the workspace is attached inline.
+            from ai4science.agents.mentions import expand_mentions_inline
+            outgoing, attached = expand_mentions_inline(line, workspace)
+            if attached:
+                rels = [str(p.relative_to(workspace.resolve())) for p in attached]
+                console.print(f"[dim]📎 attached: {', '.join(rels)}[/dim]")
+
             # Send to agent + stream response.
             try:
-                await client.query(line)
+                await client.query(outgoing)
             except Exception as e:
                 console.print(f"[red]query error:[/red] {type(e).__name__}: {e}")
                 continue

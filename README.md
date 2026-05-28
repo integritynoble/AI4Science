@@ -110,6 +110,20 @@ ai4science> /exit              # leave
 
 Slash commands: `/help`, `/exit`, `/clear`, `/files`, `/validate`, `/judge`, `/status`, `/cost`. The conversation state and the SDK's Read/Edit/Write/Bash tools are all preserved across turns within a session.
 
+### File @mentions
+
+Reference any file in your workspace by typing `@path/to/file` inside a prompt. The file gets attached (read-only) to that turn, in both chat and one-shot modes:
+
+```bash
+# Chat session
+ai4science> @code/run_solver.py — what's wrong with this solver?
+
+# One-shot
+ai4science --agent claude "@code/run_solver.py what's wrong here?"
+```
+
+Sandbox rules: absolute paths (`@/etc/passwd`), traversal (`@../escape`), and references to non-existent files are silently ignored — so writing about the `@property` decorator or someone's `alice@example.com` won't accidentally attach anything.
+
 ## 6. Prompt-first usage
 
 Like `claude` or `codex`, you can invoke `ai4science` with a free-form English prompt in quotes:

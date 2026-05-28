@@ -275,6 +275,15 @@ def _route_prompt(prompt: str, agent_name: str,
         workspace / "solution.md",
     ) if p.exists()]
 
+    # Any @-mentions in the prompt also become attached files (dedup'd).
+    from ai4science.agents.mentions import parse_mentions
+    mentioned = parse_mentions(prompt, workspace)
+    extra = [p for p in mentioned if p not in context_files]
+    context_files.extend(extra)
+    if extra:
+        rels = [str(p.relative_to(workspace)) for p in extra]
+        console.print(f"[dim]📎 @attached: {', '.join(rels)}[/dim]")
+
     mode_label = "read-only" if read_only else "tool-use enabled"
     console.print(f"[dim]→ delegating to {agent_name!r} agent "
                   f"(workspace={workspace.name}, context files={len(context_files)}, "
