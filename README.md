@@ -310,7 +310,17 @@ ai4science compute verify <job_id> -p founder-1-subgpu   # judge re-verifies →
 ai4science compute credits                        # verified-job credits per wallet
 ```
 
-The provider runs the solver on its GPU and returns a result manifest via the file-inbox handshake (the same pattern as `baseline_runs/`). `compute verify` runs the deterministic judge locally; a **pass** records one verified-job credit bound to the provider's wallet, a **fail** records zero. Credits are unit-less in v1 — the PWM-per-credit conversion and on-chain settlement are platform-owned governance decisions; **the CLI never moves tokens.**
+On the **GPU box**, the provider runs the poller, which watches the inbox, runs dispatched solvers, and writes results back:
+
+```bash
+# On the sub-GPU host (executes dispatched code — only on a trusted host):
+ai4science compute serve -p founder-1-subgpu --allow-exec        # poll forever
+ai4science compute serve -p founder-1-subgpu --once --allow-exec  # cron-friendly
+```
+
+The poller acks each job, runs its `run_command` (cwd = the job's workspace), computes a content-addressed `certificate_hash` over the reconstruction, and writes `job_<id>.result.json`. Then `compute verify` runs the deterministic judge locally; a **pass** records one verified-job credit bound to the provider's wallet, a **fail** records zero. `--allow-exec` is a required safety gate (the poller refuses to execute dispatched code without it). Credits are unit-less in v1 — the PWM-per-credit conversion and on-chain settlement are platform-owned governance decisions; **the CLI never moves tokens.**
+
+Full loop: `dispatch` (agent) → `serve` (GPU box runs the solver) → `verify` (judge → credit).
 
 ## 12. Roadmap
 

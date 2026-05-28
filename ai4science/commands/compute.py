@@ -168,6 +168,68 @@ def verify(
         console.print("[yellow]No credit awarded — judge did not return pass.[/yellow]")
 
 
+@app.command("serve")
+def serve(
+    provider_id: str = typer.Option(..., "--provider", "-p",
+                                     help="Which registered provider this host fulfills."),
+    once: bool = typer.Option(False, "--once",
+                               help="Process currently-pending jobs and exit (cron-friendly)."),
+    interval: int = typer.Option(5, "--interval", help="Poll interval seconds."),
+    allow_exec: bool = typer.Option(
+        False, "--allow-exec",
+        help="REQUIRED to actually run dispatched solver commands. Without it "
+             "the poller acks jobs but refuses to execute code (safety gate)."),
+) -> None:
+    """Run the provider-side poller on this GPU box.
+
+    Watches the provider's inbox for job requests, runs the dispatched
+    solver, and writes results back. This executes dispatched code —
+    only pass --allow-exec on a host where you trust the dispatcher
+    (Phase 0: the founder dispatching to their own GPU)."""
+    from ai4science.compute.provider import serve as serve_loop
+
+    provider = get_provider(provider_id)
+    if provider is None:
+        console.print(f"[red]No such provider:[/red] {provider_id}. "
+                      "Register it first with [cyan]ai4science compute providers-add[/cyan].")
+        raise typer.Exit(2)
+
+    if not allow_exec:
+        console.print("[yellow]⚠ Running WITHOUT --allow-exec:[/yellow] jobs will be "
+                      "acked but their solver commands will NOT run. Re-run with "
+                      "[cyan]--allow-exec[/cyan] on a trusted host to execute them.")
+
+    provider_dict = provider.model_dump()
+    console.print(f"[bold purple]ai4science compute serve[/bold purple] — "
+                  f"provider [cyan]{provider_id}[/cyan]")
+    console.print(f"  wallet:  [magenta]{provider.wallet_address}[/magenta]")
+    console.print(f"  inbox:   {provider.endpoint_path}")
+    console.print(f"  exec:    "
+                  f"{'[green]enabled[/green]' if allow_exec else '[yellow]disabled[/yellow]'}")
+    console.print(f"  mode:    "
+                  f"{'once' if once else f'polling every {interval}s (Ctrl-C to stop)'}\n")
+
+    def _log(kind: str, payload: dict):
+        if kind == "job_start":
+            console.print(f"[cyan]▶ job {payload['job_id']}[/cyan] picked up")
+        elif kind == "job_done":
+            ran = payload.get("solver_ran")
+            tag = "[green]ran[/green]" if ran else "[yellow]not run[/yellow]"
+            console.print(f"  [green]✓ job {payload['job_id']}[/green] {tag} → "
+                          f"cert {str(payload.get('certificate_hash', '—'))[:14]}…")
+        elif kind == "job_error":
+            console.print(f"  [red]✗ job {payload['job_id']}: {payload['error']}[/red]")
+
+    try:
+        serve_loop(provider_dict, interval_s=interval, once=once,
+                   allow_exec=allow_exec, on_event=_log)
+    except KeyboardInterrupt:
+        console.print("\n[dim](stopped)[/dim]")
+
+    if once:
+        console.print("[dim]Done (--once).[/dim]")
+
+
 @app.command("credits")
 def credits(
     workspace: Path = typer.Option(Path("."), "--workspace", "-w"),
