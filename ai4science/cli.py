@@ -283,7 +283,7 @@ def _route_prompt(prompt: str, agent_name: str,
         console.print(
             "[yellow]No rule matched and no agent is available.[/yellow]\n"
             "Enable a real agent (works like Claude Code):\n"
-            "  • Claude:  [cyan]pip install 'ai4science[claude]'[/cyan] then [cyan]claude login[/cyan]\n"
+            "  • Claude:  [cyan]pip install 'pwm-ai4science\\[claude]'[/cyan] then [cyan]claude login[/cyan]\n"
             "  • Codex:   install the [cyan]codex[/cyan] CLI then [cyan]codex login[/cyan]\n"
             "Then re-run, or pass [cyan]--agent claude[/cyan] / [cyan]--agent codex[/cyan] explicitly.\n"
             "Or use a deterministic command directly:\n"
@@ -428,11 +428,56 @@ def _resolve_agent(name: str) -> str:
     return "none"
 
 
+def _bare_launch(read_only: bool, auto_yes: bool, plan_mode: bool) -> None:
+    """Bare `ai4science` (no subcommand/prompt) → interactive chat, like `claude`.
+
+    If the chat agent isn't installed/authed yet, show a short getting-started
+    panel instead of a raw error, so a first run is welcoming.
+    """
+    from ai4science.agents import ClaudeAgent
+    probe = ClaudeAgent()
+    if probe.is_available():
+        import typer
+        try:
+            chat_cmd.chat(
+                agent="claude", workspace=Path("."),
+                read_only=read_only, yes=auto_yes, plan=plan_mode,
+                no_subagents=False, no_mcp=False, continue_session=False,
+            )
+        except typer.Exit as e:
+            sys.exit(e.exit_code or 0)
+        return
+
+    # Chat agent not ready — welcome + how to enable it + what works now.
+    console.print(f"\n[bold purple]AI4Science[/bold purple]  {__version__}\n")
+    console.print("[bold]Interactive agent (like Claude Code) isn't enabled yet.[/bold]")
+    console.print(f"  reason: [dim]{probe.unavailable_reason()}[/dim]\n")
+    console.print("Enable it (one-time):")
+    console.print("  1. [cyan]pip install 'pwm-ai4science\\[claude]'[/cyan]   "
+                  "[dim](or re-run the installer with AI4SCIENCE_WITH_CLAUDE=1)[/dim]")
+    console.print("  2. [cyan]npm install -g @anthropic-ai/claude-code[/cyan]  "
+                  "[dim]then[/dim] [cyan]claude login[/cyan]  [dim](or set ANTHROPIC_API_KEY)[/dim]")
+    console.print("  3. run [cyan]ai4science[/cyan] again — it drops you into a chat session.\n")
+    console.print("Works right now without the agent (deterministic, offline):")
+    console.print("  [cyan]ai4science init <name>[/cyan]   start a contribution workspace")
+    console.print("  [cyan]ai4science validate[/cyan]      check artifacts")
+    console.print("  [cyan]ai4science judge cassi[/cyan]   run the Physics Judge")
+    console.print("  [cyan]ai4science --help[/cyan]        all commands\n")
+    sys.exit(0)
+
+
 def main() -> None:
-    """Entry point that supports both `ai4science <subcommand>` and `ai4science "prompt"`."""
+    """Entry point: `ai4science` (bare → chat), `ai4science <subcommand>`, or
+    `ai4science "prompt"`."""
     argv, agent_name, read_only, auto_yes, plan_mode = _pop_agent_flag(sys.argv[1:])
 
-    if argv and not argv[0].startswith("-"):
+    # Bare invocation (only flags, no subcommand or prompt) → interactive chat,
+    # exactly like typing `claude`. `--help`/`-h` still fall through to Typer.
+    if not argv:
+        _bare_launch(read_only, auto_yes, plan_mode)
+        return
+
+    if not argv[0].startswith("-"):
         registered = {
             "init", "contribute", "validate", "judge", "overseer",
             "package", "submit", "status", "version", "agents", "chat",
@@ -445,7 +490,7 @@ def main() -> None:
                                     read_only=read_only, auto_yes=auto_yes,
                                     plan_mode=plan_mode))
 
-    # Subcommand mode: hand off to Typer with the cleaned argv.
+    # Subcommand mode (or --help): hand off to Typer with the cleaned argv.
     sys.argv = [sys.argv[0]] + argv
     app()
 

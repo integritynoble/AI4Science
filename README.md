@@ -91,6 +91,14 @@ From source (to modify / run tests): `git clone … && pip install -e ".[dev]" &
 
 ## 5. Quickstart
 
+**Just like Claude Code, run the bare command to start an interactive session:**
+
+```bash
+ai4science          # no arguments → drops you into a chat session (like `claude`)
+```
+
+(That needs the chat agent — `pwm-ai4science[claude]` + the `claude` CLI. Without it, `ai4science` prints a short getting-started panel. The deterministic commands below always work, offline.)
+
 ```bash
 ai4science init cassi-demo          # creates a workspace seeded with the CASSI example
 cd cassi-demo

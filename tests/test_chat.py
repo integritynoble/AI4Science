@@ -186,6 +186,49 @@ def test_slash_validate_runs_in_repl(tmp_path):
 # ─── Top-level chat command gating ────────────────────────────────────
 
 
+def test_bare_ai4science_launches_chat_when_available(tmp_path, monkeypatch):
+    """Bare `ai4science` (no args) should start the chat session, like `claude`."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("ai4science.agents.ClaudeAgent.is_available", lambda self: True)
+    captured = {}
+
+    def _fake_chat(**kwargs):
+        captured.update(kwargs)
+
+    monkeypatch.setattr("ai4science.commands.chat.chat", _fake_chat)
+    monkeypatch.setattr("sys.argv", ["ai4science"])
+    from ai4science import cli
+    cli.main()                       # returns (no SystemExit) on success
+    assert captured.get("agent") == "claude"     # launched chat, not help
+
+
+def test_bare_ai4science_shows_panel_when_agent_unavailable(tmp_path, monkeypatch, capsys):
+    """Bare `ai4science` with no chat agent → friendly getting-started panel, exit 0."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("ai4science.agents.ClaudeAgent.is_available", lambda self: False)
+    monkeypatch.setattr("sys.argv", ["ai4science"])
+    from ai4science import cli
+    with pytest.raises(SystemExit) as e:
+        cli.main()
+    assert e.value.code == 0
+    out = capsys.readouterr().out
+    assert "isn't enabled" in out or "Interactive agent" in out
+    assert "ai4science init" in out          # points at the offline commands
+
+
+def test_bare_flags_carry_into_chat(tmp_path, monkeypatch):
+    """`ai4science --plan` (bare + flag) launches chat in plan mode."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("ai4science.agents.ClaudeAgent.is_available", lambda self: True)
+    captured = {}
+    monkeypatch.setattr("ai4science.commands.chat.chat", lambda **kw: captured.update(kw))
+    monkeypatch.setattr("sys.argv", ["ai4science", "--plan", "--yes"])
+    from ai4science import cli
+    cli.main()
+    assert captured.get("plan") is True
+    assert captured.get("yes") is True
+
+
 def test_chat_rejects_non_claude_agent(tmp_path, monkeypatch):
     """Only --agent claude is supported in v0.4 chat mode."""
     monkeypatch.chdir(tmp_path)
