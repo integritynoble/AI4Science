@@ -322,6 +322,8 @@ The poller acks each job, runs its `run_command` (cwd = the job's workspace), co
 
 Full loop: `dispatch` (agent) → `serve` (GPU box runs the solver) → `verify` (judge → credit).
 
+**Setting up a GPU box:** see [`docs/SUBGPU_SETUP_WINDOWS.md`](docs/SUBGPU_SETUP_WINDOWS.md) for a step-by-step Windows + CUDA setup (install, wallet binding, shared-inbox options, Task Scheduler / NSSM service, and a test job).
+
 ## 12. Roadmap
 
 **v0.1 (this release)** — local CLI with deterministic CASSI judge + agent stubs.
