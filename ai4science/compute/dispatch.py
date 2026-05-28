@@ -34,6 +34,12 @@ class ComputeJob(BaseModel):
     provider_id: str
     wallet_address: str
     workspace: str
+    # Path of the workspace relative to the git repo root, when the workspace
+    # lives inside the shared repo. Lets a provider on a DIFFERENT machine
+    # resolve the workspace against its own repo checkout (the dispatcher's
+    # absolute ``workspace`` won't exist cross-machine). Empty when the
+    # workspace is not under a git repo (same-machine only).
+    workspace_repo_relative: str = ""
     solver_code_path: str = "code/"
     run_command: str = "python code/run_solver.py"
     benchmark_id: str = ""
@@ -51,11 +57,23 @@ def dispatch_job(*, provider, workspace: Path, benchmark_id: str = "",
                  run_command: str = "python code/run_solver.py",
                  dataset_ref: str = "", max_runtime_s: int = 3600) -> ComputeJob:
     """Write a job request into the provider's endpoint directory."""
+    ws_abs = Path(workspace).resolve()
+    # If the workspace is inside a git repo, record its repo-relative path so a
+    # provider on another machine can resolve it against its own checkout.
+    ws_rel = ""
+    try:
+        from ai4science.compute import gitsync
+        repo = gitsync.find_repo_root(ws_abs)
+        if repo is not None:
+            ws_rel = ws_abs.relative_to(repo).as_posix()
+    except Exception:
+        ws_rel = ""
     job = ComputeJob(
         job_id=new_job_id(),
         provider_id=provider.provider_id,
         wallet_address=provider.wallet_address,
-        workspace=str(Path(workspace).resolve()),
+        workspace=str(ws_abs),
+        workspace_repo_relative=ws_rel,
         solver_code_path=solver_code_path,
         run_command=run_command,
         benchmark_id=benchmark_id,

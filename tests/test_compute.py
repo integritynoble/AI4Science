@@ -235,6 +235,64 @@ def test_verify_defaults_workspace_to_job_request(tmp_path, monkeypatch):
     assert "from job request" in r.output
 
 
+# ─── Cross-machine workspace resolution ──────────────────────────────
+
+
+def _git_init(repo: Path):
+    import subprocess
+    repo.mkdir(parents=True, exist_ok=True)
+    for args in (["init", "-q"], ["config", "user.email", "t@t"],
+                 ["config", "user.name", "t"]):
+        subprocess.run(["git", *args], cwd=repo, check=True,
+                       capture_output=True)
+
+
+def test_dispatch_records_repo_relative_workspace(tmp_path):
+    """A workspace inside a git repo gets its repo-relative path stored, so a
+    provider on another machine can resolve it against its own checkout."""
+    repo = tmp_path / "repo"
+    _git_init(repo)
+    ws = repo / "pwm-team" / "compute_jobs" / "ws" / "job1"
+    ws.mkdir(parents=True)
+    endpoint = repo / "pwm-team" / "compute_jobs"
+
+    class _Prov:
+        provider_id = "founder-1-subgpu"
+        wallet_address = DIRECTOR_WALLET
+        endpoint_path = str(endpoint)
+
+    job = dispatch_job(provider=_Prov(), workspace=ws)
+    req = json.loads((endpoint / f"job_{job.job_id}.request.json").read_text())
+    assert req["workspace_repo_relative"] == "pwm-team/compute_jobs/ws/job1"
+
+
+def test_resolve_workspace_uses_repo_relative_when_abs_missing(tmp_path):
+    """The poller resolves a workspace it can't find at the dispatcher's
+    absolute path by joining repo-relative against its own repo root."""
+    from ai4science.compute.provider import _resolve_workspace
+    repo = tmp_path / "repo"
+    _git_init(repo)
+    ws = repo / "pwm-team" / "compute_jobs" / "ws" / "job1"
+    ws.mkdir(parents=True)
+    inbox = repo / "pwm-team" / "compute_jobs"
+
+    job = {
+        "workspace": "/nonexistent/dispatcher/path/ws/job1",   # other machine
+        "workspace_repo_relative": "pwm-team/compute_jobs/ws/job1",
+    }
+    resolved = _resolve_workspace(job, inbox)
+    assert resolved.resolve() == ws.resolve()
+
+
+def test_resolve_workspace_prefers_local_abs_when_present(tmp_path):
+    """Same-machine dispatch: the absolute workspace exists, so it's used as-is."""
+    from ai4science.compute.provider import _resolve_workspace
+    ws = tmp_path / "local_ws"
+    ws.mkdir()
+    job = {"workspace": str(ws), "workspace_repo_relative": "ignored/when/abs/exists"}
+    assert _resolve_workspace(job, tmp_path).resolve() == ws.resolve()
+
+
 # ─── CLI surface ─────────────────────────────────────────────────────
 
 
