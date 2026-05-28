@@ -350,3 +350,29 @@ def test_get_agent_plan_mode_independent_of_read_only_and_auto_yes():
     assert a.plan_mode is True
     assert a.read_only is False
     assert a.auto_yes is True
+
+
+def test_resolve_cli_path_prefers_env_override(monkeypatch):
+    """AI4SCIENCE_CLAUDE_CLI_PATH wins over PATH lookup."""
+    from ai4science.agents.claude_agent import _resolve_cli_path
+    monkeypatch.setenv("AI4SCIENCE_CLAUDE_CLI_PATH", "/custom/claude")
+    assert _resolve_cli_path() == "/custom/claude"
+
+
+def test_resolve_cli_path_falls_back_to_path(monkeypatch):
+    """With no env override, returns the `claude` on PATH (the system CLI),
+    NOT the SDK's bundled binary — which on Windows hangs the initialize
+    handshake and isn't tied to the user's `claude login` auth."""
+    import ai4science.agents.claude_agent as ca
+    monkeypatch.delenv("AI4SCIENCE_CLAUDE_CLI_PATH", raising=False)
+    monkeypatch.setattr(ca.shutil, "which",
+                        lambda name: "/usr/bin/claude" if name == "claude" else None)
+    assert ca._resolve_cli_path() == "/usr/bin/claude"
+
+
+def test_resolve_cli_path_none_when_no_system_cli(monkeypatch):
+    """No env override and no `claude` on PATH → None (SDK falls back to bundled)."""
+    import ai4science.agents.claude_agent as ca
+    monkeypatch.delenv("AI4SCIENCE_CLAUDE_CLI_PATH", raising=False)
+    monkeypatch.setattr(ca.shutil, "which", lambda name: None)
+    assert ca._resolve_cli_path() is None

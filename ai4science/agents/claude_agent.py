@@ -24,6 +24,28 @@ from ai4science.agents.base import AgentResult, BaseAgent
 
 DEFAULT_MODEL: Optional[str] = None   # None → SDK picks the default
 
+
+def _resolve_cli_path() -> Optional[str]:
+    """Resolve which `claude` binary the SDK should spawn.
+
+    The claude-agent-sdk ships a bundled `claude` binary under its
+    ``_bundled/`` directory and ``_find_cli()`` prefers it over the system
+    install. On some platforms (observed on Windows) that bundled binary
+    hangs on startup — it never answers the SDK's ``initialize`` control
+    request, so every query dies at the 60s handshake timeout. The bundled
+    binary is also not tied to the user's ``claude login`` subscription auth.
+
+    Pointing the SDK at the system CLI (the one the user actually authed)
+    avoids both the hang and the auth gap. Resolution order:
+      1. ``AI4SCIENCE_CLAUDE_CLI_PATH`` env override (explicit escape hatch)
+      2. the ``claude`` binary on PATH
+      3. None → let the SDK fall back to its bundled binary
+    """
+    override = os.environ.get("AI4SCIENCE_CLAUDE_CLI_PATH")
+    if override:
+        return override
+    return shutil.which("claude")
+
 # Tools the agent may consider. Auto-approved reads + confirmed edits.
 # Task is added automatically by the SDK when sub-agents are registered;
 # we include it here so it shows up in --read-only mode too if we ever
@@ -153,6 +175,10 @@ async def _run_query(*, full_prompt: str, system_prompt: str, workspace: Path,
 
     workspace = workspace.resolve()
 
+    # Prefer the system `claude` CLI over the SDK's bundled binary (see
+    # _resolve_cli_path). None → SDK uses its bundled fallback.
+    cli_path = _resolve_cli_path()
+
     # Capability bundles — built lazily so an SDK-less environment is fine.
     subagents = build_pwm_subagents() if enable_subagents else {}
     pwm_mcp = build_pwm_mcp_server() if enable_mcp else None
@@ -174,6 +200,7 @@ async def _run_query(*, full_prompt: str, system_prompt: str, workspace: Path,
             max_turns=15,
             model=DEFAULT_MODEL,
             agents=subagents,
+            cli_path=cli_path,
             **mcp_kw,
         )
         prompt_arg = full_prompt
@@ -188,6 +215,7 @@ async def _run_query(*, full_prompt: str, system_prompt: str, workspace: Path,
             cwd=str(workspace),
             max_turns=6,
             model=DEFAULT_MODEL,
+            cli_path=cli_path,
         )
         prompt_arg = full_prompt   # static string is OK without can_use_tool
     else:
@@ -204,6 +232,7 @@ async def _run_query(*, full_prompt: str, system_prompt: str, workspace: Path,
             max_turns=25,   # agentic loops need room
             model=DEFAULT_MODEL,
             agents=subagents,
+            cli_path=cli_path,
             **mcp_kw,
         )
         # The SDK requires streaming mode (AsyncIterable prompt) whenever a
