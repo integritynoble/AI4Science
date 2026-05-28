@@ -124,6 +124,33 @@ ai4science --agent claude "@code/run_solver.py what's wrong here?"
 
 Sandbox rules: absolute paths (`@/etc/passwd`), traversal (`@../escape`), and references to non-existent files are silently ignored — so writing about the `@property` decorator or someone's `alice@example.com` won't accidentally attach anything.
 
+### Image input
+
+`@`-mention an image file (`.png` `.jpg` `.jpeg` `.gif` `.webp`) in `chat` and the agent sees it — useful for reconstructions, plots, optical diagrams:
+
+```bash
+ai4science> @recon.png — what artifacts do you see in this reconstruction?
+ai4science> @psnr_curve.png does this look converged?
+```
+
+The image is attached as a multimodal content block (text files still inline as before); images over 5 MB are rejected.
+
+### Custom slash commands
+
+Define reusable prompt templates as `<name>.md` files — like Claude Code's `.claude/commands/`. A file becomes `/<name>`:
+
+```
+.ai4science/commands/tighten.md     →  /tighten     (project)
+~/.config/ai4science/commands/*.md  →  user-global commands
+```
+
+`tighten.md`:
+```markdown
+Edit spec.md to change tolerance_epsilon to $ARGUMENTS (YAML + table row), then re-validate.
+```
+
+In a session, `/tighten 0.004` expands the template (substituting `$ARGUMENTS`, or positional `$1`, `$2`…) and sends it as a turn. `/commands` lists what's available; project commands override user-global ones of the same name.
+
 ### Plan mode
 
 Sometimes you want a structured plan before any edits happen — what changes, where, in what order, with risks called out. Plan mode runs the agent with read-only tools and a planning-specific system prompt:
