@@ -27,11 +27,32 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import json
+import os
 import shlex
 import subprocess
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+
+def _split_command(run_command: str) -> List[str]:
+    """Split a shell-style command into argv, correctly on POSIX and Windows.
+
+    On Windows, ``shlex.split`` in its default POSIX mode treats the
+    backslashes in paths like ``C:\\Python\\python.exe`` as escape characters
+    and silently destroys the path. Using ``posix=False`` preserves the path
+    but leaves matched surrounding quotes on tokens (e.g. ``-c "code"`` keeps
+    the quotes), so we strip a single matched pair afterward. subprocess then
+    re-quotes each argv element correctly via list2cmdline.
+    """
+    posix = os.name != "nt"
+    argv = shlex.split(run_command, posix=posix)
+    if not posix:
+        argv = [
+            tok[1:-1] if len(tok) >= 2 and tok[0] == tok[-1] and tok[0] in "\"'" else tok
+            for tok in argv
+        ]
+    return argv
 
 
 def _utcnow() -> str:
@@ -95,7 +116,7 @@ def _collect_metrics(workspace: Path) -> Dict[str, Any]:
 def run_solver(workspace: Path, run_command: str, timeout_s: int) -> Dict[str, Any]:
     """Execute the solver command with cwd=workspace. Returns an outcome dict."""
     try:
-        argv = shlex.split(run_command)
+        argv = _split_command(run_command)
     except ValueError as e:
         return {"ok": False, "error": f"could not parse run_command: {e}"}
     if not argv:
