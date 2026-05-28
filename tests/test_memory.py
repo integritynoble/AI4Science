@@ -64,9 +64,15 @@ def test_augment_appends_memory(tmp_path):
     assert "non-negative" in out
 
 
-def test_augment_noop_without_memory(tmp_path):
+def test_augment_seeds_workspace_without_memory(tmp_path):
     base = "You are AI4Science."
-    assert augment_system_prompt(base, tmp_path) == base
+    out = augment_system_prompt(base, tmp_path)
+    assert base in out
+    # Workspace path is always seeded so the agent knows its cwd up front.
+    assert str(tmp_path.resolve()) in out
+    assert "working directory" in out.lower()
+    # No memory file → no project-memory section.
+    assert "Project memory" not in out
 
 
 def test_all_recognized_filenames_are_found(tmp_path):

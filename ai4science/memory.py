@@ -47,14 +47,29 @@ def load_project_memory(workspace: Path) -> Tuple[Optional[str], Optional[Path]]
 
 
 def augment_system_prompt(base_prompt: str, workspace: Path) -> str:
-    """Append project memory (if any) to a base system prompt."""
-    text, path = load_project_memory(workspace)
-    if not text:
-        return base_prompt
-    return (
+    """Append the workspace location + project memory (if any) to a base prompt.
+
+    The workspace block is ALWAYS added: it tells the agent its working
+    directory up front so it targets the right path on the first file
+    operation instead of guessing a home dir (e.g. ``/Users/<name>``) and
+    burning a turn recovering from an out-of-workspace write.
+    """
+    workspace = workspace.resolve()
+    prompt = (
         f"{base_prompt}\n\n"
-        f"## Project memory ({path.name})\n\n"
-        f"The workspace ships a project-instruction file. Treat the following "
-        f"as authoritative project conventions, secondary only to the user's "
-        f"direct requests:\n\n{text}\n"
+        f"## Workspace\n\n"
+        f"Your working directory is `{workspace}`. All file operations run from "
+        f"here — create and read files using paths relative to it (e.g. "
+        f"`spec.md`, `code/run_solver.py`) or absolute paths under it. Do not "
+        f"guess a home directory, and do not write outside this directory: the "
+        f"sandbox will deny it.\n"
     )
+    text, path = load_project_memory(workspace)
+    if text:
+        prompt += (
+            f"\n## Project memory ({path.name})\n\n"
+            f"The workspace ships a project-instruction file. Treat the following "
+            f"as authoritative project conventions, secondary only to the user's "
+            f"direct requests:\n\n{text}\n"
+        )
+    return prompt
