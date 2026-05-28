@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import datetime as dt
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from ai4science.judge import CheckResult
 from ai4science.judge.cassi.check_s1 import check_s1
@@ -24,15 +24,29 @@ S4_CHECKS = {
 }
 
 
-def judge_cassi(submission: Path) -> Dict:
-    """Run all CASSI checks and return a report dict. Also writes reports/judge_report.json."""
+def judge_cassi(submission: Path, benchmark: "Optional[Path | str]" = None) -> Dict:
+    """Run all CASSI checks and return a report dict. Also writes the report.
+
+    ``benchmark`` selects which tier's benchmark file the S3 check uses
+    (and which the report is named after). Defaults to benchmark.md.
+    When multiple benchmark tiers exist, pass e.g. benchmark="benchmark_t2.md"
+    to judge that tier; the report is written to
+    reports/judge_report_<stem>.json so tiers don't clobber each other.
+    """
     submission = submission.resolve()
     reports_dir = submission / "reports"
     reports_dir.mkdir(exist_ok=True)
 
+    # Resolve which benchmark file to judge.
+    from ai4science.discovery import resolve_benchmark
+    bench_name = benchmark if isinstance(benchmark, str) else (
+        benchmark.name if isinstance(benchmark, Path) else None
+    )
+    benchmark_path = resolve_benchmark(submission, bench_name)
+
     s1 = check_s1(submission)
     s2 = check_s2(submission)
-    s3 = check_s3(submission)
+    s3 = check_s3(submission, benchmark_path=benchmark_path)
     s4_results: Dict[str, CheckResult] = {name: fn(submission) for name, fn in S4_CHECKS.items()}
 
     # Aggregate S4 status:
@@ -87,6 +101,7 @@ def judge_cassi(submission: Path) -> Dict:
 
     report = {
         "submission_id": submission.name,
+        "benchmark_file": benchmark_path.name if benchmark_path else None,
         "domain": "cassi",
         "timestamp": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
         "s1_status": s1.status,
@@ -109,7 +124,13 @@ def judge_cassi(submission: Path) -> Dict:
         "final_decision": final,
     }
 
-    (reports_dir / "judge_report.json").write_text(
+    # Name the report after the tier so multiple tiers don't clobber each
+    # other. benchmark.md (the default) keeps the canonical judge_report.json.
+    if benchmark_path is None or benchmark_path.name == "benchmark.md":
+        report_name = "judge_report.json"
+    else:
+        report_name = f"judge_report_{benchmark_path.stem}.json"
+    (reports_dir / report_name).write_text(
         json.dumps(report, indent=2, sort_keys=False) + "\n", encoding="utf-8"
     )
     return report

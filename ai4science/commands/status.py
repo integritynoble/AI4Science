@@ -34,27 +34,29 @@ def status(
     else:
         console.print("[dim]Config: (none — workspace not initialized via `ai4science init`)[/dim]")
 
-    # Artifacts
+    # Artifacts — discovered by artifact_type (multi-tier aware).
+    from ai4science.discovery import all_artifact_files, missing_canonical
     artifacts_table = Table(title="Artifacts", show_lines=False)
     artifacts_table.add_column("File", style="cyan")
     artifacts_table.add_column("Present")
     artifacts_table.add_column("artifact_type")
     artifacts_table.add_column("name")
 
-    for fname in ("principle.md", "spec.md", "benchmark.md", "solution.md"):
-        path = workspace / fname
-        if not path.exists():
-            artifacts_table.add_row(fname, "[dim]✗[/dim]", "-", "-")
-            continue
+    discovered = all_artifact_files(workspace)
+    for path in discovered:
+        rel = path.relative_to(workspace) if path.is_relative_to(workspace) else path
         data, err = parse_front_matter(path)
         if err:
-            artifacts_table.add_row(fname, "[red]✗ broken[/red]", "-", err)
+            artifacts_table.add_row(str(rel), "[red]✗ broken[/red]", "-", err)
         else:
             artifacts_table.add_row(
-                fname, "[green]✓[/green]",
+                str(rel), "[green]✓[/green]",
                 str(data.get("artifact_type", "?")),
                 str(data.get("name", "?")),
             )
+    # Absent-canonical hints.
+    for fname in missing_canonical(workspace):
+        artifacts_table.add_row(fname, "[dim]✗[/dim]", "-", "-")
     console.print(artifacts_table)
 
     # Directories + reports

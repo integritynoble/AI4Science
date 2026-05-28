@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from pydantic import ValidationError
 
@@ -16,17 +16,20 @@ REQUIRED_FIELDS: List[str] = [
 ]
 
 
-def check_s3(workspace: Path) -> CheckResult:
-    bench_path = workspace / "benchmark.md"
+def check_s3(workspace: Path, benchmark_path: Optional[Path] = None) -> CheckResult:
+    """Validate the benchmark artifact. ``benchmark_path`` selects which
+    tier file to check; defaults to benchmark.md for backward compat."""
+    bench_path = benchmark_path if benchmark_path is not None else workspace / "benchmark.md"
+    label = bench_path.name
     data, err = parse_front_matter(bench_path)
     if err:
-        return CheckResult("fail", f"benchmark.md unreadable: {err}")
+        return CheckResult("fail", f"{label} unreadable: {err}")
 
     missing = [f for f in REQUIRED_FIELDS if f not in data]
     if missing:
         return CheckResult(
             "fail",
-            f"benchmark.md missing required fields: {missing}",
+            f"{label} missing required fields: {missing}",
             evidence={"missing_fields": missing},
         )
 
@@ -35,13 +38,13 @@ def check_s3(workspace: Path) -> CheckResult:
     except ValidationError as e:
         return CheckResult(
             "fail",
-            f"benchmark.md validation failed: {len(e.errors())} error(s)",
+            f"{label} validation failed: {len(e.errors())} error(s)",
             evidence={"errors": [str(err) for err in e.errors()]},
         )
 
     return CheckResult(
         "pass",
-        "benchmark.md well-formed; metrics, threshold, and reproducibility command declared",
+        f"{label} well-formed; metrics, threshold, and reproducibility command declared",
         evidence={
             "metrics": list(data["metrics"]),
             "success_threshold": data["success_threshold"],

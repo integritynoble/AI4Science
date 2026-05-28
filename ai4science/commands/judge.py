@@ -18,12 +18,21 @@ console = Console()
 def cassi(
     submission: str = typer.Option(".", "--submission", "-s",
                                     help="Path to the contribution workspace."),
+    benchmark: str = typer.Option(None, "--benchmark", "-b",
+                                   help="Which benchmark tier file to judge "
+                                        "(e.g. benchmark_t2.md). Defaults to benchmark.md."),
 ) -> None:
-    """Run the CASSI Physics Judge (S1-S4) on a workspace."""
-    path = Path(submission)
-    report = judge_cassi(path)
+    """Run the CASSI Physics Judge (S1-S4) on a workspace.
 
-    table = Table(title=f"CASSI Judge — {report['submission_id']}", show_lines=True)
+    Multi-tier: pass --benchmark benchmark_t2.md to judge a specific tier.
+    The report is written to reports/judge_report_<stem>.json for non-default
+    tiers (benchmark.md keeps the canonical judge_report.json)."""
+    path = Path(submission)
+    report = judge_cassi(path, benchmark=benchmark)
+
+    bench_label = report.get("benchmark_file") or "benchmark.md"
+    table = Table(title=f"CASSI Judge — {report['submission_id']} ({bench_label})",
+                  show_lines=True)
     table.add_column("Check", style="cyan")
     table.add_column("Status")
     table.add_column("Message")
@@ -36,9 +45,12 @@ def cassi(
         table.add_row(f"  S4.{name}",       _color(sub["status"]),       sub["message"])
 
     console.print(table)
+    bf = report.get("benchmark_file")
+    report_name = ("judge_report.json" if not bf or bf == "benchmark.md"
+                   else f"judge_report_{Path(bf).stem}.json")
     console.print(f"\n[bold]Silent failure detected:[/bold] {report['silent_failure']}")
     console.print(f"[bold]Final decision:[/bold] {_color(report['final_decision'])}")
-    console.print(f"[dim]Report written to[/dim] {path.resolve() / 'reports' / 'judge_report.json'}")
+    console.print(f"[dim]Report written to[/dim] {path.resolve() / 'reports' / report_name}")
 
     if report["final_decision"] == "fail":
         raise typer.Exit(1)

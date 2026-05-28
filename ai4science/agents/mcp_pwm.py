@@ -47,22 +47,34 @@ def _resolve_workspace(spec: str) -> Path:
 
 
 async def pwm_validate(args: Dict[str, Any]) -> Dict[str, Any]:
-    """Run the deterministic ai4science validator on the workspace."""
+    """Run the deterministic ai4science validator on the workspace.
+
+    Multi-tier aware: discovers all artifact .md files by artifact_type
+    (so benchmark_t2.md etc. are included), plus flags any canonical-named
+    file that exists but fails to classify (broken YAML)."""
     from ai4science.commands.validate import _validate_one
+    from ai4science.discovery import all_artifact_files
     ws = _resolve_workspace(args.get("workspace", "."))
+
+    discovered = all_artifact_files(ws)
+    discovered_resolved = {p.resolve() for p in discovered}
+    # Surface broken canonical files too.
+    problems: List = []
+    for fname in ("principle.md", "spec.md", "benchmark.md", "solution.md"):
+        p = ws / fname
+        if p.exists() and p.resolve() not in discovered_resolved:
+            problems.append(p)
+
     per_file: List[Dict[str, str]] = []
     overall_ok = True
-    for fname in ("principle.md", "spec.md", "benchmark.md", "solution.md"):
-        path = ws / fname
-        if not path.exists():
-            per_file.append({"file": fname, "status": "absent"})
-            continue
+    for path in discovered + problems:
         status_md, atype, errs, warnings = _validate_one(path)
         status = "ok" if "ok" in status_md else "fail"
         if status != "ok":
             overall_ok = False
+        rel = path.relative_to(ws) if path.is_relative_to(ws) else path
         per_file.append({
-            "file": fname, "artifact_type": atype, "status": status,
+            "file": str(rel), "artifact_type": atype, "status": status,
             "errors": errs, "warnings": warnings,
         })
     return {
@@ -75,10 +87,13 @@ async def pwm_validate(args: Dict[str, Any]) -> Dict[str, Any]:
 
 
 async def pwm_judge_cassi(args: Dict[str, Any]) -> Dict[str, Any]:
-    """Invoke the CASSI Physics Judge (deterministic) on a workspace."""
+    """Invoke the CASSI Physics Judge (deterministic) on a workspace.
+
+    Accepts an optional ``benchmark`` arg (e.g. 'benchmark_t2.md') to judge
+    a specific tier; defaults to benchmark.md."""
     from ai4science.judge.cassi import judge_cassi
     ws = _resolve_workspace(args.get("workspace", "."))
-    report = judge_cassi(ws)
+    report = judge_cassi(ws, benchmark=args.get("benchmark"))
     return {"content": [{"type": "text", "text": json.dumps(report, indent=2)}]}
 
 
@@ -87,23 +102,23 @@ async def pwm_status(args: Dict[str, Any]) -> Dict[str, Any]:
     from ai4science.schemas import parse_front_matter
     import yaml
 
+    from ai4science.discovery import all_artifact_files, missing_canonical
     ws = _resolve_workspace(args.get("workspace", "."))
     info: Dict[str, Any] = {"workspace": str(ws), "artifacts": {}, "dirs": {}, "reports": []}
 
-    for fname in ("principle.md", "spec.md", "benchmark.md", "solution.md"):
-        path = ws / fname
-        if not path.exists():
-            info["artifacts"][fname] = {"present": False}
-            continue
+    for path in all_artifact_files(ws):
         data, err = parse_front_matter(path)
+        rel = str(path.relative_to(ws) if path.is_relative_to(ws) else path)
         if err:
-            info["artifacts"][fname] = {"present": True, "broken": err}
+            info["artifacts"][rel] = {"present": True, "broken": err}
         else:
-            info["artifacts"][fname] = {
+            info["artifacts"][rel] = {
                 "present": True,
                 "artifact_type": data.get("artifact_type"),
                 "name": data.get("name"),
             }
+    for fname in missing_canonical(ws):
+        info["artifacts"][fname] = {"present": False}
 
     for d in ("data", "code", "results", "reports"):
         dpath = ws / d
@@ -185,12 +200,19 @@ def build_pwm_mcp_server():
     _judge_tool = tool(
         "pwm_judge_cassi",
         "Run the deterministic CASSI Physics Judge (S1-S4 + silent-failure "
-        "detector) on the workspace. Returns the same JSON as "
-        "reports/judge_report.json. Use this whenever you've finished "
-        "proposing edits — the judge is the SOURCE OF TRUTH, not you.",
+        "detector) on the workspace. Returns the same JSON as the report "
+        "file. Pass benchmark='benchmark_t2.md' to judge a specific tier "
+        "(defaults to benchmark.md). The judge is the SOURCE OF TRUTH, not you.",
         {
             "type": "object",
-            "properties": {"workspace": {"type": "string", "default": "."}},
+            "properties": {
+                "workspace": {"type": "string", "default": "."},
+                "benchmark": {
+                    "type": "string",
+                    "description": "Tier benchmark file, e.g. 'benchmark_t2.md'. "
+                                   "Default benchmark.md.",
+                },
+            },
             "required": [],
         },
     )(pwm_judge_cassi)

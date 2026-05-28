@@ -1,7 +1,7 @@
 """L3 Benchmark schema."""
 from __future__ import annotations
 
-from typing import List, Literal
+from typing import List, Literal, Optional
 
 from pydantic import ConfigDict, Field
 
@@ -14,6 +14,12 @@ class Benchmark(Artifact):
 
     artifact_type: Literal["benchmark"]
     parent_spec_id: str = Field(..., min_length=2, max_length=60)
+    # Optional tier metadata — gives multi-tier submissions (T1/T2/T3) a
+    # canonical home instead of inventing non-schema fields.
+    benchmark_id: Optional[str] = Field(default=None, max_length=60,
+                                        description="Canonical ID, e.g. 'L3-025-001-001-T2'")
+    tier: Optional[str] = Field(default=None, max_length=20,
+                                description="Human tier label, e.g. 'T1', 'T2'")
     dataset_description: str = Field(..., min_length=10, max_length=4000)
     data_paths: List[str] = Field(..., min_length=1,
                                   description="Relative paths to input data files")

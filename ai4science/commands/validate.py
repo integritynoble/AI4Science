@@ -9,12 +9,10 @@ from pydantic import ValidationError
 from rich.console import Console
 from rich.table import Table
 
+from ai4science.discovery import all_artifact_files, missing_canonical
 from ai4science.schemas import SCHEMA_BY_TYPE, parse_front_matter
 
 console = Console()
-
-
-ARTIFACT_FILES = ("principle.md", "spec.md", "benchmark.md", "solution.md")
 
 
 def validate(
@@ -25,7 +23,12 @@ def validate(
         help="Workspace directory. Defaults to current working dir.",
     ),
 ) -> None:
-    """Walk the workspace, parse YAML front matter, validate each artifact."""
+    """Discover and validate every artifact .md (by artifact_type front matter).
+
+    Multi-tier aware: benchmark.md AND benchmark_t2.md (etc.) are both
+    picked up, as is any extra solution file. Discovery is content-based,
+    so a README.md without front matter is ignored.
+    """
     workspace = workspace.resolve()
     table = Table(title=f"Validation: {workspace.name}", show_lines=True)
     table.add_column("File", style="cyan")
@@ -34,24 +37,38 @@ def validate(
     table.add_column("Missing / errors", style="yellow")
     table.add_column("Warnings", style="dim")
 
-    found_any = False
+    discovered = all_artifact_files(workspace)
+
+    # A canonical-named file that EXISTS but didn't classify (broken YAML /
+    # bad artifact_type) must still be flagged — not silently skipped.
+    discovered_resolved = {p.resolve() for p in discovered}
+    problem_files: List[Path] = []
+    for fname in ("principle.md", "spec.md", "benchmark.md", "solution.md"):
+        p = workspace / fname
+        if p.exists() and p.resolve() not in discovered_resolved:
+            problem_files.append(p)
+
+    to_check = discovered + problem_files
     overall_ok = True
 
-    for fname in ARTIFACT_FILES:
-        path = workspace / fname
-        if not path.exists():
-            table.add_row(fname, "-", "[dim]absent[/dim]", "", "")
-            continue
-        found_any = True
-
+    for path in to_check:
         status, atype, missing_or_errors, warnings = _validate_one(path)
         if status != "[green]ok[/green]":
             overall_ok = False
-        table.add_row(fname, atype, status, missing_or_errors, warnings)
+        # Show path relative to workspace so subdir layouts read cleanly.
+        rel = path.relative_to(workspace) if path.is_relative_to(workspace) else path
+        table.add_row(str(rel), atype, status, missing_or_errors, warnings)
+
+    # Hint rows for canonical artifacts that aren't present at all
+    # (genuinely absent — not the broken ones we just flagged above).
+    problem_names = {p.name for p in problem_files}
+    for fname in missing_canonical(workspace):
+        if fname not in problem_names:
+            table.add_row(fname, "-", "[dim]absent[/dim]", "", "")
 
     console.print(table)
 
-    if not found_any:
+    if not to_check:
         console.print(
             "[red]No artifact files found.[/red] Run [cyan]ai4science init <name>[/cyan] "
             "or one of the [cyan]ai4science contribute[/cyan] subcommands."

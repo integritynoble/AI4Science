@@ -174,6 +174,30 @@ All four tools are **deterministic** — no LLM under the hood. The PWM moat is 
 
 MCP is on by default. Disable with `--no-mcp`.
 
+### Multi-tier benchmarks
+
+A single spec can have several benchmark tiers (T1 nominal, T2 mild drift, T3 adversarial...). Each tier is its own benchmark file:
+
+```
+my-cassi/
+  principle.md
+  spec.md
+  benchmark.md         # T1 (canonical)
+  benchmark_t2.md      # T2
+  benchmark_t3.md      # T3
+  solution.md
+```
+
+Artifacts are discovered by their `artifact_type` front-matter field, not by filename — so all benchmark tiers are picked up automatically:
+
+```bash
+ai4science validate                          # validates every tier file
+ai4science judge cassi                        # judges benchmark.md (default)
+ai4science judge cassi --benchmark benchmark_t2.md   # judges the T2 tier
+```
+
+Tier reports are written to `reports/judge_report_<stem>.json` (the canonical `benchmark.md` keeps `reports/judge_report.json`). The `Benchmark` schema has optional `benchmark_id` and `tier` fields so tier metadata has a canonical home. The PWM MCP tools (`pwm_validate`, `pwm_status`, `pwm_judge_cassi`) are all multi-tier aware too.
+
 ## 6. Prompt-first usage
 
 Like `claude` or `codex`, you can invoke `ai4science` with a free-form English prompt in quotes:
