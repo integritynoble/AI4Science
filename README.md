@@ -20,7 +20,7 @@ curl -fsSL https://raw.githubusercontent.com/integritynoble/AI4Science/main/inst
 irm https://raw.githubusercontent.com/integritynoble/AI4Science/main/install.ps1 | iex
 ```
 
-Then run `ai4science --help`. The installer sets up an isolated environment under `~/.ai4science` and puts the `ai4science` command on your PATH — works on locked-down HPC login nodes too. (Once published, `pipx install pwm-ai4science` or `pip install pwm-ai4science` also work.)
+Then just run `ai4science` to start a chat session (like Claude Code) — the installer includes the chat agent by default. You'll also need the `claude` CLI for it: `npm install -g @anthropic-ai/claude-code` then `claude login` (or set `ANTHROPIC_API_KEY`). The installer sets up an isolated environment under `~/.ai4science` and puts the `ai4science` command on your PATH — works on locked-down HPC login nodes too. For a lean install without the agent: `AI4SCIENCE_WITH_CLAUDE=0 curl … | bash`. (Once published, `pipx install "pwm-ai4science[claude]"` also works.)
 
 ---
 
@@ -71,16 +71,18 @@ Each artifact is a Markdown file with a **YAML front-matter block** (between two
 
 ## 4. Installation
 
-One command, global (like `npm install -g` for Claude Code):
+One command, global (like `npm install -g` for Claude Code). The chat agent is included by default so `ai4science` is a Claude-Code-like session:
 
 ```bash
-pipx install pwm-ai4science      # → the `ai4science` command
-ai4science --help
+pipx install "pwm-ai4science[claude]"   # chat agent + deterministic CLI
+ai4science                              # → start a chat session
 ```
 
-The PyPI package is `pwm-ai4science`; the command is `ai4science` (same package-vs-command split as `@anthropic-ai/claude-code` → `claude`). Plain pip works too: `pip install pwm-ai4science`.
+The chat agent also needs the `claude` CLI: `npm install -g @anthropic-ai/claude-code` then `claude login` (or set `ANTHROPIC_API_KEY`).
 
-For the chat agent (interactive REPL, sub-agents, MCP): `pipx install "pwm-ai4science[claude]"` and install the `claude` CLI (`claude login` or `ANTHROPIC_API_KEY`).
+The PyPI package is `pwm-ai4science`; the command is `ai4science` (same package-vs-command split as `@anthropic-ai/claude-code` → `claude`). Plain pip works too: `pip install "pwm-ai4science[claude]"`.
+
+**Lean install** (deterministic CLI only, no agent): `pipx install pwm-ai4science`.
 
 **Before the first PyPI release**, install from GitHub (still one command):
 ```bash

@@ -9,7 +9,9 @@
 # Env overrides:
 #   AI4SCIENCE_HOME=<dir>     install location (default ~/.ai4science)
 #   AI4SCIENCE_BIN=<dir>      where to link the command (default ~/.local/bin)
-#   AI4SCIENCE_WITH_CLAUDE=1  also install the [claude] chat-agent extra
+#   AI4SCIENCE_WITH_CLAUDE=0  skip the [claude] chat-agent extra (lean install).
+#                             Default is 1 — the chat agent is installed so
+#                             `ai4science` is a Claude-Code-like session.
 #   AI4SCIENCE_REF=<spec>     override the install source (pip requirement)
 set -euo pipefail
 
@@ -18,7 +20,7 @@ GIT_URL="git+https://github.com/integritynoble/AI4Science.git"
 INSTALL_DIR="${AI4SCIENCE_HOME:-$HOME/.ai4science}"
 VENV="$INSTALL_DIR/venv"
 BIN_DIR="${AI4SCIENCE_BIN:-$HOME/.local/bin}"
-WITH_CLAUDE="${AI4SCIENCE_WITH_CLAUDE:-0}"
+WITH_CLAUDE="${AI4SCIENCE_WITH_CLAUDE:-1}"
 
 say()  { printf '\033[36m▸\033[0m %s\n' "$*"; }
 ok()   { printf '\033[32m✓\033[0m %s\n' "$*"; }
@@ -77,10 +79,30 @@ case ":$PATH:" in
     ;;
 esac
 
-cat <<EOF
-
+echo
+if [ "$WITH_CLAUDE" = "1" ]; then
+  ok "Chat agent (Claude Code-like) installed."
+  echo "Start a chat session:"
+  echo "    ai4science"
+  if ! command -v claude >/dev/null 2>&1; then
+    printf '\n\033[33mThe chat agent also needs the `claude` CLI:\033[0m\n'
+    echo "    npm install -g @anthropic-ai/claude-code   # then: claude login"
+    echo "    (or set ANTHROPIC_API_KEY). Until then, the commands below work offline.)"
+  fi
+  echo
+  echo "Or run a deterministic command (no agent needed):"
+  echo "    ai4science init my-first-contribution"
+  echo "    ai4science --help"
+  echo
+  echo "Lean install without the chat agent:  AI4SCIENCE_WITH_CLAUDE=0 curl … | bash"
+else
+  cat <<'EOF'
 Done. Try:
     ai4science --help
     ai4science init my-first-contribution
-$([ "$WITH_CLAUDE" != "1" ] && printf '\nFor the chat agent:  AI4SCIENCE_WITH_CLAUDE=1 curl -fsSL <this-url> | bash\n(+ the `claude` CLI: npm install -g @anthropic-ai/claude-code)')
+
+The chat agent was skipped (AI4SCIENCE_WITH_CLAUDE=0). To enable it, reinstall
+with the default (omit AI4SCIENCE_WITH_CLAUDE) and install the `claude` CLI:
+    npm install -g @anthropic-ai/claude-code   # then: claude login
 EOF
+fi

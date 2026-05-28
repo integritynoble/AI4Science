@@ -7,7 +7,9 @@
 #
 # Env overrides:
 #   $env:AI4SCIENCE_HOME         install location (default ~\.ai4science)
-#   $env:AI4SCIENCE_WITH_CLAUDE  "1" to also install the [claude] extra
+#   $env:AI4SCIENCE_WITH_CLAUDE  "0" to skip the [claude] chat-agent extra.
+#                                Default installs it so `ai4science` is a
+#                                Claude-Code-like chat session.
 
 $ErrorActionPreference = "Stop"
 
@@ -15,7 +17,7 @@ $Pkg = "pwm-ai4science"
 $GitUrl = "git+https://github.com/integritynoble/AI4Science.git"
 $InstallDir = if ($env:AI4SCIENCE_HOME) { $env:AI4SCIENCE_HOME } else { Join-Path $HOME ".ai4science" }
 $Venv = Join-Path $InstallDir "venv"
-$WithClaude = $env:AI4SCIENCE_WITH_CLAUDE -eq "1"
+$WithClaude = $env:AI4SCIENCE_WITH_CLAUDE -ne "0"
 
 function Say($m) { Write-Host "▸ $m" -ForegroundColor Cyan }
 function Ok($m)  { Write-Host "✓ $m" -ForegroundColor Green }
@@ -66,4 +68,21 @@ if ($userPath -notlike "*$scripts*") {
 
 $exe = Join-Path $scripts "ai4science.exe"
 Ok "Installed: $(& $exe version)"
-Write-Host "`nDone. Open a new terminal, then:  ai4science --help"
+
+Write-Host "`nDone. Open a new terminal, then:"
+if ($WithClaude) {
+    Ok "Chat agent (Claude Code-like) installed."
+    Write-Host "  Start a chat session:  ai4science"
+    if (-not (Get-Command claude -ErrorAction SilentlyContinue)) {
+        Write-Host "`n  The chat agent also needs the claude CLI:" -ForegroundColor Yellow
+        Write-Host "    npm install -g @anthropic-ai/claude-code   # then: claude login"
+        Write-Host "    (or set `$env:ANTHROPIC_API_KEY). Until then the commands below work offline.)"
+    }
+    Write-Host "`n  Or a deterministic command:  ai4science init my-first-contribution"
+    Write-Host "  Lean install without the chat agent:  `$env:AI4SCIENCE_WITH_CLAUDE='0'; irm … | iex"
+} else {
+    Write-Host "  ai4science --help"
+    Write-Host "  ai4science init my-first-contribution"
+    Write-Host "`n  Chat agent skipped (AI4SCIENCE_WITH_CLAUDE=0). Reinstall with the default"
+    Write-Host "  to enable it, plus:  npm install -g @anthropic-ai/claude-code; claude login"
+}
