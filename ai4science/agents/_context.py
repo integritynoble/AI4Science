@@ -37,19 +37,48 @@ def build_context_blob(workspace: Path, context_files: List[Path]) -> str:
 
 
 def compose_prompt(user_prompt: str, workspace: Path,
-                   context_files: List[Path], embed_system: str = "") -> str:
-    """Compose a single prompt string. ``embed_system`` is non-empty for agents
-    (like Codex) whose CLI does not accept a separate ``system_prompt`` option —
-    we prepend the AI4Science system prompt into the same prompt blob."""
+                   context_files: List[Path], embed_system: str = "",
+                   tools_enabled: bool = False) -> str:
+    """Compose a single prompt string.
+
+    Parameters
+    ----------
+    user_prompt : str
+        The raw user request.
+    workspace : Path
+        Workspace root (its name appears in the prompt for grounding).
+    context_files : List[Path]
+        Files to inline into the prompt body.
+    embed_system : str
+        Non-empty for agents (like Codex) whose CLI doesn't accept a
+        separate system_prompt option — we prepend the AI4Science system
+        prompt into the same prompt blob.
+    tools_enabled : bool
+        If True, the closing "Output format" section instructs the agent
+        to USE its tools (Edit/Write/Bash) for changes. If False, it
+        explicitly forbids file writes (the read-only contract).
+    """
     ctx_blob = build_context_blob(workspace, context_files)
     parts: List[str] = []
     if embed_system:
         parts.append(f"## AI4Science system context\n\n{embed_system}\n")
     parts.append(f"## User request\n\n{user_prompt}\n")
-    parts.append(f"## Workspace context (read-only)\n\nworkspace: `{workspace}`\n{ctx_blob}")
-    parts.append(
-        "## Output format\n\n"
-        "Respond with helpful suggestions and draft text only. "
-        "DO NOT attempt to write files; the user will copy what they want into their editor."
-    )
+    parts.append(f"## Workspace context\n\nworkspace: `{workspace}`\n{ctx_blob}")
+    if tools_enabled:
+        parts.append(
+            "## Output format\n\n"
+            "You have Edit/Write/Bash tools available, scoped to the workspace "
+            "above. When the user asks for a concrete change, USE the appropriate "
+            "tool to make the change directly — don't just describe what should "
+            "change. Read the file first, then Edit. Run `ai4science validate` "
+            "via Bash when finished to confirm the change parses. Each tool call "
+            "will prompt the user for confirmation before it takes effect."
+        )
+    else:
+        parts.append(
+            "## Output format\n\n"
+            "Respond with helpful suggestions and draft text only. "
+            "DO NOT attempt to write files; the user will copy what they want "
+            "into their editor."
+        )
     return "\n".join(parts)

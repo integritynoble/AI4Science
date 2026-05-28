@@ -1,13 +1,15 @@
-"""ClaudeAgent — Phase A2 wiring to the Claude Agent SDK (read-only).
+"""ClaudeAgent — Phase A2 wiring to the Claude Agent SDK.
+
+v0.3 adds **tool use with diff preview** as the default for Claude:
+the agent can Read / Grep / Glob (auto-approved) and Edit / Write /
+Bash (each requires user confirmation, with a unified-diff preview for
+Edit). Pass ``read_only=True`` or use ``--read-only`` on the CLI to
+get the v0.2 read-only-text-only behavior.
 
 Runtime requirements:
-  - ANTHROPIC_API_KEY in environment
-  - `pip install ai4science[claude]` (pulls claude-agent-sdk)
-  - `claude` CLI binary on PATH (the SDK shells out to it)
-
-Read-only semantics: allowed_tools=[] so the agent cannot edit any file.
-Workspace context is passed inline in the prompt. The agent returns text;
-the user copies whatever they want into their editor.
+  - `claude` CLI on PATH (`npm install -g @anthropic-ai/claude-code`)
+  - Either ANTHROPIC_API_KEY in env OR `claude login` (subscription auth)
+  - `pip install ai4science[claude]`
 """
 from __future__ import annotations
 
@@ -22,21 +24,23 @@ from ai4science.agents.base import AgentResult, BaseAgent
 
 DEFAULT_MODEL: Optional[str] = None   # None → SDK picks the default
 
+# Tools the agent may consider. Auto-approved reads + confirmed edits.
+DEFAULT_ALLOWED_TOOLS = ["Read", "Grep", "Glob", "Edit", "Write", "Bash", "MultiEdit"]
+
 
 class ClaudeAgent(BaseAgent):
     name = "claude"
 
+    def __init__(self, read_only: bool = False, auto_yes: bool = False):
+        self.read_only = read_only
+        self.auto_yes = auto_yes
+
     def is_available(self) -> bool:
-        """Available iff the `claude` CLI is on PATH AND claude-agent-sdk is importable.
+        """Available iff `claude` CLI on PATH AND claude-agent-sdk importable.
 
-        Auth itself (API key vs subscription login) is handled by the
-        underlying `claude` CLI, NOT by us. Two supported auth modes:
-
-          1. API key:        export ANTHROPIC_API_KEY=...
-          2. Subscription:   run `claude login` once; stores creds in ~/.claude/
-
-        If auth fails at query time, the SDK raises and we surface that
-        error to the user — we don't pre-judge their auth method here.
+        Auth (API key vs subscription) is handled by the `claude` CLI itself;
+        we don't pre-judge it here. If auth fails at query time the SDK
+        raises and we surface that error.
         """
         try:
             import claude_agent_sdk  # noqa: F401
@@ -47,7 +51,6 @@ class ClaudeAgent(BaseAgent):
         return True
 
     def unavailable_reason(self) -> str:
-        """Human-readable explanation of why is_available() is False."""
         reasons: List[str] = []
         try:
             import claude_agent_sdk  # noqa: F401
@@ -57,14 +60,11 @@ class ClaudeAgent(BaseAgent):
         if shutil.which("claude") is None:
             reasons.append("`claude` CLI binary not on PATH "
                            "(install: `npm install -g @anthropic-ai/claude-code`)")
-        # Auth-mode hint (purely informational; we do NOT block on it).
         if not os.environ.get("ANTHROPIC_API_KEY"):
             reasons.append("note: ANTHROPIC_API_KEY is unset — that's fine if you "
                            "ran `claude login` (subscription auth). If neither is "
                            "configured, the call will fail at query time.")
-        if not reasons:
-            return "available"
-        return "; ".join(reasons)
+        return "; ".join(reasons) if reasons else "available"
 
     def run_task(self, prompt: str, workspace: Path,
                  context_files: List[Path]) -> AgentResult:
@@ -72,57 +72,121 @@ class ClaudeAgent(BaseAgent):
             return AgentResult(
                 status="not_available",
                 message=(f"ClaudeAgent is not available: {self.unavailable_reason()}. "
-                         "Set ANTHROPIC_API_KEY, `pip install ai4science[claude]`, and "
-                         "install the `claude` CLI, then re-run."),
+                         "Set ANTHROPIC_API_KEY or run `claude login`, "
+                         "`pip install ai4science[claude]`, and install the "
+                         "`claude` CLI, then re-run."),
             )
 
-        # Claude SDK accepts a separate system_prompt; don't embed it inline.
-        full_prompt = compose_prompt(prompt, workspace, context_files, embed_system="")
+        full_prompt = compose_prompt(
+            prompt, workspace, context_files,
+            embed_system="",
+            tools_enabled=not self.read_only,
+        )
 
         try:
             from ai4science.prompts import load_system_prompt
-            system_prompt = load_system_prompt("ai4science_system")
+            sysprompt_name = "ai4science_system_readonly" if self.read_only else "ai4science_system"
+            system_prompt = load_system_prompt(sysprompt_name)
         except Exception as e:
             return AgentResult(status="error",
                                message=f"could not load system prompt: {e}")
 
         try:
-            text = asyncio.run(_run_query(full_prompt, system_prompt, workspace))
+            text, changed_files = asyncio.run(
+                _run_query(
+                    full_prompt=full_prompt,
+                    system_prompt=system_prompt,
+                    workspace=workspace,
+                    read_only=self.read_only,
+                    auto_yes=self.auto_yes,
+                )
+            )
         except KeyboardInterrupt:
             return AgentResult(status="error", message="interrupted by user")
         except Exception as e:
             return AgentResult(status="error",
                                message=f"Claude Agent SDK error: {type(e).__name__}: {e}")
 
-        return AgentResult(status="ok", message=text)
+        return AgentResult(status="ok", message=text, changed_files=changed_files)
 
 
-async def _run_query(prompt: str, system_prompt: str, workspace: Path) -> str:
-    """One-shot, read-only call into claude-agent-sdk's `query()`."""
+async def _run_query(*, full_prompt: str, system_prompt: str, workspace: Path,
+                     read_only: bool, auto_yes: bool):
+    """Run a one-shot query through the SDK with appropriate tool/permission gates."""
     from claude_agent_sdk import (   # type: ignore
         query, ClaudeAgentOptions, AssistantMessage,
     )
 
-    options = ClaudeAgentOptions(
-        system_prompt=system_prompt,
-        allowed_tools=[],                       # ← read-only: no Edit/Write
-        permission_mode="default",
-        cwd=str(workspace.resolve()),
-        # max_turns is a safety cap; with allowed_tools=[] the agent cannot
-        # use tools, so a simple one-shot response is typically 1-2 turns.
-        # Set generous headroom so longer explanations don't hit the limit.
-        max_turns=6,
-        model=DEFAULT_MODEL,
-    )
+    workspace = workspace.resolve()
+
+    if read_only:
+        # Strict v0.2 behavior — no tool calls at all; text-only output.
+        options = ClaudeAgentOptions(
+            system_prompt=system_prompt,
+            allowed_tools=[],
+            permission_mode="default",
+            cwd=str(workspace),
+            max_turns=6,
+            model=DEFAULT_MODEL,
+        )
+        prompt_arg = full_prompt   # static string is OK without can_use_tool
+    else:
+        # v0.3 default: tool use ON, every change confirmed.
+        from ai4science.agents.permissions import make_workspace_permission_callback
+        can_use_tool = make_workspace_permission_callback(workspace, auto_yes=auto_yes)
+        options = ClaudeAgentOptions(
+            system_prompt=system_prompt,
+            allowed_tools=DEFAULT_ALLOWED_TOOLS,
+            permission_mode="default",
+            can_use_tool=can_use_tool,
+            cwd=str(workspace),
+            max_turns=25,   # agentic loops need room
+            model=DEFAULT_MODEL,
+        )
+        # The SDK requires streaming mode (AsyncIterable prompt) whenever a
+        # can_use_tool callback is configured, so wrap the single message.
+        prompt_arg = _single_user_message_stream(full_prompt)
 
     chunks: List[str] = []
-    async for msg in query(prompt=prompt, options=options):
+    changed_files: List[Path] = []
+    async for msg in query(prompt=prompt_arg, options=options):
         if isinstance(msg, AssistantMessage):
             for block in getattr(msg, "content", []):
-                # ContentBlock subclasses expose .text on text blocks.
+                # Text blocks have .text; tool-use blocks have .input/.name.
                 text = getattr(block, "text", None)
                 if text:
+                    # Separate text blocks with a blank line so the rendered
+                    # output doesn't run sentences together when the agent
+                    # interleaves tool calls with text.
+                    if chunks and not chunks[-1].endswith("\n"):
+                        chunks.append("\n\n")
                     chunks.append(text)
-    return "".join(chunks).strip()
+                # Track which files the agent touched (for the final summary).
+                if hasattr(block, "name") and getattr(block, "name", None) in (
+                    "Edit", "Write", "MultiEdit",
+                ):
+                    fp = (getattr(block, "input", None) or {}).get("file_path")
+                    if fp:
+                        try:
+                            p = Path(fp)
+                            if p not in changed_files:
+                                changed_files.append(p)
+                        except Exception:
+                            pass
+    return "".join(chunks).strip(), changed_files
 
 
+async def _single_user_message_stream(text: str):
+    """Yield exactly one user message — the streaming-mode equivalent of a
+    single static prompt. Required by the SDK whenever can_use_tool is set.
+
+    The SDK expects each yielded item to match the on-wire `user` event
+    shape: ``{"type": "user", "message": {"role": "user", "content": ...}}``.
+    """
+    yield {
+        "type": "user",
+        "message": {
+            "role": "user",
+            "content": text,
+        },
+    }

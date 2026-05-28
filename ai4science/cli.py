@@ -225,12 +225,17 @@ def _dispatch_rule(name: str) -> int:
     return 0
 
 
-def _route_prompt(prompt: str, agent_name: str) -> int:
+def _route_prompt(prompt: str, agent_name: str,
+                  read_only: bool = False, auto_yes: bool = False) -> int:
     """Two-tier routing:
        1. Utility commands (validate/judge/package/submit/status/overseer) always
           dispatch deterministically — an LLM adds nothing.
        2. Everything else: if --agent=none, try the template-based contribute
           rules; otherwise hand off to the selected agent.
+
+    When --agent claude is selected, tool use (Edit/Write/Bash) is ON by
+    default; every change triggers a confirmation prompt. Pass --read-only
+    to disable tool use entirely (text-only response).
     """
     console.print(f"[purple]✨ AI4Science[/purple]: [italic]{prompt!r}[/italic]")
 
@@ -253,7 +258,7 @@ def _route_prompt(prompt: str, agent_name: str) -> int:
         )
         return 2
 
-    agent = get_agent(agent_name)
+    agent = get_agent(agent_name, read_only=read_only, auto_yes=auto_yes)
     if not agent.is_available():
         reason = getattr(agent, "unavailable_reason", lambda: "")()
         console.print(f"[red]Agent {agent_name!r} not available:[/red] {reason}")
@@ -268,16 +273,33 @@ def _route_prompt(prompt: str, agent_name: str) -> int:
         workspace / "solution.md",
     ) if p.exists()]
 
+    mode_label = "read-only" if read_only else "tool-use enabled"
     console.print(f"[dim]→ delegating to {agent_name!r} agent "
-                  f"(workspace={workspace.name}, context files={len(context_files)})[/dim]")
+                  f"(workspace={workspace.name}, context files={len(context_files)}, "
+                  f"mode={mode_label})[/dim]")
+    if not read_only and agent_name == "claude":
+        console.print(
+            "[dim]   Edit/Write/Bash will prompt for confirmation. Use "
+            "[cyan]--read-only[/cyan] to disable tool use, or [cyan]--yes[/cyan] to "
+            "auto-approve all edits.[/dim]"
+        )
 
-    with console.status(f"[purple]{agent_name} thinking…", spinner="dots"):
+    # When tool use is on, the agent prints progress to stderr (permission
+    # prompts). Don't wrap in a status spinner; it would clobber the prompt.
+    if read_only:
+        with console.status(f"[purple]{agent_name} thinking…", spinner="dots"):
+            result = agent.run_task(prompt, workspace, context_files)
+    else:
         result = agent.run_task(prompt, workspace, context_files)
 
     if result.status == "ok":
         console.print()
         console.print(f"[bold]── {agent_name} response ──[/bold]")
         console.print(result.message)
+        if getattr(result, "changed_files", None):
+            console.print("\n[bold]Files the agent edited:[/bold]")
+            for f in result.changed_files:
+                console.print(f"  - {f}")
         if result.suggestions:
             console.print("\n[bold]Suggestions[/bold]")
             for s in result.suggestions:
@@ -291,12 +313,20 @@ def _route_prompt(prompt: str, agent_name: str) -> int:
         return 1
 
 
-def _pop_agent_flag(argv: List[str]) -> tuple[List[str], str]:
-    """Strip --agent/-a from argv and return (cleaned, agent_name).
+def _pop_agent_flag(argv: List[str]) -> tuple[List[str], str, bool, bool]:
+    """Strip --agent/-a, --read-only, --yes from argv.
 
-    Default is 'none' unless overridden by env or flag.
+    Returns (cleaned_argv, agent_name, read_only, auto_yes).
+
+    Env defaults:
+      AI4SCIENCE_AGENT       — agent name (default 'none')
+      AI4SCIENCE_READ_ONLY   — '1' to default to read-only mode
+      AI4SCIENCE_AUTO_YES    — '1' to default to auto-approve edits
     """
     agent = os.environ.get("AI4SCIENCE_AGENT", "none").lower()
+    read_only = os.environ.get("AI4SCIENCE_READ_ONLY") == "1"
+    auto_yes = os.environ.get("AI4SCIENCE_AUTO_YES") == "1"
+
     cleaned: List[str] = []
     i = 0
     while i < len(argv):
@@ -309,17 +339,25 @@ def _pop_agent_flag(argv: List[str]) -> tuple[List[str], str]:
             agent = a.split("=", 1)[1].lower()
             i += 1
             continue
+        if a in ("--read-only", "--readonly"):
+            read_only = True
+            i += 1
+            continue
+        if a in ("--yes", "-y"):
+            auto_yes = True
+            i += 1
+            continue
         cleaned.append(a)
         i += 1
     if agent not in ("none", "claude", "codex"):
         console.print(f"[yellow]Unknown --agent value {agent!r}; falling back to 'none'.[/yellow]")
         agent = "none"
-    return cleaned, agent
+    return cleaned, agent, read_only, auto_yes
 
 
 def main() -> None:
     """Entry point that supports both `ai4science <subcommand>` and `ai4science "prompt"`."""
-    argv, agent_name = _pop_agent_flag(sys.argv[1:])
+    argv, agent_name, read_only, auto_yes = _pop_agent_flag(sys.argv[1:])
 
     if argv and not argv[0].startswith("-"):
         registered = {
@@ -329,7 +367,8 @@ def main() -> None:
         if argv[0] not in registered:
             # Prompt-first mode. Treat the whole argv as the user's prompt.
             prompt = " ".join(argv)
-            sys.exit(_route_prompt(prompt, agent_name))
+            sys.exit(_route_prompt(prompt, agent_name,
+                                    read_only=read_only, auto_yes=auto_yes))
 
     # Subcommand mode: hand off to Typer with the cleaned argv.
     sys.argv = [sys.argv[0]] + argv
