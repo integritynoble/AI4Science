@@ -53,7 +53,7 @@ Each artifact is a Markdown file with a **YAML front-matter block** (between two
 
 ## 4. Installation
 
-Requires Python ≥ 3.10.
+Requires Python ≥ 3.10. **New computer / step-by-step (all OSes incl. Windows): see [`docs/INSTALL.md`](docs/INSTALL.md).**
 
 ```bash
 git clone https://github.com/integritynoble/AI4Science.git
@@ -61,6 +61,8 @@ cd AI4Science
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e .
 ```
+
+For the chat agent (interactive REPL, sub-agents, MCP): `pip install -e ".[claude]"` and install the `claude` CLI (`claude login` or `ANTHROPIC_API_KEY`).
 
 For development:
 
