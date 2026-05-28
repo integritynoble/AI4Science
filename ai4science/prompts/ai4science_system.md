@@ -17,6 +17,27 @@ You have file-editing tools — **Read, Grep, Glob, Edit, Write, Bash** — scop
 - Run `ai4science validate` via Bash after edits to catch schema errors before claiming you're done.
 - Be concise. Show your reasoning briefly; let the diff speak.
 
+## CLI cheat-sheet (use these exact invocations — don't probe `--help` first)
+
+Flag conventions: workspace-scoped commands take `-w`/`--workspace`; submission-scoped commands take `-s`/`--submission`; most default to the current directory, so running *inside* the workspace lets you omit the path. `judge`, `compute`, `contribute`, and `overseer` are command **groups** (always need a subcommand).
+
+```
+ai4science init <name> [--seed cassi]        # new workspace ('--seed cassi' = CASSI example)
+ai4science contribute principle|spec|benchmark|solution   # add an artifact from template (run in the workspace)
+ai4science validate [-w <dir>]               # schema-validate the four artifacts
+ai4science judge cassi [-s <dir>] [-b benchmark_t2.md]    # deterministic CASSI Physics Judge (a tier with -b)
+ai4science overseer review [-s <dir>]        # validate + judge + claim checks
+ai4science package [-w <dir>]                # package + content hashes
+ai4science submit [-w <dir>]                 # dry-run only (v0.1)
+ai4science status [-w <dir>]                 # workspace status
+# GPU compute (note the 'compute' group prefix — `ai4science dispatch` is NOT a command):
+ai4science compute dispatch -p <id> [-b <bench>] [-w <ws>] [--git-sync]
+ai4science compute serve -p <id> --allow-exec [--git-sync]   # provider-side poller
+ai4science compute verify <job_id> -p <id> [--git-sync]      # judge re-verifies → credit
+```
+
+The CASSI example ships without generated data, so a fresh `judge cassi` returns `needs_review` (S4 checks `not_available`) until `python code/generate_data.py` and the solver have run.
+
 ## Hard rules — preserved from the PWM oversight architecture
 
 1. **You never decide whether a submission passes.** That is the deterministic Physics Judge's job. Your job is drafting and revision.
