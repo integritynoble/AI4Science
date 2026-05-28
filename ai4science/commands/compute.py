@@ -169,7 +169,9 @@ def status(
 def verify(
     job_id: str = typer.Argument(..., help="Job id to verify."),
     provider_id: str = typer.Option(..., "--provider", "-p"),
-    workspace: Path = typer.Option(Path("."), "--workspace", "-w"),
+    workspace: Optional[Path] = typer.Option(
+        None, "--workspace", "-w",
+        help="Workspace to judge. Default: the job request's stored workspace."),
     benchmark: str = typer.Option(None, "--benchmark", "-b",
                                    help="Benchmark tier file to judge (default benchmark.md)."),
     git_sync: bool = typer.Option(
@@ -187,10 +189,19 @@ def verify(
             console.print(f"[dim]git pull: {'ok' if ok else 'FAILED — ' + msg}[/dim]")
     st = job_state(Path(provider.endpoint_path), job_id)
     result_manifest = st.get("result")
-    job_meta = st.get("request") or {
+    request = st.get("request")
+    job_meta = request or {
         "job_id": job_id, "provider_id": provider_id,
         "wallet_address": provider.wallet_address, "benchmark_id": benchmark or "",
     }
+
+    # Default the workspace to the one recorded in the job request, so the judge
+    # runs against the actual solve dir rather than the caller's cwd.
+    if workspace is None:
+        stored = (request or {}).get("workspace")
+        workspace = Path(stored) if stored else Path(".")
+        console.print(f"[dim]workspace: {workspace} "
+                      f"({'from job request' if stored else 'cwd fallback'})[/dim]")
 
     attribution = verify_and_attribute(
         workspace=workspace.resolve(), job=job_meta,
@@ -291,10 +302,13 @@ def serve(
 
 @app.command("credits")
 def credits(
-    workspace: Path = typer.Option(Path("."), "--workspace", "-w"),
+    workspace: Optional[Path] = typer.Option(
+        None, "--workspace", "-w",
+        help="Sum a single workspace's local log. Default: the canonical "
+             "aggregate ledger across all verified jobs."),
 ) -> None:
     """Show verified-job credits per wallet (off-chain log)."""
-    totals = credit_summary(workspace.resolve())
+    totals = credit_summary(workspace.resolve() if workspace else None)
     if not totals:
         console.print("[dim]No attributions yet.[/dim]")
         return

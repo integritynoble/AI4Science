@@ -124,6 +124,8 @@ def test_job_state_missing(tmp_path):
 
 def _init_demo(tmp_path, monkeypatch) -> Path:
     monkeypatch.chdir(tmp_path)
+    # Isolate the canonical attribution ledger so tests never touch ~/.config.
+    monkeypatch.setenv("AI4SCIENCE_COMPUTE_LEDGER", str(tmp_path / "ledger.jsonl"))
     r = runner.invoke(app, ["init", "demo"])
     assert r.exit_code == 0, r.output
     return tmp_path / "demo"
@@ -177,6 +179,60 @@ def test_credit_summary_aggregates_by_wallet(tmp_path, monkeypatch):
     totals = credit_summary(ws)
     assert totals[DIRECTOR_WALLET] == 2
     assert len(read_attributions(ws)) == 2
+
+
+def test_canonical_ledger_aggregates_across_workspaces(tmp_path, monkeypatch):
+    """Attributions written from different workspaces all land in the canonical
+    ledger, so credit_summary() (no arg) aggregates them — the bug that made
+    `compute credits` show 0 after a verify run in a different cwd."""
+    monkeypatch.setenv("AI4SCIENCE_COMPUTE_LEDGER", str(tmp_path / "ledger.jsonl"))
+    from ai4science.compute.attribution import default_ledger_path
+
+    # Two separate workspaces, each producing a passing attribution.
+    for name in ("wsA", "wsB"):
+        monkeypatch.chdir(tmp_path)
+        r = runner.invoke(app, ["init", name])
+        assert r.exit_code == 0, r.output
+        ws = tmp_path / name
+        _make_cassi_arrays(ws, good=True)
+        job = {"job_id": name, "provider_id": "p", "wallet_address": DIRECTOR_WALLET}
+        attr = verify_and_attribute(workspace=ws, job=job)
+        assert attr["credit"] == 1
+
+    # Canonical ledger (source=None) sees BOTH; each workspace-local log sees one.
+    assert default_ledger_path() == tmp_path / "ledger.jsonl"
+    assert credit_summary()[DIRECTOR_WALLET] == 2          # aggregate
+    assert credit_summary(tmp_path / "wsA")[DIRECTOR_WALLET] == 1  # local copy
+
+
+def test_verify_defaults_workspace_to_job_request(tmp_path, monkeypatch):
+    """`compute verify` with no -w judges the job request's stored workspace,
+    not the caller's cwd (the bug that produced a false 'fail')."""
+    monkeypatch.setenv("AI4SCIENCE_COMPUTE_LEDGER", str(tmp_path / "ledger.jsonl"))
+    monkeypatch.setenv("AI4SCIENCE_COMPUTE_REGISTRY", str(tmp_path / "reg.json"))
+    monkeypatch.chdir(tmp_path)
+    # provider + workspace
+    runner.invoke(app, ["compute", "providers-add", "--id", "founder-1-subgpu",
+                        "--wallet", DIRECTOR_WALLET, "--endpoint", str(tmp_path / "jobs"),
+                        "--tier", "founder"])
+    runner.invoke(app, ["init", "solvews"])
+    ws = tmp_path / "solvews"
+    _make_cassi_arrays(ws, good=True)
+    # dispatch a job that records ws as its workspace
+    from ai4science.compute.dispatch import dispatch_job
+    from ai4science.compute.registry import get_provider
+    prov = get_provider("founder-1-subgpu")
+    job = dispatch_job(provider=prov, workspace=ws, run_command="true")
+    # write a result so job_state has one (poller would normally do this)
+    (Path(prov.endpoint_path) / f"job_{job.job_id}.result.json").write_text(
+        '{"certificate_hash": "0xfeed"}', encoding="utf-8")
+    # verify from a DIFFERENT cwd, no -w → must still judge ws (pass), not cwd
+    monkeypatch.chdir(tmp_path)   # cwd has no spec.md
+    r = runner.invoke(app, ["compute", "verify", job.job_id,
+                            "--provider", "founder-1-subgpu"])
+    assert r.exit_code == 0, r.output
+    assert "pass" in r.output.lower()
+    assert "from job request" in r.output
 
 
 # ─── CLI surface ─────────────────────────────────────────────────────
