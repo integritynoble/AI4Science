@@ -317,15 +317,23 @@ async def _read_line(prompt: str) -> str:
 
 
 async def _stream_response(client, cancel_flag: dict) -> None:
-    """Stream the response with live markdown + inline tool-call visibility.
+    """Stream the response with inline tool-call visibility.
 
-    - StreamEvent text deltas → appended to a live-updating Markdown block
-      (token-level streaming).
-    - ToolUseBlock → a discrete "⏺ Tool(args)" line.
-    - ToolResultBlock → a discrete "⎿ result" line.
-    - Falls back to rendering whole TextBlocks if partial streaming yields
-      nothing (older SDK / disabled partial messages).
+    Renders differently by output target:
+      - TTY  → live-updating rich.Markdown (token streaming, pretty).
+      - non-TTY (piped / CI / scripted) → plain incremental prints. The
+        Live renderer's frame redraws can drop earlier output when several
+        turns render back-to-back into a pipe, so we avoid Live there.
     """
+    msgs = client.receive_response()
+    if sys.stdout.isatty():
+        await _render_live(msgs)
+    else:
+        await _render_plain(msgs, console)
+
+
+async def _render_live(msgs) -> None:
+    """TTY renderer: live-updating markdown + inline tool lines."""
     from claude_agent_sdk import (   # type: ignore
         AssistantMessage, UserMessage, ResultMessage, StreamEvent,
         TextBlock, ToolUseBlock, ToolResultBlock,
@@ -338,8 +346,8 @@ async def _stream_response(client, cancel_flag: dict) -> None:
         extract_text_delta, format_tool_use, format_tool_result,
     )
 
-    segments: list = []        # finalized renderables (markdown blocks + tool lines)
-    current: list[str] = []    # in-progress streamed text
+    segments: list = []
+    current: list[str] = []
     streamed_any = False
 
     def render():
@@ -354,10 +362,10 @@ async def _stream_response(client, cancel_flag: dict) -> None:
             segments.append(Markdown("".join(current)))
             current = []
 
-    console.print()  # blank line before the response
+    console.print()
     with Live(render(), console=console, refresh_per_second=12,
               vertical_overflow="visible") as live:
-        async for msg in client.receive_response():
+        async for msg in msgs:
             if isinstance(msg, StreamEvent):
                 delta = extract_text_delta(getattr(msg, "event", None))
                 if delta:
@@ -372,8 +380,6 @@ async def _stream_response(client, cancel_flag: dict) -> None:
                             format_tool_use(block.name, block.input)))
                         live.update(render())
                     elif isinstance(block, TextBlock):
-                        # Fallback only — if nothing streamed for this turn,
-                        # render the complete block text.
                         if not streamed_any and not current:
                             current.append(block.text)
                             live.update(render())
@@ -388,6 +394,61 @@ async def _stream_response(client, cancel_flag: dict) -> None:
                 break
         flush_text()
         live.update(render())
+
+
+async def _render_plain(msgs, out_console) -> None:
+    """Non-TTY renderer: incremental plain prints, no rich.Live.
+
+    Streams text deltas as they arrive and prints each tool call / result
+    on its own line. Nothing is overwritten, so it captures cleanly when
+    piped to a file or another process.
+    """
+    from claude_agent_sdk import (   # type: ignore
+        AssistantMessage, UserMessage, ResultMessage, StreamEvent,
+        TextBlock, ToolUseBlock, ToolResultBlock,
+    )
+    from rich.text import Text
+    from ai4science.agents.streaming import (
+        extract_text_delta, format_tool_use, format_tool_result,
+    )
+
+    streamed_any = False
+    mid_line = False   # True when the last thing written didn't end in \n
+
+    def newline_if_needed():
+        nonlocal mid_line
+        if mid_line:
+            out_console.file.write("\n")
+            out_console.file.flush()
+            mid_line = False
+
+    async for msg in msgs:
+        if isinstance(msg, StreamEvent):
+            delta = extract_text_delta(getattr(msg, "event", None))
+            if delta:
+                out_console.file.write(delta)
+                out_console.file.flush()
+                streamed_any = True
+                mid_line = not delta.endswith("\n")
+        elif isinstance(msg, AssistantMessage):
+            for block in getattr(msg, "content", []):
+                if isinstance(block, ToolUseBlock):
+                    newline_if_needed()
+                    out_console.print(Text.from_markup(
+                        format_tool_use(block.name, block.input)))
+                elif isinstance(block, TextBlock):
+                    if not streamed_any:
+                        newline_if_needed()
+                        out_console.print(block.text)
+        elif isinstance(msg, UserMessage):
+            for block in getattr(msg, "content", []):
+                if isinstance(block, ToolResultBlock):
+                    newline_if_needed()
+                    out_console.print(Text.from_markup(format_tool_result(
+                        block.content, getattr(block, "is_error", False))))
+        elif isinstance(msg, ResultMessage):
+            break
+    newline_if_needed()
 
 
 def _handle_slash(line: str, workspace: Path, *, auto_yes: bool,
