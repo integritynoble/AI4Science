@@ -202,31 +202,56 @@ async def _run_chat(*, workspace: Path, read_only: bool, auto_yes: bool,
             # forward (with plan-mode prefix attached) when a prompt is given;
             # other slash commands handle themselves and skip the LLM.
             single_turn_plan_prompt: Optional[str] = None
+            custom_prompt: Optional[str] = None
             if line.startswith("/"):
-                handled, should_exit, plan_prompt = _handle_slash(
-                    line, workspace,
-                    auto_yes=auto_yes, read_only=read_only,
-                    plan_mode_active=plan_mode, client=client,
+                # Custom (user-defined) slash command? Expand + send as a turn.
+                from ai4science.commands.custom_commands import (
+                    load_custom_commands, expand_command,
                 )
-                if should_exit:
-                    break
-                if plan_prompt is not None:
-                    # /plan <prompt> → send the prompt under plan mode for ONE turn.
-                    single_turn_plan_prompt = plan_prompt
-                elif handled:
-                    continue
+                _cmd, _, _carg = line[1:].partition(" ")
+                _custom = load_custom_commands(workspace)
+                if _cmd.lower() in _custom:
+                    custom_prompt = expand_command(_custom[_cmd.lower()], _carg.strip())
+                    console.print(f"[dim]/{_cmd.lower()} → custom command "
+                                  f"({_custom[_cmd.lower()].name})[/dim]")
+                else:
+                    handled, should_exit, plan_prompt = _handle_slash(
+                        line, workspace,
+                        auto_yes=auto_yes, read_only=read_only,
+                        plan_mode_active=plan_mode, client=client,
+                    )
+                    if should_exit:
+                        break
+                    if plan_prompt is not None:
+                        # /plan <prompt> → send under plan mode for ONE turn.
+                        single_turn_plan_prompt = plan_prompt
+                    elif handled:
+                        continue
 
-            # Resolve the outgoing prompt: either the original line, or the
-            # /plan-extracted prompt for a single-turn plan call.
-            raw_prompt = single_turn_plan_prompt if single_turn_plan_prompt else line
+            # Resolve the outgoing prompt: custom-command expansion, the
+            # /plan-extracted prompt, or the original line.
+            raw_prompt = custom_prompt or single_turn_plan_prompt or line
 
-            # Expand @-mentions: any `@path/to/file` that resolves to an
-            # existing file inside the workspace is attached inline.
-            from ai4science.agents.mentions import expand_mentions_inline
+            # Expand @-mentions: text files inline; image files become
+            # multimodal content blocks (see image_message below).
+            from ai4science.agents.mentions import (
+                expand_mentions_inline, parse_image_mentions,
+            )
             outgoing, attached = expand_mentions_inline(raw_prompt, workspace)
+            image_paths = parse_image_mentions(raw_prompt, workspace)
             if attached:
                 rels = [str(p.relative_to(workspace.resolve())) for p in attached]
                 console.print(f"[dim]📎 attached: {', '.join(rels)}[/dim]")
+
+            # Build a multimodal message when images are attached.
+            image_message = None
+            if image_paths:
+                from ai4science.agents.images import build_user_message
+                try:
+                    image_message = build_user_message(outgoing, image_paths)
+                except ValueError as e:
+                    console.print(f"[yellow]image not attached:[/yellow] {e}")
+                    image_message = None
 
             # Plan-mode toggle for this turn only.
             if single_turn_plan_prompt is not None and not plan_mode:
@@ -244,9 +269,15 @@ async def _run_chat(*, workspace: Path, read_only: bool, auto_yes: bool,
                     + outgoing
                 )
 
-            # Send to agent + stream response.
+            # Send to agent + stream response. Structured multimodal message
+            # (text + images) goes via the streaming-input path; otherwise a
+            # plain string.
             try:
-                await client.query(outgoing)
+                if image_message is not None:
+                    from ai4science.agents.images import single_message_stream
+                    await client.query(single_message_stream(image_message))
+                else:
+                    await client.query(outgoing)
             except Exception as e:
                 console.print(f"[red]query error:[/red] {type(e).__name__}: {e}")
                 if single_turn_plan_prompt is not None and not plan_mode:
@@ -409,6 +440,18 @@ def _handle_slash(line: str, workspace: Path, *, auto_yes: bool,
                 console.print(f"  - {f.relative_to(workspace) if f.is_relative_to(workspace) else f}")
         return (True, False, None)
 
+    if cmd == "commands":
+        from ai4science.commands.custom_commands import load_custom_commands
+        custom = load_custom_commands(workspace)
+        if not custom:
+            console.print("[dim]No custom commands. Add `<name>.md` files under "
+                          ".ai4science/commands/ or ~/.config/ai4science/commands/.[/dim]")
+        else:
+            console.print("[bold]Custom slash commands:[/bold]")
+            for name, path in sorted(custom.items()):
+                console.print(f"  [cyan]/{name}[/cyan]  [dim]({path})[/dim]")
+        return (True, False, None)
+
     if cmd == "yes":
         console.print("[yellow]Note:[/yellow] /yes toggles need to be set at startup. "
                       "Exit, re-run with `--yes`, and start a new chat.")
@@ -497,6 +540,7 @@ def _print_help() -> None:
         ("/exit, /quit, /q",   "leave the session"),
         ("/clear",             "clear the terminal"),
         ("/files",             "list workspace artifact files"),
+        ("/commands",          "list custom (user-defined) slash commands"),
         ("/plan <request>",    "single-turn plan mode (no edits, agent returns a plan)"),
         ("/validate",          "run `ai4science validate` (deterministic)"),
         ("/judge",             "run the CASSI Physics Judge"),

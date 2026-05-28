@@ -31,11 +31,18 @@ _MENTION_RE = re.compile(r"(?:^|(?<=\s))@([A-Za-z0-9_\-./]+)")
 # Per-file budget for inlined contents (matches the agents/_context.py budget).
 PER_FILE_CHAR_BUDGET = 8_000
 
+# Image files are attached as multimodal content blocks, not inlined as text.
+IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+
+
+def is_image(path: Path) -> bool:
+    return path.suffix.lower() in IMAGE_EXTS
+
 
 def parse_mentions(text: str, workspace: Path) -> List[Path]:
     """Return the list of files referenced by @mentions that exist inside
     *workspace*. Order preserved; duplicates removed. Returns [] if no
-    @mentions resolve to existing files."""
+    @mentions resolve to existing files. Includes both text and image files."""
     workspace = workspace.resolve()
     attached: List[Path] = []
 
@@ -65,18 +72,26 @@ def parse_mentions(text: str, workspace: Path) -> List[Path]:
     return attached
 
 
+def parse_image_mentions(text: str, workspace: Path) -> List[Path]:
+    """Just the @-mentioned files that are images."""
+    return [p for p in parse_mentions(text, workspace) if is_image(p)]
+
+
 def expand_mentions_inline(text: str, workspace: Path) -> Tuple[str, List[Path]]:
     """Like ``parse_mentions``, but ALSO returns the prompt with the
-    referenced files appended as fenced attachments. Used by chat.py
-    where attachments must be embedded in the message that goes to the
-    SDK (unlike one-shot mode, which has a separate context-files list).
+    referenced TEXT files appended as fenced attachments. Image files are
+    excluded here (they go through the multimodal path in chat.py) but are
+    still listed in the returned paths so the caller can surface them.
     """
-    attached = parse_mentions(text, workspace)
-    if not attached:
+    all_attached = parse_mentions(text, workspace)
+    if not all_attached:
         return text, []
+    text_files = [p for p in all_attached if not is_image(p)]
+    if not text_files:
+        return text, all_attached   # only images — nothing to inline
 
     parts = [text, "", "## Attached files (via @mention)"]
-    for p in attached:
+    for p in text_files:
         rel = p.relative_to(workspace.resolve())
         try:
             body = p.read_text(encoding="utf-8")
@@ -86,4 +101,4 @@ def expand_mentions_inline(text: str, workspace: Path) -> Tuple[str, List[Path]]
         if len(body) > PER_FILE_CHAR_BUDGET:
             body = body[:PER_FILE_CHAR_BUDGET] + "\n[... truncated]"
         parts.append(f"\n### `@{rel}`\n```\n{body}\n```")
-    return "\n".join(parts), attached
+    return "\n".join(parts), all_attached
