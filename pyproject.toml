@@ -1,13 +1,18 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ai4science"
-version = "0.1.0"
+# Distribution name on PyPI. The CLI command stays `ai4science` (see
+# [project.scripts]); only the install name is PWM-branded because the
+# bare `ai4science` name is already taken on PyPI. This mirrors Claude
+# Code: package `@anthropic-ai/claude-code`, command `claude`.
+name = "pwm-ai4science"
+dynamic = ["version"]
 description = "Open-source contribution tool for Physics World Model (PWM). Create, validate, package, and submit Principles, Specs, Benchmarks, and Solutions for verified AI4Science workflows."
 readme = "README.md"
-license = { file = "LICENSE" }
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.10"
 authors = [
   { name = "AI4Science Contributors" },
@@ -15,12 +20,13 @@ authors = [
 keywords = ["ai4science", "physics-world-model", "pwm", "scientific-ml", "physics-judge", "cassi"]
 classifiers = [
   "Development Status :: 3 - Alpha",
-  "License :: OSI Approved :: MIT License",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3 :: Only",
   "Topic :: Scientific/Engineering",
   "Topic :: Scientific/Engineering :: Physics",
   "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Environment :: Console",
+  "Intended Audience :: Science/Research",
 ]
 dependencies = [
   "typer>=0.12",
@@ -34,6 +40,8 @@ dependencies = [
 dev = [
   "pytest>=8.0",
   "pytest-cov>=4.1",
+  "build>=1.2",
+  "twine>=5.0",
 ]
 claude = [
   # Real Claude integration. Also requires the `claude` CLI on PATH
@@ -48,7 +56,11 @@ ai4science = "ai4science.cli:main"
 [project.urls]
 Homepage = "https://github.com/integritynoble/AI4Science"
 Repository = "https://github.com/integritynoble/AI4Science"
+Issues = "https://github.com/integritynoble/AI4Science/issues"
 "PWM Protocol" = "https://physicsworldmodel.org"
+
+[tool.setuptools.dynamic]
+version = { attr = "ai4science.__version__" }
 
 [tool.setuptools.packages.find]
 include = ["ai4science*"]

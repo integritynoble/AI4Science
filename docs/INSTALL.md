@@ -1,7 +1,41 @@
 # Installing AI4Science on a new computer
 
-AI4Science isn't on PyPI yet, so you install from the git repo. Three
-tiers depending on what you need:
+## The one-command install (like Claude Code)
+
+Claude Code is `npm install -g @anthropic-ai/claude-code` → the `claude`
+command. The Python equivalent is **pipx** (installs a CLI tool in its own
+isolated environment and puts it on your PATH globally):
+
+```bash
+pipx install pwm-ai4science      # → the `ai4science` command, globally
+ai4science --help
+```
+
+> The PyPI package is `pwm-ai4science` (the plain name was taken); the
+> command is `ai4science` — same package-vs-command split as
+> `@anthropic-ai/claude-code` → `claude`.
+
+Don't have pipx? `python3 -m pip install --user pipx && pipx ensurepath`
+(or `brew install pipx`). Or use plain pip: `pip install pwm-ai4science`.
+
+**Until the first PyPI release**, install straight from GitHub — still one
+command, still global:
+
+```bash
+pipx install "git+https://github.com/integritynoble/AI4Science.git"
+```
+
+For the chat agent, add the extra + the `claude` CLI (see Step 4):
+```bash
+pipx install "pwm-ai4science[claude]"     # or the git+ URL with [claude]
+```
+
+The rest of this guide is the **from-source / developer** path (clone +
+venv), useful if you want to modify the code or run the tests.
+
+---
+
+AI4Science can also be installed from the git repo in three tiers:
 
 | You want… | Install |
 |---|---|

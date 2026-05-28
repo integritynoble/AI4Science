@@ -53,23 +53,23 @@ Each artifact is a Markdown file with a **YAML front-matter block** (between two
 
 ## 4. Installation
 
-Requires Python ≥ 3.10. **New computer / step-by-step (all OSes incl. Windows): see [`docs/INSTALL.md`](docs/INSTALL.md).**
+One command, global (like `npm install -g` for Claude Code):
 
 ```bash
-git clone https://github.com/integritynoble/AI4Science.git
-cd AI4Science
-python3 -m venv .venv && source .venv/bin/activate
-pip install -e .
+pipx install pwm-ai4science      # → the `ai4science` command
+ai4science --help
 ```
 
-For the chat agent (interactive REPL, sub-agents, MCP): `pip install -e ".[claude]"` and install the `claude` CLI (`claude login` or `ANTHROPIC_API_KEY`).
+The PyPI package is `pwm-ai4science`; the command is `ai4science` (same package-vs-command split as `@anthropic-ai/claude-code` → `claude`). Plain pip works too: `pip install pwm-ai4science`.
 
-For development:
+For the chat agent (interactive REPL, sub-agents, MCP): `pipx install "pwm-ai4science[claude]"` and install the `claude` CLI (`claude login` or `ANTHROPIC_API_KEY`).
 
+**Before the first PyPI release**, install from GitHub (still one command):
 ```bash
-pip install -e ".[dev]"
-pytest
+pipx install "git+https://github.com/integritynoble/AI4Science.git"
 ```
+
+From source (to modify / run tests): `git clone … && pip install -e ".[dev]" && pytest`. Full step-by-step for any OS incl. Windows: [`docs/INSTALL.md`](docs/INSTALL.md). Maintainers: [`docs/RELEASING.md`](docs/RELEASING.md).
 
 ## 5. Quickstart
 

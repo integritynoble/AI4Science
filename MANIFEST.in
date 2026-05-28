@@ -1,0 +1,11 @@
+# Ensure non-Python package data ships in the source distribution (sdist).
+# (Wheels get these via [tool.setuptools.package-data] in pyproject.toml.)
+include README.md
+include LICENSE
+recursive-include ai4science/templates *.md
+recursive-include ai4science/prompts *.md
+recursive-include ai4science/examples *.md
+recursive-include ai4science/examples *.py
+include docs/*.md
+exclude examples/**
+prune tests
