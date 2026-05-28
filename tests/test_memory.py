@@ -21,10 +21,18 @@ def test_finds_claude_md(tmp_path):
     assert p is not None and p.name == "CLAUDE.md"
 
 
-def test_priority_order_claude_first(tmp_path):
+def test_priority_order_ai4science_first(tmp_path):
     (tmp_path / "AGENTS.md").write_text("agents")
     (tmp_path / "CLAUDE.md").write_text("claude")
-    # CLAUDE.md wins over AGENTS.md
+    (tmp_path / "AI4SCIENCE.md").write_text("ai4science")
+    # AI4SCIENCE.md is preferred over CLAUDE.md and AGENTS.md
+    assert find_memory_file(tmp_path).name == "AI4SCIENCE.md"
+
+
+def test_claude_md_is_fallback(tmp_path):
+    """CLAUDE.md still works when AI4SCIENCE.md is absent (cross-tool compat)."""
+    (tmp_path / "AGENTS.md").write_text("agents")
+    (tmp_path / "CLAUDE.md").write_text("claude")
     assert find_memory_file(tmp_path).name == "CLAUDE.md"
 
 

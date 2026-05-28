@@ -1,19 +1,22 @@
 """Project memory — load a per-workspace instruction file into the system prompt.
 
-Mirrors Claude Code's CLAUDE.md behavior. We look for, in priority order:
+Mirrors Claude Code's CLAUDE.md behavior, but AI4Science-branded. We look
+for, in priority order:
 
-    CLAUDE.md, AI4SCIENCE.md, AGENTS.md
+    AI4SCIENCE.md, CLAUDE.md, AGENTS.md
 
-in the workspace root. The first one found is appended to the agent's
-system prompt so per-project conventions persist across sessions without
-the user re-stating them every time.
+in the workspace root. AI4SCIENCE.md is preferred (this is the AI4Science
+tool); CLAUDE.md and AGENTS.md are accepted as fallbacks for cross-tool
+compatibility. The first one found is appended to the agent's system
+prompt so per-project conventions persist across sessions without the
+user re-stating them every time.
 """
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Optional, Tuple
 
-MEMORY_FILENAMES = ("CLAUDE.md", "AI4SCIENCE.md", "AGENTS.md")
+MEMORY_FILENAMES = ("AI4SCIENCE.md", "CLAUDE.md", "AGENTS.md")
 
 # Bound the injected size so a huge memory file can't blow the prompt.
 MAX_MEMORY_CHARS = 16_000
