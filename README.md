@@ -382,6 +382,10 @@ The poller acks each job, runs its `run_command` (cwd = the job's workspace), co
 
 Full loop: `dispatch` (agent) → `serve` (GPU box runs the solver) → `verify` (judge → credit).
 
+**Try it locally (one machine, no GPU, never touches a real remote):**
+- [`examples/gitsync_compute`](examples/gitsync_compute) — the full loop with the dispatcher and provider on **separate git clones**, exercising `--git-sync` (the real CPU↔Windows-GPU transport).
+- [`examples/compute_demo`](examples/compute_demo) — the same loop in-process (no git), as a single script.
+
 **Setting up a GPU box:** see [`docs/SUBGPU_SETUP_WINDOWS.md`](docs/SUBGPU_SETUP_WINDOWS.md) for a step-by-step Windows + CUDA setup (install, wallet binding, shared-inbox options, Task Scheduler / NSSM service, and a test job).
 
 ## 12. Roadmap
