@@ -25,10 +25,12 @@ from typing import Dict, List, Optional, Tuple
 BACKENDS: Dict[str, Dict] = {
     "deepseek": {
         "vertex": True,
+        "location": "us-central1",
         "default_model": "deepseek-ai/deepseek-r1-0528-maas",
     },
     "qwen": {
         "vertex": True,
+        "location": "global",      # Qwen MaaS is served from the global endpoint
         "default_model": "qwen/qwen3-235b-a22b-instruct-2507-maas",
     },
     "openai": {   # api-key path (alternative to the codex subscription)
@@ -69,8 +71,13 @@ def _vertex_project() -> Optional[str]:
     return None
 
 
-def _vertex_location() -> str:
+def _vertex_location(backend: Optional[str] = None) -> str:
+    if backend:
+        per = os.environ.get(f"AI4SCIENCE_{backend.upper()}_LOCATION")
+        if per:
+            return per
     return (os.environ.get("AI4SCIENCE_VERTEX_LOCATION")
+            or (BACKENDS.get(backend, {}).get("location") if backend else None)
             or os.environ.get("GOOGLE_CLOUD_LOCATION") or "us-central1")
 
 
@@ -123,10 +130,12 @@ def resolve_base(backend: str) -> str:
     if override:
         return override
     if _is_vertex(backend):
-        proj, loc = _vertex_project(), _vertex_location()
+        proj, loc = _vertex_project(), _vertex_location(backend)
         if not proj:
             return ""
-        return (f"https://{loc}-aiplatform.googleapis.com/v1beta1/projects/"
+        # The 'global' location uses the prefix-less aiplatform host.
+        host = "aiplatform.googleapis.com" if loc == "global" else f"{loc}-aiplatform.googleapis.com"
+        return (f"https://{host}/v1beta1/projects/"
                 f"{proj}/locations/{loc}/endpoints/openapi")
     return BACKENDS.get(backend, {}).get("base", "")
 
