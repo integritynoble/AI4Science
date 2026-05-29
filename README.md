@@ -272,7 +272,7 @@ Prompt routing is two-tier:
 
 Override the auto-selection with `--agent claude` / `--agent codex` / `--agent none`, or set `AI4SCIENCE_AGENT`. Utility prompts stay deterministic regardless of agent.
 
-**Worked example:** [`examples/draft_principle`](examples/draft_principle) — what the agent produces from plain-English prompts: a schema-valid L1 Principle and a matching L2 Spec (1D heat equation) written to the workspace, each via the agent's write → `validate` → self-correct loop.
+**Worked example:** [`examples/draft_principle`](examples/draft_principle) — what the agent produces from plain-English prompts: a schema-valid L1 Principle, L2 Spec, and L3 Benchmark (1D heat equation) written to the workspace, each via the agent's write → `validate` → self-correct loop.
 
 ## 7. Template-based usage
 

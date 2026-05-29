@@ -1,9 +1,9 @@
-# Draft-a-contribution demo (agent drafting, L1 → L2)
+# Draft-a-contribution demo (agent drafting, L1 → L3)
 
 What the `ai4science` chat agent produces from plain-English prompts — a
-complete, schema-valid PWM **L1 Principle** and a matching **L2 Spec**, written
-directly to the workspace (not pasted by hand). Both pass `ai4science validate`
-(`status: ok`).
+complete, schema-valid PWM **L1 Principle**, a matching **L2 Spec**, and an
+**L3 Benchmark**, written directly to the workspace (not pasted by hand). All
+three pass `ai4science validate` (`status: ok`).
 
 ## How it was generated
 
@@ -41,6 +41,23 @@ The agent reads `principle.md`, writes [`spec.md`](spec.md) (a six-tuple with
 `parent_principle_id` linking back to the principle, plus a closed-form exact
 solution for verification), then `validate → Edit → validate` until both pass.
 
+## Extending into a benchmark (L3)
+
+A third turn extends the spec into a runnable benchmark:
+
+> This workspace has principle.md and spec.md for the 1D heat equation on [0,1].
+> Draft a matching benchmark.md (L3): dataset_description, data_paths,
+> train_validation_test_split, metrics, physics_checks, baseline_methods,
+> success_threshold, reproducibility_command. Reference the spec via
+> parent_spec_id. The exact solution is the ground truth. Then run validate.
+
+[`benchmark.md`](benchmark.md) links to the spec via `parent_spec_id`, uses the
+closed-form solution as analytic ground truth, and defines a primary metric
+(`E_inf`), three physics checks tied to the heat equation's maximum principle,
+baseline methods with expected errors, and a success threshold matching the
+spec's tolerance. (The benchmark is the most field-heavy artifact, so it takes a
+few more `validate → Edit` rounds to converge.)
+
 ## Reproduce it
 
 ```bash
@@ -60,6 +77,6 @@ ai4science validate        # confirm it's schema-valid
 - **Self-correction** — a first draft that fails `validate` is fixed in the same
   turn, so what you get is schema-valid.
 
-This covers the first two layers of the four-layer flow (Principle → Spec →
+This covers the first three layers of the four-layer flow (Principle → Spec →
 Benchmark → Solution). For the full compute loop, see
 [`../compute_demo`](../compute_demo) and [`../gitsync_compute`](../gitsync_compute).
