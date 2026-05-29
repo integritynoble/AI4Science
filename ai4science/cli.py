@@ -89,6 +89,10 @@ from ai4science.commands import compute as compute_cmd
 app.add_typer(compute_cmd.app, name="compute",
               help="Wallet-bound GPU compute providers (dispatch + judge-verified rewards).")
 
+from ai4science.commands import llm as llm_cmd
+app.add_typer(llm_cmd.app, name="llm",
+              help="Wallet-bound LLM providers (subscription / api-key / comparegpt).")
+
 # Single-command leaves
 app.command("init", help="Create a new contribution workspace.")(init_cmd.init)
 app.command("validate", help="Validate YAML front matter and required fields.")(validate_cmd.validate)
@@ -565,7 +569,7 @@ def main() -> None:
         registered = {
             "init", "contribute", "validate", "judge", "overseer",
             "package", "submit", "status", "version", "agents", "chat",
-            "compute",
+            "compute", "llm",
         }
         if argv[0] not in registered:
             # A mistyped subcommand (e.g. `ai4science dispatch --provider …`,
