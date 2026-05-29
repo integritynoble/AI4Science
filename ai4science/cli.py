@@ -93,6 +93,10 @@ from ai4science.commands import llm as llm_cmd
 app.add_typer(llm_cmd.app, name="llm",
               help="Wallet-bound LLM providers (subscription / api-key / comparegpt).")
 
+from ai4science.commands import stake as stake_cmd
+app.add_typer(stake_cmd.app, name="stake",
+              help="Provider stake / collateral (lock PWM to be eligible).")
+
 # Single-command leaves
 app.command("init", help="Create a new contribution workspace.")(init_cmd.init)
 app.command("validate", help="Validate YAML front matter and required fields.")(validate_cmd.validate)
@@ -569,7 +573,7 @@ def main() -> None:
         registered = {
             "init", "contribute", "validate", "judge", "overseer",
             "package", "submit", "status", "version", "agents", "chat",
-            "compute", "llm",
+            "compute", "llm", "stake",
         }
         if argv[0] not in registered:
             # A mistyped subcommand (e.g. `ai4science dispatch --provider …`,
