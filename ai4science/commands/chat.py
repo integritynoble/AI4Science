@@ -406,8 +406,42 @@ async def _stream_response(client, cancel_flag: dict) -> None:
         await _render_plain(msgs, console)
 
 
+# Whimsical "working" words for the thinking spinner (like Claude Code).
+WHIMSY = (
+    "Tomfoolering", "Razzmatazzing", "Proofing", "Sautéing", "Frolicking",
+    "Noodling", "Percolating", "Conjuring", "Marinating", "Simmering",
+    "Finagling", "Schlepping", "Bamboozling", "Cogitating", "Ruminating",
+    "Galvanizing", "Concocting", "Synthesizing", "Whirring", "Pondering",
+    "Scheming", "Brewing", "Tinkering", "Wrangling", "Mulling", "Vibing",
+)
+
+
+def _fmt_tokens(n) -> str:
+    if not n:
+        return "0"
+    return f"{n/1000:.1f}k" if n >= 1000 else str(n)
+
+
+def _result_usage(msg) -> dict:
+    """Pull input/output token counts from a ResultMessage, defensively.
+
+    The 'input' side sums fresh + cached input so it reflects everything the
+    model actually saw (closer to Claude Code's number), not just the small
+    non-cached delta."""
+    u = getattr(msg, "usage", None)
+    if isinstance(u, dict):
+        inp = ((u.get("input_tokens") or 0)
+               + (u.get("cache_read_input_tokens") or 0)
+               + (u.get("cache_creation_input_tokens") or 0))
+        return {"input": inp or None, "output": u.get("output_tokens")}
+    return {}
+
+
 async def _render_live(msgs) -> None:
-    """TTY renderer: live-updating markdown + inline tool lines."""
+    """TTY renderer: a whimsy 'working' spinner, then live markdown + tool lines,
+    then a footer with elapsed time + token usage (Claude Code-style)."""
+    import random
+    import time as _time
     from claude_agent_sdk import (   # type: ignore
         AssistantMessage, UserMessage, ResultMessage, StreamEvent,
         TextBlock, ToolUseBlock, ToolResultBlock,
@@ -416,19 +450,28 @@ async def _render_live(msgs) -> None:
     from rich.markdown import Markdown
     from rich.console import Group
     from rich.text import Text
+    from rich.spinner import Spinner
     from ai4science.agents.streaming import (
         extract_text_delta, format_tool_use, format_tool_result,
     )
 
+    word = random.choice(WHIMSY)
+    start = _time.monotonic()
     segments: list = []
     current: list[str] = []
     streamed_any = False
+    usage: dict = {}
 
     def render():
         parts = list(segments)
         if current:
             parts.append(Markdown("".join(current)))
-        return Group(*parts) if parts else Text("")
+        if parts:
+            return Group(*parts)
+        # Nothing yet → whimsy spinner + a live elapsed timer.
+        el = int(_time.monotonic() - start)
+        return Spinner("dots", text=Text.from_markup(
+            f"[magenta]{word}…[/magenta] [dim]({el}s · esc to interrupt)[/dim]"))
 
     def flush_text():
         nonlocal current
@@ -439,35 +482,59 @@ async def _render_live(msgs) -> None:
     console.print()
     with Live(render(), console=console, refresh_per_second=12,
               vertical_overflow="visible") as live:
-        async for msg in msgs:
-            if isinstance(msg, StreamEvent):
-                delta = extract_text_delta(getattr(msg, "event", None))
-                if delta:
-                    current.append(delta)
-                    streamed_any = True
-                    live.update(render())
-            elif isinstance(msg, AssistantMessage):
-                for block in getattr(msg, "content", []):
-                    if isinstance(block, ToolUseBlock):
-                        flush_text()
-                        segments.append(Text.from_markup(
-                            format_tool_use(block.name, block.input)))
+        # Background ticker: keep the spinner's timer moving even while the
+        # agent is thinking and no messages are arriving.
+        async def _tick():
+            try:
+                while True:
+                    await asyncio.sleep(0.4)
+                    if not segments and not current:
                         live.update(render())
-                    elif isinstance(block, TextBlock):
-                        if not streamed_any and not current:
-                            current.append(block.text)
+            except asyncio.CancelledError:
+                pass
+        ticker = asyncio.create_task(_tick())
+        try:
+            async for msg in msgs:
+                if isinstance(msg, StreamEvent):
+                    delta = extract_text_delta(getattr(msg, "event", None))
+                    if delta:
+                        current.append(delta)
+                        streamed_any = True
+                        live.update(render())
+                elif isinstance(msg, AssistantMessage):
+                    for block in getattr(msg, "content", []):
+                        if isinstance(block, ToolUseBlock):
+                            flush_text()
+                            segments.append(Text.from_markup(
+                                format_tool_use(block.name, block.input)))
                             live.update(render())
-            elif isinstance(msg, UserMessage):
-                for block in getattr(msg, "content", []):
-                    if isinstance(block, ToolResultBlock):
-                        flush_text()
-                        segments.append(Text.from_markup(format_tool_result(
-                            block.content, getattr(block, "is_error", False))))
-                        live.update(render())
-            elif isinstance(msg, ResultMessage):
-                break
-        flush_text()
-        live.update(render())
+                        elif isinstance(block, TextBlock):
+                            if not streamed_any and not current:
+                                current.append(block.text)
+                                live.update(render())
+                elif isinstance(msg, UserMessage):
+                    for block in getattr(msg, "content", []):
+                        if isinstance(block, ToolResultBlock):
+                            flush_text()
+                            segments.append(Text.from_markup(format_tool_result(
+                                block.content, getattr(block, "is_error", False))))
+                            live.update(render())
+                elif isinstance(msg, ResultMessage):
+                    usage = _result_usage(msg)
+                    break
+            flush_text()
+            live.update(render())
+        finally:
+            ticker.cancel()
+
+    # Footer: whimsy word · elapsed · token usage (like Claude Code's status).
+    el = _time.monotonic() - start
+    foot = f"[dim]✓ {word.lower()} · {el:.1f}s"
+    if usage.get("input") or usage.get("output"):
+        foot += (f" · ↑{_fmt_tokens(usage.get('input'))} "
+                 f"↓{_fmt_tokens(usage.get('output'))} tokens")
+    foot += "[/dim]"
+    console.print(foot)
 
 
 async def _render_plain(msgs, out_console) -> None:
@@ -486,6 +553,11 @@ async def _render_plain(msgs, out_console) -> None:
         extract_text_delta, format_tool_use, format_tool_result,
     )
 
+    import random
+    import time as _time
+    word = random.choice(WHIMSY)
+    start = _time.monotonic()
+    usage: dict = {}
     streamed_any = False
     mid_line = False   # True when the last thing written didn't end in \n
 
@@ -521,8 +593,16 @@ async def _render_plain(msgs, out_console) -> None:
                     out_console.print(Text.from_markup(format_tool_result(
                         block.content, getattr(block, "is_error", False))))
         elif isinstance(msg, ResultMessage):
+            usage = _result_usage(msg)
             break
     newline_if_needed()
+    el = _time.monotonic() - start
+    foot = f"[dim]✓ {word.lower()} · {el:.1f}s"
+    if usage.get("input") or usage.get("output"):
+        foot += (f" · ↑{_fmt_tokens(usage.get('input'))} "
+                 f"↓{_fmt_tokens(usage.get('output'))} tokens")
+    foot += "[/dim]"
+    out_console.print(foot)
 
 
 async def _handle_slash(line: str, workspace: Path, *, auto_yes: bool,
