@@ -713,7 +713,8 @@ def _list_sessions(workspace: Path) -> None:
         when = getattr(s, "last_modified", "")
         console.print(f"  [cyan]{sid}[/cyan]  [dim]{when}[/dim]  {summary}")
     console.print("[dim]Resume one: exit, then "
-                  "[cyan]ai4science chat --resume <id>[/cyan][/dim]")
+                  "[cyan]ai4science --resume <id>[/cyan] "
+                  "(or [cyan]ai4science --continue[/cyan] for the most recent)[/dim]")
 
 
 async def _do_compact(client) -> None:
