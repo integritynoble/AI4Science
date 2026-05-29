@@ -232,7 +232,9 @@ def test_verify_defaults_workspace_to_job_request(tmp_path, monkeypatch):
                             "--provider", "founder-1-subgpu"])
     assert r.exit_code == 0, r.output
     assert "pass" in r.output.lower()
-    assert "from job request" in r.output
+    # whitespace-normalized so Rich line-wrapping (e.g. "from\njob request")
+    # doesn't break the substring check
+    assert "from job request" in " ".join(r.output.split())
 
 
 # ─── Cross-machine workspace resolution ──────────────────────────────
