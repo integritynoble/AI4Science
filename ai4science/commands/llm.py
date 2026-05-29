@@ -94,6 +94,7 @@ def route(
     table = Table(title="Agent → LLM routing (live)", show_lines=True)
     table.add_column("agent", style="cyan")
     table.add_column("→ resolved")
+    table.add_column("reason", justify="center")
     table.add_column("wallet", style="magenta")
     table.add_column("chain (✓ reachable / ✗ down)", style="dim")
     for ag in agents:
@@ -103,6 +104,7 @@ def route(
                           f"(known: {', '.join(routing.AGENT_CHAINS)})")
             raise typer.Exit(2)
         r = routing.resolve(ag)
+        reasoning = routing.AGENT_REASONING.get(ag, "medium")
         if r is None:
             resolved = "[red]none reachable[/red]"
             wallet = "—"
@@ -114,7 +116,7 @@ def route(
         avail = {b: routing.backend_available(b) for b in {c[0] for c in chain}}
         chain_str = "  ".join(
             f"{'✓' if avail.get(b) else '✗'} {b}:{m}" for b, m in chain)
-        table.add_row(ag, resolved, wallet, chain_str)
+        table.add_row(ag, resolved, reasoning, wallet, chain_str)
     console.print(table)
 
 

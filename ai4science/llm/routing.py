@@ -24,6 +24,7 @@ AGENT_CHAINS: Dict[str, List[Tuple[str, str]]] = {
         ("anthropic", "claude-opus-4-7"),
         ("anthropic", "claude-sonnet-4-6"),
         ("openai", "gpt-5.5"),
+        ("gemini", "gemini-3.1-pro-preview"),
     ],
     "checking": [
         ("openai", "gpt-5.5"),
@@ -35,6 +36,15 @@ AGENT_CHAINS: Dict[str, List[Tuple[str, str]]] = {
         ("anthropic", "claude-haiku-4-5"),
         ("openai", "gpt-5.5-nano"),     # nano = fast/cheap (not the heavy gpt-5.5)
     ],
+}
+
+# Per-agent reasoning effort, applied when the chosen LLM supports it (codex
+# `model_reasoning_effort`, Anthropic extended thinking). Checking reviews
+# carefully → high; fast favors speed → low.
+AGENT_REASONING: Dict[str, str] = {
+    "orchestration": "high",
+    "checking": "high",
+    "fast": "low",
 }
 
 
@@ -66,6 +76,7 @@ class Route(NamedTuple):
     agent: str
     backend: str
     model: str
+    reasoning: str             # reasoning effort: high | medium | low
     provider_id: Optional[str]
     wallet: Optional[str]
     is_fallback: bool          # True if not the agent's first choice
@@ -84,6 +95,7 @@ def resolve(agent: str) -> Optional[Route]:
             prov = _provider_for(backend)
             return Route(
                 agent=agent, backend=backend, model=model,
+                reasoning=AGENT_REASONING.get(agent, "medium"),
                 provider_id=prov.provider_id if prov else None,
                 wallet=prov.wallet_address if prov else None,
                 is_fallback=(i > 0),

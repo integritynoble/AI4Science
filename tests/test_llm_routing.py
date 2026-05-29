@@ -23,18 +23,20 @@ def test_orchestration_first_choice_is_opus(monkeypatch):
     assert r.wallet.startswith("0x")
 
 
-def test_checking_prefers_gpt55(monkeypatch):
+def test_checking_prefers_gpt55_with_high_reasoning(monkeypatch):
     _stub_providers(monkeypatch)
     monkeypatch.setattr(routing, "backend_available", lambda b: True)
     r = routing.resolve("checking")
     assert (r.backend, r.model) == ("openai", "gpt-5.5")
+    assert r.reasoning == "high"          # checking reviews carefully
 
 
-def test_fast_prefers_gemini(monkeypatch):
+def test_fast_prefers_gemini_with_low_reasoning(monkeypatch):
     _stub_providers(monkeypatch)
     monkeypatch.setattr(routing, "backend_available", lambda b: True)
     r = routing.resolve("fast")
     assert r.backend == "gemini"
+    assert r.reasoning == "low"           # fast favors speed
 
 
 def test_orchestration_falls_back_when_anthropic_down(monkeypatch):
