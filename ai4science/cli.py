@@ -565,7 +565,21 @@ def _bare_launch(read_only: bool, auto_yes: bool, plan_mode: bool,
 def main() -> None:
     """Entry point: `ai4science` (bare → chat), `ai4science <subcommand>`, or
     `ai4science "prompt"`."""
-    raw, continue_session, resume, mode = _pop_session_flags(sys.argv[1:])
+    argv_raw = sys.argv[1:]
+    # Subcommand path: flags after the subcommand belong to it
+    # (e.g. `chat --mode research`). Skip session/agent-flag stripping and let
+    # typer dispatch with the original argv intact, otherwise --mode/--resume/
+    # --agent get consumed here before the subcommand can bind them.
+    _subcommands = {
+        "init", "contribute", "validate", "judge", "overseer", "package",
+        "submit", "status", "version", "agents", "chat", "compute", "llm",
+        "stake", "login", "whoami", "logout", "prefer",
+    }
+    if any(tok in _subcommands for tok in argv_raw):
+        app()
+        return
+
+    raw, continue_session, resume, mode = _pop_session_flags(argv_raw)
     argv, agent_name, read_only, auto_yes, plan_mode, model = _pop_agent_flag(raw)
 
     # Bare invocation (only flags, no subcommand or prompt) → interactive chat,
