@@ -50,9 +50,11 @@ ai4science llm providers-add --id founder-3-qwen \
   --label "Founder-3 Qwen (Vertex)"
 
 echo "▸ Compute provider (sub-GPU, wallet 2, git-synced inbox)"
+# $1.50/hr — mid-range GPU rate; priced PWM = wall-clock × rate ÷ $5.
 ai4science compute providers-add --id founder-1-subgpu \
   --wallet "$WALLET_SUBGPU" --endpoint "$SUBGPU_INBOX" \
-  --kind gpu --tier founder --label "Sub-GPU server (wallet 2)"
+  --kind gpu --tier founder --price-usd-per-hour 1.50 \
+  --label "Sub-GPU server (wallet 2)"
 
 echo
 echo "✓ Founder providers registered. Verify:"
