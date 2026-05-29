@@ -57,7 +57,9 @@ elif "$VENV/bin/pip" install --quiet "${PKG}${extra}" 2>/dev/null; then
   ok "Installed $PKG from PyPI"
 else
   say "PyPI unavailable; installing from GitHub…"
-  src="$GIT_URL"; [ -n "$extra" ] && src="${GIT_URL}#egg=${PKG}${extra}"
+  # PEP 508 direct reference for extras (the old '#egg=name[extra]' fragment is
+  # rejected by modern pip as an invalid egg fragment).
+  src="$GIT_URL"; [ -n "$extra" ] && src="${PKG}${extra} @ ${GIT_URL}"
   "$VENV/bin/pip" install --quiet "$src" || die "install from GitHub failed"
   ok "Installed $PKG from GitHub"
 fi

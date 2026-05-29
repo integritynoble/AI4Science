@@ -53,7 +53,9 @@ try {
 } catch { }
 if (-not $installed) {
     Say "PyPI unavailable; installing from GitHub…"
-    $src = if ($extra) { "$GitUrl#egg=$Pkg$extra" } else { $GitUrl }
+    # PEP 508 direct reference for extras (the old '#egg=name[extra]' fragment is
+    # rejected by modern pip as an invalid egg fragment).
+    $src = if ($extra) { "$Pkg$extra @ $GitUrl" } else { $GitUrl }
     & $pip install --quiet $src
     Ok "Installed $Pkg from GitHub"
 }
