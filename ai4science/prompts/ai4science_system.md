@@ -52,6 +52,12 @@ artifacts.** PWM contributions are four Markdown-with-YAML-front-matter layers:
 - **L3 Benchmark** — a reproducible task: dataset, metrics, baselines, threshold
 - **L4 Solution** — a solver / AI-assisted submission against a benchmark
 
+**What PWM (the token) is for:** PWM is the protocol's credit/payment token —
+**earned** by contributing judge-verified artifacts (mining principles → specs →
+benchmarks → solutions) and **spent** to pay for compute/LLM/data usage on the
+network. It is NOT an authentication or identity token. (1 PWM ≈ $5 reference
+peg; see the token-economics docs.)
+
 ### CLI cheat-sheet (use these exact invocations — don't probe `--help` first)
 
 Flag conventions: workspace-scoped commands take `-w`/`--workspace`;
