@@ -52,10 +52,29 @@ def _run_anthropic(model: str, prompt: str, reasoning: str, timeout: int):
     }
 
 
+def _oc_executor(backend: str):
+    """Executor for an OpenAI-compatible backend (deepseek/qwen via Vertex,
+    openai by api-key, …)."""
+    def _run(model: str, prompt: str, reasoning: str, timeout: int):
+        from ai4science.llm import openai_compat as oc
+        text, u = oc.chat(backend, [{"role": "user", "content": prompt}],
+                          model=model or None, timeout=timeout)
+        return text, {"input": u.get("prompt_tokens"),
+                      "output": u.get("completion_tokens"),
+                      "total": u.get("total_tokens")}
+    return _run
+
+
 def _run_openai(model: str, prompt: str, reasoning: str, timeout: int):
     codex = shutil.which("codex")
     if not codex:
-        raise RuntimeError("`codex` CLI not on PATH (install @openai/codex)")
+        # No codex subscription — fall back to the OpenAI api-key path if a key
+        # is configured (point 5: api-key execution).
+        from ai4science.llm import openai_compat as oc
+        if oc.is_available("openai"):
+            return _oc_executor("openai")(model, prompt, reasoning, timeout)
+        raise RuntimeError("`codex` CLI not on PATH and no OPENAI_API_KEY "
+                           "(install @openai/codex or `ai4science login`)")
     fd, last = tempfile.mkstemp(suffix=".txt"); os.close(fd)
     try:
         proc = subprocess.run(
@@ -93,7 +112,13 @@ def _run_gemini(model: str, prompt: str, reasoning: str, timeout: int):
     }
 
 
-_EXECUTORS = {"anthropic": _run_anthropic, "openai": _run_openai, "gemini": _run_gemini}
+_EXECUTORS = {
+    "anthropic": _run_anthropic,
+    "openai": _run_openai,
+    "gemini": _run_gemini,
+    "deepseek": _oc_executor("deepseek"),
+    "qwen": _oc_executor("qwen"),
+}
 
 
 def run_agent(agent: str, prompt: str, timeout: int = 300) -> AgentResult:

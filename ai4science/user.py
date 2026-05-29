@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Dict, Optional
 
 # Providers a user can log into (point 5).
-PROVIDERS = ("anthropic", "openai", "gemini", "kimi", "qwen")
+PROVIDERS = ("anthropic", "openai", "gemini", "deepseek", "qwen")
 AUTH_METHODS = ("subscription", "api_key")
 
 

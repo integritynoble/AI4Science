@@ -30,6 +30,9 @@ PRICES_USD_PER_M: Dict[str, Tuple[float, float]] = {
     # Gemini (comparegpt basis)
     "gemini-3.5-flash":       (0.30, 2.50),
     "gemini-3.1-pro-preview": (1.25, 10.0),
+    # DeepSeek / Qwen via Vertex (Model Garden / MaaS — approximate)
+    "deepseek-ai/deepseek-r1-0528-maas":          (1.35, 5.40),
+    "qwen/qwen3-235b-a22b-instruct-2507-maas":    (1.0, 3.0),
 }
 DEFAULT_PRICE: Tuple[float, float] = (2.0, 10.0)   # unknown model fallback
 

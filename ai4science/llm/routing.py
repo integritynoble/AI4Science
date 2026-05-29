@@ -30,11 +30,13 @@ AGENT_CHAINS: Dict[str, List[Tuple[str, str]]] = {
         ("openai", "gpt-5.5"),
         ("anthropic", "claude-opus-4-8"),
         ("gemini", "gemini-3.1-pro-preview"),   # 'gemini-3.1-pro' (plain) 404s
+        ("deepseek", "deepseek-ai/deepseek-r1-0528-maas"),   # reasoning, via Vertex
     ],
     "fast": [
         ("gemini", "gemini-3.5-flash"),
         ("anthropic", "claude-haiku-4-5"),
         ("openai", "gpt-5.5-nano"),     # nano = fast/cheap (not the heavy gpt-5.5)
+        ("qwen", "qwen/qwen3-235b-a22b-instruct-2507-maas"),  # via Vertex
     ],
 }
 
@@ -60,6 +62,9 @@ def backend_available(backend: str) -> bool:
         if backend == "gemini":
             from ai4science.llm import gemini
             return gemini.is_available()
+        if backend in ("deepseek", "qwen"):
+            from ai4science.llm import openai_compat
+            return openai_compat.is_available(backend)
     except Exception:
         return False
     return False

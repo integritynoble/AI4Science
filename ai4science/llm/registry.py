@@ -22,7 +22,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from ai4science.compute.registry import is_valid_eth_address
 
 # Known LLM backends and auth methods (extensible).
-BACKENDS = ("anthropic", "openai", "gemini", "kimi", "qwen")
+BACKENDS = ("anthropic", "openai", "gemini", "deepseek", "qwen")
 AUTH_METHODS = ("subscription", "api_key", "comparegpt")
 
 
@@ -32,7 +32,7 @@ class LLMProvider(BaseModel):
 
     provider_id: str = Field(min_length=2, max_length=100)
     wallet_address: str = Field(description="0x address that usage revenue accrues to")
-    backend: str = Field(description="anthropic | openai | gemini | kimi | qwen")
+    backend: str = Field(description="anthropic | openai | gemini | deepseek | qwen")
     auth: str = Field(default="subscription", description="subscription | api_key | comparegpt")
     models: List[str] = Field(default_factory=lambda: ["*"],
                               description="model ids served, or ['*'] for any from the backend")
