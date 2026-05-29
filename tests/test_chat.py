@@ -75,11 +75,35 @@ def test_format_files_truncates_long_files(tmp_path):
 
 
 def _make_dummy_client():
-    """Cheap stand-in for ClaudeSDKClient.get_context_usage()."""
+    """Cheap stand-in for ClaudeSDKClient: records permission-mode changes."""
     class _C:
+        def __init__(self):
+            self.mode = "default"
         def get_context_usage(self):
             return "(dummy)"
+        def set_permission_mode(self, mode):
+            self.mode = mode
     return _C()
+
+
+def test_slash_yes_toggles_accept_edits_live(tmp_path):
+    """/yes flips the live session to accept-edits (no restart needed)."""
+    from ai4science.commands.chat import _handle_slash
+    client = _make_dummy_client()
+    handled, _, _ = _handle_slash("/yes", tmp_path, auto_yes=False,
+                                  read_only=False, client=client)
+    assert handled is True
+    assert client.mode == "acceptEdits"
+
+
+def test_slash_readonly_and_default_toggle_live(tmp_path):
+    """/readonly → plan (no edits); /default → default (edits confirmed)."""
+    from ai4science.commands.chat import _handle_slash
+    client = _make_dummy_client()
+    _handle_slash("/readonly", tmp_path, auto_yes=False, read_only=False, client=client)
+    assert client.mode == "plan"
+    _handle_slash("/default", tmp_path, auto_yes=False, read_only=False, client=client)
+    assert client.mode == "default"
 
 
 def test_slash_help_handled(tmp_path):

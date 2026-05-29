@@ -546,14 +546,34 @@ def _handle_slash(line: str, workspace: Path, *, auto_yes: bool,
                 console.print(f"  [cyan]/{name}[/cyan]  [dim]({path})[/dim]")
         return (True, False, None)
 
-    if cmd == "yes":
-        console.print("[yellow]Note:[/yellow] /yes toggles need to be set at startup. "
-                      "Exit, re-run with `--yes`, and start a new chat.")
+    if cmd in ("yes", "acceptedits", "accept-edits"):
+        # Live toggle to auto-accept edits (like Claude Code's accept-edits mode).
+        try:
+            client.set_permission_mode("acceptEdits")
+            console.print("[green]✓ accept-edits ON[/green] — Edit/Write/Bash auto-approved "
+                          "this session. Use [cyan]/default[/cyan] to require confirmation again.")
+        except Exception as e:
+            console.print(f"[yellow]/yes not available:[/yellow] {e}")
         return (True, False, None)
 
-    if cmd == "readonly":
-        console.print("[yellow]Note:[/yellow] read-only mode is set at startup. "
-                      "Exit, re-run with `--read-only`, and start a new chat.")
+    if cmd in ("readonly", "read-only"):
+        # Live toggle to read-only (plan permission mode — no edits).
+        try:
+            client.set_permission_mode("plan")
+            console.print("[green]✓ read-only ON[/green] — no edits this session "
+                          "(Read/Grep/Glob only). Use [cyan]/default[/cyan] to restore editing.")
+        except Exception as e:
+            console.print(f"[yellow]/readonly not available:[/yellow] {e}")
+        return (True, False, None)
+
+    if cmd in ("default", "normal", "edit"):
+        # Restore the default mode: edits allowed, each confirmed.
+        try:
+            client.set_permission_mode("default")
+            console.print("[green]✓ default mode[/green] — edits allowed, each prompts "
+                          "for confirmation.")
+        except Exception as e:
+            console.print(f"[yellow]/default not available:[/yellow] {e}")
         return (True, False, None)
 
     if cmd == "cost":
@@ -643,8 +663,9 @@ def _print_help() -> None:
         ("/judge",             "run the CASSI Physics Judge"),
         ("/status",            "show workspace status"),
         ("/cost",              "show context-window usage"),
-        ("/yes",               "(info) auto-approve flag is set at startup"),
-        ("/readonly",          "(info) read-only flag is set at startup"),
+        ("/yes",               "auto-approve edits this session (accept-edits mode)"),
+        ("/readonly",          "switch to read-only this session (no edits)"),
+        ("/default",           "restore default mode (edits allowed, each confirmed)"),
     ]
     width = max(len(r[0]) for r in rows)
     for cmd, descr in rows:
