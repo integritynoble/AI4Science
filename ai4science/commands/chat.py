@@ -69,7 +69,7 @@ def chat(
         None, "--model", "-m",
         help="Model for the session (e.g. opus, sonnet, haiku, or a full id). "
              "Defaults to AI4SCIENCE_MODEL, else your claude CLI default. "
-             "Switch live in-session with /model <name>.",
+             "In-session, type /model to pick from a menu.",
     ),
     continue_session: bool = typer.Option(
         False, "--continue", "-c",
@@ -226,23 +226,41 @@ async def _run_chat(*, workspace: Path, read_only: bool, auto_yes: bool,
             single_turn_plan_prompt: Optional[str] = None
             custom_prompt: Optional[str] = None
             if line.startswith("/"):
-                # /model [name] — show or switch the model live (like Claude Code).
+                # /model — open a picker (like Claude Code). /model <name> still
+                # works as a shortcut. Live switch via the SDK's set_model.
                 _scmd, _, _sarg = line[1:].partition(" ")
                 if _scmd.lower() == "model":
-                    _sarg = _sarg.strip()
-                    if not _sarg:
-                        cur = model_state["current"] or "default (your claude CLI default)"
-                        console.print(f"[cyan]model:[/cyan] {cur}")
-                        console.print("[dim]Switch: /model <name> — e.g. opus, sonnet, "
-                                      "haiku, or a full model id[/dim]")
-                    else:
+                    target = _sarg.strip()
+                    if not target:
+                        # Numbered picker — choose from a list, don't type the id.
+                        choices = ["default", "opus", "sonnet", "haiku"]
+                        cur = model_state["current"] or "default"
+                        console.print("[bold]Select a model:[/bold]")
+                        for i, c in enumerate(choices, 1):
+                            mark = "  [green]← current[/green]" if c == cur else ""
+                            console.print(f"  [cyan]{i}[/cyan]. {c}{mark}")
+                        console.print("[dim]Enter a number (or a name / full id, "
+                                      "blank to cancel):[/dim]")
                         try:
-                            await client.set_model(_sarg)
-                            model_state["current"] = _sarg
-                            console.print(f"[green]✓ model → {_sarg}[/green]")
-                        except Exception as e:
-                            console.print(f"[red]could not set model:[/red] "
-                                          f"{type(e).__name__}: {e}")
+                            sel = (await _read_line("model> ")).strip()
+                        except (EOFError, KeyboardInterrupt):
+                            sel = ""
+                        if not sel:
+                            console.print("[dim](no change)[/dim]")
+                            continue
+                        if sel.isdigit() and 1 <= int(sel) <= len(choices):
+                            target = choices[int(sel) - 1]
+                        else:
+                            target = sel   # typed a name/id at the picker
+                    # Apply (default → None, i.e. the claude CLI default).
+                    model_arg = None if target.lower() == "default" else target
+                    try:
+                        await client.set_model(model_arg)
+                        model_state["current"] = model_arg
+                        console.print(f"[green]✓ model → {model_arg or 'default'}[/green]")
+                    except Exception as e:
+                        console.print(f"[red]could not set model:[/red] "
+                                      f"{type(e).__name__}: {e}")
                     continue
 
                 # /resume, /sessions — list this workspace's past sessions so the
@@ -722,7 +740,7 @@ def _print_help() -> None:
         ("/files",             "list workspace artifact files"),
         ("/commands",          "list custom (user-defined) slash commands"),
         ("/plan <request>",    "single-turn plan mode (no edits, agent returns a plan)"),
-        ("/model [name]",      "show or switch the model live (opus, sonnet, haiku, or id)"),
+        ("/model",             "pick the model from a menu (or /model <name> to switch directly)"),
         ("/validate",          "run `ai4science validate` (deterministic)"),
         ("/judge",             "run the CASSI Physics Judge"),
         ("/status",            "show workspace status"),

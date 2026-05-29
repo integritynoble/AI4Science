@@ -16,8 +16,12 @@ Create, validate, package, and submit Principles, Specs, Benchmarks, and Solutio
 curl -fsSL https://raw.githubusercontent.com/integritynoble/AI4Science/main/install.sh | bash
 ```
 ```powershell
-# Windows PowerShell
+# Windows — in PowerShell (open "PowerShell" from the Start menu, NOT cmd.exe):
 irm https://raw.githubusercontent.com/integritynoble/AI4Science/main/install.ps1 | iex
+```
+```bat
+:: Windows — from Command Prompt (cmd.exe)? irm/iex are PowerShell-only, so wrap it:
+powershell -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/integritynoble/AI4Science/main/install.ps1 | iex"
 ```
 
 Then just run `ai4science` to start a chat session (like Claude Code) — the installer includes the chat agent by default. You'll also need the `claude` CLI for it: `npm install -g @anthropic-ai/claude-code` then `claude login` (or set `ANTHROPIC_API_KEY`). The installer sets up an isolated environment under `~/.ai4science` and puts the `ai4science` command on your PATH — works on locked-down HPC login nodes too. For a lean install without the agent: `AI4SCIENCE_WITH_CLAUDE=0 curl … | bash`. (Once published, `pipx install "pwm-ai4science[claude]"` also works.)

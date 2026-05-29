@@ -7,7 +7,7 @@ mid-conversation — the same as Claude Code.
 |---|---|---|
 | `--model` / `-m` flag | whole session | `ai4science --model opus` · `ai4science chat -m sonnet` |
 | `AI4SCIENCE_MODEL` env | whole session | `export AI4SCIENCE_MODEL=haiku` then `ai4science` |
-| `/model <name>` in-session | switches live | type `/model opus` during a chat |
+| `/model` in-session | pick from a menu, switches live | type `/model`, choose by number (or `/model opus`) |
 
 Names accepted: `opus`, `sonnet`, `haiku`, or a full model id
 (e.g. `claude-opus-4-1-20250805`). With no model set, the chat uses your
