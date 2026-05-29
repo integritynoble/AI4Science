@@ -360,6 +360,22 @@ def test_model_env_default(monkeypatch):
     assert model == "opus"
 
 
+def test_session_flags_continue_and_resume(monkeypatch):
+    """--continue/-c and --resume <id> are stripped for the bare-launch path."""
+    from ai4science.cli import _pop_session_flags
+    monkeypatch.delenv("AI4SCIENCE_RESUME", raising=False)
+    cleaned, cont, resume = _pop_session_flags(["--continue"])
+    assert cleaned == [] and cont is True and resume is None
+    cleaned, cont, _ = _pop_session_flags(["-c", "draft"])
+    assert cleaned == ["draft"] and cont is True
+    cleaned, cont, resume = _pop_session_flags(["--resume", "sess-42", "x"])
+    assert cleaned == ["x"] and cont is False and resume == "sess-42"
+    _, _, r2 = _pop_session_flags(["--resume=sess-7"])
+    assert r2 == "sess-7"
+    cleaned, cont, resume = _pop_session_flags(["draft", "a", "spec"])
+    assert cleaned == ["draft", "a", "spec"] and cont is False and resume is None
+
+
 def test_get_agent_forwards_plan_mode():
     a = get_agent("claude", plan_mode=True)
     assert isinstance(a, ClaudeAgent)

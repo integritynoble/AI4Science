@@ -357,6 +357,38 @@ def _route_prompt(prompt: str, agent_name: str,
         return 1
 
 
+def _pop_session_flags(argv: List[str]) -> tuple[List[str], bool, Optional[str]]:
+    """Strip session-resume flags so bare `ai4science` supports them like `claude`.
+
+    Returns (cleaned_argv, continue_session, resume_id). Composes with
+    _pop_agent_flag (kept separate so neither signature has to keep growing):
+        --continue / -c   → resume the most recent conversation
+        --resume <id>     → resume a specific session by id
+    Env: AI4SCIENCE_RESUME sets a default resume id.
+    """
+    continue_session = False
+    resume = os.environ.get("AI4SCIENCE_RESUME") or None
+    cleaned: List[str] = []
+    i = 0
+    while i < len(argv):
+        a = argv[i]
+        if a in ("--continue", "-c"):
+            continue_session = True
+            i += 1
+            continue
+        if a == "--resume" and i + 1 < len(argv):
+            resume = argv[i + 1]
+            i += 2
+            continue
+        if a.startswith("--resume="):
+            resume = a.split("=", 1)[1]
+            i += 1
+            continue
+        cleaned.append(a)
+        i += 1
+    return cleaned, continue_session, resume
+
+
 def _pop_agent_flag(argv: List[str]) -> tuple[List[str], str, bool, bool, bool, Optional[str]]:
     """Strip agent-related flags from argv.
 
@@ -460,7 +492,8 @@ def _suggest_subcommand(argv: List[str]) -> Optional[str]:
 
 
 def _bare_launch(read_only: bool, auto_yes: bool, plan_mode: bool,
-                 model: Optional[str] = None) -> None:
+                 model: Optional[str] = None, continue_session: bool = False,
+                 resume: Optional[str] = None) -> None:
     """Bare `ai4science` (no subcommand/prompt) → interactive chat, like `claude`.
 
     If the chat agent isn't installed/authed yet, show a short getting-started
@@ -479,8 +512,9 @@ def _bare_launch(read_only: bool, auto_yes: bool, plan_mode: bool,
             chat_cmd.chat(
                 agent="claude", workspace=Path("."),
                 read_only=read_only, yes=auto_yes, plan=plan_mode,
-                no_subagents=False, no_mcp=False, continue_session=False,
-                model=model, resume=None,
+                no_subagents=False, no_mcp=False,
+                continue_session=continue_session,
+                model=model, resume=resume,
             )
         except typer.Exit as e:
             sys.exit(e.exit_code or 0)
@@ -507,12 +541,14 @@ def _bare_launch(read_only: bool, auto_yes: bool, plan_mode: bool,
 def main() -> None:
     """Entry point: `ai4science` (bare → chat), `ai4science <subcommand>`, or
     `ai4science "prompt"`."""
-    argv, agent_name, read_only, auto_yes, plan_mode, model = _pop_agent_flag(sys.argv[1:])
+    raw, continue_session, resume = _pop_session_flags(sys.argv[1:])
+    argv, agent_name, read_only, auto_yes, plan_mode, model = _pop_agent_flag(raw)
 
     # Bare invocation (only flags, no subcommand or prompt) → interactive chat,
     # exactly like typing `claude`. `--help`/`-h` still fall through to Typer.
     if not argv:
-        _bare_launch(read_only, auto_yes, plan_mode, model)
+        _bare_launch(read_only, auto_yes, plan_mode, model,
+                     continue_session=continue_session, resume=resume)
         return
 
     if not argv[0].startswith("-"):
