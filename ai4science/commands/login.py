@@ -130,6 +130,23 @@ def whoami() -> None:
         console.print(f"[bold]Powered by:[/bold] your own [bold]{cfg.get('provider')}[/bold] "
                       f"via {cfg.get('auth')}"
                       + ("  [dim](API key stored)[/dim]" if cfg.get("api_key_set") else ""))
+    console.print(f"[dim]Source preference: {user_cfg.preference()} "
+                  "(change with [/dim][cyan]ai4science prefer <user|wallet|provider_id>[/cyan][dim])[/dim]")
+
+
+def prefer(
+    value: str = typer.Argument(..., help="user | wallet | <provider_id>"),
+) -> None:
+    """Set which credential source the agent prefers (point 11)."""
+    user_cfg.set_preference(value)
+    console.print(f"[green]✓ Preference set:[/green] [bold]{value}[/bold]")
+    if value == "user":
+        console.print("[dim]Your own login/keys are used first; wallet providers fall back.[/dim]")
+    elif value == "wallet":
+        console.print("[dim]Wallet providers are used first.[/dim]")
+    else:
+        console.print(f"[dim]Pinned to wallet provider '{value}' where it serves the backend; "
+                      "otherwise user-first.[/dim]")
 
 
 def logout() -> None:

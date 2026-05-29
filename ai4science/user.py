@@ -114,3 +114,25 @@ def preferred_backend() -> Optional[str]:
     """If the user logged in with their own LLM, the backend to prefer (point 11)."""
     cfg = load()
     return cfg.get("provider") if cfg.get("power") == "own" else None
+
+
+def has_own_for(backend: str) -> bool:
+    """True if the user has their OWN credential for this backend — an active
+    own-LLM login for it, or a stored API key (point 11: user keys first)."""
+    if get_api_key(backend):
+        return True
+    cfg = load()
+    return cfg.get("power") == "own" and cfg.get("provider") == backend
+
+
+def set_preference(pref: str) -> None:
+    """Source preference: 'user' (own keys first), 'wallet' (wallet providers
+    first), or a specific provider_id."""
+    cfg = load()
+    cfg["preference"] = pref
+    save(cfg)
+
+
+def preference() -> str:
+    """Default 'user' — per point 11, the user's own keys/subscription win."""
+    return load().get("preference", "user")

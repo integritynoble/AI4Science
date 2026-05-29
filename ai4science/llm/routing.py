@@ -72,6 +72,50 @@ def _provider_for(backend: str):
     return provs[0] if provs else None
 
 
+def _select_source(backend: str):
+    """Pick the credential source for a backend, honoring user preference (#11).
+
+    Returns (source, provider_id, wallet, price_multiplier):
+      source 'user'   → the user's own login/key; no wallet, 0 PWM (billed to
+                        the user's own account).
+      source 'wallet' → a wallet-bound provider; usage priced in PWM.
+
+    Preference (user config): 'user' (own first — default), 'wallet' (wallet
+    first), or a specific provider_id.
+    """
+    from ai4science import user
+    from ai4science.llm.registry import get_provider as get_llm_provider
+
+    pref = user.preference()
+    wallet_prov = _provider_for(backend)
+    user_ok = user.has_own_for(backend)
+
+    def _wallet(p):
+        return ("wallet", p.provider_id, p.wallet_address, p.price_multiplier)
+    user_tuple = ("user", None, None, 0.0)
+
+    # A specific wallet provider was pinned.
+    if pref not in ("user", "wallet"):
+        p = get_llm_provider(pref)
+        if p is not None and p.backend == backend and p.status == "active":
+            return _wallet(p)
+        # pinned provider doesn't serve this backend → fall through to user-first
+
+    if pref == "wallet":
+        if wallet_prov is not None:
+            return _wallet(wallet_prov)
+        if user_ok:
+            return user_tuple
+    else:  # 'user' (default) or an unmatched pin
+        if user_ok:
+            return user_tuple
+        if wallet_prov is not None:
+            return _wallet(wallet_prov)
+
+    # Last resort.
+    return _wallet(wallet_prov) if wallet_prov is not None else user_tuple
+
+
 class Route(NamedTuple):
     agent: str
     backend: str
@@ -81,10 +125,12 @@ class Route(NamedTuple):
     wallet: Optional[str]
     is_fallback: bool          # True if not the agent's first choice
     price_multiplier: float = 1.0   # provider's fraction of official price
+    source: str = "wallet"     # 'user' (own login/key, 0 PWM) | 'wallet'
 
 
 def resolve(agent: str) -> Optional[Route]:
-    """Resolve an agent to the first reachable LLM in its fallback chain.
+    """Resolve an agent to the first reachable LLM in its fallback chain, and
+    pick the credential source (user vs wallet) per preference (#11).
 
     Returns None if the agent is unknown or no candidate backend is reachable.
     """
@@ -93,14 +139,12 @@ def resolve(agent: str) -> Optional[Route]:
         return None
     for i, (backend, model) in enumerate(chain):
         if backend_available(backend):
-            prov = _provider_for(backend)
+            source, provider_id, wallet, mult = _select_source(backend)
             return Route(
                 agent=agent, backend=backend, model=model,
                 reasoning=AGENT_REASONING.get(agent, "medium"),
-                provider_id=prov.provider_id if prov else None,
-                wallet=prov.wallet_address if prov else None,
-                is_fallback=(i > 0),
-                price_multiplier=prov.price_multiplier if prov else 1.0,
+                provider_id=provider_id, wallet=wallet,
+                is_fallback=(i > 0), price_multiplier=mult, source=source,
             )
     return None
 
