@@ -116,6 +116,21 @@ def check(
             console.print("Fix: [cyan]npm install -g @openai/codex[/cyan] then "
                           "[cyan]codex login[/cyan].")
             raise typer.Exit(1)
+    elif p.backend == "gemini" and p.auth == "comparegpt":
+        from ai4science.llm import gemini as gem
+        if not gem.is_available():
+            console.print("[yellow]✗ no Gemini key[/yellow] — set "
+                          "AI4SCIENCE_GEMINI_API_KEY or ensure the comparegpt .env "
+                          "has GEMINI_API_KEY.")
+            raise typer.Exit(1)
+        try:
+            text, usage = gem.chat(
+                [{"role": "user", "content": "Reply with exactly: GEMINI-OK"}])
+            console.print(f"[green]✓ reachable[/green] — Gemini via the comparegpt key "
+                          f"({gem.DEFAULT_MODEL}) replied {text.strip()[:32]!r} "
+                          f"[dim](usage {usage})[/dim]")
+        except Exception as e:
+            console.print(f"[yellow]✗ call failed:[/yellow] {type(e).__name__}: {e}")
+            raise typer.Exit(1)
     else:
-        console.print(f"[yellow]check for {p.backend}/{p.auth} not wired yet[/yellow] "
-                      "(verifies anthropic + openai subscriptions; gemini/comparegpt next).")
+        console.print(f"[yellow]check for {p.backend}/{p.auth} not wired yet.[/yellow]")
