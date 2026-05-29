@@ -105,6 +105,17 @@ def check(
             console.print("Fix: [cyan]npm install -g @anthropic-ai/claude-code[/cyan] "
                           "then [cyan]claude login[/cyan].")
             raise typer.Exit(1)
+    elif p.backend == "openai" and p.auth == "subscription":
+        from ai4science.agents import get_agent
+        agent = get_agent("codex")
+        if agent.is_available():
+            console.print("[green]✓ reachable[/green] — the `codex` CLI is present with "
+                          "ChatGPT subscription auth (~/.codex); GPT models are served here.")
+        else:
+            console.print(f"[yellow]✗ not reachable:[/yellow] {agent.unavailable_reason()}")
+            console.print("Fix: [cyan]npm install -g @openai/codex[/cyan] then "
+                          "[cyan]codex login[/cyan].")
+            raise typer.Exit(1)
     else:
         console.print(f"[yellow]check for {p.backend}/{p.auth} not wired yet[/yellow] "
-                      "(Phase 1 verifies anthropic/subscription).")
+                      "(verifies anthropic + openai subscriptions; gemini/comparegpt next).")
