@@ -33,6 +33,19 @@ from ai4science import __version__
 
 console = Console()
 
+# Session modes. The startup system prompt is the strong steer; a live /mode
+# switch (which can't reload the prompt without reconnecting) injects this text
+# onto the next turn as a best-effort re-steer.
+MODE_STEER = {
+    "common": "[Mode → common] Act as a general coding/research assistant from "
+              "here — answer what I ask directly, no PWM framing unless I ask.",
+    "research": "[Mode → research] Drive the PWM research workflow proactively "
+                "from here: define the problem crisply, then create + validate "
+                "the L1 principle, L2 spec, L3 benchmark, design L4 solution(s) "
+                "against the benchmark, and finish by recommending target "
+                "journals/conferences. Use the ai4science CLI for artifacts.",
+}
+
 
 def chat(
     agent: str = typer.Option(
@@ -80,10 +93,20 @@ def chat(
         help="Resume a SPECIFIC past session by id. List ids with the in-REPL "
              "/resume command (or /sessions).",
     ),
+    mode: Optional[str] = typer.Option(
+        None, "--mode",
+        help="Session mode: 'common' (general Claude-Code-style assistant) or "
+             "'research' (drive problem→principle→spec→benchmark→solution→venue). "
+             "Defaults to AI4SCIENCE_MODE, else common. Switch live with /mode.",
+    ),
 ) -> None:
     """Open a persistent chat session with the agent."""
     import os
     model = model or os.environ.get("AI4SCIENCE_MODEL")
+    mode = (mode or os.environ.get("AI4SCIENCE_MODE") or "common").lower()
+    if mode not in ("common", "research"):
+        console.print(f"[yellow]Unknown --mode {mode!r}; using 'common'.[/yellow]")
+        mode = "common"
     if agent.lower() != "claude":
         console.print(
             f"[yellow]Chat mode only supports --agent claude in v0.4.[/yellow]\n"
@@ -107,7 +130,7 @@ def chat(
                                enable_mcp=not no_mcp,
                                continue_session=continue_session,
                                resume=resume,
-                               model=model))
+                               model=model, mode=mode))
     except KeyboardInterrupt:
         console.print("\n[dim](Ctrl-C — exiting)[/dim]")
         raise typer.Exit(0)
@@ -119,7 +142,8 @@ async def _run_chat(*, workspace: Path, read_only: bool, auto_yes: bool,
                      enable_mcp: bool = True,
                      continue_session: bool = False,
                      resume: Optional[str] = None,
-                     model: Optional[str] = None) -> None:
+                     model: Optional[str] = None,
+                     mode: str = "common") -> None:
     """Async event loop for the REPL."""
     from claude_agent_sdk import (   # type: ignore
         ClaudeSDKClient, ClaudeAgentOptions, AssistantMessage, ResultMessage,
@@ -130,11 +154,14 @@ async def _run_chat(*, workspace: Path, read_only: bool, auto_yes: bool,
     from ai4science.memory import augment_system_prompt, find_memory_file
     from ai4science.prompts import load_system_prompt
 
-    # System prompt: plan > read_only > full tool-use.
+    # System prompt: plan > read_only > research > common. plan/read-only are
+    # tool-restriction modes; research vs common picks the content framing.
     if plan_mode:
         sysprompt_name = "ai4science_system_plan"
     elif read_only:
         sysprompt_name = "ai4science_system_readonly"
+    elif mode == "research":
+        sysprompt_name = "ai4science_system_research"
     else:
         sysprompt_name = "ai4science_system"
     system_prompt = load_system_prompt(sysprompt_name)
@@ -176,8 +203,12 @@ async def _run_chat(*, workspace: Path, read_only: bool, auto_yes: bool,
         resume=resume,   # resume a specific past session by id (overrides --continue)
         **mcp_kw,
     )
-    # Track the active model so /model can show + switch it live.
+    # Track the active model + mode so /model and /mode can show + switch live.
+    # The session loads one system prompt at startup; /mode can't swap it
+    # without reconnecting, so a live switch injects a one-time steer (below)
+    # onto the next turn. pending_steer carries that text.
     model_state = {"current": model}
+    mode_state = {"current": mode, "pending_steer": None}
 
     # Initial context: inline existing artifact files so the agent starts
     # with awareness of the workspace state.
@@ -187,7 +218,8 @@ async def _run_chat(*, workspace: Path, read_only: bool, auto_yes: bool,
         _print_welcome(workspace, read_only, auto_yes, context_files,
                         plan_mode=plan_mode, memory_file=memory_file,
                         continue_session=continue_session,
-                        model=model_state["current"])
+                        model=model_state["current"],
+                        session_mode=mode_state["current"])
 
         # Seed the workspace context as a first turn — but ONLY for a fresh
         # session. When --continue resumes a prior conversation, re-seeding
@@ -263,6 +295,44 @@ async def _run_chat(*, workspace: Path, read_only: bool, auto_yes: bool,
                                       f"{type(e).__name__}: {e}")
                     continue
 
+                # /mode — switch between 'common' (Claude-Code style) and
+                # 'research' (PWM problem→…→venue). Picker like /model; the
+                # switch re-steers the live session (full prompt reload needs a
+                # relaunch with --mode).
+                if _scmd.lower() == "mode":
+                    target = _sarg.strip().lower()
+                    if not target:
+                        choices = ["common", "research"]
+                        cur = mode_state["current"]
+                        console.print("[bold]Select a mode:[/bold]")
+                        descs = {"common": "general Claude-Code-style assistant",
+                                 "research": "drive problem→principle→spec→benchmark→solution→venue"}
+                        for i, c in enumerate(choices, 1):
+                            mark = "  [green]← current[/green]" if c == cur else ""
+                            console.print(f"  [cyan]{i}[/cyan]. {c}  [dim]{descs[c]}[/dim]{mark}")
+                        console.print("[dim]Enter a number (blank to cancel):[/dim]")
+                        try:
+                            sel = (await _read_line("mode> ")).strip()
+                        except (EOFError, KeyboardInterrupt):
+                            sel = ""
+                        if not sel:
+                            console.print("[dim](no change)[/dim]")
+                            continue
+                        if sel.isdigit() and 1 <= int(sel) <= len(choices):
+                            target = choices[int(sel) - 1]
+                    if target not in ("common", "research"):
+                        console.print(f"[yellow]Unknown mode {target!r} "
+                                      "(common | research).[/yellow]")
+                        continue
+                    if target == mode_state["current"]:
+                        console.print(f"[dim]Already in {target} mode.[/dim]")
+                        continue
+                    mode_state["current"] = target
+                    mode_state["pending_steer"] = MODE_STEER[target]
+                    console.print(f"[green]✓ mode → {target}[/green] "
+                                  "[dim](applied on your next message)[/dim]")
+                    continue
+
                 # /resume, /sessions — list this workspace's past sessions so the
                 # user can relaunch with --resume <id>. (A live mid-REPL session
                 # swap would tear down the open client; relaunch is the safe path,
@@ -316,6 +386,11 @@ async def _run_chat(*, workspace: Path, read_only: bool, auto_yes: bool,
             if attached:
                 rels = [str(p.relative_to(workspace.resolve())) for p in attached]
                 console.print(f"[dim]📎 attached: {', '.join(rels)}[/dim]")
+
+            # A pending /mode switch re-steers the live session on this turn.
+            if mode_state.get("pending_steer"):
+                outgoing = mode_state["pending_steer"] + "\n\n" + outgoing
+                mode_state["pending_steer"] = None
 
             # Build a multimodal message when images are attached.
             image_message = None
@@ -742,18 +817,20 @@ def _print_welcome(workspace: Path, read_only: bool, auto_yes: bool,
                    context_files: List[Path], plan_mode: bool = False,
                    memory_file: Optional[Path] = None,
                    continue_session: bool = False,
-                   model: Optional[str] = None) -> None:
+                   model: Optional[str] = None,
+                   session_mode: str = "common") -> None:
     if plan_mode:
-        mode = "plan"
+        toolmode = "plan"
     elif read_only:
-        mode = "read-only"
+        toolmode = "read-only"
     else:
-        mode = "tool-use"
+        toolmode = "tool-use"
     yes_note = " + auto-approve" if (auto_yes and not read_only and not plan_mode) else ""
     console.print()
     console.print(f"[bold purple]ai4science chat[/bold purple]  v{__version__}")
     console.print(f"  workspace:  [cyan]{workspace}[/cyan]")
-    console.print(f"  agent:      claude ({mode}{yes_note})")
+    console.print(f"  agent:      claude ({toolmode}{yes_note})")
+    console.print(f"  mode:       {session_mode}  [dim](/mode to change)[/dim]")
     console.print(f"  model:      {model or 'default'}  [dim](/model to change)[/dim]")
     console.print(f"  context:    {len(context_files)} artifact file(s) inlined")
     if memory_file is not None:
@@ -843,6 +920,7 @@ def _print_help() -> None:
         ("/files",             "list workspace artifact files"),
         ("/commands",          "list custom (user-defined) slash commands"),
         ("/plan <request>",    "single-turn plan mode (no edits, agent returns a plan)"),
+        ("/mode",              "switch mode: common (Claude-Code style) or research (PWM workflow)"),
         ("/model",             "pick the model from a menu (or /model <name> to switch directly)"),
         ("/validate",          "run `ai4science validate` (deterministic)"),
         ("/judge",             "run the CASSI Physics Judge"),

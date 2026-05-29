@@ -361,19 +361,24 @@ def test_model_env_default(monkeypatch):
 
 
 def test_session_flags_continue_and_resume(monkeypatch):
-    """--continue/-c and --resume <id> are stripped for the bare-launch path."""
+    """--continue/-c, --resume <id>, --mode <m> are stripped for the bare-launch path."""
     from ai4science.cli import _pop_session_flags
     monkeypatch.delenv("AI4SCIENCE_RESUME", raising=False)
-    cleaned, cont, resume = _pop_session_flags(["--continue"])
-    assert cleaned == [] and cont is True and resume is None
-    cleaned, cont, _ = _pop_session_flags(["-c", "draft"])
+    monkeypatch.delenv("AI4SCIENCE_MODE", raising=False)
+    cleaned, cont, resume, mode = _pop_session_flags(["--continue"])
+    assert cleaned == [] and cont is True and resume is None and mode is None
+    cleaned, cont, _, _ = _pop_session_flags(["-c", "draft"])
     assert cleaned == ["draft"] and cont is True
-    cleaned, cont, resume = _pop_session_flags(["--resume", "sess-42", "x"])
+    cleaned, cont, resume, _ = _pop_session_flags(["--resume", "sess-42", "x"])
     assert cleaned == ["x"] and cont is False and resume == "sess-42"
-    _, _, r2 = _pop_session_flags(["--resume=sess-7"])
+    _, _, r2, _ = _pop_session_flags(["--resume=sess-7"])
     assert r2 == "sess-7"
-    cleaned, cont, resume = _pop_session_flags(["draft", "a", "spec"])
-    assert cleaned == ["draft", "a", "spec"] and cont is False and resume is None
+    cleaned, _, _, mode = _pop_session_flags(["--mode", "research", "go"])
+    assert cleaned == ["go"] and mode == "research"
+    _, _, _, m2 = _pop_session_flags(["--mode=common"])
+    assert m2 == "common"
+    cleaned, cont, resume, mode = _pop_session_flags(["draft", "a", "spec"])
+    assert cleaned == ["draft", "a", "spec"] and cont is False and resume is None and mode is None
 
 
 def test_get_agent_forwards_plan_mode():
