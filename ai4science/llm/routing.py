@@ -33,7 +33,6 @@ AGENT_CHAINS: Dict[str, List[Tuple[str, str]]] = {
     "fast": [
         ("gemini", "gemini-3.5-flash"),
         ("anthropic", "claude-haiku-4-5"),
-        ("openai", "gpt-5.5"),
     ],
 }
 
