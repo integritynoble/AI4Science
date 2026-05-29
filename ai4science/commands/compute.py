@@ -158,6 +158,11 @@ def dispatch(
         False, "--git-sync",
         help="Inbox is a git-shared dir: pull before writing, commit+push the "
              "request so a provider on another machine receives it."),
+    allow_detached_workspace: bool = typer.Option(
+        False, "--allow-detached-workspace",
+        help="Permit --git-sync with a workspace outside the synced repo. "
+             "Same-machine only; cross-machine solves lose the reconstruction "
+             "return path."),
 ) -> None:
     """Write a job request into the provider's inbox."""
     provider = get_provider(provider_id)
@@ -173,6 +178,22 @@ def dispatch(
             console.print(f"[yellow]⚠ --git-sync:[/yellow] {provider.endpoint_path} "
                           "is not in a git repo; writing locally only.")
         else:
+            ws_abs = workspace.resolve()
+            try:
+                ws_abs.relative_to(repo.resolve())
+            except ValueError:
+                detail = (f"workspace {ws_abs} is outside the synced repo {repo}. "
+                          "Cross-machine solves need it inside the repo so the "
+                          "result + reconstruction return over git "
+                          f"(e.g. {Path(provider.endpoint_path).expanduser()}/ws/<job>/).")
+                if allow_detached_workspace:
+                    console.print(f"[yellow]⚠ {detail}[/yellow]")
+                    console.print("[yellow]  Proceeding (same-machine only).[/yellow]")
+                else:
+                    console.print(f"[red]✗ {detail}[/red]")
+                    console.print("Pass [cyan]--allow-detached-workspace[/cyan] "
+                                  "to override (same-machine only).")
+                    raise typer.Exit(2)
             ok, msg = gitsync.pull(repo)
             console.print(f"[dim]git pull: {'ok' if ok else 'FAILED — ' + msg}[/dim]")
 
