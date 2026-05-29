@@ -120,6 +120,34 @@ def route(
     console.print(table)
 
 
+@app.command("run")
+def run(
+    agent: str = typer.Argument(..., help="Agent: orchestration | checking | fast."),
+    prompt: str = typer.Argument(..., help="The prompt to run."),
+    timeout: int = typer.Option(300, "--timeout", help="Seconds."),
+) -> None:
+    """Run a prompt through an agent's routed LLM (with fallback + reasoning)."""
+    from ai4science.llm import execute, routing
+    if agent not in routing.AGENT_CHAINS:
+        console.print(f"[red]Unknown agent:[/red] {agent} "
+                      f"(known: {', '.join(routing.AGENT_CHAINS)})")
+        raise typer.Exit(2)
+    res = execute.run_agent(agent, prompt, timeout=timeout)
+    if res.route is not None:
+        r = res.route
+        tag = " [yellow](fallback)[/yellow]" if r.is_fallback else ""
+        console.print(f"[dim]{agent} → [green]{r.backend}:{r.model}[/green]{tag} "
+                      f"· reasoning={r.reasoning} · wallet={r.wallet or '—'}[/dim]")
+    if res.error:
+        console.print(f"[red]error:[/red] {res.error}")
+        raise typer.Exit(1)
+    console.print(res.text)
+    u = res.usage
+    if any(u.get(k) for k in ("input", "output", "total")):
+        console.print(f"[dim]tokens: ↑{u.get('input') or '?'} ↓{u.get('output') or '?'} "
+                      f"(total {u.get('total') or '?'})[/dim]")
+
+
 @app.command("check")
 def check(
     provider_id: str = typer.Argument(..., help="Provider id to verify."),
