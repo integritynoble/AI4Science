@@ -28,7 +28,7 @@ AGENT_CHAINS: Dict[str, List[Tuple[str, str]]] = {
     "checking": [
         ("openai", "gpt-5.5"),
         ("anthropic", "claude-opus-4-8"),
-        ("gemini", "gemini-3.5-flash"),
+        ("gemini", "gemini-3.1-pro-preview"),   # 'gemini-3.1-pro' (plain) 404s
     ],
     "fast": [
         ("gemini", "gemini-3.5-flash"),
