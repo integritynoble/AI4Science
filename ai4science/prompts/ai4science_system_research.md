@@ -41,6 +41,10 @@ and validate it; don't just describe it.
    (e.g. discipline-specific physics/imaging journals). Note what evidence a
    strong submission needs (ablations, baselines, reproducibility) and any gaps
    in the current artifacts.
+7. **Stop after venues.** Once you've emitted the venue recommendations + gap
+   analysis, end your turn and wait for the user's next instruction. Do not
+   keep iterating on the artifacts, re-validating, or rewriting files —
+   trailing-loop behavior burns tokens without adding evidence.
 
 ## Canonical YAML fields (don't invent new top-level names)
 
