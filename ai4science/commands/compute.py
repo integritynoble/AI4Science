@@ -196,12 +196,21 @@ def verify(
     }
 
     # Default the workspace to the one recorded in the job request, so the judge
-    # runs against the actual solve dir rather than the caller's cwd.
+    # runs against the actual solve dir rather than the caller's cwd. Uses the
+    # same repo-relative resolution as the poller, so a job dispatched from
+    # another machine (foreign absolute path) still resolves against THIS
+    # machine's checkout of the shared repo — no -w needed.
     if workspace is None:
-        stored = (request or {}).get("workspace")
-        workspace = Path(stored) if stored else Path(".")
-        console.print(f"[dim]workspace: {workspace} "
-                      f"({'from job request' if stored else 'cwd fallback'})[/dim]")
+        if request:
+            from ai4science.compute.provider import _resolve_workspace
+            workspace = _resolve_workspace(request, Path(provider.endpoint_path))
+            how = ("from job request" if Path(request.get("workspace", "")).expanduser().is_dir()
+                   else "via repo-relative" if request.get("workspace_repo_relative")
+                   else "from job request")
+        else:
+            workspace = Path(".")
+            how = "cwd fallback"
+        console.print(f"[dim]workspace: {workspace} ({how})[/dim]")
 
     attribution = verify_and_attribute(
         workspace=workspace.resolve(), job=job_meta,

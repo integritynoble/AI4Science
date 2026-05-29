@@ -275,6 +275,23 @@ def serve(provider: Dict[str, Any], *, interval_s: int = 5, once: bool = False,
                     from ai4science.compute import gitsync
                     files = [inbox / f"job_{job_id}.ack.json",
                              inbox / f"job_{job_id}.result.json"]
+                    # If the workspace lives under the synced repo, also publish
+                    # its results/ (the reconstruction) so the dispatcher can
+                    # re-verify independently on its own machine. Skipped when
+                    # the workspace is outside the repo (same-machine dispatch —
+                    # the verifier already has the files locally).
+                    try:
+                        job = json.loads(req.read_text(encoding="utf-8"))
+                        results_dir = _resolve_workspace(job, inbox) / "results"
+                        if results_dir.is_dir():
+                            try:
+                                results_dir.relative_to(repo)
+                                files.extend(p for p in results_dir.rglob("*")
+                                             if p.is_file())
+                            except ValueError:
+                                pass  # workspace not under the synced repo
+                    except Exception:
+                        pass
                     ok, msg = gitsync.commit_push(
                         repo, files,
                         f"compute: result for job {job_id} "
