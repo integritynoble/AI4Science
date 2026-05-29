@@ -20,8 +20,8 @@ from typing import Dict, List, NamedTuple, Optional, Tuple
 # Agent → ordered fallback chain of (backend, model).
 AGENT_CHAINS: Dict[str, List[Tuple[str, str]]] = {
     "orchestration": [
-        ("anthropic", "claude-opus-4-8"),     # verified live on the subscription
-        ("anthropic", "claude-opus-4-7"),
+        ("anthropic", "claude-opus-4-7"),     # directive item 7: Opus 4.7 first
+        ("anthropic", "claude-opus-4-8"),     # newer Opus, kept as immediate fallback
         ("anthropic", "claude-sonnet-4-6"),
         ("openai", "gpt-5.5"),
         ("gemini", "gemini-3.1-pro-preview"),
