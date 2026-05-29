@@ -82,6 +82,42 @@ def providers_add(
     console.print(f"[dim]Registry: {default_registry_path()}[/dim]")
 
 
+@app.command("route")
+def route(
+    agent: str = typer.Argument(None, help="Agent to resolve (orchestration|checking|fast). "
+                                           "Omit to show all."),
+) -> None:
+    """Show which LLM each agent routes to right now (with fallback)."""
+    from ai4science.llm import routing
+
+    agents = [agent] if agent else list(routing.AGENT_CHAINS)
+    table = Table(title="Agent → LLM routing (live)", show_lines=True)
+    table.add_column("agent", style="cyan")
+    table.add_column("→ resolved")
+    table.add_column("wallet", style="magenta")
+    table.add_column("chain (✓ reachable / ✗ down)", style="dim")
+    for ag in agents:
+        chain = routing.AGENT_CHAINS.get(ag)
+        if chain is None:
+            console.print(f"[red]Unknown agent:[/red] {ag} "
+                          f"(known: {', '.join(routing.AGENT_CHAINS)})")
+            raise typer.Exit(2)
+        r = routing.resolve(ag)
+        if r is None:
+            resolved = "[red]none reachable[/red]"
+            wallet = "—"
+        else:
+            tag = " [yellow](fallback)[/yellow]" if r.is_fallback else ""
+            resolved = f"[green]{r.backend}:{r.model}[/green]{tag}"
+            wallet = r.wallet or "—"
+        # availability is cached-ish per backend within this call
+        avail = {b: routing.backend_available(b) for b in {c[0] for c in chain}}
+        chain_str = "  ".join(
+            f"{'✓' if avail.get(b) else '✗'} {b}:{m}" for b, m in chain)
+        table.add_row(ag, resolved, wallet, chain_str)
+    console.print(table)
+
+
 @app.command("check")
 def check(
     provider_id: str = typer.Argument(..., help="Provider id to verify."),
