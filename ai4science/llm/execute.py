@@ -27,6 +27,7 @@ class AgentResult(NamedTuple):
     usage: Dict[str, Optional[int]]      # {"input": .., "output": .., "total": ..}
     route: Optional[routing.Route]
     error: Optional[str]
+    cost: Dict[str, float] = {}          # {"usd_official", "usd_billed", "pwm"}
 
 
 def _run_anthropic(model: str, prompt: str, reasoning: str, timeout: int):
@@ -106,6 +107,8 @@ def run_agent(agent: str, prompt: str, timeout: int = 300) -> AgentResult:
         return AgentResult("", {}, route, f"no executor for backend {route.backend!r}")
     try:
         text, usage = fn(route.model, prompt, route.reasoning, timeout)
-        return AgentResult(text, usage, route, None)
+        from ai4science.llm import pricing
+        cost = pricing.price_call(route.model, usage, route.price_multiplier)
+        return AgentResult(text, usage, route, None, cost)
     except Exception as e:
         return AgentResult("", {}, route, f"{type(e).__name__}: {e}")

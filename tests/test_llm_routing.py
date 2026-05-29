@@ -10,6 +10,7 @@ def _stub_providers(monkeypatch):
         def __init__(self, backend):
             self.provider_id = f"{backend}-prov"
             self.wallet_address = "0x" + "ab" * 20
+            self.price_multiplier = 0.5
     monkeypatch.setattr(routing, "_provider_for", lambda b: _P(b))
 
 

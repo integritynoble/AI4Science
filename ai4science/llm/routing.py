@@ -80,6 +80,7 @@ class Route(NamedTuple):
     provider_id: Optional[str]
     wallet: Optional[str]
     is_fallback: bool          # True if not the agent's first choice
+    price_multiplier: float = 1.0   # provider's fraction of official price
 
 
 def resolve(agent: str) -> Optional[Route]:
@@ -99,6 +100,7 @@ def resolve(agent: str) -> Optional[Route]:
                 provider_id=prov.provider_id if prov else None,
                 wallet=prov.wallet_address if prov else None,
                 is_fallback=(i > 0),
+                price_multiplier=prov.price_multiplier if prov else 1.0,
             )
     return None
 

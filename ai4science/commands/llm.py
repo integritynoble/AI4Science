@@ -142,10 +142,61 @@ def run(
         console.print(f"[red]error:[/red] {res.error}")
         raise typer.Exit(1)
     console.print(res.text)
-    u = res.usage
+    u, c = res.usage, res.cost
     if any(u.get(k) for k in ("input", "output", "total")):
         console.print(f"[dim]tokens: ↑{u.get('input') or '?'} ↓{u.get('output') or '?'} "
                       f"(total {u.get('total') or '?'})[/dim]")
+    if c.get("pwm"):
+        console.print(f"[dim]cost: ${c['usd_billed']:.4f} billed "
+                      f"(${c['usd_official']:.4f} official) = "
+                      f"[magenta]{c['pwm']:.4f} PWM[/magenta][/dim]")
+    # Record to the consumption ledger (off-chain), attributed to the wallet.
+    from ai4science.llm import ledger
+    if res.route is not None:
+        ledger.record(agent=agent, backend=res.route.backend, model=res.route.model,
+                      wallet=res.route.wallet, usage=u, cost=c)
+
+
+@app.command("prices")
+def prices() -> None:
+    """Show per-model prices and the PWM peg (point 9 + 14)."""
+    from ai4science.llm import pricing
+    console.print(f"[bold]1 PWM = ${pricing.PWM_USD:g}[/bold]  "
+                  "[dim](AI4SCIENCE_PWM_USD)[/dim]\n")
+    table = Table(title="Official list prices (USD per 1M tokens)", show_lines=False)
+    table.add_column("model", style="cyan")
+    table.add_column("input $/M", justify="right")
+    table.add_column("output $/M", justify="right")
+    table.add_column("output = PWM/M", justify="right", style="magenta")
+    for model, (pin, pout) in pricing.PRICES_USD_PER_M.items():
+        table.add_row(model, f"{pin:g}", f"{pout:g}",
+                      f"{pricing.usd_to_pwm(pout):.3f}")
+    console.print(table)
+    console.print("[dim]Subscriptions bill at the provider's price× (0.5 = half). "
+                  "Run a call's cost with [cyan]ai4science llm run[/cyan]; "
+                  "totals with [cyan]ai4science llm spend[/cyan].[/dim]")
+
+
+@app.command("spend")
+def spend() -> None:
+    """Show LLM spend per provider wallet (off-chain PWM ledger, point 6)."""
+    from ai4science.llm import ledger
+    s = ledger.summary()
+    if not s["calls"]:
+        console.print(f"[dim]No metered calls yet.[/dim] Ledger: {ledger.default_path()}")
+        return
+    table = Table(title="LLM spend per wallet (off-chain)", show_lines=False)
+    table.add_column("wallet", style="magenta")
+    table.add_column("calls", justify="right")
+    table.add_column("USD billed", justify="right")
+    table.add_column("PWM", justify="right", style="bold")
+    for w, agg in sorted(s["per_wallet"].items(), key=lambda kv: -kv[1]["pwm"]):
+        table.add_row(w, str(agg["calls"]), f"${agg['usd_billed']:.4f}",
+                      f"{agg['pwm']:.4f}")
+    console.print(table)
+    console.print(f"[bold]Total:[/bold] {s['calls']} calls · "
+                  f"${s['total_usd_billed']:.4f} = "
+                  f"[magenta]{s['total_pwm']:.4f} PWM[/magenta]")
 
 
 @app.command("check")
