@@ -23,7 +23,7 @@ from ai4science.compute.registry import is_valid_eth_address
 
 # Known LLM backends and auth methods (extensible).
 BACKENDS = ("anthropic", "openai", "gemini", "deepseek", "qwen")
-AUTH_METHODS = ("subscription", "api_key", "comparegpt")
+AUTH_METHODS = ("subscription", "api_key", "comparegpt", "vertex")
 
 
 class LLMProvider(BaseModel):
