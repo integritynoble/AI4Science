@@ -44,15 +44,21 @@ def providers_list() -> None:
         console.print("Add one with: [cyan]ai4science compute providers-add "
                       "--id <id> --wallet 0x… --endpoint <dir>[/cyan]")
         return
+    from ai4science import staking
     table = Table(title="Compute providers", show_lines=True)
     table.add_column("provider_id", style="cyan")
+    table.add_column("kind")
+    table.add_column("$/hr", justify="right")
     table.add_column("wallet", style="magenta")
     table.add_column("tier")
-    table.add_column("status")
-    table.add_column("endpoint", style="dim")
+    table.add_column("eligible")
     for p in provs:
-        table.add_row(p.provider_id, p.wallet_address, p.trust_tier,
-                      p.status, f"{p.endpoint_kind}:{p.endpoint_path}")
+        elig = "[green]yes[/green]" if staking.is_eligible(p.provider_id) else "[yellow]no[/yellow]"
+        disabled = "" if p.status == "active" else " [red](disabled)[/red]"
+        w = p.wallet_address
+        short = f"{w[:12]}…{w[-4:]}" if len(w) > 18 else w   # 0xf1Fa5803daA…7DEE
+        table.add_row(p.provider_id, p.kind, f"{p.price_usd_per_hour:g}",
+                      short, p.trust_tier + disabled, elig)
     console.print(table)
 
 
@@ -63,25 +69,81 @@ def providers_add(
     endpoint: str = typer.Option(..., "--endpoint", help="Shared dir the provider polls for jobs."),
     label: str = typer.Option("", "--label", help="Human label."),
     tier: str = typer.Option("founder", "--tier", help="founder | approved | open."),
+    kind: str = typer.Option("gpu", "--kind", help="gpu | cpu."),
+    price_usd_per_hour: float = typer.Option(
+        0.0, "--price-usd-per-hour", help="Provider-set compute price (USD/hour)."),
 ) -> None:
     """Register (or replace) a compute provider bound to a wallet."""
     if not is_valid_eth_address(wallet):
         console.print(f"[red]Invalid wallet address:[/red] {wallet!r} "
                       "(expected 0x + 40 hex chars)")
         raise typer.Exit(2)
-    provider = ComputeProvider(
-        provider_id=provider_id,
-        wallet_address=wallet,
-        endpoint_kind="file-inbox",
-        endpoint_path=str(Path(endpoint).expanduser()),
-        label=label,
-        trust_tier=tier,
-        status="active",
-    )
+    try:
+        provider = ComputeProvider(
+            provider_id=provider_id,
+            wallet_address=wallet,
+            endpoint_kind="file-inbox",
+            endpoint_path=str(Path(endpoint).expanduser()),
+            label=label,
+            kind=kind.lower(),
+            price_usd_per_hour=price_usd_per_hour,
+            trust_tier=tier,
+            status="active",
+        )
+    except ValueError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(2)
     add_provider(provider)
-    console.print(f"[green]✓[/green] Bound provider [cyan]{provider_id}[/cyan] "
-                  f"→ wallet [magenta]{wallet}[/magenta] (tier={tier})")
+    console.print(f"[green]✓[/green] Bound [bold]{kind.lower()}[/bold] provider "
+                  f"[cyan]{provider_id}[/cyan] → wallet [magenta]{wallet}[/magenta] "
+                  f"(tier={tier}, ${price_usd_per_hour:g}/hr)")
     console.print(f"[dim]Registry: {default_registry_path()}[/dim]")
+
+
+@app.command("select")
+def select(
+    kind: Optional[str] = typer.Option(None, "--kind", help="gpu | cpu (omit for any)."),
+) -> None:
+    """Pick the best eligible compute provider of a kind (cheapest USD/hr)."""
+    from ai4science.compute.pricing import select as pick, eligible_providers
+    p = pick(kind)
+    if p is None:
+        console.print(f"[yellow]No eligible {kind or 'compute'} provider available.[/yellow]")
+        console.print("[dim](needs active + stake-eligible; stake with "
+                      "[/dim][cyan]ai4science stake add[/cyan][dim]).[/dim]")
+        raise typer.Exit(1)
+    console.print(f"[green]✓ Selected[/green] [cyan]{p.provider_id}[/cyan] "
+                  f"({p.kind}, ${p.price_usd_per_hour:g}/hr) → wallet "
+                  f"[magenta]{p.wallet_address}[/magenta]")
+    others = [x for x in eligible_providers(kind) if x.provider_id != p.provider_id]
+    if others:
+        console.print("[dim]also eligible: "
+                      + ", ".join(f"{x.provider_id} (${x.price_usd_per_hour:g}/hr)"
+                                  for x in others) + "[/dim]")
+
+
+@app.command("spend")
+def spend(
+    workspace: Optional[Path] = typer.Option(
+        None, "--workspace", "-w", help="Omit for the global ledger."),
+) -> None:
+    """Show priced compute earnings (PWM) per provider wallet."""
+    from ai4science.compute.attribution import pwm_summary
+    totals = pwm_summary(workspace.resolve() if workspace else None)
+    totals = {w: v for w, v in totals.items() if v}
+    if not totals:
+        console.print("[dim]No priced compute jobs yet[/dim] "
+                      "(providers earn PWM only on a verified pass, priced at "
+                      "their $/hr rate).")
+        return
+    table = Table(title="Compute earnings per wallet (priced, off-chain)")
+    table.add_column("wallet", style="magenta")
+    table.add_column("PWM", justify="right", style="bold")
+    for w, v in sorted(totals.items(), key=lambda kv: -kv[1]):
+        table.add_row(w, f"{v:.4f}")
+    console.print(table)
+    console.print(f"[bold]Total:[/bold] {sum(totals.values()):.4f} PWM "
+                  "[dim](unit credits via [/dim][cyan]ai4science compute credits[/cyan][dim])[/dim]")
 
 
 @app.command("dispatch")

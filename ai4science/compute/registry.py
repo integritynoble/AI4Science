@@ -33,11 +33,21 @@ class ComputeProvider(BaseModel):
     endpoint_kind: str = Field(default="file-inbox")
     endpoint_path: str = Field(description="Shared dir the provider polls for jobs")
     label: str = Field(default="", max_length=200)
+    kind: str = Field(default="gpu")               # gpu | cpu
+    price_usd_per_hour: float = Field(default=0.0, ge=0.0,
+                                      description="Provider-set compute price (USD/hour)")
     gpu_capability: Dict[str, Any] = Field(default_factory=dict)
     status: str = Field(default="active")          # active | disabled
     trust_tier: str = Field(default="founder")     # founder | approved | open
     binding_proof: Optional[str] = Field(default=None,
                                          description="SIWE signature (community tiers; reserved)")
+
+    @field_validator("kind")
+    @classmethod
+    def _check_kind(cls, v: str) -> str:
+        if v not in ("gpu", "cpu"):
+            raise ValueError(f"kind must be 'gpu' or 'cpu', got {v!r}")
+        return v
 
     @field_validator("wallet_address")
     @classmethod

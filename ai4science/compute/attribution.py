@@ -94,6 +94,15 @@ def verify_and_attribute(*, workspace: Path, job: Dict[str, Any],
     decision = report.get("final_decision", "unknown")
     credit = 1 if decision == "pass" else 0
 
+    # Priced PWM: only a verified pass earns. Cost = wall-clock hours ×
+    # the provider's USD/hour rate → PWM (points 12/13).
+    from ai4science.compute.pricing import job_cost
+    from ai4science.compute.registry import get_provider
+    wall_s = (result_manifest or {}).get("provider", {}).get("wall_clock_s")
+    prov = get_provider(job.get("provider_id") or "")
+    rate = prov.price_usd_per_hour if prov else 0.0
+    cost = job_cost(wall_s, rate) if credit else {"hours": 0.0, "usd": 0.0, "pwm": 0.0}
+
     attribution = {
         "job_id": job.get("job_id"),
         "provider_id": job.get("provider_id"),
@@ -104,10 +113,13 @@ def verify_and_attribute(*, workspace: Path, job: Dict[str, Any],
         "judge_decision": decision,
         "silent_failure": report.get("silent_failure"),
         "credit": credit,
+        "wall_clock_s": wall_s,
+        "price_usd_per_hour": rate,
+        "usd": cost["usd"],
+        "pwm": cost["pwm"],
         "verified_at": _utcnow(),
-        "note": ("verified-job credit (unit-less; PWM conversion deferred to "
-                 "governance). On-chain settlement is platform-owned; the CLI "
-                 "moves no tokens."),
+        "note": ("verified-job credit + priced PWM (hours × provider rate ÷ $5). "
+                 "On-chain settlement is platform-owned; the CLI moves no tokens."),
     }
 
     # Canonical aggregate ledger — source of truth for `credits`.
@@ -138,4 +150,13 @@ def credit_summary(source: "Path | str | None" = None) -> Dict[str, int]:
     for a in read_attributions(source):
         w = a.get("wallet_address") or "unknown"
         totals[w] = totals.get(w, 0) + int(a.get("credit", 0))
+    return totals
+
+
+def pwm_summary(source: "Path | str | None" = None) -> Dict[str, float]:
+    """Total priced PWM earned per wallet from verified compute jobs."""
+    totals: Dict[str, float] = {}
+    for a in read_attributions(source):
+        w = a.get("wallet_address") or "unknown"
+        totals[w] = round(totals.get(w, 0.0) + (a.get("pwm") or 0.0), 6)
     return totals
