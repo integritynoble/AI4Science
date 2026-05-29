@@ -20,7 +20,10 @@ from typing import Dict, List, Optional, Tuple
 
 DEFAULT_BASE = "https://generativelanguage.googleapis.com/v1beta/openai/"
 DEFAULT_COMPAREGPT_ENV = "/home/spiritai/comparegpt-product/qa/.env"
-DEFAULT_MODEL = "gemini-2.5-flash"
+# Newest pinned fast flash (deterministic). 'gemini-3.1-flash' (plain) 404s;
+# alternatives that work: 'gemini-flash-latest' (rolling newest),
+# 'gemini-3.1-flash-lite' (fastest/cheapest). Override with AI4SCIENCE_GEMINI_MODEL.
+DEFAULT_MODEL = os.environ.get("AI4SCIENCE_GEMINI_MODEL", "gemini-3.5-flash")
 
 
 def _read_env_val(path: str, name: str) -> Optional[str]:
