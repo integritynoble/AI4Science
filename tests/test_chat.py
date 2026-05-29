@@ -11,14 +11,22 @@ or (b) we add a `NoneAgentChat` for offline use.
 """
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
 
 from ai4science.cli import app
+from ai4science.commands import chat as _chat
 
 runner = CliRunner()
+
+
+def _handle_slash(*args, **kwargs):
+    """_handle_slash is a coroutine (it awaits SDK calls); run it synchronously
+    so the existing sync tests keep working."""
+    return asyncio.run(_chat._handle_slash(*args, **kwargs))
 
 
 # ─── Workspace artifact discovery ────────────────────────────────────
@@ -75,20 +83,22 @@ def test_format_files_truncates_long_files(tmp_path):
 
 
 def _make_dummy_client():
-    """Cheap stand-in for ClaudeSDKClient: records permission-mode changes."""
+    """Cheap stand-in for ClaudeSDKClient: records permission-mode changes.
+
+    The real SDK's set_permission_mode/get_context_usage are coroutines, so
+    these are async too — that's what _handle_slash awaits."""
     class _C:
         def __init__(self):
             self.mode = "default"
-        def get_context_usage(self):
+        async def get_context_usage(self):
             return "(dummy)"
-        def set_permission_mode(self, mode):
+        async def set_permission_mode(self, mode):
             self.mode = mode
     return _C()
 
 
 def test_slash_yes_toggles_accept_edits_live(tmp_path):
     """/yes flips the live session to accept-edits (no restart needed)."""
-    from ai4science.commands.chat import _handle_slash
     client = _make_dummy_client()
     handled, _, _ = _handle_slash("/yes", tmp_path, auto_yes=False,
                                   read_only=False, client=client)
@@ -98,7 +108,6 @@ def test_slash_yes_toggles_accept_edits_live(tmp_path):
 
 def test_slash_readonly_and_default_toggle_live(tmp_path):
     """/readonly → plan (no edits); /default → default (edits confirmed)."""
-    from ai4science.commands.chat import _handle_slash
     client = _make_dummy_client()
     _handle_slash("/readonly", tmp_path, auto_yes=False, read_only=False, client=client)
     assert client.mode == "plan"
@@ -107,7 +116,6 @@ def test_slash_readonly_and_default_toggle_live(tmp_path):
 
 
 def test_slash_help_handled(tmp_path):
-    from ai4science.commands.chat import _handle_slash
     handled, should_exit, _plan = _handle_slash("/help", tmp_path,
                                           auto_yes=False, read_only=False,
                                           client=_make_dummy_client())
@@ -116,7 +124,6 @@ def test_slash_help_handled(tmp_path):
 
 
 def test_slash_exit_signals_termination(tmp_path):
-    from ai4science.commands.chat import _handle_slash
     for variant in ("/exit", "/quit", "/q"):
         _, should_exit, _ = _handle_slash(variant, tmp_path,
                                           auto_yes=False, read_only=False,
@@ -129,7 +136,6 @@ def test_slash_exit_signals_termination(tmp_path):
 
 def test_slash_plan_with_no_args_prints_help(tmp_path):
     """/plan alone explains how to use it; doesn't forward anything."""
-    from ai4science.commands.chat import _handle_slash
     handled, exit_, plan_prompt = _handle_slash(
         "/plan", tmp_path, auto_yes=False, read_only=False,
         client=_make_dummy_client(),
@@ -142,7 +148,6 @@ def test_slash_plan_with_no_args_prints_help(tmp_path):
 def test_slash_plan_with_prompt_returns_prompt_to_forward(tmp_path):
     """`/plan refactor the solver` returns the bare prompt for the caller
     to forward under plan-mode framing."""
-    from ai4science.commands.chat import _handle_slash
     handled, exit_, plan_prompt = _handle_slash(
         "/plan refactor the solver to use ADMM", tmp_path,
         auto_yes=False, read_only=False, client=_make_dummy_client(),
@@ -155,7 +160,6 @@ def test_slash_plan_with_prompt_returns_prompt_to_forward(tmp_path):
 def test_slash_plan_in_already_restricted_mode_still_forwards(tmp_path):
     """When the session is already plan/read-only, /plan <p> should still
     forward the prompt (so the user isn't blocked) — just with a hint."""
-    from ai4science.commands.chat import _handle_slash
     _, _, plan_prompt = _handle_slash(
         "/plan show me the plan for adding a CT spec", tmp_path,
         auto_yes=False, read_only=True, plan_mode_active=False,
@@ -165,7 +169,6 @@ def test_slash_plan_in_already_restricted_mode_still_forwards(tmp_path):
 
 
 def test_slash_files_lists_workspace_artifacts(tmp_path):
-    from ai4science.commands.chat import _handle_slash
     (tmp_path / "principle.md").write_text("hi")
     handled, should_exit, _plan = _handle_slash("/files", tmp_path,
                                           auto_yes=False, read_only=False,
@@ -175,7 +178,6 @@ def test_slash_files_lists_workspace_artifacts(tmp_path):
 
 
 def test_slash_unknown_is_handled_but_does_not_exit(tmp_path):
-    from ai4science.commands.chat import _handle_slash
     handled, should_exit, _plan = _handle_slash("/bogus", tmp_path,
                                           auto_yes=False, read_only=False,
                                           client=_make_dummy_client())
@@ -185,7 +187,6 @@ def test_slash_unknown_is_handled_but_does_not_exit(tmp_path):
 
 def test_slash_cost_is_handled_gracefully_when_unavailable(tmp_path):
     """get_context_usage might not exist — should not crash."""
-    from ai4science.commands.chat import _handle_slash
     class _Bad:
         def get_context_usage(self):
             raise RuntimeError("not yet wired")
@@ -198,7 +199,6 @@ def test_slash_validate_runs_in_repl(tmp_path):
     """Calling /validate from the REPL must NOT exit; it runs the command
     and returns (handled=True, exit=False) even if validate itself raises
     typer.Exit non-zero."""
-    from ai4science.commands.chat import _handle_slash
     # Empty workspace → validate exits 2; the REPL must swallow that.
     handled, should_exit, _plan = _handle_slash("/validate", tmp_path,
                                           auto_yes=False, read_only=False,
