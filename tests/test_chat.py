@@ -270,3 +270,60 @@ def test_chat_rejects_when_claude_unavailable(tmp_path, monkeypatch):
     result = runner.invoke(app, ["chat"])
     assert result.exit_code == 2
     assert "not available" in result.output.lower()
+
+
+# ─── bucket (b): /resume + /compact ──────────────────────────────────
+
+
+def test_list_sessions_prints_past_sessions(tmp_path, monkeypatch, capsys):
+    """/resume (→ _list_sessions) lists the workspace's sessions with ids."""
+    import ai4science.commands.chat as chat_mod
+
+    class _S:
+        def __init__(self, sid, summary):
+            self.session_id = sid
+            self.summary = summary
+            self.last_modified = "2026-05-28"
+
+    import claude_agent_sdk
+    monkeypatch.setattr(claude_agent_sdk, "list_sessions",
+                        lambda directory=None, limit=None: [
+                            _S("abc123", "drafted a CASSI spec"),
+                            _S("def456", "ran the judge"),
+                        ], raising=False)
+    chat_mod._list_sessions(tmp_path)
+    out = capsys.readouterr().out
+    assert "abc123" in out and "def456" in out
+    assert "--resume" in out
+
+
+def test_list_sessions_handles_empty(tmp_path, monkeypatch, capsys):
+    import ai4science.commands.chat as chat_mod
+    import claude_agent_sdk
+    monkeypatch.setattr(claude_agent_sdk, "list_sessions",
+                        lambda directory=None, limit=None: [], raising=False)
+    chat_mod._list_sessions(tmp_path)
+    assert "No past sessions" in capsys.readouterr().out
+
+
+def test_do_compact_reports_usage(capsys):
+    """/compact (→ _do_compact) reports context usage + the auto-compaction note."""
+    import asyncio
+    import ai4science.commands.chat as chat_mod
+
+    class _Client:
+        async def get_context_usage(self):
+            return "12345 / 200000 tokens"
+
+    asyncio.run(chat_mod._do_compact(_Client()))
+    out = capsys.readouterr().out
+    assert "12345" in out
+    assert "auto-compact" in out.lower()
+
+
+def test_chat_accepts_resume_option():
+    """`chat --resume <id>` is a recognized option (no crash parsing it)."""
+    from ai4science.cli import app
+    r = runner.invoke(app, ["chat", "--help"])
+    assert r.exit_code == 0
+    assert "--resume" in r.output
