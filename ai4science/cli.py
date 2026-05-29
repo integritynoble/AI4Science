@@ -471,11 +471,16 @@ def _bare_launch(read_only: bool, auto_yes: bool, plan_mode: bool,
     if probe.is_available():
         import typer
         try:
+            # NOTE: chat() is a Typer command; calling it directly means every
+            # parameter we omit defaults to a Typer OptionInfo object (not the
+            # option's default value). So we must pass EVERY parameter explicitly
+            # — a missing one (e.g. resume) reaches the SDK as an OptionInfo and
+            # crashes the connect with "expected str … not OptionInfo".
             chat_cmd.chat(
                 agent="claude", workspace=Path("."),
                 read_only=read_only, yes=auto_yes, plan=plan_mode,
                 no_subagents=False, no_mcp=False, continue_session=False,
-                model=model,
+                model=model, resume=None,
             )
         except typer.Exit as e:
             sys.exit(e.exit_code or 0)
