@@ -22,7 +22,9 @@ def _isolate(tmp_path, monkeypatch):
 
 
 def test_vertex_backends_unavailable_without_creds(monkeypatch):
-    # gcloud not consulted (no project) → unavailable
+    # Simulate no GCP creds (no env token, no gcloud project) → unavailable.
+    monkeypatch.setattr(oc, "_vertex_project", lambda: None)
+    monkeypatch.setattr(oc, "_vertex_token", lambda: None)
     assert oc.is_available("deepseek") is False
     assert oc.is_available("qwen") is False
     assert oc.resolve_base("deepseek") == ""        # no project

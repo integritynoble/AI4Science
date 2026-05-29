@@ -54,6 +54,18 @@ def _vertex_project() -> Optional[str]:
         v = os.environ.get(env)
         if v:
             return v
+    # Fall back to the active gcloud project.
+    import shutil
+    import subprocess
+    if shutil.which("gcloud"):
+        try:
+            r = subprocess.run(["gcloud", "config", "get-value", "project"],
+                               capture_output=True, text=True, timeout=15, check=False)
+            p = r.stdout.strip()
+            if p and p != "(unset)":
+                return p
+        except Exception:
+            pass
     return None
 
 
