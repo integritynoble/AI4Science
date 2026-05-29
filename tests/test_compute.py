@@ -293,6 +293,88 @@ def test_resolve_workspace_prefers_local_abs_when_present(tmp_path):
     assert _resolve_workspace(job, tmp_path).resolve() == ws.resolve()
 
 
+def test_verify_resolves_foreign_workspace_via_repo_relative(tmp_path, monkeypatch):
+    """`compute verify` (no -w) resolves a FOREIGN absolute workspace via the
+    repo-relative path against this machine's checkout — independent
+    verification works cross-machine without -w."""
+    monkeypatch.setenv("AI4SCIENCE_COMPUTE_LEDGER", str(tmp_path / "ledger.jsonl"))
+    monkeypatch.setenv("AI4SCIENCE_COMPUTE_REGISTRY", str(tmp_path / "reg.json"))
+    repo = tmp_path / "repo"
+    _git_init(repo)
+    endpoint = repo / "pwm-team" / "compute_jobs"
+    endpoint.mkdir(parents=True)
+    # init the solve workspace UNDER the repo, with a passing reconstruction
+    monkeypatch.chdir(endpoint)
+    runner.invoke(app, ["init", "ws1"])
+    ws = endpoint / "ws1"
+    _make_cassi_arrays(ws, good=True)
+
+    runner.invoke(app, ["compute", "providers-add", "--id", "founder-1-subgpu",
+                        "--wallet", DIRECTOR_WALLET, "--endpoint", str(endpoint),
+                        "--tier", "founder"])
+    # a job whose stored absolute workspace is a FOREIGN path, but repo-relative
+    # points at ws1 under this repo
+    from ai4science.compute.dispatch import ComputeJob
+    rel = ws.relative_to(repo).as_posix()
+    job = ComputeJob(job_id="jx", provider_id="founder-1-subgpu",
+                     wallet_address=DIRECTOR_WALLET,
+                     workspace="/home/othermachine/pwm/ws1",
+                     workspace_repo_relative=rel, run_command="true")
+    (endpoint / "job_jx.request.json").write_text(
+        json.dumps(job.model_dump(), indent=2), encoding="utf-8")
+    (endpoint / "job_jx.result.json").write_text(
+        '{"certificate_hash": "0xfeed"}', encoding="utf-8")
+
+    monkeypatch.chdir(tmp_path)   # foreign cwd, no spec.md
+    r = runner.invoke(app, ["compute", "verify", "jx", "--provider", "founder-1-subgpu"])
+    assert r.exit_code == 0, r.output
+    assert "pass" in r.output.lower()
+    assert "via repo-relative" in r.output
+
+
+def test_poller_commits_workspace_results_when_under_repo(tmp_path, monkeypatch):
+    """serve --git-sync also commits ws/<job>/results/ so the dispatcher can
+    re-verify the reconstruction. Captures the commit file list via a mock."""
+    import numpy as np
+    from ai4science.compute import provider as prov_mod
+    repo = tmp_path / "repo"
+    _git_init(repo)
+    inbox = repo / "pwm-team" / "compute_jobs"
+    ws = inbox / "ws" / "job1"
+    (ws / "results").mkdir(parents=True)
+    np.save(ws / "results" / "reconstruction_xhat.npy", np.ones((4, 4, 2), dtype=np.float32))
+    (ws / "results" / "results.json").write_text("{}", encoding="utf-8")
+    # a request whose workspace resolves (abs == ws, under repo)
+    (inbox / "job_job1.request.json").write_text(json.dumps({
+        "job_id": "job1", "provider_id": "founder-1-subgpu",
+        "workspace": str(ws), "workspace_repo_relative": "pwm-team/compute_jobs/ws/job1",
+        "run_command": "true",
+    }), encoding="utf-8")
+
+    captured = {}
+
+    def _fake_commit_push(repo_arg, files, message):
+        captured["files"] = [Path(f) for f in files]
+        return True, "mocked"
+
+    from ai4science.compute import gitsync as gitsync_mod
+    monkeypatch.setattr(gitsync_mod, "find_repo_root", lambda p: repo)
+    monkeypatch.setattr(gitsync_mod, "pull", lambda r: (True, ""))
+    monkeypatch.setattr(gitsync_mod, "commit_push", _fake_commit_push)
+    # don't actually run a solver
+    monkeypatch.setattr(prov_mod, "run_solver",
+                        lambda ws_, cmd, t: {"ok": True, "returncode": 0,
+                                             "stdout_tail": "", "stderr_tail": ""})
+
+    provider = {"provider_id": "founder-1-subgpu", "endpoint_path": str(inbox),
+                "wallet_address": DIRECTOR_WALLET}
+    prov_mod.serve(provider, once=True, allow_exec=True, git_sync=True)
+
+    committed = {p.name for p in captured.get("files", [])}
+    assert "job_job1.result.json" in committed
+    assert "reconstruction_xhat.npy" in committed   # workspace results synced
+
+
 # ─── CLI surface ─────────────────────────────────────────────────────
 
 
