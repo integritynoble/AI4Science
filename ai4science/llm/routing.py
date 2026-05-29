@@ -28,7 +28,7 @@ AGENT_CHAINS: Dict[str, List[Tuple[str, str]]] = {
     ],
     "checking": [
         ("openai", "gpt-5.5"),
-        ("anthropic", "claude-opus-4-8"),
+        ("anthropic", "claude-opus-4-7"),       # directive item 7: Opus 4.7
         ("gemini", "gemini-3.1-pro-preview"),   # 'gemini-3.1-pro' (plain) 404s
         ("deepseek", "deepseek-ai/deepseek-r1-0528-maas"),   # reasoning, via Vertex
     ],
