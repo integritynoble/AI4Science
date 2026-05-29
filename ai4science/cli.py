@@ -357,21 +357,23 @@ def _route_prompt(prompt: str, agent_name: str,
         return 1
 
 
-def _pop_agent_flag(argv: List[str]) -> tuple[List[str], str, bool, bool, bool]:
+def _pop_agent_flag(argv: List[str]) -> tuple[List[str], str, bool, bool, bool, Optional[str]]:
     """Strip agent-related flags from argv.
 
-    Returns (cleaned_argv, agent_name, read_only, auto_yes, plan_mode).
+    Returns (cleaned_argv, agent_name, read_only, auto_yes, plan_mode, model).
 
     Env defaults:
       AI4SCIENCE_AGENT      — agent name (default 'auto')
       AI4SCIENCE_READ_ONLY  — '1' to default to read-only mode
       AI4SCIENCE_AUTO_YES   — '1' to default to auto-approve edits
       AI4SCIENCE_PLAN       — '1' to default to plan mode
+      AI4SCIENCE_MODEL      — default model for the session (e.g. opus/sonnet)
     """
     agent = os.environ.get("AI4SCIENCE_AGENT", "auto").lower()
     read_only = os.environ.get("AI4SCIENCE_READ_ONLY") == "1"
     auto_yes = os.environ.get("AI4SCIENCE_AUTO_YES") == "1"
     plan_mode = os.environ.get("AI4SCIENCE_PLAN") == "1"
+    model = os.environ.get("AI4SCIENCE_MODEL") or None
 
     cleaned: List[str] = []
     i = 0
@@ -383,6 +385,14 @@ def _pop_agent_flag(argv: List[str]) -> tuple[List[str], str, bool, bool, bool]:
             continue
         if a.startswith("--agent="):
             agent = a.split("=", 1)[1].lower()
+            i += 1
+            continue
+        if a in ("--model", "-m") and i + 1 < len(argv):
+            model = argv[i + 1]
+            i += 2
+            continue
+        if a.startswith("--model="):
+            model = a.split("=", 1)[1]
             i += 1
             continue
         if a in ("--read-only", "--readonly"):
@@ -402,7 +412,7 @@ def _pop_agent_flag(argv: List[str]) -> tuple[List[str], str, bool, bool, bool]:
     if agent not in ("none", "claude", "codex", "auto"):
         console.print(f"[yellow]Unknown --agent value {agent!r}; falling back to 'auto'.[/yellow]")
         agent = "auto"
-    return cleaned, agent, read_only, auto_yes, plan_mode
+    return cleaned, agent, read_only, auto_yes, plan_mode, model
 
 
 def _resolve_agent(name: str) -> str:
@@ -449,7 +459,8 @@ def _suggest_subcommand(argv: List[str]) -> Optional[str]:
     return " ".join(["ai4science", parent, *argv])
 
 
-def _bare_launch(read_only: bool, auto_yes: bool, plan_mode: bool) -> None:
+def _bare_launch(read_only: bool, auto_yes: bool, plan_mode: bool,
+                 model: Optional[str] = None) -> None:
     """Bare `ai4science` (no subcommand/prompt) → interactive chat, like `claude`.
 
     If the chat agent isn't installed/authed yet, show a short getting-started
@@ -464,6 +475,7 @@ def _bare_launch(read_only: bool, auto_yes: bool, plan_mode: bool) -> None:
                 agent="claude", workspace=Path("."),
                 read_only=read_only, yes=auto_yes, plan=plan_mode,
                 no_subagents=False, no_mcp=False, continue_session=False,
+                model=model,
             )
         except typer.Exit as e:
             sys.exit(e.exit_code or 0)
@@ -490,12 +502,12 @@ def _bare_launch(read_only: bool, auto_yes: bool, plan_mode: bool) -> None:
 def main() -> None:
     """Entry point: `ai4science` (bare → chat), `ai4science <subcommand>`, or
     `ai4science "prompt"`."""
-    argv, agent_name, read_only, auto_yes, plan_mode = _pop_agent_flag(sys.argv[1:])
+    argv, agent_name, read_only, auto_yes, plan_mode, model = _pop_agent_flag(sys.argv[1:])
 
     # Bare invocation (only flags, no subcommand or prompt) → interactive chat,
     # exactly like typing `claude`. `--help`/`-h` still fall through to Typer.
     if not argv:
-        _bare_launch(read_only, auto_yes, plan_mode)
+        _bare_launch(read_only, auto_yes, plan_mode, model)
         return
 
     if not argv[0].startswith("-"):

@@ -65,12 +65,20 @@ def chat(
         help="Disable the in-process PWM MCP tools (pwm_validate, "
              "pwm_judge_cassi, pwm_status, pwm_lookup_artifact).",
     ),
+    model: Optional[str] = typer.Option(
+        None, "--model", "-m",
+        help="Model for the session (e.g. opus, sonnet, haiku, or a full id). "
+             "Defaults to AI4SCIENCE_MODEL, else your claude CLI default. "
+             "Switch live in-session with /model <name>.",
+    ),
     continue_session: bool = typer.Option(
         False, "--continue", "-c",
         help="Resume the most recent conversation in this workspace.",
     ),
 ) -> None:
     """Open a persistent chat session with the agent."""
+    import os
+    model = model or os.environ.get("AI4SCIENCE_MODEL")
     if agent.lower() != "claude":
         console.print(
             f"[yellow]Chat mode only supports --agent claude in v0.4.[/yellow]\n"
@@ -92,7 +100,8 @@ def chat(
                                auto_yes=yes, plan_mode=plan,
                                enable_subagents=not no_subagents,
                                enable_mcp=not no_mcp,
-                               continue_session=continue_session))
+                               continue_session=continue_session,
+                               model=model))
     except KeyboardInterrupt:
         console.print("\n[dim](Ctrl-C — exiting)[/dim]")
         raise typer.Exit(0)
@@ -102,7 +111,8 @@ async def _run_chat(*, workspace: Path, read_only: bool, auto_yes: bool,
                      plan_mode: bool = False,
                      enable_subagents: bool = True,
                      enable_mcp: bool = True,
-                     continue_session: bool = False) -> None:
+                     continue_session: bool = False,
+                     model: Optional[str] = None) -> None:
     """Async event loop for the REPL."""
     from claude_agent_sdk import (   # type: ignore
         ClaudeSDKClient, ClaudeAgentOptions, AssistantMessage, ResultMessage,
@@ -151,12 +161,15 @@ async def _run_chat(*, workspace: Path, read_only: bool, auto_yes: bool,
         permission_mode=permission_mode_initial,
         can_use_tool=can_use_tool,
         cwd=str(workspace),
+        model=model,   # None → the claude CLI default
         max_turns=50,   # interactive sessions need plenty of room
         agents=subagents,
         include_partial_messages=True,   # token-level streaming
         continue_conversation=continue_session,
         **mcp_kw,
     )
+    # Track the active model so /model can show + switch it live.
+    model_state = {"current": model}
 
     # Initial context: inline existing artifact files so the agent starts
     # with awareness of the workspace state.
@@ -165,7 +178,8 @@ async def _run_chat(*, workspace: Path, read_only: bool, auto_yes: bool,
     async with ClaudeSDKClient(options=options) as client:
         _print_welcome(workspace, read_only, auto_yes, context_files,
                         plan_mode=plan_mode, memory_file=memory_file,
-                        continue_session=continue_session)
+                        continue_session=continue_session,
+                        model=model_state["current"])
 
         # Seed the workspace context as a first turn — but ONLY for a fresh
         # session. When --continue resumes a prior conversation, re-seeding
@@ -186,7 +200,7 @@ async def _run_chat(*, workspace: Path, read_only: bool, auto_yes: bool,
         cancel_flag = {"interrupt": False}
         while True:
             try:
-                line = await _read_line("ai4science> ")
+                line = await _read_line("> ")
             except EOFError:
                 console.print("\n[dim](Ctrl-D — exiting)[/dim]")
                 break
@@ -204,6 +218,25 @@ async def _run_chat(*, workspace: Path, read_only: bool, auto_yes: bool,
             single_turn_plan_prompt: Optional[str] = None
             custom_prompt: Optional[str] = None
             if line.startswith("/"):
+                # /model [name] — show or switch the model live (like Claude Code).
+                _scmd, _, _sarg = line[1:].partition(" ")
+                if _scmd.lower() == "model":
+                    _sarg = _sarg.strip()
+                    if not _sarg:
+                        cur = model_state["current"] or "default (your claude CLI default)"
+                        console.print(f"[cyan]model:[/cyan] {cur}")
+                        console.print("[dim]Switch: /model <name> — e.g. opus, sonnet, "
+                                      "haiku, or a full model id[/dim]")
+                    else:
+                        try:
+                            await client.set_model(_sarg)
+                            model_state["current"] = _sarg
+                            console.print(f"[green]✓ model → {_sarg}[/green]")
+                        except Exception as e:
+                            console.print(f"[red]could not set model:[/red] "
+                                          f"{type(e).__name__}: {e}")
+                    continue
+
                 # Custom (user-defined) slash command? Expand + send as a turn.
                 from ai4science.commands.custom_commands import (
                     load_custom_commands, expand_command,
@@ -567,7 +600,8 @@ def _run_local_subcommand(name: str, workspace: Path) -> tuple[bool, bool, Optio
 def _print_welcome(workspace: Path, read_only: bool, auto_yes: bool,
                    context_files: List[Path], plan_mode: bool = False,
                    memory_file: Optional[Path] = None,
-                   continue_session: bool = False) -> None:
+                   continue_session: bool = False,
+                   model: Optional[str] = None) -> None:
     if plan_mode:
         mode = "plan"
     elif read_only:
@@ -579,6 +613,7 @@ def _print_welcome(workspace: Path, read_only: bool, auto_yes: bool,
     console.print(f"[bold purple]ai4science chat[/bold purple]  v{__version__}")
     console.print(f"  workspace:  [cyan]{workspace}[/cyan]")
     console.print(f"  agent:      claude ({mode}{yes_note})")
+    console.print(f"  model:      {model or 'default'}  [dim](/model to change)[/dim]")
     console.print(f"  context:    {len(context_files)} artifact file(s) inlined")
     if memory_file is not None:
         console.print(f"  memory:     [green]{memory_file.name}[/green] loaded")
@@ -603,6 +638,7 @@ def _print_help() -> None:
         ("/files",             "list workspace artifact files"),
         ("/commands",          "list custom (user-defined) slash commands"),
         ("/plan <request>",    "single-turn plan mode (no edits, agent returns a plan)"),
+        ("/model [name]",      "show or switch the model live (opus, sonnet, haiku, or id)"),
         ("/validate",          "run `ai4science validate` (deterministic)"),
         ("/judge",             "run the CASSI Physics Judge"),
         ("/status",            "show workspace status"),
