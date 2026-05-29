@@ -289,7 +289,7 @@ async def _run_chat(*, workspace: Path, read_only: bool, auto_yes: bool,
                     console.print(f"[dim]/{_cmd.lower()} → custom command "
                                   f"({_custom[_cmd.lower()].name})[/dim]")
                 else:
-                    handled, should_exit, plan_prompt = _handle_slash(
+                    handled, should_exit, plan_prompt = await _handle_slash(
                         line, workspace,
                         auto_yes=auto_yes, read_only=read_only,
                         plan_mode_active=plan_mode, client=client,
@@ -330,7 +330,7 @@ async def _run_chat(*, workspace: Path, read_only: bool, auto_yes: bool,
             # Plan-mode toggle for this turn only.
             if single_turn_plan_prompt is not None and not plan_mode:
                 try:
-                    client.set_permission_mode("plan")
+                    await client.set_permission_mode("plan")
                 except Exception:
                     pass
                 outgoing = (
@@ -356,7 +356,7 @@ async def _run_chat(*, workspace: Path, read_only: bool, auto_yes: bool,
                 console.print(f"[red]query error:[/red] {type(e).__name__}: {e}")
                 if single_turn_plan_prompt is not None and not plan_mode:
                     try:
-                        client.set_permission_mode("default")
+                        await client.set_permission_mode("default")
                     except Exception:
                         pass
                 continue
@@ -369,7 +369,7 @@ async def _run_chat(*, workspace: Path, read_only: bool, auto_yes: bool,
                 # Restore default permission mode after a single-turn /plan.
                 if single_turn_plan_prompt is not None and not plan_mode:
                     try:
-                        client.set_permission_mode("default")
+                        await client.set_permission_mode("default")
                     except Exception:
                         pass
 
@@ -525,10 +525,10 @@ async def _render_plain(msgs, out_console) -> None:
     newline_if_needed()
 
 
-def _handle_slash(line: str, workspace: Path, *, auto_yes: bool,
-                  read_only: bool, client,
-                  plan_mode_active: bool = False
-                  ) -> tuple[bool, bool, Optional[str]]:
+async def _handle_slash(line: str, workspace: Path, *, auto_yes: bool,
+                        read_only: bool, client,
+                        plan_mode_active: bool = False
+                        ) -> tuple[bool, bool, Optional[str]]:
     """Return (handled, should_exit, plan_prompt_to_forward).
 
     If the third element is non-None, it means the user typed
@@ -590,7 +590,7 @@ def _handle_slash(line: str, workspace: Path, *, auto_yes: bool,
     if cmd in ("yes", "acceptedits", "accept-edits"):
         # Live toggle to auto-accept edits (like Claude Code's accept-edits mode).
         try:
-            client.set_permission_mode("acceptEdits")
+            await client.set_permission_mode("acceptEdits")
             console.print("[green]✓ accept-edits ON[/green] — Edit/Write/Bash auto-approved "
                           "this session. Use [cyan]/default[/cyan] to require confirmation again.")
         except Exception as e:
@@ -600,7 +600,7 @@ def _handle_slash(line: str, workspace: Path, *, auto_yes: bool,
     if cmd in ("readonly", "read-only"):
         # Live toggle to read-only (plan permission mode — no edits).
         try:
-            client.set_permission_mode("plan")
+            await client.set_permission_mode("plan")
             console.print("[green]✓ read-only ON[/green] — no edits this session "
                           "(Read/Grep/Glob only). Use [cyan]/default[/cyan] to restore editing.")
         except Exception as e:
@@ -610,7 +610,7 @@ def _handle_slash(line: str, workspace: Path, *, auto_yes: bool,
     if cmd in ("default", "normal", "edit"):
         # Restore the default mode: edits allowed, each confirmed.
         try:
-            client.set_permission_mode("default")
+            await client.set_permission_mode("default")
             console.print("[green]✓ default mode[/green] — edits allowed, each prompts "
                           "for confirmation.")
         except Exception as e:
@@ -619,11 +619,11 @@ def _handle_slash(line: str, workspace: Path, *, auto_yes: bool,
 
     if cmd == "cost":
         try:
-            usage = client.get_context_usage()
+            usage = await client.get_context_usage()
         except Exception as e:
             console.print(f"[yellow]/cost not available:[/yellow] {e}")
             return (True, False, None)
-        console.print(f"[bold]Context usage:[/bold] {usage}")
+        console.print(_format_context_usage(usage))
         return (True, False, None)
 
     if cmd == "validate":
@@ -717,13 +717,35 @@ def _list_sessions(workspace: Path) -> None:
                   "(or [cyan]ai4science --continue[/cyan] for the most recent)[/dim]")
 
 
+def _format_context_usage(usage) -> str:
+    """One-line context summary from the SDK's get_context_usage() dict.
+
+    Falls back to repr only if the expected fields are missing, so a schema
+    change degrades gracefully rather than dumping the raw nested structure.
+    """
+    if not isinstance(usage, dict):
+        return f"[bold]Context:[/bold] {usage}"
+    used = usage.get("totalTokens")
+    cap = usage.get("maxTokens")
+    pct = usage.get("percentage")
+    if used is None or cap is None:
+        return f"[bold]Context:[/bold] {usage}"
+    line = f"[bold]Context:[/bold] {used:,} / {cap:,} tokens"
+    if pct is not None:
+        line += f" ([cyan]{pct}%[/cyan])"
+    thr = usage.get("autoCompactThreshold")
+    if thr and usage.get("isAutoCompactEnabled"):
+        line += f"  [dim]· auto-compacts at {thr:,}[/dim]"
+    return line
+
+
 async def _do_compact(client) -> None:
     """Report context usage. Manual compaction is not exposed by the SDK —
     the claude CLI auto-compacts the live window (PreCompact hook). For a hard
     reset, /exit and relaunch with --continue (the compacted history carries)."""
     try:
         usage = await client.get_context_usage()
-        console.print(f"[bold]Context usage:[/bold] {usage}")
+        console.print(_format_context_usage(usage))
     except Exception as e:
         console.print(f"[dim](context usage unavailable: {e})[/dim]")
     console.print("[dim]The claude CLI auto-compacts the context window as it "
