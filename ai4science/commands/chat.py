@@ -75,6 +75,11 @@ def chat(
         False, "--continue", "-c",
         help="Resume the most recent conversation in this workspace.",
     ),
+    resume: Optional[str] = typer.Option(
+        None, "--resume",
+        help="Resume a SPECIFIC past session by id. List ids with the in-REPL "
+             "/resume command (or /sessions).",
+    ),
 ) -> None:
     """Open a persistent chat session with the agent."""
     import os
@@ -101,6 +106,7 @@ def chat(
                                enable_subagents=not no_subagents,
                                enable_mcp=not no_mcp,
                                continue_session=continue_session,
+                               resume=resume,
                                model=model))
     except KeyboardInterrupt:
         console.print("\n[dim](Ctrl-C — exiting)[/dim]")
@@ -112,6 +118,7 @@ async def _run_chat(*, workspace: Path, read_only: bool, auto_yes: bool,
                      enable_subagents: bool = True,
                      enable_mcp: bool = True,
                      continue_session: bool = False,
+                     resume: Optional[str] = None,
                      model: Optional[str] = None) -> None:
     """Async event loop for the REPL."""
     from claude_agent_sdk import (   # type: ignore
@@ -166,6 +173,7 @@ async def _run_chat(*, workspace: Path, read_only: bool, auto_yes: bool,
         agents=subagents,
         include_partial_messages=True,   # token-level streaming
         continue_conversation=continue_session,
+        resume=resume,   # resume a specific past session by id (overrides --continue)
         **mcp_kw,
     )
     # Track the active model so /model can show + switch it live.
@@ -185,7 +193,7 @@ async def _run_chat(*, workspace: Path, read_only: bool, auto_yes: bool,
         # session. When --continue resumes a prior conversation, re-seeding
         # would re-frame it as new and make the agent forget the carried-over
         # history. The resumed session already has the earlier context.
-        if context_files and not continue_session:
+        if context_files and not continue_session and not resume:
             seed = (
                 "[ai4science] Workspace context for this session:\n\n"
                 + _format_files_for_context(context_files, workspace)
@@ -235,6 +243,21 @@ async def _run_chat(*, workspace: Path, read_only: bool, auto_yes: bool,
                         except Exception as e:
                             console.print(f"[red]could not set model:[/red] "
                                           f"{type(e).__name__}: {e}")
+                    continue
+
+                # /resume, /sessions — list this workspace's past sessions so the
+                # user can relaunch with --resume <id>. (A live mid-REPL session
+                # swap would tear down the open client; relaunch is the safe path,
+                # same as Claude Code's resume picker.)
+                if _scmd.lower() in ("resume", "sessions"):
+                    _list_sessions(workspace)
+                    continue
+
+                # /compact — context management. The claude CLI auto-compacts the
+                # live context window (PreCompact); the SDK exposes no manual
+                # trigger, so /compact reports usage + the honest state.
+                if _scmd.lower() == "compact":
+                    await _do_compact(client)
                     continue
 
                 # Custom (user-defined) slash command? Expand + send as a turn.
@@ -648,6 +671,47 @@ def _print_welcome(workspace: Path, read_only: bool, auto_yes: bool,
     console.print()
 
 
+def _list_sessions(workspace: Path) -> None:
+    """List this workspace's past chat sessions (id + summary + when)."""
+    try:
+        from claude_agent_sdk import list_sessions  # type: ignore
+    except Exception as e:
+        console.print(f"[yellow]/resume not available:[/yellow] {e}")
+        return
+    try:
+        sessions = list_sessions(directory=str(workspace), limit=15)
+    except Exception as e:
+        console.print(f"[yellow]could not list sessions:[/yellow] {type(e).__name__}: {e}")
+        return
+    if not sessions:
+        console.print("[dim]No past sessions for this workspace yet.[/dim]")
+        return
+    console.print("[bold]Past sessions (newest first):[/bold]")
+    for s in sessions:
+        sid = getattr(s, "session_id", "?")
+        summary = (getattr(s, "summary", "") or "").strip().replace("\n", " ")
+        if len(summary) > 64:
+            summary = summary[:61] + "..."
+        when = getattr(s, "last_modified", "")
+        console.print(f"  [cyan]{sid}[/cyan]  [dim]{when}[/dim]  {summary}")
+    console.print("[dim]Resume one: exit, then "
+                  "[cyan]ai4science chat --resume <id>[/cyan][/dim]")
+
+
+async def _do_compact(client) -> None:
+    """Report context usage. Manual compaction is not exposed by the SDK —
+    the claude CLI auto-compacts the live window (PreCompact hook). For a hard
+    reset, /exit and relaunch with --continue (the compacted history carries)."""
+    try:
+        usage = await client.get_context_usage()
+        console.print(f"[bold]Context usage:[/bold] {usage}")
+    except Exception as e:
+        console.print(f"[dim](context usage unavailable: {e})[/dim]")
+    console.print("[dim]The claude CLI auto-compacts the context window as it "
+                  "fills (no manual trigger needed). For a hard reset now, /exit "
+                  "and relaunch with [cyan]--continue[/cyan].[/dim]")
+
+
 def _print_help() -> None:
     console.print()
     console.print("[bold]Slash commands:[/bold]")
@@ -663,6 +727,9 @@ def _print_help() -> None:
         ("/judge",             "run the CASSI Physics Judge"),
         ("/status",            "show workspace status"),
         ("/cost",              "show context-window usage"),
+        ("/compact",           "context usage + compaction state (CLI auto-compacts)"),
+        ("/model [name]",      "show or switch the model live (opus/sonnet/haiku)"),
+        ("/resume, /sessions", "list past sessions to relaunch with --resume <id>"),
         ("/yes",               "auto-approve edits this session (accept-edits mode)"),
         ("/readonly",          "switch to read-only this session (no edits)"),
         ("/default",           "restore default mode (edits allowed, each confirmed)"),
