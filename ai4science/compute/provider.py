@@ -161,6 +161,7 @@ def build_result_manifest(job: Dict[str, Any], workspace: Path,
         "solver_returncode": outcome.get("returncode"),
         "solver_error": outcome.get("error"),
         "solver_stdout_tail": outcome.get("stdout_tail", ""),
+        "solver_stderr_tail": outcome.get("stderr_tail", ""),
         "provider": {
             "provider_id": provider.get("provider_id"),
             "wallet_address": provider.get("wallet_address"),
