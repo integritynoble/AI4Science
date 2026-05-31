@@ -12,11 +12,18 @@ class ToolSpec:
 
 
 @dataclass
+class ImagePart:
+    media_type: str          # e.g. "image/png"
+    data_b64: str            # base64-encoded image bytes
+
+
+@dataclass
 class Message:
     role: str                                  # "system" | "user" | "assistant" | "tool"
     content: str = ""
     tool_calls: List["ToolCall"] = field(default_factory=list)  # assistant tool requests
     tool_call_id: Optional[str] = None         # set on role="tool" result messages
+    images: List["ImagePart"] = field(default_factory=list)
 
 
 # ---- stream events (adapter -> loop) ----
@@ -42,3 +49,13 @@ class Usage:
 @dataclass
 class Done:
     stop_reason: Optional[str] = None
+
+
+def load_image(path) -> "ImagePart":
+    import base64
+    import mimetypes
+    from pathlib import Path
+    p = Path(path)
+    data = p.read_bytes()
+    media_type = mimetypes.guess_type(str(p))[0] or "image/png"
+    return ImagePart(media_type=media_type, data_b64=base64.b64encode(data).decode("ascii"))

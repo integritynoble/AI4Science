@@ -40,13 +40,13 @@ class AgentSession:
         """Swap the brand mid-session; history is preserved (brand-neutral)."""
         self.adapter, self.model, self.backend = adapter, model, backend
 
-    def run_turn(self, user_input: str) -> str:
+    def run_turn(self, user_input: str, images=None) -> str:
         if self.summarize and self.compact_limit_chars:
             from ai4science.harness.compaction import maybe_compact
             self.history, _ = maybe_compact(
                 self.history, limit_chars=self.compact_limit_chars,
                 summarize=self.summarize)
-        self.history.append(Message(role="user", content=user_input))
+        self.history.append(Message(role="user", content=user_input, images=list(images or [])))
         return run_loop(
             adapter=self.adapter, model=self.model, reasoning=self.reasoning,
             history=self.history, workspace=self.workspace, registry=self.registry,
