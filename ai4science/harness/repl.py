@@ -233,7 +233,7 @@ def run_common_repl(
             # /cost needs the live session's ledger — handle inline.
             if cmd == "cost":
                 try:
-                    from ai4science.harness import ledger
+                    from ai4science.llm import ledger
                     summary = ledger.summary()
                     print(f"[harness] cost: {summary}", flush=True)
                 except Exception as e:
@@ -264,8 +264,11 @@ def run_common_repl(
                 state["clear"] = False
                 session = _build_session()
             elif handled and cmd in ("readonly", "yes", "default"):
-                # Mode toggle — rebuild so the new gate modes take effect.
-                session = _build_session()
+                # Mode toggle — update the gate IN PLACE so the new modes take
+                # effect without wiping conversation history (rebuilding the
+                # session would reset history to []).
+                session.gate.read_only = state["read_only"]
+                session.gate.auto_yes = state["auto_yes"]
             if not handled:
                 # Unknown slash — fall through to the LLM as literal text.
                 pass
