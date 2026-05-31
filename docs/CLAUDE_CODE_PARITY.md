@@ -107,7 +107,11 @@ footer. Mode toggles update the gate in place (history preserved).
 Remaining toward full Claude-Code parity:
 - **Plan 3b** — sub-agents (`Task` tool) + MCP servers (incl. PWM MCP)
 - **Plan 3c** — `@mentions` + image input
-- **Plan 3d** — hardening: bash sandboxing AND a hard wall-clock timeout for streaming bash
-  (the streaming rewrite traded the subprocess `timeout=` for live output — a no-output hang
-  like `sleep 1000` is currently only recoverable via Ctrl-C in the interactive REPL),
-  Anthropic input-token metering, a loop-cap truncation signal, and recorded streaming fixtures.
+- **Plan 3d (DONE 2026-05-31)** — hardening: ✅ hard wall-clock bash timeout (reader thread +
+  process-group kill, so a `sleep 1000`-style hang is killed promptly, not orphaned);
+  ✅ bash-command sandbox guard (blocks `judge/`/`hidden_tests/`/parent-escape refs, incl.
+  `;|&`-chained, even in auto-yes); ✅ Anthropic input-token metering (from `message_start`);
+  ✅ loop-cap truncation signal; ✅ multi/parallel tool-call adapter coverage.
+  Out of scope (future): OS-level bash isolation (bubblewrap/chroot) — the cmd guard is
+  heuristic, not airtight against deliberate obfuscation — and real recorded provider stream
+  fixtures (need live API creds; CI uses synthetic streams).
