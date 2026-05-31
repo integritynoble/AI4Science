@@ -19,7 +19,7 @@ def test_orchestration_first_choice_is_opus(monkeypatch):
     monkeypatch.setattr(routing, "backend_available", lambda b: True)
     r = routing.resolve("orchestration")
     assert r.backend == "anthropic"
-    assert r.model == "claude-opus-4-7"
+    assert r.model == "claude-opus-4-8"
     assert r.is_fallback is False
     assert r.wallet.startswith("0x")
 
