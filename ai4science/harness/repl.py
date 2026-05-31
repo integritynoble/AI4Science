@@ -17,6 +17,7 @@ See DONE_WITH_CONCERNS note in Task 10 report.
 """
 from __future__ import annotations
 
+import os
 import secrets
 import sys
 from pathlib import Path
@@ -26,6 +27,35 @@ from ai4science.harness.adapters.factory import adapter_for, make_meter
 from ai4science.harness.events import Message
 from ai4science.harness.session import AgentSession
 from ai4science.llm import routing
+
+
+def _dispatch_slash(line: str, state: dict) -> tuple[bool, str]:
+    """Handle simple slash commands by mutating `state`. Returns (handled, message).
+
+    /model, /cost, /files are handled in the loop (they need the live session).
+    """
+    cmd, _, _arg = line[1:].partition(" ")
+    cmd = cmd.lower().strip()
+    if cmd in ("exit", "quit", "q"):
+        state["exit"] = True
+        return True, "bye"
+    if cmd in ("help", "?"):
+        return True, ("slash commands: /help /clear /model <backend> [id] "
+                      "/readonly /yes /default /cost /files /exit")
+    if cmd == "readonly":
+        state["read_only"] = True
+        return True, "read-only: ON (mutating tools blocked)"
+    if cmd == "yes":
+        state["auto_yes"] = True
+        return True, "auto-yes: ON (tools auto-approved)"
+    if cmd == "default":
+        state["read_only"] = False
+        state["auto_yes"] = False
+        return True, "default mode (per-edit confirmation)"
+    if cmd == "clear":
+        state["clear"] = True
+        return True, "conversation cleared"
+    return False, ""
 
 
 def _pick_brand(backend: Optional[str], model: Optional[str]):
@@ -115,17 +145,38 @@ def run_common_repl(
 
     active_backend, active_model = _pick_brand(backend, model)
 
+    # Mutable state dict — tracks modes and slash-command flags.
+    # _build_session reads read_only/auto_yes from here so toggles take effect.
+    state: dict = {
+        "read_only": read_only,
+        "auto_yes": auto_yes,
+        "exit": False,
+    }
+
+    # Per-turn token accumulator (mutated by the meter wrapper).
+    turn_tokens: dict = {"total": 0}
+
+    def _make_wrapped_meter(b: str, m: str):
+        """Return a meter that accumulates into turn_tokens AND calls real meter."""
+        real = make_meter(backend=b, model=m)
+
+        def _meter(u) -> None:
+            turn_tokens["total"] += getattr(u, "total", 0) or 0
+            real(u)
+
+        return _meter
+
     def _build_session() -> AgentSession:
         return AgentSession(
             adapter=adapter_for(active_backend),
             model=active_model,
             backend=active_backend,
             workspace=workspace,
-            read_only=read_only,
-            auto_yes=auto_yes,
+            read_only=state["read_only"],
+            auto_yes=state["auto_yes"],
             confirm=_confirm,
             on_text=on_text,
-            meter=make_meter(backend=active_backend, model=active_model),
+            meter=_make_wrapped_meter(active_backend, active_model),
         )
 
     _sid = session_id or secrets.token_hex(8)
@@ -156,10 +207,7 @@ def run_common_repl(
             cmd = cmd.lower().strip()
             arg = arg.strip()
 
-            if cmd in ("exit", "quit", "q"):
-                print("[harness] bye", flush=True)
-                break
-
+            # /model needs the live session — handle inline.
             if cmd == "model":
                 # /model <backend> [model-id]  or just /model (show current)
                 if not arg:
@@ -174,7 +222,7 @@ def run_common_repl(
                     new_backend, new_model = _pick_brand(new_backend, new_model)
                     new_adapter = adapter_for(new_backend)
                     session.set_brand(new_adapter, new_model, new_backend)
-                    session.meter = make_meter(backend=new_backend, model=new_model)
+                    session.meter = _make_wrapped_meter(new_backend, new_model)
                     active_backend, active_model = new_backend, new_model
                     print(f"[harness] switched: backend={active_backend}  model={active_model}",
                           flush=True)
@@ -182,20 +230,56 @@ def run_common_repl(
                     print(f"[harness] error: {e}", flush=True)
                 continue
 
-            if cmd in ("help", "?"):
-                print("[harness] slash commands: /exit  /model <backend> [model-id]  /help",
-                      flush=True)
+            # /cost needs the live session's ledger — handle inline.
+            if cmd == "cost":
+                try:
+                    from ai4science.harness import ledger
+                    summary = ledger.summary()
+                    print(f"[harness] cost: {summary}", flush=True)
+                except Exception as e:
+                    print(f"[harness] cost unavailable: {e}", flush=True)
                 continue
 
-            # Unknown slash — let it fall through to the LLM as literal text
-            # rather than silently swallowing it.
+            # /files lists workspace files — handle inline.
+            if cmd == "files":
+                try:
+                    entries = sorted(os.listdir(workspace))
+                    if entries:
+                        print("[harness] workspace files:", flush=True)
+                        for name in entries:
+                            print(f"  {name}", flush=True)
+                    else:
+                        print("[harness] workspace is empty", flush=True)
+                except Exception as e:
+                    print(f"[harness] files error: {e}", flush=True)
+                continue
+
+            # All other slash commands go through the stateless dispatcher.
+            handled, msg = _dispatch_slash(line, state)
+            if msg:
+                print(f"[harness] {msg}", flush=True)
+            if state["exit"]:
+                break
+            if state.get("clear"):
+                state["clear"] = False
+                session = _build_session()
+            elif handled and cmd in ("readonly", "yes", "default"):
+                # Mode toggle — rebuild so the new gate modes take effect.
+                session = _build_session()
+            if not handled:
+                # Unknown slash — fall through to the LLM as literal text.
+                pass
+            else:
+                continue
 
         # Normal turn.
         try:
+            turn_tokens["total"] = 0
             result = session.run_turn(line)
             # Ensure there's a trailing newline after streamed output.
             if result and not result.endswith("\n"):
                 print(flush=True)
+            print(f"[tokens: {turn_tokens['total']}]", flush=True)
             persistence.save(_sid, workspace, session.history)
         except Exception as exc:
             print(f"\n[harness] turn error: {type(exc).__name__}: {exc}", flush=True)
