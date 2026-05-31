@@ -7,13 +7,11 @@ meters usage via the ledger.  No claude_agent_sdk dependency.
 This module is intentionally free of Typer / Rich so that it can be imported
 and unit-tested without a TTY.
 
-Integration point: ai4science/commands/chat.py calls run_common_repl() when
-``mode == "common"`` and the harness path has been selected.  The current
-chat.py still uses claude_agent_sdk for ALL modes; a follow-up wiring task
-should:
-  1. Remove the ClaudeAgent.is_available() gate when mode == "common".
-  2. Call run_common_repl() instead of _run_chat() for common mode.
-See DONE_WITH_CONCERNS note in Task 10 report.
+Integration: ai4science/commands/chat.py calls run_common_repl() for
+``mode == "common"`` (bypassing the claude-agent-sdk gate, which now applies
+only to research mode). Slash commands: /help /clear /model /readonly /yes
+/default /cost /files /exit. Session history is persisted per turn and reseeded
+via --continue / --resume (session_id).
 """
 from __future__ import annotations
 
@@ -187,7 +185,8 @@ def run_common_repl(
         session.history.extend(resume_history)
 
     print(f"\n[harness] common mode  backend={active_backend}  model={active_model}", flush=True)
-    print("[harness] /exit to quit  /model <backend> [model] to switch\n", flush=True)
+    print(f"[harness] session {_sid}  (resume later with --resume {_sid})", flush=True)
+    print("[harness] /help for commands  /exit to quit\n", flush=True)
 
     while True:
         try:
