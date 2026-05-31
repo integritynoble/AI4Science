@@ -1,9 +1,23 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Callable, Dict, Optional, Tuple
 
 PROTECTED_DIRS = ("judge", "hidden_tests")
+
+_BASH_BLOCK = re.compile(
+    r"(^|[\s=:/;|&])(\.\./)"        # parent-directory escape (incl. ;|& chained, no space)
+    r"|(^|[\s=:/;|&'\"])(" + "|".join(PROTECTED_DIRS) + r")/"   # judge/ or hidden_tests/
+)
+
+
+def _bash_cmd_safe(cmd: str) -> tuple:
+    """Heuristic guard: block shell commands that reference protected dirs or
+    escape the workspace. NOT airtight against deliberate obfuscation (documented)."""
+    if _BASH_BLOCK.search(cmd or ""):
+        return False, "sandbox: bash command references a protected/parent path"
+    return True, ""
 
 
 class SandboxError(Exception):
@@ -38,6 +52,10 @@ class PermissionGate:
         sok, sreason = self._sandbox_ok(name, args)
         if not sok:
             return False, sreason
+        if name == "bash":
+            bok, breason = _bash_cmd_safe(args.get("cmd", ""))
+            if not bok:
+                return False, breason
         if name not in self._mutating:
             return True, ""
         if self.read_only:

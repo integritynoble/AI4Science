@@ -42,3 +42,18 @@ def test_parse_stream_events():
     assert tcs and tcs[0].name == "read" and tcs[0].arguments == {"path": "a.py"}
     assert any(isinstance(e, Usage) for e in events)
     assert any(isinstance(e, Done) for e in events)
+
+
+def test_parse_stream_captures_input_tokens_from_message_start():
+    class _E:
+        def __init__(self, **k): self.__dict__.update(k)
+    raw = [
+        _E(type="message_start", message=_E(usage=_E(input_tokens=42))),
+        _E(type="content_block_delta", delta=_E(type="text_delta", text="hi")),
+        _E(type="message_delta", usage=_E(output_tokens=5), delta=_E(stop_reason="end_turn")),
+        _E(type="message_stop"),
+    ]
+    a = AnthropicAdapter()
+    usages = [e for e in a._parse_stream(raw) if isinstance(e, Usage)]
+    assert usages and usages[0].input == 42 and usages[0].output == 5
+    assert usages[0].total == 47

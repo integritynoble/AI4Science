@@ -52,5 +52,10 @@ def run_loop(*, adapter, model: str, reasoning: str, history: List[Message],
                 except Exception as exc:
                     result = f"[error] {exc}"
             history.append(Message(role="tool", content=str(result), tool_call_id=tc.id))
+    else:
+        note = (f"\n[harness] stopped after {MAX_TOOL_ITERATIONS} tool iterations "
+                f"(possible truncation)")
+        on_text(note)
+        final_text_parts.append(note)
 
     return "".join(final_text_parts)
