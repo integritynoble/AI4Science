@@ -1,5 +1,11 @@
 # Common-Mode Ensemble — Power Mode (Plan 2 of 3) Implementation Plan
 
+> **⛔ SUPERSEDED (2026-05-31)** by `docs/superpowers/plans/2026-05-31-plan2-ensemble-on-harness.md`,
+> which builds executors on the now-existing native harness `AgentSession`s (multi-brand,
+> Plan-3d-hardened) instead of the `BaseAgent` stubs used below. Keep this file only as the
+> source for the verbatim `worktree.py` / `checks.py` / `panel.py` / `select.py` modules that
+> the new Plan 2 reuses (Tasks 4, 5, 7, 8 here).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 > **REDESIGN NOTE (2026-05-31):** Common mode's *default* is now the interactive native
