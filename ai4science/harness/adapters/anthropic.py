@@ -32,11 +32,16 @@ class AnthropicAdapter(AgentAdapter):
                     {"type": "tool_result", "tool_use_id": m.tool_call_id, "content": m.content}]})
         return out
 
-    def _parse_stream(self, raw_events, input_tokens: int) -> Iterator[object]:
+    def _parse_stream(self, raw_events, input_tokens: int = 0) -> Iterator[object]:
         cur_id = cur_name = None
         cur_json = ""
         for ev in raw_events:
             t = getattr(ev, "type", None)
+            if t == "message_start":
+                input_tokens = getattr(
+                    getattr(getattr(ev, "message", None), "usage", None),
+                    "input_tokens", input_tokens)
+                continue
             if t == "content_block_delta":
                 d = ev.delta
                 if getattr(d, "type", None) == "text_delta":
@@ -72,4 +77,4 @@ class AnthropicAdapter(AgentAdapter):
         if sys_text:
             kwargs["system"] = sys_text
         with client.messages.stream(**kwargs) as s:
-            yield from self._parse_stream(s, input_tokens=0)
+            yield from self._parse_stream(s)
