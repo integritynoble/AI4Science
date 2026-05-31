@@ -57,3 +57,16 @@ def test_parse_stream_captures_input_tokens_from_message_start():
     usages = [e for e in a._parse_stream(raw) if isinstance(e, Usage)]
     assert usages and usages[0].input == 42 and usages[0].output == 5
     assert usages[0].total == 47
+
+
+def test_translate_user_message_with_image():
+    from ai4science.harness.events import ImagePart
+    a = AnthropicAdapter()
+    msgs = [Message(role="user", content="what is this?",
+                    images=[ImagePart("image/png", "AAAA")])]
+    out = a._translate_messages(msgs)
+    blocks = out[0]["content"]
+    assert any(b.get("type") == "text" for b in blocks)
+    img = [b for b in blocks if b.get("type") == "image"][0]
+    assert img["source"]["type"] == "base64"
+    assert img["source"]["media_type"] == "image/png" and img["source"]["data"] == "AAAA"

@@ -52,3 +52,14 @@ def test_parse_stream_trailing_usage_chunk_no_choices():
     usages = [e for e in events if isinstance(e, Usage)]
     assert usages and usages[-1].total == 14
     assert any(isinstance(e, Done) for e in events)
+
+
+def test_translate_user_message_with_image():
+    from ai4science.harness.events import Message, ImagePart
+    a = OpenAIAdapter()
+    out = a._translate_messages([Message(role="user", content="what is this?",
+                                         images=[ImagePart("image/png", "AAAA")])])
+    content = out[0]["content"]
+    assert any(b.get("type") == "text" for b in content)
+    img = [b for b in content if b.get("type") == "image_url"][0]
+    assert img["image_url"]["url"] == "data:image/png;base64,AAAA"

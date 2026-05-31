@@ -18,7 +18,13 @@ class OpenAIAdapter(AgentAdapter):
     def _translate_messages(self, messages: List[Message]) -> list:
         out = []
         for m in messages:
-            if m.role in ("system", "user"):
+            if m.role == "user" and m.images:
+                content = [{"type": "text", "text": m.content}] if m.content else []
+                for img in m.images:
+                    content.append({"type": "image_url", "image_url": {
+                        "url": f"data:{img.media_type};base64,{img.data_b64}"}})
+                out.append({"role": "user", "content": content})
+            elif m.role in ("system", "user"):
                 out.append({"role": m.role, "content": m.content})
             elif m.role == "assistant":
                 msg = {"role": "assistant", "content": m.content or None}
