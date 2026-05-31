@@ -343,8 +343,13 @@ def test_do_compact_reports_usage(capsys):
 
 
 def test_chat_accepts_resume_option():
-    """`chat --resume <id>` is a recognized option (no crash parsing it)."""
+    """`chat --resume <id>` is a recognized option.
+
+    Introspect the registered Click option rather than scraping `--help` text,
+    which Rich width-truncates in narrow CI terminals (flaky substring match).
+    """
+    import typer
     from ai4science.cli import app
-    r = runner.invoke(app, ["chat", "--help"])
-    assert r.exit_code == 0
-    assert "--resume" in r.output
+    chat_cmd = typer.main.get_command(app).commands["chat"]
+    option_names = {name for p in chat_cmd.params for name in getattr(p, "opts", [])}
+    assert "--resume" in option_names
