@@ -19,7 +19,9 @@ class AgentSession:
                  reasoning: str = "high",
                  confirm: Optional[Callable[[str, dict, str], bool]] = None,
                  on_text: Callable[[str], None] = lambda t: None,
-                 meter: Callable[[Usage], None] = lambda u: None) -> None:
+                 meter: Callable[[Usage], None] = lambda u: None,
+                 compact_limit_chars: int = 0,
+                 summarize: Optional[Callable[[str], str]] = None) -> None:
         self.adapter = adapter
         self.model = model
         self.backend = backend
@@ -31,12 +33,19 @@ class AgentSession:
         self.history: List[Message] = []
         self.gate = PermissionGate(workspace=workspace, read_only=read_only,
                                    auto_yes=auto_yes, confirm=confirm)
+        self.compact_limit_chars = compact_limit_chars
+        self.summarize = summarize
 
     def set_brand(self, adapter, model: str, backend: str) -> None:
         """Swap the brand mid-session; history is preserved (brand-neutral)."""
         self.adapter, self.model, self.backend = adapter, model, backend
 
     def run_turn(self, user_input: str) -> str:
+        if self.summarize and self.compact_limit_chars:
+            from ai4science.harness.compaction import maybe_compact
+            self.history, _ = maybe_compact(
+                self.history, limit_chars=self.compact_limit_chars,
+                summarize=self.summarize)
         self.history.append(Message(role="user", content=user_input))
         return run_loop(
             adapter=self.adapter, model=self.model, reasoning=self.reasoning,
