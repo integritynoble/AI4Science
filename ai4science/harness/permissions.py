@@ -54,7 +54,13 @@ def _preview(name: str, args: Dict) -> str:
     if name == "bash":
         return f"$ {args.get('cmd', '')}"
     if name == "write":
-        return f"write {args.get('path')} ({len(args.get('content', ''))} bytes)"
+        from ai4science.harness.diff import unified_diff
+        return unified_diff(args.get("path", "?"), "", args.get("content", ""))
     if name == "edit":
-        return f"edit {args.get('path')}: {args.get('old')!r} -> {args.get('new')!r}"
+        from ai4science.harness.diff import unified_diff
+        old = args.get("old", "")
+        new = args.get("new", "")
+        return unified_diff(args.get("path", "?"),
+                            old if old.endswith("\n") else old + "\n",
+                            new if new.endswith("\n") else new + "\n")
     return f"{name} {args}"
