@@ -10,12 +10,14 @@ from ai4science.agents import mcp_pwm as _pwm   # the deterministic coroutines
 
 _STR = {"type": "string"}
 
-# (name, description, extra-properties). workspace is injected automatically.
+# (name, description, extra-properties, required-list). workspace is injected
+# automatically by the harness (never LLM-supplied), so it is not in `required`.
 _SPECS = [
-    ("pwm_status", "Workspace status: artifacts present + reports.", {}),
-    ("pwm_validate", "Run ai4science validate on the workspace.", {}),
-    ("pwm_judge_cassi", "Run the deterministic CASSI Physics Judge.", {}),
-    ("pwm_lookup_artifact", "Read a PWM artifact by canonical name.", {"artifact": _STR}),
+    ("pwm_status", "Workspace status: artifacts present + reports.", {}, []),
+    ("pwm_validate", "Run ai4science validate on the workspace.", {}, []),
+    ("pwm_judge_cassi", "Run the deterministic CASSI Physics Judge.", {}, []),
+    ("pwm_lookup_artifact", "Read a PWM artifact by canonical name.",
+     {"artifact": _STR}, ["artifact"]),
 ]
 
 
@@ -31,7 +33,9 @@ def _wrap(name: str) -> Callable[..., str]:
     def _tool(workspace: Path, **args) -> str:
         coro = getattr(_pwm, name)               # resolve at call time (monkeypatch-friendly)
         call_args = dict(args)
-        call_args.setdefault("workspace", str(workspace))
+        # Harness workspace is authoritative — overwrite any LLM-supplied value so a
+        # relative/foreign workspace can't redirect the tool outside the session.
+        call_args["workspace"] = str(workspace)
         try:
             result = asyncio.run(coro(call_args))
         except Exception as exc:
@@ -42,8 +46,10 @@ def _wrap(name: str) -> Callable[..., str]:
 
 def pwm_tools() -> List[Tool]:
     out = []
-    for name, desc, extra in _SPECS:
+    for name, desc, extra, required in _SPECS:
         props = {"workspace": _STR, **extra}
-        out.append(Tool(name, desc, {"type": "object", "properties": props},
-                        _wrap(name), mutating=False))
+        schema = {"type": "object", "properties": props}
+        if required:
+            schema["required"] = required
+        out.append(Tool(name, desc, schema, _wrap(name), mutating=False))
     return out
