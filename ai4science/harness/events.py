@@ -34,9 +34,9 @@ class ToolCall:
 
 @dataclass
 class Usage:
-    input: Optional[int]
-    output: Optional[int]
-    total: Optional[int]
+    input: Optional[int] = None
+    output: Optional[int] = None
+    total: Optional[int] = None
 
 
 @dataclass

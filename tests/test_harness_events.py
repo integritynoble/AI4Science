@@ -21,4 +21,6 @@ def test_event_variants():
     tc = ToolCall(id="c1", name="bash", arguments={"cmd": "ls"})
     assert tc.name == "bash" and tc.arguments["cmd"] == "ls"
     assert Usage(input=10, output=5, total=15).total == 15
-    assert isinstance(Done(), Done)
+    assert Usage(output=5).input is None and Usage(output=5).total is None
+    assert Done().stop_reason is None
+    assert Done(stop_reason="end_turn").stop_reason == "end_turn"
