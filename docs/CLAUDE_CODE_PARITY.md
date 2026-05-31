@@ -105,7 +105,11 @@ set** (`/help /clear /model /readonly /yes /default /cost /files /exit`) with a 
 footer. Mode toggles update the gate in place (history preserved).
 
 Remaining toward full Claude-Code parity:
-- **Plan 3b** — sub-agents (`Task` tool) + MCP servers (incl. PWM MCP)
+- **Plan 3b (DONE 2026-05-31)** — ✅ sub-agents (`Task` tool → nested `AgentSession`, depth-guarded);
+  ✅ PWM MCP tools exposed natively (`pwm_validate/judge_cassi/status/lookup_artifact` — reconnects
+  common mode to the science layer); ✅ stdio MCP client (namespaced `mcp__server__tool`);
+  ✅ combined registry (core ∪ PWM ∪ task ∪ MCP) + `/agents` `/mcp` REPL commands. Out of scope:
+  HTTP/OAuth MCP transports (stdio only); config-surface to pass external MCP servers into the REPL.
 - **Plan 3c** — `@mentions` + image input
 - **Plan 3d (DONE 2026-05-31)** — hardening: ✅ hard wall-clock bash timeout (reader thread +
   process-group kill, so a `sleep 1000`-style hang is killed promptly, not orphaned);
