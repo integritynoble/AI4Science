@@ -40,7 +40,12 @@ class GeminiAdapter(AgentAdapter):
                         yield TextDelta(part.text)
                     fc = getattr(part, "function_call", None)
                     if fc:
-                        yield ToolCall(f"gem_{fc.name}", fc.name, dict(fc.args or {}))
+                        # Gemini has no native call id and matches tool results to
+                        # calls BY FUNCTION NAME. Use the function name as the id so
+                        # the loop round-trips it into functionResponse.name correctly
+                        # (see _translate_messages). A synthetic "gem_<name>" id would
+                        # desync the multi-turn tool loop.
+                        yield ToolCall(fc.name, fc.name, dict(fc.args or {}))
                         emitted_call = True
             um = getattr(ch, "usage_metadata", None)
             if um:

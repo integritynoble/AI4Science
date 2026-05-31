@@ -89,6 +89,18 @@ def run_common_repl(
             sys.stdout.write(t)
             sys.stdout.flush()
 
+    def _confirm(name: str, args: dict, preview: str) -> bool:
+        # Per-edit confirmation (Claude-Code style). Skipped by the gate when
+        # auto_yes or read_only. Without this, mutating tools are blocked in
+        # default mode. NOTE: bash is confirm-gated here precisely because its
+        # `cmd` is NOT path-sandboxed (see permissions.py) — the human approval
+        # IS the bash sandbox in Plan 1.
+        try:
+            ans = input(f"\n[harness] allow {name}?  {preview}\n  [y/N] ").strip().lower()
+        except EOFError:
+            return False
+        return ans in ("y", "yes")
+
     active_backend, active_model = _pick_brand(backend, model)
 
     def _build_session() -> AgentSession:
@@ -99,6 +111,7 @@ def run_common_repl(
             workspace=workspace,
             read_only=read_only,
             auto_yes=auto_yes,
+            confirm=_confirm,
             on_text=on_text,
             meter=make_meter(backend=active_backend, model=active_model),
         )

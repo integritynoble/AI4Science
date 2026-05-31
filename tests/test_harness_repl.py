@@ -128,3 +128,29 @@ def test_repl_exit_slash_stops_loop(tmp_path, monkeypatch, capsys):
     # Adapter was called for session setup but no turns were driven.
     assert "bye" in out
     assert stub._i == 0   # StubAdapter index: no turns consumed
+
+
+def test_run_common_repl_wires_per_edit_confirm(tmp_path, monkeypatch):
+    """run_common_repl MUST pass a confirm handler, else the permission gate
+    blocks every mutation in default (non-auto-yes, non-read-only) mode."""
+    import ai4science.harness.repl as repl_mod
+    from ai4science.harness.adapters.stub import StubAdapter
+
+    captured = {}
+    real_cls = repl_mod.AgentSession
+
+    def _capture(**kwargs):
+        captured.update(kwargs)
+        return real_cls(**kwargs)
+
+    monkeypatch.setattr(repl_mod, "AgentSession", _capture)
+    monkeypatch.setattr(repl_mod, "adapter_for", lambda b: StubAdapter([[]]))
+    monkeypatch.setattr(repl_mod, "make_meter", lambda **kw: lambda u: None)
+
+    def _eof(*a, **k):
+        raise EOFError()
+
+    monkeypatch.setattr("builtins.input", _eof)
+
+    repl_mod.run_common_repl(tmp_path, backend="anthropic", model="stub")
+    assert captured.get("confirm") is not None
