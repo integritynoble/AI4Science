@@ -17,11 +17,13 @@ See DONE_WITH_CONCERNS note in Task 10 report.
 """
 from __future__ import annotations
 
+import secrets
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 from ai4science.harness.adapters.factory import adapter_for, make_meter
+from ai4science.harness.events import Message
 from ai4science.harness.session import AgentSession
 from ai4science.llm import routing
 
@@ -64,6 +66,8 @@ def run_common_repl(
     backend: Optional[str] = None,
     model: Optional[str] = None,
     on_text=None,
+    resume_history: Optional[List[Message]] = None,
+    session_id: Optional[str] = None,
 ) -> None:
     """Run the native-harness REPL until EOF or /exit.
 
@@ -83,7 +87,15 @@ def run_common_repl(
     on_text:
         Callable[[str], None] invoked for each text delta.  Defaults to
         writing to stdout without a newline.
+    resume_history:
+        Prior conversation history to seed into the session (from
+        persistence.load()).  None → fresh session.
+    session_id:
+        Stable id for this session used by persistence.save().
+        None → a new random id is generated.
     """
+    from ai4science.harness import persistence
+
     if on_text is None:
         def on_text(t: str) -> None:
             sys.stdout.write(t)
@@ -116,7 +128,12 @@ def run_common_repl(
             meter=make_meter(backend=active_backend, model=active_model),
         )
 
+    _sid = session_id or secrets.token_hex(8)
+
     session = _build_session()
+
+    if resume_history:
+        session.history.extend(resume_history)
 
     print(f"\n[harness] common mode  backend={active_backend}  model={active_model}", flush=True)
     print("[harness] /exit to quit  /model <backend> [model] to switch\n", flush=True)
@@ -179,5 +196,6 @@ def run_common_repl(
             # Ensure there's a trailing newline after streamed output.
             if result and not result.endswith("\n"):
                 print(flush=True)
+            persistence.save(_sid, workspace, session.history)
         except Exception as exc:
             print(f"\n[harness] turn error: {type(exc).__name__}: {exc}", flush=True)
