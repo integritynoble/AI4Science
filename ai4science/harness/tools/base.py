@@ -11,6 +11,7 @@ class Tool:
     parameters: Dict[str, Any]     # JSON Schema
     func: Callable[..., str]       # func(workspace: Path, **args) -> str
     mutating: bool = False         # True => must pass the permission gate
+    streams: bool = False          # True => func accepts _sink kwarg for live output
 
 
 class Registry:
