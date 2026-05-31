@@ -261,15 +261,36 @@ def test_chat_rejects_non_claude_agent(tmp_path, monkeypatch):
     assert "chat mode only supports" in result.output.lower()
 
 
-def test_chat_rejects_when_claude_unavailable(tmp_path, monkeypatch):
-    """If `claude` CLI not on PATH → exit 2 cleanly, don't try to connect."""
+def test_chat_research_rejects_when_claude_unavailable(tmp_path, monkeypatch):
+    """Research mode still uses claude-agent-sdk: if `claude` CLI not on PATH →
+    exit 2 cleanly. (Common mode now runs on the native harness instead — see
+    test_chat_common_launches_harness.)"""
     monkeypatch.chdir(tmp_path)
     # Force ClaudeAgent.is_available to False.
     monkeypatch.setattr("ai4science.agents.claude_agent.shutil.which",
                         lambda _: None)
-    result = runner.invoke(app, ["chat"])
+    result = runner.invoke(app, ["chat", "--mode", "research"])
     assert result.exit_code == 2
     assert "not available" in result.output.lower()
+
+
+def test_chat_common_launches_harness(tmp_path, monkeypatch):
+    """Common mode routes to the native harness REPL (no claude requirement);
+    with no stdin (CliRunner), it reads EOF and exits cleanly."""
+    monkeypatch.chdir(tmp_path)
+    # Even with claude CLI absent, common mode must not gate on it.
+    monkeypatch.setattr("ai4science.agents.claude_agent.shutil.which",
+                        lambda _: None)
+    called = {}
+
+    def _fake_repl(workspace, **kwargs):
+        called["workspace"] = workspace
+        called["kwargs"] = kwargs
+
+    monkeypatch.setattr("ai4science.harness.repl.run_common_repl", _fake_repl)
+    result = runner.invoke(app, ["chat", "--mode", "common"])
+    assert result.exit_code == 0
+    assert called, "run_common_repl was not invoked for common mode"
 
 
 # ─── bucket (b): /resume + /compact ──────────────────────────────────
@@ -322,8 +343,13 @@ def test_do_compact_reports_usage(capsys):
 
 
 def test_chat_accepts_resume_option():
-    """`chat --resume <id>` is a recognized option (no crash parsing it)."""
+    """`chat --resume <id>` is a recognized option.
+
+    Introspect the registered Click option rather than scraping `--help` text,
+    which Rich width-truncates in narrow CI terminals (flaky substring match).
+    """
+    import typer
     from ai4science.cli import app
-    r = runner.invoke(app, ["chat", "--help"])
-    assert r.exit_code == 0
-    assert "--resume" in r.output
+    chat_cmd = typer.main.get_command(app).commands["chat"]
+    option_names = {name for p in chat_cmd.params for name in getattr(p, "opts", [])}
+    assert "--resume" in option_names

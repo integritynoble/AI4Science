@@ -115,14 +115,28 @@ def chat(
         )
         raise typer.Exit(2)
 
-    # Reuse ClaudeAgent.is_available for the same gate as one-shot mode.
+    workspace = workspace.resolve()
+
+    if mode == "common":
+        # Option A: common mode runs on the native brand-agnostic harness
+        # (no claude-agent-sdk). Brand is selected from the orchestration pool
+        # and switchable in-session via /model. Research mode keeps the SDK path.
+        from ai4science.harness.repl import run_common_repl
+        try:
+            run_common_repl(workspace, read_only=read_only or plan,
+                            auto_yes=yes, model=model)
+        except KeyboardInterrupt:
+            console.print("\n[dim](Ctrl-C — exiting)[/dim]")
+            raise typer.Exit(0)
+        return
+
+    # Research mode: reuse ClaudeAgent.is_available gate + the SDK REPL.
     from ai4science.agents import ClaudeAgent
     probe = ClaudeAgent(read_only=read_only, auto_yes=yes, plan_mode=plan)
     if not probe.is_available():
         console.print(f"[red]Claude agent not available:[/red] {probe.unavailable_reason()}")
         raise typer.Exit(2)
 
-    workspace = workspace.resolve()
     try:
         asyncio.run(_run_chat(workspace=workspace, read_only=read_only,
                                auto_yes=yes, plan_mode=plan,

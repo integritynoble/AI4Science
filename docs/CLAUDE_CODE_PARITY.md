@@ -77,3 +77,19 @@ implementation plan before editing any files."
 
 (Auto-routes to the claude agent, uses Read/Grep/Glob to investigate, returns a
 plan. Add `--plan` to guarantee no edits until you approve.)
+
+---
+
+## Interactive common mode runs on a native brand-agnostic harness (2026-05-31)
+
+Common mode's default is a single live streaming agent on `ai4science/harness/` —
+uniform streaming, per-edit confirmation + PWM sandbox, and a `/model` brand switch
+across Anthropic / ChatGPT / Gemini (all driven by one native loop, no
+`claude-agent-sdk` in the interactive path). `ai4science chat --mode common` launches
+it via `harness/repl.py`; research mode keeps the SDK path.
+
+This is **Option A** (uniform, self-owned harness) — chosen as the recursive
+self-improvement substrate. Full Claude-Code polish (live bash streaming, rich diff
+rendering, sub-agents, MCP, compaction, session persistence, @mentions/images, hooks)
+is the REQUIRED parity work tracked in Plan 3. The opt-in best-of-N ensemble is Plan 2.
+See docs/superpowers/specs/2026-05-31-common-mode-multibrand-ensemble-design.md.
