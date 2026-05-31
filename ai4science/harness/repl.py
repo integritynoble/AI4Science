@@ -86,6 +86,39 @@ def _pick_brand(backend: Optional[str], model: Optional[str]):
     return "anthropic", "claude-opus-4-8"
 
 
+def build_common_registry(*, workspace, session_factory, enable_pwm=True,
+                          enable_subagents=True, mcp_clients=None):
+    """Assemble core ∪ PWM ∪ sub-agent ∪ MCP tool registry.
+
+    Parameters
+    ----------
+    workspace:
+        Directory passed to tools that need a workspace path.
+    session_factory:
+        Callable used by the ``task`` sub-agent tool to spawn child sessions.
+    enable_pwm:
+        If True, add the four deterministic PWM tools (pwm_status, etc.).
+    enable_subagents:
+        If True, add the ``task`` delegation tool.
+    mcp_clients:
+        Optional list of stdio MCP client objects whose tools are merged in.
+    """
+    from ai4science.harness.tools import default_registry
+    reg = default_registry()
+    if enable_pwm:
+        from ai4science.harness import mcp_pwm
+        for t in mcp_pwm.pwm_tools():
+            reg.add(t)
+    if enable_subagents:
+        from ai4science.harness.subagents import make_task_tool
+        reg.add(make_task_tool(session_factory=session_factory, depth=0))
+    for client in (mcp_clients or []):
+        from ai4science.harness.mcp_client import mcp_tools
+        for t in mcp_tools(client):
+            reg.add(t)
+    return reg
+
+
 def run_common_repl(
     workspace: Path,
     *,
@@ -164,6 +197,22 @@ def run_common_repl(
 
         return _meter
 
+    def _child_session_factory(*, subagent_type, depth):
+        child_reg = build_common_registry(
+            workspace=workspace, session_factory=_child_session_factory,
+            enable_pwm=True, enable_subagents=False)  # children: no nested task tool
+        return AgentSession(
+            adapter=adapter_for(active_backend),
+            model=active_model,
+            backend=active_backend,
+            workspace=workspace,
+            read_only=state["read_only"],
+            auto_yes=True,
+            registry=child_reg,
+            on_text=on_text,
+            meter=_make_wrapped_meter(active_backend, active_model),
+        )
+
     def _build_session() -> AgentSession:
         return AgentSession(
             adapter=adapter_for(active_backend),
@@ -175,6 +224,12 @@ def run_common_repl(
             confirm=_confirm,
             on_text=on_text,
             meter=_make_wrapped_meter(active_backend, active_model),
+            registry=build_common_registry(
+                workspace=workspace,
+                session_factory=_child_session_factory,
+                enable_pwm=True,
+                enable_subagents=True,
+            ),
         )
 
     _sid = session_id or secrets.token_hex(8)
@@ -251,6 +306,21 @@ def run_common_repl(
                         print("[harness] workspace is empty", flush=True)
                 except Exception as e:
                     print(f"[harness] files error: {e}", flush=True)
+                continue
+
+            # /agents lists available sub-agent types.
+            if cmd == "agents":
+                from ai4science.harness.subagents import SUBAGENTS
+                print("[harness] sub-agents:", flush=True)
+                for n, p in sorted(SUBAGENTS.items()):
+                    print(f"  {n}: {p['description']}", flush=True)
+                continue
+
+            # /mcp describes MCP wiring status.
+            if cmd == "mcp":
+                print("[harness] MCP servers: none configured "
+                      "(stdio MCP wiring is config-driven; see harness/mcp_client.py)",
+                      flush=True)
                 continue
 
             # All other slash commands go through the stateless dispatcher.
