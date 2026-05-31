@@ -32,10 +32,24 @@ class OpenAIAdapter(AgentAdapter):
                 out.append({"role": "tool", "tool_call_id": m.tool_call_id, "content": m.content})
         return out
 
+    def _usage_from(self, u) -> Usage:
+        return Usage(getattr(u, "prompt_tokens", None),
+                     getattr(u, "completion_tokens", None),
+                     getattr(u, "total_tokens", None))
+
     def _parse_stream(self, chunks) -> Iterator[object]:
         acc: dict = {}   # index -> {id, name, args}
         for ch in chunks:
-            choice = ch.choices[0]
+            # With stream_options={"include_usage": True}, OpenAI sends a final
+            # chunk carrying usage with an EMPTY choices list — handle it before
+            # indexing into choices[0].
+            choices = getattr(ch, "choices", None) or []
+            if not choices:
+                u = getattr(ch, "usage", None)
+                if u:
+                    yield self._usage_from(u)
+                continue
+            choice = choices[0]
             delta = choice.delta
             if getattr(delta, "content", None):
                 yield TextDelta(delta.content)
@@ -54,9 +68,7 @@ class OpenAIAdapter(AgentAdapter):
                     yield ToolCall(slot["id"] or "call_0", slot["name"], args)
                 u = getattr(ch, "usage", None)
                 if u:
-                    yield Usage(getattr(u, "prompt_tokens", None),
-                                getattr(u, "completion_tokens", None),
-                                getattr(u, "total_tokens", None))
+                    yield self._usage_from(u)
                 yield Done(choice.finish_reason)
 
     def stream(self, messages: List[Message], tools: List[ToolSpec], *,
