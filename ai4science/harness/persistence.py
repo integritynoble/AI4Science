@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import List, Optional
 
-from ai4science.harness.events import Message, ToolCall
+from ai4science.harness.events import ImagePart, Message, ToolCall
 
 
 def sessions_dir() -> Path:
@@ -21,6 +21,8 @@ def _to_record(m: Message) -> dict:
         "tool_calls": [{"id": tc.id, "name": tc.name, "arguments": tc.arguments}
                        for tc in m.tool_calls],
         "tool_call_id": m.tool_call_id,
+        "images": [{"media_type": im.media_type, "data_b64": im.data_b64}
+                   for im in m.images],
     }
 
 
@@ -31,6 +33,8 @@ def _from_record(d: dict) -> Message:
         tool_calls=[ToolCall(t["id"], t["name"], t["arguments"])
                     for t in d.get("tool_calls", [])],
         tool_call_id=d.get("tool_call_id"),
+        images=[ImagePart(im["media_type"], im["data_b64"])
+                for im in d.get("images", [])],
     )
 
 

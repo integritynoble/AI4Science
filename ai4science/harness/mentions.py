@@ -19,6 +19,14 @@ def expand(line: str, workspace: Path) -> Tuple[str, List[ImagePart]]:
     def _sub(m: "re.Match") -> str:
         token = m.group(1)
         p = (workspace / token)
+        # Only inline/attach files INSIDE the workspace (Claude-Code behaviour):
+        # an absolute or ../ token must not pull a file from outside the project
+        # into the prompt sent to (possibly external, billed) LLMs.
+        try:
+            if not p.resolve().is_relative_to(workspace.resolve()):
+                return m.group(0)
+        except (OSError, ValueError):
+            return m.group(0)
         if not p.is_file():
             return m.group(0)
         if p.suffix.lower() in IMAGE_SUFFIXES:
