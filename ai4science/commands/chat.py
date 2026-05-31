@@ -122,9 +122,18 @@ def chat(
         # (no claude-agent-sdk). Brand is selected from the orchestration pool
         # and switchable in-session via /model. Research mode keeps the SDK path.
         from ai4science.harness.repl import run_common_repl
+        from ai4science.harness import persistence
+        resume_hist = None
+        sid = resume
+        if resume:
+            resume_hist = persistence.load(resume)
+        elif continue_session:
+            sid = persistence.most_recent(workspace)
+            resume_hist = persistence.load(sid) if sid else None
         try:
             run_common_repl(workspace, read_only=read_only or plan,
-                            auto_yes=yes, model=model)
+                            auto_yes=yes, model=model,
+                            resume_history=resume_hist, session_id=sid)
         except KeyboardInterrupt:
             console.print("\n[dim](Ctrl-C — exiting)[/dim]")
             raise typer.Exit(0)

@@ -93,3 +93,21 @@ self-improvement substrate. Full Claude-Code polish (live bash streaming, rich d
 rendering, sub-agents, MCP, compaction, session persistence, @mentions/images, hooks)
 is the REQUIRED parity work tracked in Plan 3. The opt-in best-of-N ensemble is Plan 2.
 See docs/superpowers/specs/2026-05-31-common-mode-multibrand-ensemble-design.md.
+
+---
+
+## Plan 3a landed — interactive experience essentials (2026-05-31)
+
+Common mode (native harness) now has: **live bash output streaming**, **rich unified-diff
+previews** on edit/write confirmation, **session persistence** with `--continue` / `--resume`,
+**context compaction** (summarize old history over a threshold), and the **full slash-command
+set** (`/help /clear /model /readonly /yes /default /cost /files /exit`) with a per-turn token
+footer. Mode toggles update the gate in place (history preserved).
+
+Remaining toward full Claude-Code parity:
+- **Plan 3b** — sub-agents (`Task` tool) + MCP servers (incl. PWM MCP)
+- **Plan 3c** — `@mentions` + image input
+- **Plan 3d** — hardening: bash sandboxing AND a hard wall-clock timeout for streaming bash
+  (the streaming rewrite traded the subprocess `timeout=` for live output — a no-output hang
+  like `sleep 1000` is currently only recoverable via Ctrl-C in the interactive REPL),
+  Anthropic input-token metering, a loop-cap truncation signal, and recorded streaming fixtures.

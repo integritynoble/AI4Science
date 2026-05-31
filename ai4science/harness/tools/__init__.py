@@ -19,7 +19,7 @@ def default_registry() -> Registry:
                   "required": ["path", "old", "new"]}, fs.edit, mutating=True))
     reg.add(Tool("bash", "Run a shell command in the workspace.",
                  {"type": "object", "properties": {"cmd": _STR}, "required": ["cmd"]},
-                 shell.bash, mutating=True))
+                 shell.bash, mutating=True, streams=True))
     reg.add(Tool("grep", "Regex search across files.",
                  {"type": "object", "properties": {"pattern": _STR}, "required": ["pattern"]},
                  fs.grep, mutating=False))

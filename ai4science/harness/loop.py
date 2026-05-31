@@ -45,7 +45,10 @@ def run_loop(*, adapter, model: str, reasoning: str, history: List[Message],
             else:
                 try:
                     tool = registry.get(tc.name)
-                    result = tool.func(workspace, **tc.arguments)
+                    if tool.streams:
+                        result = tool.func(workspace, **tc.arguments, _sink=on_text)
+                    else:
+                        result = tool.func(workspace, **tc.arguments)
                 except Exception as exc:
                     result = f"[error] {exc}"
             history.append(Message(role="tool", content=str(result), tool_call_id=tc.id))
