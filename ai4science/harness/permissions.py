@@ -7,8 +7,8 @@ from typing import Callable, Dict, Optional, Tuple
 PROTECTED_DIRS = ("judge", "hidden_tests")
 
 _BASH_BLOCK = re.compile(
-    r"(^|[\s=:/])(\.\./)"           # parent-directory escape
-    r"|(^|[\s=:/'\"])(" + "|".join(PROTECTED_DIRS) + r")/"   # judge/ or hidden_tests/
+    r"(^|[\s=:/;|&])(\.\./)"        # parent-directory escape (incl. ;|& chained, no space)
+    r"|(^|[\s=:/;|&'\"])(" + "|".join(PROTECTED_DIRS) + r")/"   # judge/ or hidden_tests/
 )
 
 
