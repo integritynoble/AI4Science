@@ -110,7 +110,11 @@ Remaining toward full Claude-Code parity:
   common mode to the science layer); ✅ stdio MCP client (namespaced `mcp__server__tool`);
   ✅ combined registry (core ∪ PWM ∪ task ∪ MCP) + `/agents` `/mcp` REPL commands. Out of scope:
   HTTP/OAuth MCP transports (stdio only); config-surface to pass external MCP servers into the REPL.
-- **Plan 3c** — `@mentions` + image input
+- **Plan 3c (DONE 2026-05-31)** — ✅ `@mentions` (typing `@path` inlines a text file's content, or
+  attaches an image file as a multimodal image); ✅ image input across all 3 adapters (Anthropic
+  base64 source, OpenAI data-URI image_url, Gemini inline_data). **Common mode is now at full
+  Claude-Code parity.** Out of scope: clipboard image paste (terminal-dependent) — images are
+  referenced by file path.
 - **Plan 3d (DONE 2026-05-31)** — hardening: ✅ hard wall-clock bash timeout (reader thread +
   process-group kill, so a `sleep 1000`-style hang is killed promptly, not orphaned);
   ✅ bash-command sandbox guard (blocks `judge/`/`hidden_tests/`/parent-escape refs, incl.

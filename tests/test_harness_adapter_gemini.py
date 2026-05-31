@@ -55,3 +55,14 @@ def test_tool_roundtrip_preserves_real_function_name():
 
     out = a._translate_messages([Message(role="tool", content="ok", tool_call_id=tc.id)])
     assert out[0]["parts"][0]["functionResponse"]["name"] == "read"
+
+
+def test_translate_user_message_with_image():
+    from ai4science.harness.events import ImagePart
+    a = GeminiAdapter()
+    out = a._translate_messages([Message(role="user", content="what is this?",
+                                         images=[ImagePart("image/png", "AAAA")])])
+    parts = out[0]["parts"]
+    assert any("text" in p for p in parts)
+    inline = [p for p in parts if "inline_data" in p][0]["inline_data"]
+    assert inline["mime_type"] == "image/png" and inline["data"] == "AAAA"

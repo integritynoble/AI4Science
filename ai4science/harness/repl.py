@@ -346,8 +346,10 @@ def run_common_repl(
 
         # Normal turn.
         try:
+            from ai4science.harness import mentions
+            text, images = mentions.expand(line, workspace)
             turn_tokens["total"] = 0
-            result = session.run_turn(line)
+            result = session.run_turn(text, images=images)
             # Ensure there's a trailing newline after streamed output.
             if result and not result.endswith("\n"):
                 print(flush=True)

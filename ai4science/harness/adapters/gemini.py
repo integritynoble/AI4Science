@@ -18,7 +18,10 @@ class GeminiAdapter(AgentAdapter):
         out = []
         for m in messages:
             if m.role == "user":
-                out.append({"role": "user", "parts": [{"text": m.content}]})
+                parts = [{"text": m.content}] if m.content else []
+                for img in m.images:
+                    parts.append({"inline_data": {"mime_type": img.media_type, "data": img.data_b64}})
+                out.append({"role": "user", "parts": parts})
             elif m.role == "assistant":
                 parts = []
                 if m.content:

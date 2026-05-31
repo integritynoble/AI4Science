@@ -18,7 +18,14 @@ class AnthropicAdapter(AgentAdapter):
         out = []
         for m in messages:
             if m.role == "user":
-                out.append({"role": "user", "content": m.content})
+                if m.images:
+                    blocks = [{"type": "text", "text": m.content}] if m.content else []
+                    for img in m.images:
+                        blocks.append({"type": "image", "source": {
+                            "type": "base64", "media_type": img.media_type, "data": img.data_b64}})
+                    out.append({"role": "user", "content": blocks})
+                else:
+                    out.append({"role": "user", "content": m.content})
             elif m.role == "assistant":
                 content = []
                 if m.content:
