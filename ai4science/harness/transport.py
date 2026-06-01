@@ -5,6 +5,12 @@ import urllib.request
 from typing import Any, Dict, Iterator
 
 
+def get_json(url: str, timeout: int = 60) -> Dict[str, Any]:
+    req = urllib.request.Request(url, headers={"Accept": "application/json"}, method="GET")
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.loads(r.read().decode("utf-8"))
+
+
 def _request(url: str, headers: Dict[str, str], payload: Dict[str, Any]):
     data = json.dumps(payload).encode("utf-8")
     h = {"Content-Type": "application/json", **headers}
