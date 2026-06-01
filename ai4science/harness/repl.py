@@ -251,7 +251,7 @@ def run_common_repl(
         )
 
     def _build_session() -> AgentSession:
-        return AgentSession(
+        s = AgentSession(
             adapter=adapter_for(active_backend),
             model=active_model,
             backend=active_backend,
@@ -268,6 +268,11 @@ def run_common_repl(
                 enable_subagents=True,
             ),
         )
+        # Seed the system prompt on every build (initial AND /clear rebuild) so the
+        # research-mode grounding survives a /clear.
+        if system_prompt:
+            s.history.insert(0, Message(role="system", content=system_prompt))
+        return s
 
     _sid = session_id or secrets.token_hex(8)
 
@@ -275,9 +280,6 @@ def run_common_repl(
 
     if resume_history:
         session.history.extend(resume_history)
-
-    if system_prompt:
-        session.history.insert(0, Message(role="system", content=system_prompt))
 
     print(f"\n[harness] common mode  backend={active_backend}  model={active_model}", flush=True)
     print(f"[harness] session {_sid}  (resume later with --resume {_sid})", flush=True)
