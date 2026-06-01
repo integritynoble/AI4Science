@@ -63,8 +63,9 @@ def _pick_brand(backend: Optional[str], model: Optional[str]):
       1. Both backend and model explicitly supplied → use as-is.
       2. Only backend supplied → first model in AGENT_CHAINS for that backend,
          or a sensible default.
-      3. Neither → walk AGENT_CHAINS["orchestration"] and pick first reachable;
-         fall back to ("anthropic", "claude-opus-4-8").
+      3. Neither → walk AGENT_CHAINS["orchestration"] and pick the first brand
+         whose creds are present (harness_available); fall back to
+         ("gemini", "gemini-3.1-pro-preview").
     """
     if backend and model:
         return backend, model

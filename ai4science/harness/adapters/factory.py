@@ -4,11 +4,12 @@ from typing import Callable
 
 from ai4science.harness.adapters.anthropic import AnthropicAdapter
 from ai4science.harness.adapters.openai import OpenAIAdapter
-from ai4science.harness.adapters.gemini import GeminiAdapter
 from ai4science.harness.events import Usage
 from ai4science.llm import ledger, pricing, routing
 
-_ADAPTERS = {"anthropic": AnthropicAdapter, "openai": OpenAIAdapter, "gemini": GeminiAdapter}
+# openai/gemini/deepseek/qwen all speak OpenAI-compatible REST → OpenAIAdapter;
+# anthropic uses the Messages API → AnthropicAdapter. (The native GeminiAdapter
+# is unused: this deployment reaches Gemini via its OpenAI-compat endpoint.)
 
 
 def adapter_for(backend: str):
