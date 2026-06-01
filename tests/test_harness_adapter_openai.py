@@ -63,3 +63,25 @@ def test_translate_user_message_with_image():
     assert any(b.get("type") == "text" for b in content)
     img = [b for b in content if b.get("type") == "image_url"][0]
     assert img["image_url"]["url"] == "data:image/png;base64,AAAA"
+
+
+def test_openai_stream_sse_endtoend(monkeypatch):
+    from ai4science.harness.adapters.openai import OpenAIAdapter
+    from ai4science.harness.adapters.creds import CredInfo
+    from ai4science.harness import transport
+    from ai4science.harness.events import TextDelta, Done
+    a = OpenAIAdapter(creds=CredInfo("openai_compat", "http://x/chat/completions", "k", "gpt-5.5"))
+    sse = [{"choices": [{"delta": {"content": "hi"}, "finish_reason": None}], "usage": None},
+           {"choices": [{"delta": {}, "finish_reason": "stop"}], "usage": {"prompt_tokens": 4, "completion_tokens": 1, "total_tokens": 5}}]
+    captured = {}
+    def _fake_sse(url, headers, payload, timeout=600):
+        captured["url"] = url; captured["headers"] = headers; captured["payload"] = payload
+        return iter(sse)
+    monkeypatch.setattr(transport, "sse_post", _fake_sse)
+    events = list(a.stream([], [], model="gpt-5.5", reasoning="low"))
+    assert any(isinstance(e, TextDelta) for e in events)
+    assert any(isinstance(e, Done) for e in events)
+    # the request was built correctly
+    assert captured["url"] == "http://x/chat/completions"
+    assert captured["headers"]["Authorization"] == "Bearer k"
+    assert captured["payload"]["stream"] is True and captured["payload"]["model"] == "gpt-5.5"

@@ -10,6 +10,9 @@ from ai4science.harness.events import Message, ToolSpec, TextDelta, ToolCall, Us
 class OpenAIAdapter(AgentAdapter):
     backend = "openai"
 
+    def __init__(self, creds=None):
+        self.creds = creds
+
     def _translate_tools(self, tools: List[ToolSpec]) -> list:
         return [{"type": "function",
                  "function": {"name": t.name, "description": t.description,
@@ -79,11 +82,16 @@ class OpenAIAdapter(AgentAdapter):
 
     def stream(self, messages: List[Message], tools: List[ToolSpec], *,
                model: str, reasoning: str) -> Iterator[object]:
-        from openai import OpenAI  # type: ignore
-        client = OpenAI()
-        stream = client.chat.completions.create(
-            model=model, messages=self._translate_messages(messages),
-            tools=self._translate_tools(tools), stream=True,
-            stream_options={"include_usage": True},
-        )
-        yield from self._parse_stream(stream)
+        from ai4science.harness import transport
+        from ai4science.harness.adapters._dotdict import dot
+        c = self.creds
+        headers = {"Authorization": f"Bearer {c.api_key}"}
+        payload = {
+            "model": model or c.model,
+            "stream": True,
+            "messages": self._translate_messages(messages),
+            "tools": self._translate_tools(tools),
+            "stream_options": {"include_usage": True},
+        }
+        raw = transport.sse_post(c.base_url, headers, payload)
+        yield from self._parse_stream(dot(ch) for ch in raw)
