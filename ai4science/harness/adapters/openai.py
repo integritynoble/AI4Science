@@ -90,8 +90,12 @@ class OpenAIAdapter(AgentAdapter):
             "model": model or c.model,
             "stream": True,
             "messages": self._translate_messages(messages),
-            "tools": self._translate_tools(tools),
             "stream_options": {"include_usage": True},
         }
+        # Omit `tools` when empty — some OpenAI-compat endpoints (Gemini AI-Studio,
+        # older Azure) 400 on an empty tools array.
+        tool_specs = self._translate_tools(tools)
+        if tool_specs:
+            payload["tools"] = tool_specs
         raw = transport.sse_post(c.base_url, headers, payload)
         yield from self._parse_stream(dot(ch) for ch in raw)
