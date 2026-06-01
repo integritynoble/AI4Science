@@ -28,3 +28,7 @@ class dot:
 
     def __bool__(self):
         return bool(object.__getattribute__(self, "_d"))
+
+    def unwrap(self):
+        """The underlying raw JSON value (dict/list), for passthrough echoing."""
+        return object.__getattribute__(self, "_d")

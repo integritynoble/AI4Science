@@ -37,6 +37,9 @@ class ToolCall:
     id: str
     name: str
     arguments: Dict[str, Any]
+    # Opaque per-provider passthrough that must be echoed back on the next request
+    # (e.g. Gemini's OpenAI-compat `extra_content.google.thought_signature`).
+    extra: Optional[Dict[str, Any]] = None
 
 
 @dataclass

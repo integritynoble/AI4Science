@@ -32,10 +32,14 @@ class OpenAIAdapter(AgentAdapter):
             elif m.role == "assistant":
                 msg = {"role": "assistant", "content": m.content or None}
                 if m.tool_calls:
-                    msg["tool_calls"] = [
-                        {"id": tc.id, "type": "function",
-                         "function": {"name": tc.name, "arguments": json.dumps(tc.arguments)}}
-                        for tc in m.tool_calls]
+                    calls = []
+                    for tc in m.tool_calls:
+                        d = {"id": tc.id, "type": "function",
+                             "function": {"name": tc.name, "arguments": json.dumps(tc.arguments)}}
+                        if tc.extra:                       # echo Gemini thought_signature etc.
+                            d["extra_content"] = tc.extra
+                        calls.append(d)
+                    msg["tool_calls"] = calls
                 out.append(msg)
             elif m.role == "tool":
                 out.append({"role": "tool", "tool_call_id": m.tool_call_id, "content": m.content})
@@ -63,9 +67,12 @@ class OpenAIAdapter(AgentAdapter):
             if getattr(delta, "content", None):
                 yield TextDelta(delta.content)
             for tcd in (getattr(delta, "tool_calls", None) or []):
-                slot = acc.setdefault(tcd.index, {"id": None, "name": "", "args": ""})
+                slot = acc.setdefault(tcd.index, {"id": None, "name": "", "args": "", "extra": None})
                 if getattr(tcd, "id", None):
                     slot["id"] = tcd.id
+                ec = getattr(tcd, "extra_content", None)   # Gemini thought_signature etc.
+                if ec is not None:
+                    slot["extra"] = ec.unwrap() if hasattr(ec, "unwrap") else ec
                 fn = getattr(tcd, "function", None)
                 if fn and getattr(fn, "name", None):
                     slot["name"] = fn.name
@@ -74,7 +81,8 @@ class OpenAIAdapter(AgentAdapter):
             if getattr(choice, "finish_reason", None):
                 for slot in acc.values():
                     args = json.loads(slot["args"]) if slot["args"].strip() else {}
-                    yield ToolCall(slot["id"] or "call_0", slot["name"], args)
+                    yield ToolCall(slot["id"] or "call_0", slot["name"], args,
+                                   extra=slot.get("extra"))
                 u = getattr(ch, "usage", None)
                 if u:
                     yield self._usage_from(u)

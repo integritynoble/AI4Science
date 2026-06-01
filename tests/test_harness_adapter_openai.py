@@ -85,3 +85,22 @@ def test_openai_stream_sse_endtoend(monkeypatch):
     assert captured["url"] == "http://x/chat/completions"
     assert captured["headers"]["Authorization"] == "Bearer k"
     assert captured["payload"]["stream"] is True and captured["payload"]["model"] == "gpt-5.5"
+
+
+def test_openai_tool_call_extra_signature_roundtrip():
+    """Gemini's OpenAI-compat tool calls carry extra_content.thought_signature that
+    MUST be captured on parse and echoed back on translate, or the next request 400s."""
+    from ai4science.harness.adapters.openai import OpenAIAdapter
+    from ai4science.harness.adapters._dotdict import dot
+    from ai4science.harness.events import Message, ToolCall
+    a = OpenAIAdapter()
+    chunk = dot({"choices": [{"delta": {"tool_calls": [
+        {"index": 0, "id": "c0",
+         "extra_content": {"google": {"thought_signature": "SIG"}},
+         "function": {"name": "read", "arguments": "{\"path\": \"a\"}"}}]},
+        "finish_reason": "tool_calls"}]})
+    tcs = [e for e in a._parse_stream(iter([chunk])) if isinstance(e, ToolCall)]
+    assert tcs and tcs[0].extra == {"google": {"thought_signature": "SIG"}}
+    out = a._translate_messages([Message(role="assistant", content="", tool_calls=[
+        ToolCall("c0", "read", {"path": "a"}, extra={"google": {"thought_signature": "SIG"}})])])
+    assert out[0]["tool_calls"][0]["extra_content"] == {"google": {"thought_signature": "SIG"}}
