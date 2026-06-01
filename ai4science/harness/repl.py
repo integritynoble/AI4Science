@@ -1,4 +1,4 @@
-"""Native-harness REPL for --mode common.
+"""Native-harness REPL for both --mode common and --mode research.
 
 A self-contained input()-loop that builds an AgentSession from the harness
 adapter factory, streams text to stdout, handles /exit and /model, and
@@ -7,11 +7,12 @@ meters usage via the ledger.  No claude_agent_sdk dependency.
 This module is intentionally free of Typer / Rich so that it can be imported
 and unit-tested without a TTY.
 
-Integration: ai4science/commands/chat.py calls run_common_repl() for
-``mode == "common"`` (bypassing the claude-agent-sdk gate, which now applies
-only to research mode). Slash commands: /help /clear /model /readonly /yes
-/default /cost /files /exit. Session history is persisted per turn and reseeded
-via --continue / --resume (session_id).
+Integration: ai4science/commands/chat.py calls run_common_repl() for BOTH
+modes — common uses build_common_registry; research passes
+registry_builder=build_research_registry + system_prompt=RESEARCH_PROMPT
+(adding the PWM registry/solution tools the moat keeps out of common mode).
+Slash commands: /help /clear /model /readonly /yes /default /cost /files /exit.
+Session history is persisted per turn and reseeded via --continue / --resume.
 """
 from __future__ import annotations
 
