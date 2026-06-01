@@ -10,6 +10,9 @@ from ai4science.harness.events import Message, ToolSpec, TextDelta, ToolCall, Us
 class AnthropicAdapter(AgentAdapter):
     backend = "anthropic"
 
+    def __init__(self, creds=None):
+        self.creds = creds
+
     def _translate_tools(self, tools: List[ToolSpec]) -> list:
         return [{"name": t.name, "description": t.description, "input_schema": t.parameters}
                 for t in tools]
@@ -74,14 +77,28 @@ class AnthropicAdapter(AgentAdapter):
 
     def stream(self, messages: List[Message], tools: List[ToolSpec], *,
                model: str, reasoning: str) -> Iterator[object]:
-        # Thin streaming wrapper (validated manually; not in CI).
-        import anthropic  # type: ignore
-        client = anthropic.Anthropic()
+        if not (self.creds and self.creds.api_key):
+            from ai4science.harness.events import TextDelta, Done
+            yield TextDelta("[this brand has no API key configured — set the provider "
+                            "key (e.g. ANTHROPIC_API_KEY / OPENAI_API_KEY) to enable it, "
+                            "or use /model to switch to a reachable brand]")
+            yield Done("end")
+            return
+        from ai4science.harness import transport
+        from ai4science.harness.adapters._dotdict import dot
+        c = self.creds
+        headers = {"x-api-key": c.api_key or "", "anthropic-version": "2023-06-01"}
         sys_text = next((m.content for m in messages if m.role == "system"), None)
-        kwargs = dict(model=model, max_tokens=8192,
-                      messages=self._translate_messages([m for m in messages if m.role != "system"]),
-                      tools=self._translate_tools(tools))
+        payload = {
+            "model": model,
+            "max_tokens": 8192,
+            "stream": True,
+            "messages": self._translate_messages([m for m in messages if m.role != "system"]),
+        }
+        tool_specs = self._translate_tools(tools)
+        if tool_specs:
+            payload["tools"] = tool_specs
         if sys_text:
-            kwargs["system"] = sys_text
-        with client.messages.stream(**kwargs) as s:
-            yield from self._parse_stream(s)
+            payload["system"] = sys_text
+        raw = transport.sse_post(c.base_url, headers, payload)
+        yield from self._parse_stream(dot(ev) for ev in raw)

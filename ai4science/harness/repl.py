@@ -63,8 +63,9 @@ def _pick_brand(backend: Optional[str], model: Optional[str]):
       1. Both backend and model explicitly supplied → use as-is.
       2. Only backend supplied → first model in AGENT_CHAINS for that backend,
          or a sensible default.
-      3. Neither → walk AGENT_CHAINS["orchestration"] and pick first reachable;
-         fall back to ("anthropic", "claude-opus-4-8").
+      3. Neither → walk AGENT_CHAINS["orchestration"] and pick the first brand
+         whose creds are present (harness_available); fall back to
+         ("gemini", "gemini-3.1-pro-preview").
     """
     if backend and model:
         return backend, model
@@ -78,12 +79,13 @@ def _pick_brand(backend: Optional[str], model: Optional[str]):
         return backend, "claude-opus-4-8"
 
     # Auto-detect: first reachable backend in the orchestration chain.
+    from ai4science.harness.adapters.factory import harness_available
     for b, m in routing.AGENT_CHAINS.get("orchestration", []):
-        if routing.backend_available(b):
+        if harness_available(b):
             return b, m
 
-    # Nothing reachable — fall back to Anthropic / Opus 4.8.
-    return "anthropic", "claude-opus-4-8"
+    # Nothing reachable — fall back to Gemini.
+    return "gemini", "gemini-3.1-pro-preview"
 
 
 def build_common_registry(*, workspace, session_factory, enable_pwm=True,

@@ -18,7 +18,8 @@ def _to_record(m: Message) -> dict:
     return {
         "role": m.role,
         "content": m.content,
-        "tool_calls": [{"id": tc.id, "name": tc.name, "arguments": tc.arguments}
+        "tool_calls": [{"id": tc.id, "name": tc.name, "arguments": tc.arguments,
+                        "extra": tc.extra}
                        for tc in m.tool_calls],
         "tool_call_id": m.tool_call_id,
         "images": [{"media_type": im.media_type, "data_b64": im.data_b64}
@@ -30,7 +31,7 @@ def _from_record(d: dict) -> Message:
     return Message(
         role=d["role"],
         content=d.get("content", ""),
-        tool_calls=[ToolCall(t["id"], t["name"], t["arguments"])
+        tool_calls=[ToolCall(t["id"], t["name"], t["arguments"], extra=t.get("extra"))
                     for t in d.get("tool_calls", [])],
         tool_call_id=d.get("tool_call_id"),
         images=[ImagePart(im["media_type"], im["data_b64"])

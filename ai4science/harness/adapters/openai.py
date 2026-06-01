@@ -10,6 +10,9 @@ from ai4science.harness.events import Message, ToolSpec, TextDelta, ToolCall, Us
 class OpenAIAdapter(AgentAdapter):
     backend = "openai"
 
+    def __init__(self, creds=None):
+        self.creds = creds
+
     def _translate_tools(self, tools: List[ToolSpec]) -> list:
         return [{"type": "function",
                  "function": {"name": t.name, "description": t.description,
@@ -29,10 +32,14 @@ class OpenAIAdapter(AgentAdapter):
             elif m.role == "assistant":
                 msg = {"role": "assistant", "content": m.content or None}
                 if m.tool_calls:
-                    msg["tool_calls"] = [
-                        {"id": tc.id, "type": "function",
-                         "function": {"name": tc.name, "arguments": json.dumps(tc.arguments)}}
-                        for tc in m.tool_calls]
+                    calls = []
+                    for tc in m.tool_calls:
+                        d = {"id": tc.id, "type": "function",
+                             "function": {"name": tc.name, "arguments": json.dumps(tc.arguments)}}
+                        if tc.extra:                       # echo Gemini thought_signature etc.
+                            d["extra_content"] = tc.extra
+                        calls.append(d)
+                    msg["tool_calls"] = calls
                 out.append(msg)
             elif m.role == "tool":
                 out.append({"role": "tool", "tool_call_id": m.tool_call_id, "content": m.content})
@@ -60,9 +67,12 @@ class OpenAIAdapter(AgentAdapter):
             if getattr(delta, "content", None):
                 yield TextDelta(delta.content)
             for tcd in (getattr(delta, "tool_calls", None) or []):
-                slot = acc.setdefault(tcd.index, {"id": None, "name": "", "args": ""})
+                slot = acc.setdefault(tcd.index, {"id": None, "name": "", "args": "", "extra": None})
                 if getattr(tcd, "id", None):
                     slot["id"] = tcd.id
+                ec = getattr(tcd, "extra_content", None)   # Gemini thought_signature etc.
+                if ec is not None:
+                    slot["extra"] = ec.unwrap() if hasattr(ec, "unwrap") else ec
                 fn = getattr(tcd, "function", None)
                 if fn and getattr(fn, "name", None):
                     slot["name"] = fn.name
@@ -71,7 +81,8 @@ class OpenAIAdapter(AgentAdapter):
             if getattr(choice, "finish_reason", None):
                 for slot in acc.values():
                     args = json.loads(slot["args"]) if slot["args"].strip() else {}
-                    yield ToolCall(slot["id"] or "call_0", slot["name"], args)
+                    yield ToolCall(slot["id"] or "call_0", slot["name"], args,
+                                   extra=slot.get("extra"))
                 u = getattr(ch, "usage", None)
                 if u:
                     yield self._usage_from(u)
@@ -79,11 +90,27 @@ class OpenAIAdapter(AgentAdapter):
 
     def stream(self, messages: List[Message], tools: List[ToolSpec], *,
                model: str, reasoning: str) -> Iterator[object]:
-        from openai import OpenAI  # type: ignore
-        client = OpenAI()
-        stream = client.chat.completions.create(
-            model=model, messages=self._translate_messages(messages),
-            tools=self._translate_tools(tools), stream=True,
-            stream_options={"include_usage": True},
-        )
-        yield from self._parse_stream(stream)
+        if not (self.creds and self.creds.api_key):
+            from ai4science.harness.events import TextDelta, Done
+            yield TextDelta("[this brand has no API key configured — set the provider "
+                            "key (e.g. ANTHROPIC_API_KEY / OPENAI_API_KEY) to enable it, "
+                            "or use /model to switch to a reachable brand]")
+            yield Done("end")
+            return
+        from ai4science.harness import transport
+        from ai4science.harness.adapters._dotdict import dot
+        c = self.creds
+        headers = {"Authorization": f"Bearer {c.api_key}"}
+        payload = {
+            "model": model or c.model,
+            "stream": True,
+            "messages": self._translate_messages(messages),
+            "stream_options": {"include_usage": True},
+        }
+        # Omit `tools` when empty — some OpenAI-compat endpoints (Gemini AI-Studio,
+        # older Azure) 400 on an empty tools array.
+        tool_specs = self._translate_tools(tools)
+        if tool_specs:
+            payload["tools"] = tool_specs
+        raw = transport.sse_post(c.base_url, headers, payload)
+        yield from self._parse_stream(dot(ch) for ch in raw)
