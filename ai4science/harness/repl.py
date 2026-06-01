@@ -88,6 +88,16 @@ def _pick_brand(backend: Optional[str], model: Optional[str]):
     return "gemini", "gemini-3.1-pro-preview"
 
 
+RESEARCH_PROMPT = (
+    "You are AI4Science in RESEARCH mode. In addition to coding tools, you can query "
+    "the PWM registry: pwm_principles / pwm_principle, pwm_benchmarks / pwm_benchmark, "
+    "pwm_solutions (registered SOTA solutions + scores per benchmark), pwm_overview. "
+    "Use registered Principles, Specs, Benchmarks and Solutions to ground your work — "
+    "consult pwm_solutions before proposing a new solution, and build on the best "
+    "registered baselines. Mainnet/testnet status is shown via each artifact's chain_status."
+)
+
+
 def build_common_registry(*, workspace, session_factory, enable_pwm=True,
                           enable_subagents=True, mcp_clients=None):
     """Assemble core ∪ PWM ∪ sub-agent ∪ MCP tool registry.
@@ -121,6 +131,22 @@ def build_common_registry(*, workspace, session_factory, enable_pwm=True,
     return reg
 
 
+def build_research_registry(*, workspace, session_factory, enable_pwm=True,
+                            enable_subagents=True, mcp_clients=None):
+    """Assemble the research registry: common core + PWM data tools.
+
+    The research tools (pwm_solutions, pwm_principles, etc.) are added on top
+    of the common registry.  Common mode does NOT get these — that's the moat.
+    """
+    reg = build_common_registry(workspace=workspace, session_factory=session_factory,
+                                enable_pwm=enable_pwm, enable_subagents=enable_subagents,
+                                mcp_clients=mcp_clients)
+    from ai4science.harness.research_tools import research_tools
+    for t in research_tools():
+        reg.add(t)
+    return reg
+
+
 def run_common_repl(
     workspace: Path,
     *,
@@ -131,6 +157,8 @@ def run_common_repl(
     on_text=None,
     resume_history: Optional[List[Message]] = None,
     session_id: Optional[str] = None,
+    registry_builder=None,
+    system_prompt: Optional[str] = None,
 ) -> None:
     """Run the native-harness REPL until EOF or /exit.
 
@@ -156,6 +184,13 @@ def run_common_repl(
     session_id:
         Stable id for this session used by persistence.save().
         None → a new random id is generated.
+    registry_builder:
+        Callable with the same signature as build_common_registry used to
+        construct the top-level tool registry.  None → build_common_registry.
+        Children sessions always use build_common_registry (no recursion).
+    system_prompt:
+        Optional system prompt string seeded as the leading system Message in
+        history.  None → no system turn added.
     """
     from ai4science.harness import persistence
 
@@ -226,7 +261,7 @@ def run_common_repl(
             confirm=_confirm,
             on_text=on_text,
             meter=_make_wrapped_meter(active_backend, active_model),
-            registry=build_common_registry(
+            registry=(registry_builder or build_common_registry)(
                 workspace=workspace,
                 session_factory=_child_session_factory,
                 enable_pwm=True,
@@ -240,6 +275,9 @@ def run_common_repl(
 
     if resume_history:
         session.history.extend(resume_history)
+
+    if system_prompt:
+        session.history.insert(0, Message(role="system", content=system_prompt))
 
     print(f"\n[harness] common mode  backend={active_backend}  model={active_model}", flush=True)
     print(f"[harness] session {_sid}  (resume later with --resume {_sid})", flush=True)
