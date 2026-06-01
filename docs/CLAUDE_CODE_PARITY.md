@@ -144,3 +144,22 @@ REST endpoints (stdlib `urllib` SSE), reusing the credential resolvers (`llm/gem
   thought_signature` on tool round-trips (threaded via `ToolCall.extra`), else it 400s.
 
 Common mode is now both feature-complete (Plans 1/3a/3b/3c/3d) AND live (Plan 3e).
+
+---
+
+## Plan 4 — research mode runs on the harness (2026-06-01)
+
+`--mode research` now routes to the native harness via `run_common_repl`, using
+`build_research_registry` and `RESEARCH_PROMPT` (built in Plan 4 / Task 3).
+
+**What research mode adds on top of common mode:**
+- `pwm_principles` / `pwm_principle` — list or fetch a registered Principle (L1).
+- `pwm_benchmarks` / `pwm_benchmark` — list or fetch a registered Benchmark (L3).
+- `pwm_solutions` — registered SOTA solutions + scores per benchmark.
+- `pwm_overview` — top-level registry stats (principles, specs, benchmarks, solutions).
+- A grounding system prompt that instructs the agent to consult registered baselines
+  before proposing new solutions and to use chain_status to check mainnet/testnet state.
+
+**Common mode** deliberately excludes these PWM data tools — that is the product moat.
+Both modes share the same harness, session persistence, `--continue`/`--resume`, and
+brand-switching (`/model`). Data is served from the PWM explorer API.

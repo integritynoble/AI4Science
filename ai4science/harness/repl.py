@@ -159,6 +159,7 @@ def run_common_repl(
     session_id: Optional[str] = None,
     registry_builder=None,
     system_prompt: Optional[str] = None,
+    mode_label: str = "common",
 ) -> None:
     """Run the native-harness REPL until EOF or /exit.
 
@@ -281,7 +282,7 @@ def run_common_repl(
     if resume_history:
         session.history.extend(resume_history)
 
-    print(f"\n[harness] common mode  backend={active_backend}  model={active_model}", flush=True)
+    print(f"\n[harness] {mode_label} mode  backend={active_backend}  model={active_model}", flush=True)
     print(f"[harness] session {_sid}  (resume later with --resume {_sid})", flush=True)
     print("[harness] /help for commands  /exit to quit\n", flush=True)
 
