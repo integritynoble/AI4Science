@@ -70,3 +70,29 @@ def test_translate_user_message_with_image():
     img = [b for b in blocks if b.get("type") == "image"][0]
     assert img["source"]["type"] == "base64"
     assert img["source"]["media_type"] == "image/png" and img["source"]["data"] == "AAAA"
+
+
+def test_anthropic_stream_sse(monkeypatch):
+    from ai4science.harness.adapters.anthropic import AnthropicAdapter
+    from ai4science.harness.adapters.creds import CredInfo
+    from ai4science.harness import transport
+    from ai4science.harness.events import Message, TextDelta, Done
+    a = AnthropicAdapter(creds=CredInfo("anthropic", "http://x/v1/messages", "k", None))
+    sse = [{"type": "message_start", "message": {"usage": {"input_tokens": 9}}},
+           {"type": "content_block_delta", "delta": {"type": "text_delta", "text": "hi"}},
+           {"type": "message_delta", "usage": {"output_tokens": 3}, "delta": {"stop_reason": "end_turn"}},
+           {"type": "message_stop"}]
+    captured = {}
+    def _fake_sse(url, headers, payload, timeout=600):
+        captured["url"] = url; captured["headers"] = headers; captured["payload"] = payload
+        return iter(sse)
+    monkeypatch.setattr(transport, "sse_post", _fake_sse)
+    msgs = [Message(role="user", content="hello")]
+    events = list(a.stream(msgs, [], model="claude-opus-4-8", reasoning="high"))
+    assert any(isinstance(e, TextDelta) for e in events)
+    assert any(isinstance(e, Done) for e in events)
+    assert captured["url"] == "http://x/v1/messages"
+    assert captured["headers"]["x-api-key"] == "k"
+    assert captured["headers"]["anthropic-version"] == "2023-06-01"
+    assert captured["payload"]["stream"] is True
+    assert captured["payload"]["model"] == "claude-opus-4-8"
