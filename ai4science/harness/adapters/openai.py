@@ -82,6 +82,13 @@ class OpenAIAdapter(AgentAdapter):
 
     def stream(self, messages: List[Message], tools: List[ToolSpec], *,
                model: str, reasoning: str) -> Iterator[object]:
+        if not (self.creds and self.creds.api_key):
+            from ai4science.harness.events import TextDelta, Done
+            yield TextDelta("[this brand has no API key configured — set the provider "
+                            "key (e.g. ANTHROPIC_API_KEY / OPENAI_API_KEY) to enable it, "
+                            "or use /model to switch to a reachable brand]")
+            yield Done("end")
+            return
         from ai4science.harness import transport
         from ai4science.harness.adapters._dotdict import dot
         c = self.creds

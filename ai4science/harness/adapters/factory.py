@@ -12,10 +12,16 @@ _ADAPTERS = {"anthropic": AnthropicAdapter, "openai": OpenAIAdapter, "gemini": G
 
 
 def adapter_for(backend: str):
-    cls = _ADAPTERS.get(backend)
-    if cls is None:
-        raise ValueError(f"no harness adapter for backend {backend!r}")
-    return cls()
+    from ai4science.harness.adapters import creds as _creds
+    c = _creds.resolve(backend)
+    if c.kind == "anthropic":
+        return AnthropicAdapter(creds=c)
+    return OpenAIAdapter(creds=c)   # openai/gemini/deepseek/qwen are OpenAI-compatible
+
+
+def harness_available(backend: str) -> bool:
+    from ai4science.harness.adapters import creds as _creds
+    return _creds.available(backend)
 
 
 def make_meter(*, backend: str, model: str) -> Callable[[Usage], None]:

@@ -33,18 +33,19 @@ def test_pick_brand_explicit_backend_only():
 
 
 def test_pick_brand_auto_fallback(monkeypatch):
-    """When no backend is reachable, falls back to anthropic/claude-opus-4-8."""
-    monkeypatch.setattr(routing, "backend_available", lambda _: False)
+    """When no backend is reachable via harness creds, falls back to gemini."""
+    import ai4science.harness.adapters.factory as fac_mod
+    monkeypatch.setattr(fac_mod, "harness_available", lambda _: False)
     b, m = _pick_brand(None, None)
-    assert b == "anthropic"
-    assert m == "claude-opus-4-8"
+    assert b == "gemini"
+    assert m == "gemini-3.1-pro-preview"
 
 
 def test_pick_brand_auto_picks_first_reachable(monkeypatch):
     """Auto-detect returns the first reachable entry in the orchestration chain."""
+    import ai4science.harness.adapters.factory as fac_mod
     first_backend = routing.AGENT_CHAINS["orchestration"][0][0]
-    monkeypatch.setattr(routing, "backend_available",
-                        lambda b: b == first_backend)
+    monkeypatch.setattr(fac_mod, "harness_available", lambda b: b == first_backend)
     b, m = _pick_brand(None, None)
     assert b == first_backend
 
