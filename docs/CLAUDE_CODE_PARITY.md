@@ -123,3 +123,24 @@ Remaining toward full Claude-Code parity:
   Out of scope (future): OS-level bash isolation (bubblewrap/chroot) — the cmd guard is
   heuristic, not airtight against deliberate obfuscation — and real recorded provider stream
   fixtures (need live API creds; CI uses synthetic streams).
+
+---
+
+## Plan 3e — common mode runs LIVE (2026-05-31, verified)
+
+The harness adapters were rewritten **SDK-free** to stream over the project's existing
+REST endpoints (stdlib `urllib` SSE), reusing the credential resolvers (`llm/gemini`,
+`llm/openai_compat`). No heavy SDKs; no new keys.
+
+- **Verified live:** `ai4science chat --mode common` → `/model gemini` → "read app.py and
+  tell me what it does" → Gemini streamed an answer derived from *actually reading the file*
+  via the `read` tool round-trip, with token metering. Common mode genuinely works.
+- **Reachable now (current creds):** gemini, openai*, deepseek, qwen (OpenAI-compat). Anthropic
+  is key-gated (set `ANTHROPIC_API_KEY`) — its `claude` subscription CLI doesn't expose a key.
+  (*openai-by-key returned 401 against api.openai.com — the env key isn't a direct OpenAI key;
+  use gemini or set a real `OPENAI_API_KEY`.)
+- **Default brand** = first reachable in the orchestration chain.
+- **Gemini quirk fixed:** its OpenAI-compat endpoint requires echoing `extra_content.google.
+  thought_signature` on tool round-trips (threaded via `ToolCall.extra`), else it 400s.
+
+Common mode is now both feature-complete (Plans 1/3a/3b/3c/3d) AND live (Plan 3e).
