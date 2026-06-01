@@ -6,7 +6,7 @@ from ai4science.harness import research_tools, pwm_data
 
 def test_research_tools_present():
     names = {t.name for t in research_tools.research_tools()}
-    assert {"pwm_principles", "pwm_principle", "pwm_benchmarks",
+    assert {"pwm_principles", "pwm_principle", "pwm_benchmarks", "pwm_benchmark",
             "pwm_solutions", "pwm_overview"}.issubset(names)
     assert all(t.mutating is False for t in research_tools.research_tools())
 
