@@ -262,16 +262,17 @@ def test_chat_rejects_non_claude_agent(tmp_path, monkeypatch):
 
 
 def test_chat_research_rejects_when_claude_unavailable(tmp_path, monkeypatch):
-    """Research mode still uses claude-agent-sdk: if `claude` CLI not on PATH →
-    exit 2 cleanly. (Common mode now runs on the native harness instead — see
-    test_chat_common_launches_harness.)"""
+    """Research mode now routes to the native harness (not the SDK path), so
+    it no longer requires `claude` CLI on PATH.  With run_common_repl mocked
+    out the command must exit 0 even when claude is absent."""
     monkeypatch.chdir(tmp_path)
-    # Force ClaudeAgent.is_available to False.
+    # Make claude unavailable — harness must NOT gate on it.
     monkeypatch.setattr("ai4science.agents.claude_agent.shutil.which",
                         lambda _: None)
+    monkeypatch.setattr("ai4science.harness.repl.run_common_repl",
+                        lambda workspace, **kw: None)
     result = runner.invoke(app, ["chat", "--mode", "research"])
-    assert result.exit_code == 2
-    assert "not available" in result.output.lower()
+    assert result.exit_code == 0
 
 
 def test_chat_common_launches_harness(tmp_path, monkeypatch):
@@ -353,3 +354,15 @@ def test_chat_accepts_resume_option():
     chat_cmd = typer.main.get_command(app).commands["chat"]
     option_names = {name for p in chat_cmd.params for name in getattr(p, "opts", [])}
     assert "--resume" in option_names
+
+
+def test_chat_research_uses_harness(tmp_path, monkeypatch):
+    """--mode research now routes to the native harness research REPL (not the SDK path)."""
+    monkeypatch.chdir(tmp_path)
+    called = {}
+    monkeypatch.setattr("ai4science.harness.repl.run_common_repl",
+                        lambda workspace, **kw: called.update(kw))
+    result = runner.invoke(app, ["chat", "--mode", "research"])
+    assert result.exit_code == 0
+    assert called.get("registry_builder") is not None     # research registry passed
+    assert called.get("system_prompt")                    # research prompt passed

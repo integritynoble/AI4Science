@@ -117,11 +117,12 @@ def chat(
 
     workspace = workspace.resolve()
 
-    if mode == "common":
-        # Option A: common mode runs on the native brand-agnostic harness
-        # (no claude-agent-sdk). Brand is selected from the orchestration pool
-        # and switchable in-session via /model. Research mode keeps the SDK path.
-        from ai4science.harness.repl import run_common_repl
+    if mode in ("common", "research"):
+        # Both common and research run on the native brand-agnostic harness.
+        # common: build_common_registry + no system prompt.
+        # research: build_research_registry + RESEARCH_PROMPT (PWM data tools + grounding).
+        from ai4science.harness.repl import (run_common_repl, build_common_registry,
+                                             build_research_registry, RESEARCH_PROMPT)
         from ai4science.harness import persistence
         resume_hist = None
         sid = resume
@@ -130,33 +131,16 @@ def chat(
         elif continue_session:
             sid = persistence.most_recent(workspace)
             resume_hist = persistence.load(sid) if sid else None
+        rb = build_research_registry if mode == "research" else build_common_registry
+        sp = RESEARCH_PROMPT if mode == "research" else None
         try:
-            run_common_repl(workspace, read_only=read_only or plan,
-                            auto_yes=yes, model=model,
-                            resume_history=resume_hist, session_id=sid)
+            run_common_repl(workspace, read_only=read_only or plan, auto_yes=yes, model=model,
+                            resume_history=resume_hist, session_id=sid,
+                            registry_builder=rb, system_prompt=sp, mode_label=mode)
         except KeyboardInterrupt:
             console.print("\n[dim](Ctrl-C — exiting)[/dim]")
             raise typer.Exit(0)
         return
-
-    # Research mode: reuse ClaudeAgent.is_available gate + the SDK REPL.
-    from ai4science.agents import ClaudeAgent
-    probe = ClaudeAgent(read_only=read_only, auto_yes=yes, plan_mode=plan)
-    if not probe.is_available():
-        console.print(f"[red]Claude agent not available:[/red] {probe.unavailable_reason()}")
-        raise typer.Exit(2)
-
-    try:
-        asyncio.run(_run_chat(workspace=workspace, read_only=read_only,
-                               auto_yes=yes, plan_mode=plan,
-                               enable_subagents=not no_subagents,
-                               enable_mcp=not no_mcp,
-                               continue_session=continue_session,
-                               resume=resume,
-                               model=model, mode=mode))
-    except KeyboardInterrupt:
-        console.print("\n[dim](Ctrl-C — exiting)[/dim]")
-        raise typer.Exit(0)
 
 
 async def _run_chat(*, workspace: Path, read_only: bool, auto_yes: bool,
