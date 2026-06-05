@@ -170,6 +170,7 @@ def _solution_cost(solution_ref: str):
 def _dispatch_tool() -> Tool:
     def _dispatch(workspace, *, benchmark: str, solver: str = "code/",
                   provider: str = "", solution_ref: str = "", confirm: bool = False) -> str:
+        confirm = confirm is True   # reject truthy strings like "false"/"yes"/"1" from the model
         try:
             prov = _resolve_provider(provider)
             if prov is None:

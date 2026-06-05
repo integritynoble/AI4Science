@@ -50,3 +50,25 @@ def test_dispatch_no_provider(tmp_path, monkeypatch):
 
 def test_dispatch_non_mutating():
     assert _tools()["cassi_dispatch"].mutating is False
+
+
+def test_dispatch_string_false_does_not_spend(tmp_path, monkeypatch):
+    (tmp_path / "code").mkdir()
+    monkeypatch.setattr(cassi_tools, "_resolve_provider", lambda pid: _Prov())
+    monkeypatch.setattr(cassi_tools, "dispatch_job",
+                        lambda **k: (_ for _ in ()).throw(AssertionError("must not dispatch")))
+    # An LLM passing the STRING "false" must NOT trigger a real dispatch.
+    out = _tools()["cassi_dispatch"].func(
+        tmp_path, benchmark="L3-003-T1", solver="code/", confirm="false")
+    assert "preview" in out.lower()
+
+
+def test_dispatch_string_true_does_not_spend(tmp_path, monkeypatch):
+    (tmp_path / "code").mkdir()
+    monkeypatch.setattr(cassi_tools, "_resolve_provider", lambda pid: _Prov())
+    monkeypatch.setattr(cassi_tools, "dispatch_job",
+                        lambda **k: (_ for _ in ()).throw(AssertionError("must not dispatch")))
+    # Only a real boolean True confirms; the string "true" stays in preview (safe default).
+    out = _tools()["cassi_dispatch"].func(
+        tmp_path, benchmark="L3-003-T1", solver="code/", confirm="true")
+    assert "preview" in out.lower()
