@@ -3,6 +3,14 @@ import pytest
 from ai4science.harness.agents import registry
 
 
+@pytest.fixture(autouse=True)
+def _restore_default_registry():
+    """Guarantee the global AGENT_REGISTRY is restored after every test, even if
+    a test reloads a tmp specs dir and then raises before its inline restore."""
+    yield
+    registry.reload()
+
+
 def test_ships_expected_agents():
     registry.reload()  # default specs dir
     reg = registry.AGENT_REGISTRY
