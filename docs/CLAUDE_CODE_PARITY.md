@@ -233,3 +233,30 @@ from `cassi_tools.py` with four tools:
 
 **Moat.** All four tools are `tier=science`; the common-mode hard wall prevents common
 agents from reaching them.
+
+### Research onboarding (PWM contribution)
+
+Research mode is the PWM **easy-onboarding UX layer**: it walks a contributor through
+authoring an artifact (Principle, digital-twin, Benchmark, or Solution), submitting it to
+the registry, and earning PWM tokens. This covers the off-chain author → quality-gate →
+reward loop. On-chain promotion via the PWMRegistrar relay is a separate, later phase and
+is explicitly out of scope here.
+
+The `onboarding` capability bundle (`ai4science/harness/onboard_tools.py`) adds four tools:
+
+- `onboard_guide(type)` — returns the required fields and a how-to for a given artifact
+  type (`principle` / `digital-twin` / `benchmark` / `solution`).
+- `onboard_submit(type, fields, confirm)` — POSTs to the live `pwm_nonprofit` API.
+  **Confirm-guarded**: without `confirm=true` it returns a preview (no token required);
+  passing `confirm=true` performs the actual submit (requires auth). On acceptance the
+  server runs the S1–S4 quality gate and auto-awards PWM.
+- `onboard_status()` — queries `/api/v1/pwm-token/transactions` to show recent ledger
+  activity for the authenticated user.
+- `onboard_balance()` — queries `/api/v1/pwm-token/balance` to show the current PWM
+  balance.
+
+**Auth.** A personal API key (`pwm_…`) is passed as `Authorization: Bearer <key>` and
+read from env `PWM_ONBOARD_TOKEN`. The API base is `PWM_ONBOARD_BASE` (default
+`physicsworldmodel.org`).
+
+**Moat.** `onboarding` is `tier=science`; common mode cannot reach these tools.
