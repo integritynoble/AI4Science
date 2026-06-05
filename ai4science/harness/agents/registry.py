@@ -56,10 +56,10 @@ def _agent_dispatch_tool(main: AgentSpec, ctx: BuildContext) -> Optional[Tool]:
     listed = ", ".join(targets)
 
     def _task(workspace, *, subagent_type: str, prompt: str) -> str:
-        if subagent_type not in targets:
+        child_spec = AGENT_REGISTRY.get(subagent_type)
+        if subagent_type not in targets or child_spec is None:
             return (f"[task] unknown subagent_type {subagent_type!r}; "
                     f"available: {listed}")
-        child_spec = AGENT_REGISTRY[subagent_type]
         session = ctx.session_factory(spec=child_spec, ctx=ctx)
         sys = child_spec.system_prompt or ""
         return session.run_turn(f"{sys}\n\nTASK: {prompt}" if sys else prompt)
@@ -69,7 +69,7 @@ def _agent_dispatch_tool(main: AgentSpec, ctx: BuildContext) -> Optional[Tool]:
         description=("Delegate a focused sub-task to a fresh sub-agent. "
                      f"subagent_type one of: {listed}."),
         parameters={"type": "object",
-                    "properties": {"subagent_type": {"type": "string"},
+                    "properties": {"subagent_type": {"type": "string", "enum": targets},
                                    "prompt": {"type": "string"}},
                     "required": ["subagent_type", "prompt"]},
         func=_task, mutating=False,

@@ -62,3 +62,12 @@ def test_task_tool_rejects_out_of_tier(tmp_path):
     reg = build_registry_for(registry.get("common"), is_subagent=False, ctx=_ctx(tmp_path))
     out = reg.get("task").func(tmp_path, subagent_type="research", prompt="hi")
     assert "research" in out and "available" in out.lower()
+
+
+def test_task_tool_exposes_enum(tmp_path):
+    registry.reload()
+    reg = build_registry_for(registry.get("common"), is_subagent=False, ctx=_ctx(tmp_path))
+    schema = reg.get("task").parameters
+    enum = schema["properties"]["subagent_type"]["enum"]
+    assert "general-purpose" in enum
+    assert "research" not in enum  # science excluded for an open main
