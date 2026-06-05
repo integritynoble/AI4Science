@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Callable, List
 
 from ai4science.harness.tools.base import Tool
-from ai4science.harness.adapters.factory import adapter_for, make_meter
+from ai4science.harness.adapters.factory import adapter_for
 from ai4science.harness.paper_load import load_paper, PaperLoadError
 from ai4science.harness.paper_review import run_panel, PanelError
 
@@ -47,15 +47,15 @@ def paper_tools(*, brand_provider: Callable[[], tuple],
             backend, model = brand_provider()
             adapter = adapter_for(backend)
             registry_tools = research_tools_provider() if depth == "deep" else None
-            try:
-                meter = make_meter(backend=backend, model=model)
-            except Exception:
-                meter = lambda u: None
             bundle = run_panel(doc=doc, depth=depth, adapter=adapter, model=model,
                                backend=backend, workspace=Path(workspace),
                                registry_tools=registry_tools)
             # Ensure slug is derived from the actual input file, not bundle metadata
-            bundle.paper["source_path"] = str(target)
+            try:
+                rel = target.relative_to(Path(workspace).resolve())
+            except ValueError:
+                rel = Path(target.name)
+            bundle.paper["source_path"] = str(rel)
             jp, mp = bundle.write(Path(workspace))
             agg = bundle.aggregate.get("mean_rating", "n/a")
             ratings = ", ".join(f"{r.persona}:{r.rating}" for r in bundle.reviews)

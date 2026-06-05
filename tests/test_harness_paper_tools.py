@@ -65,3 +65,8 @@ def test_paper_review_bad_path(tmp_path):
 
 def test_paper_review_tool_is_non_mutating():
     assert _tools()["paper_review"].mutating is False
+
+
+def test_paper_review_absolute_path_rejected(tmp_path):
+    out = _tools()["paper_review"].func(tmp_path, path="/etc/passwd", depth="shallow")
+    assert "[paper error]" in out
