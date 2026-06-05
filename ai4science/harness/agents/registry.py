@@ -4,7 +4,7 @@ import importlib.util
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from ai4science.harness.tools.base import Registry
+from ai4science.harness.tools.base import Registry, Tool
 from ai4science.harness.agents.spec import AgentSpec
 from ai4science.harness.agents.context import BuildContext
 from ai4science.harness.agents.capabilities import resolve_capability, CAPABILITY_BUNDLES
@@ -33,8 +33,47 @@ def build_registry_for(spec: AgentSpec, *, is_subagent: bool, ctx: BuildContext)
     if spec.extra_tools:
         for t in spec.extra_tools(ctx):
             reg.add(t)
-    # Dispatch tool is added in a later task (only when main). Left out here on purpose.
+    if not is_subagent:
+        tool = _agent_dispatch_tool(spec, ctx)
+        if tool is not None:
+            reg.add(tool)
     return reg
+
+
+def _can_dispatch(main: AgentSpec, target: AgentSpec) -> bool:
+    return target.tier == "open" or main.tier == "science"
+
+
+def dispatchable_targets(main: AgentSpec) -> List[str]:
+    return sorted(t.name for t in AGENT_REGISTRY.values()
+                  if t.allow_as_subagent and _can_dispatch(main, t))
+
+
+def _agent_dispatch_tool(main: AgentSpec, ctx: BuildContext) -> Optional[Tool]:
+    targets = dispatchable_targets(main)
+    if not targets:
+        return None
+    listed = ", ".join(targets)
+
+    def _task(workspace, *, subagent_type: str, prompt: str) -> str:
+        if subagent_type not in targets:
+            return (f"[task] unknown subagent_type {subagent_type!r}; "
+                    f"available: {listed}")
+        child_spec = AGENT_REGISTRY[subagent_type]
+        session = ctx.session_factory(spec=child_spec, ctx=ctx)
+        sys = child_spec.system_prompt or ""
+        return session.run_turn(f"{sys}\n\nTASK: {prompt}" if sys else prompt)
+
+    return Tool(
+        name="task",
+        description=("Delegate a focused sub-task to a fresh sub-agent. "
+                     f"subagent_type one of: {listed}."),
+        parameters={"type": "object",
+                    "properties": {"subagent_type": {"type": "string"},
+                                   "prompt": {"type": "string"}},
+                    "required": ["subagent_type", "prompt"]},
+        func=_task, mutating=False,
+    )
 
 
 def _load_spec_file(path: Path) -> AgentSpec:
