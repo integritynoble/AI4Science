@@ -7,10 +7,10 @@ meters usage via the ledger.  No claude_agent_sdk dependency.
 This module is intentionally free of Typer / Rich so that it can be imported
 and unit-tested without a TTY.
 
-Integration: ai4science/commands/chat.py calls run_common_repl() for BOTH
-modes — common uses build_common_registry; research passes
-registry_builder=build_research_registry + system_prompt=RESEARCH_PROMPT
-(adding the PWM registry/solution tools the moat keeps out of common mode).
+Integration: ai4science/commands/chat.py resolves --mode against the agent
+registry and calls run_common_repl() with mode_label + the spec's system_prompt
+(as a fallback). The active AgentSpec — resolved inside run_common_repl from
+mode_label — drives the tool registry and grounding prompt for the session.
 Slash commands: /help /clear /model /readonly /yes /default /cost /files /exit.
 Session history is persisted per turn and reseeded via --continue / --resume.
 """
@@ -189,7 +189,6 @@ def run_common_repl(
     on_text=None,
     resume_history: Optional[List[Message]] = None,
     session_id: Optional[str] = None,
-    registry_builder=None,
     system_prompt: Optional[str] = None,
     mode_label: str = "common",
 ) -> None:
@@ -217,10 +216,6 @@ def run_common_repl(
     session_id:
         Stable id for this session used by persistence.save().
         None → a new random id is generated.
-    registry_builder:
-        Callable with the same signature as build_common_registry used to
-        construct the top-level tool registry.  None → build_common_registry.
-        Children sessions always use build_common_registry (no recursion).
     system_prompt:
         Optional system prompt string seeded as the leading system Message in
         history.  None → no system turn added.

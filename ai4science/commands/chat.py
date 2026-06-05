@@ -30,6 +30,8 @@ import typer
 from rich.console import Console
 
 from ai4science import __version__
+from ai4science.harness.agents import registry as agent_registry
+from ai4science.harness.repl import run_common_repl
 
 console = Console()
 
@@ -103,10 +105,6 @@ def chat(
     """Open a persistent chat session with the agent."""
     import os
     model = model or os.environ.get("AI4SCIENCE_MODEL")
-    mode = (mode or os.environ.get("AI4SCIENCE_MODE") or "common").lower()
-    if mode not in ("common", "research"):
-        console.print(f"[yellow]Unknown --mode {mode!r}; using 'common'.[/yellow]")
-        mode = "common"
     if agent.lower() != "claude":
         console.print(
             f"[yellow]Chat mode only supports --agent claude in v0.4.[/yellow]\n"
@@ -117,343 +115,41 @@ def chat(
 
     workspace = workspace.resolve()
 
-    if mode in ("common", "research"):
-        # Both common and research run on the native brand-agnostic harness.
-        # common: build_common_registry + no system prompt.
-        # research: build_research_registry + RESEARCH_PROMPT (PWM data tools + grounding).
-        from ai4science.harness.repl import (run_common_repl, build_common_registry,
-                                             build_research_registry, RESEARCH_PROMPT)
-        from ai4science.harness import persistence
-        resume_hist = None
-        sid = resume
-        if resume:
-            resume_hist = persistence.load(resume)
-        elif continue_session:
-            sid = persistence.most_recent(workspace)
-            resume_hist = persistence.load(sid) if sid else None
-        rb = build_research_registry if mode == "research" else build_common_registry
-        sp = RESEARCH_PROMPT if mode == "research" else None
-        try:
-            run_common_repl(workspace, read_only=read_only or plan, auto_yes=yes, model=model,
-                            resume_history=resume_hist, session_id=sid,
-                            registry_builder=rb, system_prompt=sp, mode_label=mode)
-        except KeyboardInterrupt:
-            console.print("\n[dim](Ctrl-C — exiting)[/dim]")
-            raise typer.Exit(0)
-        return
+    # Resolve --mode against the agent registry. The active AgentSpec drives the
+    # session (registry + system prompt) inside run_common_repl; here we only pass
+    # mode_label and the spec's prompt as a harmless fallback.
+    mode = (mode or os.environ.get("AI4SCIENCE_MODE") or "common").lower()
+    spec = agent_registry.get(mode)
+    if spec is None:
+        names = ", ".join(sorted(agent_registry.AGENT_REGISTRY))
+        console.print(f"[yellow]Unknown --mode {mode!r}; using 'common'. "
+                      f"Available: {names}[/yellow]")
+        spec = agent_registry.get("common")
 
+    from ai4science.harness import persistence
+    resume_hist = None
+    sid = resume
+    if resume:
+        resume_hist = persistence.load(resume)
+    elif continue_session:
+        sid = persistence.most_recent(workspace)
+        resume_hist = persistence.load(sid) if sid else None
 
-async def _run_chat(*, workspace: Path, read_only: bool, auto_yes: bool,
-                     plan_mode: bool = False,
-                     enable_subagents: bool = True,
-                     enable_mcp: bool = True,
-                     continue_session: bool = False,
-                     resume: Optional[str] = None,
-                     model: Optional[str] = None,
-                     mode: str = "common") -> None:
-    """Async event loop for the REPL."""
-    from claude_agent_sdk import (   # type: ignore
-        ClaudeSDKClient, ClaudeAgentOptions, AssistantMessage, ResultMessage,
-    )
-    from ai4science.agents.permissions import make_workspace_permission_callback
-    from ai4science.agents.subagents import build_pwm_subagents
-    from ai4science.agents.mcp_pwm import build_pwm_mcp_server, PWM_MCP_TOOL_NAMES
-    from ai4science.memory import augment_system_prompt, find_memory_file
-    from ai4science.prompts import load_system_prompt
-
-    # System prompt: plan > read_only > research > common. plan/read-only are
-    # tool-restriction modes; research vs common picks the content framing.
-    if plan_mode:
-        sysprompt_name = "ai4science_system_plan"
-    elif read_only:
-        sysprompt_name = "ai4science_system_readonly"
-    elif mode == "research":
-        sysprompt_name = "ai4science_system_research"
-    else:
-        sysprompt_name = "ai4science_system"
-    system_prompt = load_system_prompt(sysprompt_name)
-    # Project memory (CLAUDE.md / AI4SCIENCE.md / AGENTS.md) — like Claude Code.
-    system_prompt = augment_system_prompt(system_prompt, workspace)
-    memory_file = find_memory_file(workspace)
-
-    # Capability bundles
-    subagents = build_pwm_subagents() if enable_subagents else {}
-    pwm_mcp = build_pwm_mcp_server() if enable_mcp else None
-    mcp_tool_names = list(PWM_MCP_TOOL_NAMES) if enable_mcp else []
-
-    if plan_mode:
-        allowed_tools: List[str] = ["Read", "Grep", "Glob"] + mcp_tool_names
-        can_use_tool = None
-        permission_mode_initial = "plan"
-    elif read_only:
-        allowed_tools = []
-        can_use_tool = None
-        permission_mode_initial = "default"
-    else:
-        allowed_tools = ["Read", "Grep", "Glob", "Edit", "Write", "Bash",
-                         "MultiEdit", "Task"] + mcp_tool_names
-        can_use_tool = make_workspace_permission_callback(workspace, auto_yes=auto_yes)
-        permission_mode_initial = "default"
-
-    mcp_kw: dict = {"mcp_servers": {"pwm": pwm_mcp}} if pwm_mcp is not None else {}
-    options = ClaudeAgentOptions(
-        system_prompt=system_prompt,
-        allowed_tools=allowed_tools,
-        permission_mode=permission_mode_initial,
-        can_use_tool=can_use_tool,
-        cwd=str(workspace),
-        model=model,   # None → the claude CLI default
-        max_turns=50,   # interactive sessions need plenty of room
-        agents=subagents,
-        include_partial_messages=True,   # token-level streaming
-        continue_conversation=continue_session,
-        resume=resume,   # resume a specific past session by id (overrides --continue)
-        **mcp_kw,
-    )
-    # Track the active model + mode so /model and /mode can show + switch live.
-    # The session loads one system prompt at startup; /mode can't swap it
-    # without reconnecting, so a live switch injects a one-time steer (below)
-    # onto the next turn. pending_steer carries that text.
-    model_state = {"current": model}
-    mode_state = {"current": mode, "pending_steer": None}
-
-    # Initial context: inline existing artifact files so the agent starts
-    # with awareness of the workspace state.
-    context_files = _workspace_artifacts(workspace)
-
-    async with ClaudeSDKClient(options=options) as client:
-        _print_welcome(workspace, read_only, auto_yes, context_files,
-                        plan_mode=plan_mode, memory_file=memory_file,
-                        continue_session=continue_session,
-                        model=model_state["current"],
-                        session_mode=mode_state["current"])
-
-        # Seed the workspace context as a first turn — but ONLY for a fresh
-        # session. When --continue resumes a prior conversation, re-seeding
-        # would re-frame it as new and make the agent forget the carried-over
-        # history. The resumed session already has the earlier context.
-        if context_files and not continue_session and not resume:
-            seed = (
-                "[ai4science] Workspace context for this session:\n\n"
-                + _format_files_for_context(context_files, workspace)
-                + "\n\nAcknowledge with one short sentence (1–2 words is fine). "
-                  "Don't take any action yet — wait for the user's first request."
-            )
-            await client.query(seed)
-            async for msg in client.receive_response():
-                pass   # silently consume the acknowledgement
-
-        # Main REPL loop.
-        cancel_flag = {"interrupt": False}
-        while True:
-            try:
-                line = await _read_line("> ")
-            except EOFError:
-                console.print("\n[dim](Ctrl-D — exiting)[/dim]")
-                break
-            except KeyboardInterrupt:
-                console.print("\n[dim](Ctrl-C — type /exit to quit)[/dim]")
-                continue
-
-            line = line.strip()
-            if not line:
-                continue
-
-            # Slash commands first — /plan returns the actual user prompt to
-            # forward (with plan-mode prefix attached) when a prompt is given;
-            # other slash commands handle themselves and skip the LLM.
-            single_turn_plan_prompt: Optional[str] = None
-            custom_prompt: Optional[str] = None
-            if line.startswith("/"):
-                # /model — open a picker (like Claude Code). /model <name> still
-                # works as a shortcut. Live switch via the SDK's set_model.
-                _scmd, _, _sarg = line[1:].partition(" ")
-                if _scmd.lower() == "model":
-                    target = _sarg.strip()
-                    if not target:
-                        # Numbered picker — choose from a list, don't type the id.
-                        choices = ["default", "opus", "sonnet", "haiku"]
-                        cur = model_state["current"] or "default"
-                        console.print("[bold]Select a model:[/bold]")
-                        for i, c in enumerate(choices, 1):
-                            mark = "  [green]← current[/green]" if c == cur else ""
-                            console.print(f"  [cyan]{i}[/cyan]. {c}{mark}")
-                        console.print("[dim]Enter a number (or a name / full id, "
-                                      "blank to cancel):[/dim]")
-                        try:
-                            sel = (await _read_line("model> ")).strip()
-                        except (EOFError, KeyboardInterrupt):
-                            sel = ""
-                        if not sel:
-                            console.print("[dim](no change)[/dim]")
-                            continue
-                        if sel.isdigit() and 1 <= int(sel) <= len(choices):
-                            target = choices[int(sel) - 1]
-                        else:
-                            target = sel   # typed a name/id at the picker
-                    # Apply (default → None, i.e. the claude CLI default).
-                    model_arg = None if target.lower() == "default" else target
-                    try:
-                        await client.set_model(model_arg)
-                        model_state["current"] = model_arg
-                        console.print(f"[green]✓ model → {model_arg or 'default'}[/green]")
-                    except Exception as e:
-                        console.print(f"[red]could not set model:[/red] "
-                                      f"{type(e).__name__}: {e}")
-                    continue
-
-                # /mode — switch between 'common' (Claude-Code style) and
-                # 'research' (PWM problem→…→venue). Picker like /model; the
-                # switch re-steers the live session (full prompt reload needs a
-                # relaunch with --mode).
-                if _scmd.lower() == "mode":
-                    target = _sarg.strip().lower()
-                    if not target:
-                        choices = ["common", "research"]
-                        cur = mode_state["current"]
-                        console.print("[bold]Select a mode:[/bold]")
-                        descs = {"common": "general Claude-Code-style assistant",
-                                 "research": "drive problem→principle→spec→benchmark→solution→venue"}
-                        for i, c in enumerate(choices, 1):
-                            mark = "  [green]← current[/green]" if c == cur else ""
-                            console.print(f"  [cyan]{i}[/cyan]. {c}  [dim]{descs[c]}[/dim]{mark}")
-                        console.print("[dim]Enter a number (blank to cancel):[/dim]")
-                        try:
-                            sel = (await _read_line("mode> ")).strip()
-                        except (EOFError, KeyboardInterrupt):
-                            sel = ""
-                        if not sel:
-                            console.print("[dim](no change)[/dim]")
-                            continue
-                        if sel.isdigit() and 1 <= int(sel) <= len(choices):
-                            target = choices[int(sel) - 1]
-                    if target not in ("common", "research"):
-                        console.print(f"[yellow]Unknown mode {target!r} "
-                                      "(common | research).[/yellow]")
-                        continue
-                    if target == mode_state["current"]:
-                        console.print(f"[dim]Already in {target} mode.[/dim]")
-                        continue
-                    mode_state["current"] = target
-                    mode_state["pending_steer"] = MODE_STEER[target]
-                    console.print(f"[green]✓ mode → {target}[/green] "
-                                  "[dim](applied on your next message)[/dim]")
-                    continue
-
-                # /resume, /sessions — list this workspace's past sessions so the
-                # user can relaunch with --resume <id>. (A live mid-REPL session
-                # swap would tear down the open client; relaunch is the safe path,
-                # same as Claude Code's resume picker.)
-                if _scmd.lower() in ("resume", "sessions"):
-                    _list_sessions(workspace)
-                    continue
-
-                # /compact — context management. The claude CLI auto-compacts the
-                # live context window (PreCompact); the SDK exposes no manual
-                # trigger, so /compact reports usage + the honest state.
-                if _scmd.lower() == "compact":
-                    await _do_compact(client)
-                    continue
-
-                # Custom (user-defined) slash command? Expand + send as a turn.
-                from ai4science.commands.custom_commands import (
-                    load_custom_commands, expand_command,
-                )
-                _cmd, _, _carg = line[1:].partition(" ")
-                _custom = load_custom_commands(workspace)
-                if _cmd.lower() in _custom:
-                    custom_prompt = expand_command(_custom[_cmd.lower()], _carg.strip())
-                    console.print(f"[dim]/{_cmd.lower()} → custom command "
-                                  f"({_custom[_cmd.lower()].name})[/dim]")
-                else:
-                    handled, should_exit, plan_prompt = await _handle_slash(
-                        line, workspace,
-                        auto_yes=auto_yes, read_only=read_only,
-                        plan_mode_active=plan_mode, client=client,
-                    )
-                    if should_exit:
-                        break
-                    if plan_prompt is not None:
-                        # /plan <prompt> → send under plan mode for ONE turn.
-                        single_turn_plan_prompt = plan_prompt
-                    elif handled:
-                        continue
-
-            # Resolve the outgoing prompt: custom-command expansion, the
-            # /plan-extracted prompt, or the original line.
-            raw_prompt = custom_prompt or single_turn_plan_prompt or line
-
-            # Expand @-mentions: text files inline; image files become
-            # multimodal content blocks (see image_message below).
-            from ai4science.agents.mentions import (
-                expand_mentions_inline, parse_image_mentions,
-            )
-            outgoing, attached = expand_mentions_inline(raw_prompt, workspace)
-            image_paths = parse_image_mentions(raw_prompt, workspace)
-            if attached:
-                rels = [str(p.relative_to(workspace.resolve())) for p in attached]
-                console.print(f"[dim]📎 attached: {', '.join(rels)}[/dim]")
-
-            # A pending /mode switch re-steers the live session on this turn.
-            if mode_state.get("pending_steer"):
-                outgoing = mode_state["pending_steer"] + "\n\n" + outgoing
-                mode_state["pending_steer"] = None
-
-            # Build a multimodal message when images are attached.
-            image_message = None
-            if image_paths:
-                from ai4science.agents.images import build_user_message
-                try:
-                    image_message = build_user_message(outgoing, image_paths)
-                except ValueError as e:
-                    console.print(f"[yellow]image not attached:[/yellow] {e}")
-                    image_message = None
-
-            # Plan-mode toggle for this turn only.
-            if single_turn_plan_prompt is not None and not plan_mode:
-                try:
-                    await client.set_permission_mode("plan")
-                except Exception:
-                    pass
-                outgoing = (
-                    "[Plan mode for this turn]\n\n"
-                    "Use Read/Grep/Glob to investigate, then return a structured "
-                    "plan with concrete file paths and actions. Do NOT edit any "
-                    "files — the user will review your plan and re-issue if they "
-                    "want execution.\n\n"
-                    "## Request\n\n"
-                    + outgoing
-                )
-
-            # Send to agent + stream response. Structured multimodal message
-            # (text + images) goes via the streaming-input path; otherwise a
-            # plain string.
-            try:
-                if image_message is not None:
-                    from ai4science.agents.images import single_message_stream
-                    await client.query(single_message_stream(image_message))
-                else:
-                    await client.query(outgoing)
-            except Exception as e:
-                console.print(f"[red]query error:[/red] {type(e).__name__}: {e}")
-                if single_turn_plan_prompt is not None and not plan_mode:
-                    try:
-                        await client.set_permission_mode("default")
-                    except Exception:
-                        pass
-                continue
-
-            try:
-                await _stream_response(client, cancel_flag)
-            except Exception as e:
-                console.print(f"[red]stream error:[/red] {type(e).__name__}: {e}")
-            finally:
-                # Restore default permission mode after a single-turn /plan.
-                if single_turn_plan_prompt is not None and not plan_mode:
-                    try:
-                        await client.set_permission_mode("default")
-                    except Exception:
-                        pass
+    try:
+        run_common_repl(
+            workspace,
+            read_only=read_only or plan,
+            auto_yes=yes,
+            model=model,
+            resume_history=resume_hist,
+            session_id=sid,
+            system_prompt=spec.system_prompt,
+            mode_label=spec.name,
+        )
+    except KeyboardInterrupt:
+        console.print("\n[dim](Ctrl-C — exiting)[/dim]")
+        raise typer.Exit(0)
+    return
 
 
 # ─── helpers ───────────────────────────────────────────────────────────

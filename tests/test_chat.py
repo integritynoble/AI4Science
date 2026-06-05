@@ -269,7 +269,8 @@ def test_chat_research_rejects_when_claude_unavailable(tmp_path, monkeypatch):
     # Make claude unavailable — harness must NOT gate on it.
     monkeypatch.setattr("ai4science.agents.claude_agent.shutil.which",
                         lambda _: None)
-    monkeypatch.setattr("ai4science.harness.repl.run_common_repl",
+    import ai4science.commands.chat as chat_mod
+    monkeypatch.setattr(chat_mod, "run_common_repl",
                         lambda workspace, **kw: None)
     result = runner.invoke(app, ["chat", "--mode", "research"])
     assert result.exit_code == 0
@@ -288,7 +289,8 @@ def test_chat_common_launches_harness(tmp_path, monkeypatch):
         called["workspace"] = workspace
         called["kwargs"] = kwargs
 
-    monkeypatch.setattr("ai4science.harness.repl.run_common_repl", _fake_repl)
+    import ai4science.commands.chat as chat_mod
+    monkeypatch.setattr(chat_mod, "run_common_repl", _fake_repl)
     result = runner.invoke(app, ["chat", "--mode", "common"])
     assert result.exit_code == 0
     assert called, "run_common_repl was not invoked for common mode"
@@ -357,12 +359,46 @@ def test_chat_accepts_resume_option():
 
 
 def test_chat_research_uses_harness(tmp_path, monkeypatch):
-    """--mode research now routes to the native harness research REPL (not the SDK path)."""
+    """--mode research now routes to the native harness research REPL (not the SDK path).
+
+    Under the registry-driven contract, chat() resolves --mode against the agent
+    registry and passes only mode_label (+ the spec's prompt as a fallback); the
+    registry itself is chosen inside run_common_repl, so there's no registry_builder.
+    """
+    import ai4science.commands.chat as chat_mod
     monkeypatch.chdir(tmp_path)
     called = {}
-    monkeypatch.setattr("ai4science.harness.repl.run_common_repl",
+    monkeypatch.setattr(chat_mod, "run_common_repl",
                         lambda workspace, **kw: called.update(kw))
     result = runner.invoke(app, ["chat", "--mode", "research"])
     assert result.exit_code == 0
-    assert called.get("registry_builder") is not None     # research registry passed
-    assert called.get("system_prompt")                    # research prompt passed
+    assert called.get("mode_label") == "research"         # resolved research spec
+    assert called.get("system_prompt")                    # research prompt passed as fallback
+
+
+def test_chat_mode_resolves_known_agent(monkeypatch, tmp_path):
+    import ai4science.commands.chat as chat_mod
+    captured = {}
+    def fake_repl(workspace, **kw):
+        captured.update(kw); captured["workspace"] = workspace
+    monkeypatch.setattr(chat_mod, "run_common_repl", fake_repl)
+    from typer.testing import CliRunner
+    from ai4science.cli import app
+    res = CliRunner().invoke(app, ["chat", "--mode", "computational-imaging",
+                                   "--workspace", str(tmp_path)])
+    assert res.exit_code == 0
+    assert captured["mode_label"] == "computational-imaging"
+    assert captured["system_prompt"]  # the spec's prompt passed as fallback
+
+
+def test_chat_unknown_mode_falls_back_to_common(monkeypatch, tmp_path):
+    import ai4science.commands.chat as chat_mod
+    captured = {}
+    monkeypatch.setattr(chat_mod, "run_common_repl",
+                        lambda workspace, **kw: captured.update(kw))
+    from typer.testing import CliRunner
+    from ai4science.cli import app
+    res = CliRunner().invoke(app, ["chat", "--mode", "nonexistent",
+                                   "--workspace", str(tmp_path)])
+    assert res.exit_code == 0
+    assert captured["mode_label"] == "common"
