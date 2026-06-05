@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 MAX_PAPER_CHARS = 120_000
-_TEXT_EXTS = {".md", ".markdown", ".txt", ".tex"}
 
 
 class PaperLoadError(Exception):
