@@ -60,6 +60,24 @@ def _dispatch_slash(line: str, state: dict) -> tuple[bool, str]:
     return False, ""
 
 
+def _clean_turn_error(exc) -> str:
+    """One-line, human-readable turn error (no traceback)."""
+    s = str(exc).strip()
+    name = type(exc).__name__
+    return f"{name}: {s}" if s else name
+
+
+def _next_available_brand(current: Optional[str]):
+    """First orchestration brand whose creds resolve and that isn't `current`.
+    Returns (backend, model) or None. Used to self-heal when an auto-detected
+    brand fails a turn (e.g. the default openai key 401s → fall back to gemini)."""
+    from ai4science.harness.adapters.factory import harness_available
+    for b, m in routing.AGENT_CHAINS.get("orchestration", []):
+        if b != current and harness_available(b):
+            return b, m
+    return None
+
+
 def _pick_brand(backend: Optional[str], model: Optional[str]):
     """Return (backend, model) using the orchestration pool or explicit override.
 
@@ -240,6 +258,10 @@ def run_common_repl(
         return ans in ("y", "yes")
 
     active_backend, active_model = _pick_brand(backend, model)
+    # The brand was auto-detected (not user-chosen) when no override was given;
+    # only then do we silently self-heal to another brand on a turn error.
+    brand_autodetected = backend is None and model is None
+    fell_back = {"v": False}
     active_spec = agent_registry.get(mode_label) or agent_registry.get("common")
 
     # Mutable state dict — tracks modes and slash-command flags.
@@ -440,9 +462,10 @@ def run_common_repl(
                 continue
 
         # Normal turn.
-        try:
-            from ai4science.harness import mentions
-            text, images = mentions.expand(line, workspace)
+        from ai4science.harness import mentions
+        text, images = mentions.expand(line, workspace)
+
+        def _do_turn():
             turn_tokens["total"] = 0
             result = session.run_turn(text, images=images)
             # Ensure there's a trailing newline after streamed output.
@@ -450,5 +473,27 @@ def run_common_repl(
                 print(flush=True)
             print(f"[tokens: {turn_tokens['total']}]", flush=True)
             persistence.save(_sid, workspace, session.history)
+
+        try:
+            _do_turn()
         except Exception as exc:
-            print(f"\n[harness] turn error: {type(exc).__name__}: {exc}", flush=True)
+            msg = _clean_turn_error(exc)
+            alt = (_next_available_brand(active_backend)
+                   if brand_autodetected and not fell_back["v"] else None)
+            if alt:
+                fell_back["v"] = True
+                nb, nm = alt
+                print(f"\n[harness] {active_backend} failed ({msg}); "
+                      f"switching to {nb} and retrying…", flush=True)
+                active_backend, active_model = nb, nm
+                session.set_brand(adapter_for(nb), nm, nb)
+                session.meter = _make_wrapped_meter(nb, nm)
+                try:
+                    _do_turn()
+                except Exception as exc2:
+                    print(f"\n[harness] still failing on {nb}: "
+                          f"{_clean_turn_error(exc2)}. Try /model <backend> to switch.",
+                          flush=True)
+            else:
+                print(f"\n[harness] turn error: {msg}. "
+                      "Try /model <backend> to switch brands.", flush=True)
