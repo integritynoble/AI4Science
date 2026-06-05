@@ -375,6 +375,8 @@ def run_common_repl(
                     session.set_brand(new_adapter, new_model, new_backend)
                     session.meter = _make_wrapped_meter(new_backend, new_model)
                     active_backend, active_model = new_backend, new_model
+                    # User chose this brand explicitly — stop auto-healing away from it.
+                    brand_autodetected = False
                     print(f"[harness] switched: backend={active_backend}  model={active_model}",
                           flush=True)
                 except ValueError as e:
