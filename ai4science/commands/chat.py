@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import shutil
 import sys
 from pathlib import Path
 from typing import List, Optional
@@ -34,19 +33,6 @@ from ai4science.harness.agents import registry as agent_registry
 from ai4science.harness.repl import run_common_repl
 
 console = Console()
-
-# Session modes. The startup system prompt is the strong steer; a live /mode
-# switch (which can't reload the prompt without reconnecting) injects this text
-# onto the next turn as a best-effort re-steer.
-MODE_STEER = {
-    "common": "[Mode → common] Act as a general coding/research assistant from "
-              "here — answer what I ask directly, no PWM framing unless I ask.",
-    "research": "[Mode → research] Drive the PWM research workflow proactively "
-                "from here: define the problem crisply, then create + validate "
-                "the L1 principle, L2 spec, L3 benchmark, design L4 solution(s) "
-                "against the benchmark, and finish by recommending target "
-                "journals/conferences. Use the ai4science CLI for artifacts.",
-}
 
 
 def chat(
