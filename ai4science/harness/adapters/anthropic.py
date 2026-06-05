@@ -4,6 +4,7 @@ import json
 from typing import Iterator, List
 
 from ai4science.harness.adapters.base import AgentAdapter
+from ai4science.harness.adapters._argsafe import loads_lenient
 from ai4science.harness.events import Message, ToolSpec, TextDelta, ToolCall, Usage, Done
 
 
@@ -64,7 +65,7 @@ class AnthropicAdapter(AgentAdapter):
                     cur_id, cur_name, cur_json = blk.id, blk.name, ""
             elif t == "content_block_stop":
                 if cur_id is not None:
-                    args = json.loads(cur_json) if cur_json.strip() else {}
+                    args = loads_lenient(cur_json)
                     yield ToolCall(cur_id, cur_name, args)
                     cur_id = cur_name = None
                     cur_json = ""
