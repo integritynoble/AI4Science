@@ -23,6 +23,9 @@ from pathlib import Path
 from typing import List, Optional
 
 from ai4science.harness.adapters.factory import adapter_for, make_meter
+from ai4science.harness.agents import registry as agent_registry
+from ai4science.harness.agents.context import BuildContext
+from ai4science.harness.agents.registry import build_registry_for
 from ai4science.harness.events import Message
 from ai4science.harness.session import AgentSession
 from ai4science.llm import routing
@@ -40,7 +43,7 @@ def _dispatch_slash(line: str, state: dict) -> tuple[bool, str]:
         return True, "bye"
     if cmd in ("help", "?"):
         return True, ("slash commands: /help /clear /model <backend> [id] "
-                      "/readonly /yes /default /cost /files /exit")
+                      "/mode [name|specific <q>] /readonly /yes /default /cost /files /exit")
     if cmd == "readonly":
         state["read_only"] = True
         return True, "read-only: ON (mutating tools blocked)"
@@ -97,6 +100,34 @@ RESEARCH_PROMPT = (
     "consult pwm_solutions before proposing a new solution, and build on the best "
     "registered baselines. Mainnet/testnet status is shown via each artifact's chain_status."
 )
+
+
+def _make_build_context(*, workspace, brand_provider, session_factory=None,
+                        read_only=False, auto_yes=False, mcp_clients=None) -> BuildContext:
+    return BuildContext(workspace=workspace, brand_provider=brand_provider,
+                        session_factory=session_factory, read_only=read_only,
+                        auto_yes=auto_yes, mcp_clients=mcp_clients)
+
+
+def _registry_for_spec(spec, *, is_subagent, ctx):
+    return build_registry_for(spec, is_subagent=is_subagent, ctx=ctx)
+
+
+def _format_mode_menu() -> str:
+    lines = ["[modes]"]
+    for s in agent_registry.core_agents():
+        lines.append(f"  {s.name:<10} {s.description}")
+    n = len(agent_registry.specific_agents())
+    lines.append(f"  specific   ({n}) domain agents — /mode specific <query> to search")
+    lines.append("  switch with: /mode <name>")
+    return "\n".join(lines)
+
+
+def _format_specific_list(query: str) -> str:
+    hits = agent_registry.search(query)
+    if not hits:
+        return f"[modes] no specific agent matches {query!r}"
+    return "\n".join([f"  {s.name:<24} {s.title}" for s in hits])
 
 
 def build_common_registry(*, workspace, session_factory, enable_pwm=True,
@@ -214,6 +245,7 @@ def run_common_repl(
         return ans in ("y", "yes")
 
     active_backend, active_model = _pick_brand(backend, model)
+    active_spec = agent_registry.get(mode_label) or agent_registry.get("common")
 
     # Mutable state dict — tracks modes and slash-command flags.
     # _build_session reads read_only/auto_yes from here so toggles take effect.
@@ -236,21 +268,22 @@ def run_common_repl(
 
         return _meter
 
-    def _child_session_factory(*, subagent_type, depth):
-        child_reg = build_common_registry(
-            workspace=workspace, session_factory=_child_session_factory,
-            enable_pwm=True, enable_subagents=False)  # children: no nested task tool
-        return AgentSession(
+    def _child_session_factory(*, spec, ctx):
+        child = AgentSession(
             adapter=adapter_for(active_backend),
             model=active_model,
             backend=active_backend,
             workspace=workspace,
             read_only=state["read_only"],
-            auto_yes=True,
-            registry=child_reg,
+            auto_yes=True,                      # sub-agents auto-approve
+            confirm=_confirm,
             on_text=on_text,
             meter=_make_wrapped_meter(active_backend, active_model),
+            registry=build_registry_for(spec, is_subagent=True, ctx=ctx),
         )
+        if spec.system_prompt:
+            child.history.insert(0, Message(role="system", content=spec.system_prompt))
+        return child
 
     def _build_session() -> AgentSession:
         s = AgentSession(
@@ -263,17 +296,20 @@ def run_common_repl(
             confirm=_confirm,
             on_text=on_text,
             meter=_make_wrapped_meter(active_backend, active_model),
-            registry=(registry_builder or build_common_registry)(
-                workspace=workspace,
-                session_factory=_child_session_factory,
-                enable_pwm=True,
-                enable_subagents=True,
-            ),
+            registry=_registry_for_spec(
+                active_spec, is_subagent=False,
+                ctx=_make_build_context(
+                    workspace=workspace,
+                    brand_provider=lambda: (active_backend, active_model),
+                    session_factory=_child_session_factory,
+                    read_only=state["read_only"], auto_yes=state["auto_yes"],
+                )),
         )
         # Seed the system prompt on every build (initial AND /clear rebuild) so the
-        # research-mode grounding survives a /clear.
-        if system_prompt:
-            s.history.insert(0, Message(role="system", content=system_prompt))
+        # mode grounding survives a /clear and /mode switches re-ground.
+        seed_prompt = active_spec.system_prompt or system_prompt
+        if seed_prompt:
+            s.history.insert(0, Message(role="system", content=seed_prompt))
         return s
 
     _sid = session_id or secrets.token_hex(8)
@@ -326,6 +362,26 @@ def run_common_repl(
                           flush=True)
                 except ValueError as e:
                     print(f"[harness] error: {e}", flush=True)
+                continue
+
+            # /mode switches the active AgentSpec — handle inline (rebuilds session).
+            if cmd == "mode":
+                if not arg:
+                    print(_format_mode_menu(), flush=True)
+                    continue
+                parts = arg.split(None, 1)
+                if parts[0] == "specific":
+                    print(_format_specific_list(parts[1] if len(parts) > 1 else ""),
+                          flush=True)
+                    continue
+                target = agent_registry.get(parts[0])
+                if target is None:
+                    print(f"[modes] unknown agent {parts[0]!r}; /mode to list",
+                          flush=True)
+                    continue
+                active_spec = target
+                session = _build_session()
+                print(f"[harness] switched mode: {target.name}", flush=True)
                 continue
 
             # /cost needs the live session's ledger — handle inline.
