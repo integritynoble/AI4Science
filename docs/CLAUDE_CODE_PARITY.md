@@ -206,3 +206,30 @@ as JSON + Markdown under `<workspace>/.ai4science/reviews/`. The JSON is the art
 The PWM charge for deep review is a **stubbed seam**: a `payment_gate` function keyed to env
 var `AI4SCIENCE_PAPER_DEEP` (default enabled). The real charge-to-reviewer-wallet mechanics
 are specified in the separate economics spec and are not implemented here.
+
+### Specific domain agents
+
+**Reusable pattern.** A domain agent is a `specs/<domain>.py` file that exports an
+`AgentSpec` (`tier=science`, `category=specific`, domain expert system prompt, and a
+capability list). A matching capability bundle in `capabilities.py` registers the domain's
+tools under a named key. New domains (biology, chemistry, …) copy this shape: one spec
+file, one capabilities entry.
+
+**computational-imaging** is the first exemplar. Launch with `--mode computational-imaging`
+(REPL: `/mode specific imaging`). It adds the `computational-imaging` capability bundle
+from `cassi_tools.py` with four tools:
+
+- `cassi_solutions` — lists **all** registered imaging solutions across mainnet and testnet;
+  each entry is tagged with its chain (sources two chain-scoped explorer bases via env vars
+  `PWM_EXPLORER_BASE_MAINNET` / `PWM_EXPLORER_BASE_TESTNET`).
+- `cassi_forward_check` — computes the local CASSI physics residual ‖Φx−y‖/‖y‖ (CPU only,
+  no GPU required).
+- `cassi_dispatch` — submits a solver to the sub-GPU compute provider; **cost-guarded** by
+  default: returns a PREVIEW showing the PWM cost and solution provider address unless
+  `confirm=true` is passed. Running a registered solution charges PWM to the solution
+  provider (genesis CASSI = third-founder `0xde81…1A29`); the actual debit is deferred to
+  the economics layer.
+- `cassi_result` — polls the dispatched job and invokes the judge to return PSNR / score_q.
+
+**Moat.** All four tools are `tier=science`; the common-mode hard wall prevents common
+agents from reaching them.

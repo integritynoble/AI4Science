@@ -23,11 +23,17 @@ def _paper_review(ctx: BuildContext) -> List[Tool]:
                             research_tools_provider=research_tools))
 
 
+def _computational_imaging(ctx: BuildContext) -> List[Tool]:
+    from ai4science.harness.cassi_tools import cassi_tools
+    return list(cassi_tools())
+
+
 # name -> provider(ctx) -> list[Tool].
 CAPABILITY_BUNDLES: Dict[str, Callable[[BuildContext], List[Tool]]] = {
     "pwm-actions": _pwm_actions,
     "pwm-data": _pwm_data,
     "paper-review": _paper_review,
+    "computational-imaging": _computational_imaging,
 }
 
 
