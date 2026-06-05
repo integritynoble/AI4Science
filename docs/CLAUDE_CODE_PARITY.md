@@ -187,3 +187,25 @@ depth is exactly 1 (no recursive delegation chains).
 
 **Note:** `paper` mode and its `paper-review` capability are added by the separate paper-mode
 plan (not yet built); the `paper-review` bundle slot is reserved in `CAPABILITY_BUNDLES`.
+
+### Paper mode
+
+`--mode paper` is a `tier=science` agent — it sits behind the same moat as research and
+specific domain agents; common mode cannot dispatch to it. It exposes one tool: `paper_review`.
+
+**Deep review** (gated) runs a deterministic multi-agent panel: three specialist reviewers
+(novelty / soundness / clarity) plus an area-chair meta-review that synthesises their verdicts
+into an **accept / borderline / reject** decision. Deep reviewers may call PWM registry tools
+(`pwm_principles`, `pwm_benchmarks`, `pwm_solutions`) to ground novelty claims against
+registered SOTA.
+
+**Shallow review** (default, free) runs a single generalist reviewer; the decision is derived
+directly from its numeric rating, with no panel overhead and no registry calls.
+
+Both depths accept a PDF, Markdown, or LaTeX file by path. Output is a `ReviewBundle` written
+as JSON + Markdown under `<workspace>/.ai4science/reviews/`. The JSON is the artifact that
+`aixiv.physicsworldmodel.org` will consume.
+
+The PWM charge for deep review is a **stubbed seam**: a `payment_gate` function keyed to env
+var `AI4SCIENCE_PAPER_DEEP` (default enabled). The real charge-to-reviewer-wallet mechanics
+are specified in the separate economics spec and are not implemented here.
