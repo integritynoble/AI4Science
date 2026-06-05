@@ -6,6 +6,7 @@ from typing import List
 
 from ai4science.harness import transport
 from ai4science.harness.tools.base import Tool
+from ai4science.compute.dispatch import dispatch_job
 
 # Genesis CASSI solutions are authored by the third founder; users' PWM for using
 # them is paid to this address (charging itself is deferred to the economics layer).
@@ -146,5 +147,69 @@ def _forward_check_tool() -> Tool:
         func=_check, mutating=False)
 
 
+def _resolve_provider(provider_id: str):
+    from ai4science.compute.registry import get_provider, load_registry
+    if provider_id:
+        return get_provider(provider_id)
+    regs = load_registry()
+    return regs[0] if regs else None
+
+
+def _solution_cost(solution_ref: str):
+    """STUB economics seam -> (cost_str, recipient_addr, solution_provider).
+    Cost is DEFINED BY THE SOLUTION PROVIDER; users pay PWM to that address. For the
+    genesis CASSI solutions the provider is the third founder. The economics layer
+    replaces this with a real price lookup + debit + routing."""
+    if not solution_ref:
+        return ("none (your own solver - compute settled in the economics layer)",
+                "you", "you")
+    return ("(set by the solution provider - deferred to the economics layer)",
+            GENESIS_SOLUTION_PROVIDER, f"of {solution_ref}")
+
+
+def _dispatch_tool() -> Tool:
+    def _dispatch(workspace, *, benchmark: str, solver: str = "code/",
+                  provider: str = "", solution_ref: str = "", confirm: bool = False) -> str:
+        try:
+            prov = _resolve_provider(provider)
+            if prov is None:
+                return ("[cassi error] no compute provider configured "
+                        "(add one with: ai4science compute providers add ...)")
+            _contained(Path(workspace), solver)
+            cost, recipient, sol_provider = _solution_cost(solution_ref)
+            sol_label = solution_ref or "your own solver code"
+            if not confirm:
+                return ("[preview] would dispatch to sub-GPU compute provider "
+                        f"{prov.provider_id} ({prov.endpoint_path})\n"
+                        f"  benchmark: {benchmark}\n  solver:    {solver}\n"
+                        f"  solution:  {sol_label}\n"
+                        f"  PWM cost:  {cost} - pay to {recipient} "
+                        f"(solution provider {sol_provider})\n"
+                        "Pass confirm=true to dispatch.")
+            job = dispatch_job(provider=prov, workspace=Path(workspace).resolve(),
+                               benchmark_id=benchmark, solver_code_path=solver)
+            return (f"Dispatched job {job.job_id} to sub-GPU provider {prov.provider_id}. "
+                    f"PWM cost {cost} -> {recipient}. "
+                    f"Poll with cassi_result(job_id=\"{job.job_id}\").")
+        except CassiError as exc:
+            return f"[cassi error] {exc}"
+        except Exception as exc:
+            return f"[cassi error] {exc}"
+
+    return Tool(
+        name="cassi_dispatch",
+        description=("Dispatch a reconstruction solver to the sub-GPU compute "
+                     "provider for a benchmark. Without confirm=true returns a "
+                     "PREVIEW with the PWM cost + recipient (set by the solution "
+                     "provider); confirm=true dispatches the job. Running a solution "
+                     "costs PWM paid to its provider."),
+        parameters={"type": "object", "properties": {
+            "benchmark": {"type": "string"}, "solver": {"type": "string"},
+            "provider": {"type": "string"}, "solution_ref": {"type": "string"},
+            "confirm": {"type": "boolean"}},
+            "required": ["benchmark"]},
+        func=_dispatch, mutating=False)
+
+
 def cassi_tools() -> List[Tool]:
-    return [_solutions_tool(), _forward_check_tool()]
+    return [_solutions_tool(), _forward_check_tool(), _dispatch_tool()]
