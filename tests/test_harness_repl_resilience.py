@@ -28,3 +28,19 @@ def test_clean_turn_error_is_one_line_with_status():
 
 def test_clean_turn_error_bare_exception():
     assert repl._clean_turn_error(RuntimeError("boom")) == "RuntimeError: boom"
+
+
+def test_infer_backend_from_model():
+    assert repl._infer_backend("gemini-3.1-pro-preview") == "gemini"
+    assert repl._infer_backend("gpt-5.5") == "openai"
+    assert repl._infer_backend("claude-opus-4-8") == "anthropic"
+    assert repl._infer_backend("totally-unknown-model") is None
+
+
+def test_pick_brand_infers_backend_from_model_only():
+    assert repl._pick_brand(None, "gemini-3.1-pro-preview") == (
+        "gemini", "gemini-3.1-pro-preview")
+
+
+def test_pick_brand_explicit_backend_and_model_passthrough():
+    assert repl._pick_brand("gemini", "x-model") == ("gemini", "x-model")

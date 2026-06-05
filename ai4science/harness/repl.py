@@ -78,6 +78,21 @@ def _next_available_brand(current: Optional[str]):
     return None
 
 
+def _infer_backend(model: str) -> Optional[str]:
+    """Guess the backend from a model id. Exact AGENT_CHAINS match first, then a
+    substring heuristic — so `--model gemini-3.1-pro-preview` selects gemini."""
+    for chain in routing.AGENT_CHAINS.values():
+        for b, m in chain:
+            if m == model:
+                return b
+    ml = model.lower()
+    for needle, b in (("gemini", "gemini"), ("gpt", "openai"), ("claude", "anthropic"),
+                      ("deepseek", "deepseek"), ("qwen", "qwen")):
+        if needle in ml:
+            return b
+    return None
+
+
 def _pick_brand(backend: Optional[str], model: Optional[str]):
     """Return (backend, model) using the orchestration pool or explicit override.
 
@@ -99,6 +114,12 @@ def _pick_brand(backend: Optional[str], model: Optional[str]):
                 return backend, m
         # Backend not in orchestration chain — use a default model.
         return backend, "claude-opus-4-8"
+
+    if model:
+        # Only a model id given — infer its backend so `--model gemini-…` works.
+        inferred = _infer_backend(model)
+        if inferred:
+            return inferred, model
 
     # Auto-detect: first reachable backend in the orchestration chain.
     from ai4science.harness.adapters.factory import harness_available
