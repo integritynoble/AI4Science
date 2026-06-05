@@ -93,6 +93,23 @@ def _status_tool() -> Tool:
         func=_status, mutating=False)
 
 
+def _post_form(path: str, fields: dict):
+    data = urllib.parse.urlencode({k: str(v) for k, v in fields.items()}).encode()
+    req = urllib.request.Request(_base() + path, data=data, method="POST", headers={
+        "Authorization": f"Bearer {_token()}",
+        "Content-Type": "application/x-www-form-urlencoded"})
+    try:
+        with urllib.request.urlopen(req, timeout=120) as r:
+            return r.status, r.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as e:
+        return e.code, e.read().decode("utf-8", "replace")
+
+
+def _extract_badge(html: str):
+    m = re.search(r"(accepted|rejected|pending|verifying|under review)", html or "", re.I)
+    return m.group(1).lower() if m else None
+
+
 def _guide_tool() -> Tool:
     def _guide(workspace, *, artifact_type: str) -> str:
         t = _TYPES.get(artifact_type)
@@ -117,5 +134,55 @@ def _guide_tool() -> Tool:
         func=_guide, mutating=False)
 
 
+def _submit_tool() -> Tool:
+    def _submit(workspace, *, artifact_type: str, fields, confirm: bool = False) -> str:
+        confirm = confirm is True   # strict: a string "true"/"false" never submits
+        t = _TYPES.get(artifact_type)
+        if not t:
+            return (f"[onboard error] unknown type {artifact_type!r}; one of: "
+                    f"{', '.join(_TYPES)}")
+        slug, req, opt = t
+        if not isinstance(fields, dict):
+            return "[onboard error] fields must be an object of field->value"
+        missing = [f for f in req if not str(fields.get(f, "")).strip()]
+        if missing:
+            return f"[onboard error] missing fields: {', '.join(missing)}"
+        if not _token():
+            return ("[onboard error] set PWM_ONBOARD_TOKEN (your pwm_ API key from "
+                    "physicsworldmodel.org)")
+        allowed = set(req) | set(opt)
+        payload = {k: v for k, v in fields.items() if k in allowed}
+        if not confirm:
+            body = "\n".join(f"  {k}: {v}" for k, v in payload.items())
+            return (f"[preview] would submit a {artifact_type} to "
+                    f"{_base()}/api/v1/pwm-submit/{slug}\n{body}\n"
+                    "Pass confirm=true to submit to the LIVE platform "
+                    "(it runs the S1-S4 quality gate and may award PWM).")
+        try:
+            status, text = _post_form(f"/api/v1/pwm-submit/{slug}", payload)
+        except Exception as exc:
+            return f"[onboard error] {exc}"
+        if status >= 400:
+            return f"[onboard error] submit failed (HTTP {status})"
+        badge = _extract_badge(text)
+        return (f"Submitted {artifact_type} (HTTP {status}"
+                f"{', status: ' + badge if badge else ''}). "
+                "Check onboard_status / onboard_balance for the gate result + reward.")
+
+    return Tool(
+        name="onboard_submit",
+        description=("Submit an authored PWM artifact to the live platform. Args: "
+                     "artifact_type (principle/digital-twin/benchmark/solution), "
+                     "fields (an object of the required fields from onboard_guide), "
+                     "confirm. Without confirm=true it PREVIEWS (no write); confirm=true "
+                     "submits to the live platform (runs the S1-S4 gate, may award PWM)."),
+        parameters={"type": "object", "properties": {
+            "artifact_type": {"type": "string"},
+            "fields": {"type": "object"},
+            "confirm": {"type": "boolean"}},
+            "required": ["artifact_type", "fields"]},
+        func=_submit, mutating=False)
+
+
 def onboard_tools() -> List[Tool]:
-    return [_guide_tool(), _status_tool(), _balance_tool()]
+    return [_guide_tool(), _submit_tool(), _status_tool(), _balance_tool()]
