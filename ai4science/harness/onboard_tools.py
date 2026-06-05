@@ -40,6 +40,59 @@ def _token():
     return os.environ.get("PWM_ONBOARD_TOKEN")
 
 
+def _get_json(path: str) -> dict:
+    req = urllib.request.Request(_base() + path, method="GET", headers={
+        "Authorization": f"Bearer {_token()}", "Accept": "application/json"})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        return json.loads(r.read().decode("utf-8"))
+
+
+def _balance_tool() -> Tool:
+    def _balance(workspace) -> str:
+        if not _token():
+            return ("[onboard error] set PWM_ONBOARD_TOKEN (your pwm_ API key from "
+                    "physicsworldmodel.org)")
+        try:
+            d = _get_json("/api/v1/pwm-token/balance")
+        except Exception as exc:
+            return f"[onboard error] {exc}"
+        return json.dumps({k: v for k, v in d.items() if k != "success"},
+                          indent=2, default=str)[:20000]
+
+    return Tool(
+        name="onboard_balance",
+        description="Show the contributor's PWM token balance + caps (needs PWM_ONBOARD_TOKEN).",
+        parameters={"type": "object", "properties": {}, "required": []},
+        func=_balance, mutating=False)
+
+
+def _status_tool() -> Tool:
+    def _status(workspace) -> str:
+        if not _token():
+            return ("[onboard error] set PWM_ONBOARD_TOKEN (your pwm_ API key from "
+                    "physicsworldmodel.org)")
+        try:
+            d = _get_json("/api/v1/pwm-token/transactions?limit=20")
+        except Exception as exc:
+            return f"[onboard error] {exc}"
+        txns = d.get("transactions") or []
+        if not txns:
+            return "no PWM transactions yet."
+        lines = []
+        for t in txns[:20]:
+            lines.append(f"- {t.get('kind') or t.get('type') or '?'} "
+                         f"{t.get('amount')} ({t.get('status') or ''}) "
+                         f"{t.get('created_at') or t.get('timestamp') or ''}")
+        return "\n".join(lines)[:20000]
+
+    return Tool(
+        name="onboard_status",
+        description=("Show recent PWM ledger entries (the accept-reward trail for your "
+                     "submissions; needs PWM_ONBOARD_TOKEN)."),
+        parameters={"type": "object", "properties": {}, "required": []},
+        func=_status, mutating=False)
+
+
 def _guide_tool() -> Tool:
     def _guide(workspace, *, artifact_type: str) -> str:
         t = _TYPES.get(artifact_type)
@@ -65,4 +118,4 @@ def _guide_tool() -> Tool:
 
 
 def onboard_tools() -> List[Tool]:
-    return [_guide_tool()]
+    return [_guide_tool(), _status_tool(), _balance_tool()]
