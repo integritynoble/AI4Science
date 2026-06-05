@@ -18,10 +18,19 @@ def test_submit_missing_fields(tmp_path, monkeypatch):
 
 
 def test_submit_no_token(tmp_path, monkeypatch):
+    # The actual submit (confirm=True) needs the token...
     monkeypatch.delenv("PWM_ONBOARD_TOKEN", raising=False)
     out = _tools()["onboard_submit"].func(
-        tmp_path, artifact_type="principle", fields=_GOOD)
+        tmp_path, artifact_type="principle", fields=_GOOD, confirm=True)
     assert "[onboard error]" in out and "PWM_ONBOARD_TOKEN" in out
+
+
+def test_submit_preview_works_without_token(tmp_path, monkeypatch):
+    # ...but the preview is local and must work without a token.
+    monkeypatch.delenv("PWM_ONBOARD_TOKEN", raising=False)
+    out = _tools()["onboard_submit"].func(
+        tmp_path, artifact_type="principle", fields=_GOOD)   # confirm omitted
+    assert "preview" in out.lower() and "[onboard error]" not in out
 
 
 def test_submit_preview_no_post(tmp_path, monkeypatch):

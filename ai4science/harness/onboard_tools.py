@@ -147,17 +147,19 @@ def _submit_tool() -> Tool:
         missing = [f for f in req if not str(fields.get(f, "")).strip()]
         if missing:
             return f"[onboard error] missing fields: {', '.join(missing)}"
-        if not _token():
-            return ("[onboard error] set PWM_ONBOARD_TOKEN (your pwm_ API key from "
-                    "physicsworldmodel.org)")
         allowed = set(req) | set(opt)
         payload = {k: v for k, v in fields.items() if k in allowed}
         if not confirm:
+            # Preview is local (no write) — works without a token so the user can
+            # see exactly what would be submitted before configuring their key.
             body = "\n".join(f"  {k}: {v}" for k, v in payload.items())
             return (f"[preview] would submit a {artifact_type} to "
                     f"{_base()}/api/v1/pwm-submit/{slug}\n{body}\n"
                     "Pass confirm=true to submit to the LIVE platform "
                     "(it runs the S1-S4 quality gate and may award PWM).")
+        if not _token():
+            return ("[onboard error] set PWM_ONBOARD_TOKEN (your pwm_ API key from "
+                    "physicsworldmodel.org) to submit")
         try:
             status, text = _post_form(f"/api/v1/pwm-submit/{slug}", payload)
         except Exception as exc:
