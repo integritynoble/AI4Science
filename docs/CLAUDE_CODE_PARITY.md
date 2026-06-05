@@ -185,9 +185,6 @@ auto-discovered: drop an `AgentSpec`-exposing `.py` file into
 MAIN (`is_subagent=False`). A sub-agent never receives a `task` tool, so named-agent nesting
 depth is exactly 1 (no recursive delegation chains).
 
-**Note:** `paper` mode and its `paper-review` capability are added by the separate paper-mode
-plan (not yet built); the `paper-review` bundle slot is reserved in `CAPABILITY_BUNDLES`.
-
 ### Paper mode
 
 `--mode paper` is a `tier=science` agent — it sits behind the same moat as research and
