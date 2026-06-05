@@ -163,3 +163,27 @@ Common mode is now both feature-complete (Plans 1/3a/3b/3c/3d) AND live (Plan 3e
 **Common mode** deliberately excludes these PWM data tools — that is the product moat.
 Both modes share the same harness, session persistence, `--continue`/`--resume`, and
 brand-switching (`/model`). Data is served from the PWM explorer API.
+
+---
+
+## Agent framework (2026-06-05)
+
+**`/mode` menu** — lists `common` / `research` / `specific ▸ (N)` in the REPL. Type-to-search
+with `/mode specific <query>`; switch directly with `/mode <name>`. New agents are
+auto-discovered: drop an `AgentSpec`-exposing `.py` file into
+`ai4science/harness/agents/specs/` and it appears in the menu on the next reload (plug-and-play).
+
+**Two tiers / the moat:**
+- `tier=open` (`common`) — pure Claude Code base, **no PWM tools, no PWM dataset**. Its
+  `task` dispatch tool can reach only other `open` agents (never `research`, `paper`, or
+  any `specific` domain agent). This is the hard wall.
+- `tier=science` (`research` + all `specific` domain agents) — full Claude-Code base **plus**
+  the PWM registry/dataset capabilities (`pwm-actions`, `pwm-data`). Science agents can
+  dispatch each other freely.
+
+**main-XOR-sub invariant** — the `task` dispatch tool is injected only when an agent runs as
+MAIN (`is_subagent=False`). A sub-agent never receives a `task` tool, so named-agent nesting
+depth is exactly 1 (no recursive delegation chains).
+
+**Note:** `paper` mode and its `paper-review` capability are added by the separate paper-mode
+plan (not yet built); the `paper-review` bundle slot is reserved in `CAPABILITY_BUNDLES`.
