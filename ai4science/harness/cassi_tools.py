@@ -6,7 +6,8 @@ from typing import List
 
 from ai4science.harness import transport
 from ai4science.harness.tools.base import Tool
-from ai4science.compute.dispatch import dispatch_job
+from ai4science.compute.dispatch import dispatch_job, job_state, read_result
+from ai4science.judge.cassi.judge_cassi import judge_cassi
 
 # Genesis CASSI solutions are authored by the third founder; users' PWM for using
 # them is paid to this address (charging itself is deferred to the economics layer).
@@ -212,5 +213,44 @@ def _dispatch_tool() -> Tool:
         func=_dispatch, mutating=False)
 
 
+def _judge_summary(report: dict) -> str:
+    if not isinstance(report, dict):
+        return str(report)
+    keys = ("final", "status", "score_q", "psnr_db", "ssim")
+    parts = [f"{k}={report[k]}" for k in keys if k in report]
+    return ", ".join(parts) or str(report)[:300]
+
+
+def _result_tool() -> Tool:
+    def _result(workspace, *, job_id: str, provider: str = "") -> str:
+        try:
+            prov = _resolve_provider(provider)
+            if prov is None:
+                return "[cassi error] no compute provider configured"
+            ep = Path(prov.endpoint_path)
+            st = job_state(ep, job_id)
+            state = st.get("state", "unknown")
+            if state != "completed":
+                return f"job {job_id}: state={state} (not finished yet)"
+            res = read_result(ep, job_id)
+            if not res:
+                return f"[cassi error] job {job_id} completed but no result file found"
+            ws = res.get("workspace") or str(workspace)
+            bench = res.get("benchmark_id") or None
+            report = judge_cassi(Path(ws), benchmark=bench)
+            return f"job {job_id}: completed. judge: {_judge_summary(report)}"
+        except Exception as exc:
+            return f"[cassi error] {exc}"
+
+    return Tool(
+        name="cassi_result",
+        description=("Poll a dispatched CASSI job; when completed, judge the result "
+                     "and return the physics-judge status + PSNR / score_q."),
+        parameters={"type": "object", "properties": {
+            "job_id": {"type": "string"}, "provider": {"type": "string"}},
+            "required": ["job_id"]},
+        func=_result, mutating=False)
+
+
 def cassi_tools() -> List[Tool]:
-    return [_solutions_tool(), _forward_check_tool(), _dispatch_tool()]
+    return [_solutions_tool(), _forward_check_tool(), _dispatch_tool(), _result_tool()]
