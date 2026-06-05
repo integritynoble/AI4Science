@@ -4,6 +4,7 @@ import json
 from typing import Iterator, List
 
 from ai4science.harness.adapters.base import AgentAdapter
+from ai4science.harness.adapters._argsafe import loads_lenient
 from ai4science.harness.events import Message, ToolSpec, TextDelta, ToolCall, Usage, Done
 
 
@@ -80,7 +81,7 @@ class OpenAIAdapter(AgentAdapter):
                     slot["args"] += fn.arguments
             if getattr(choice, "finish_reason", None):
                 for slot in acc.values():
-                    args = json.loads(slot["args"]) if slot["args"].strip() else {}
+                    args = loads_lenient(slot["args"])
                     yield ToolCall(slot["id"] or "call_0", slot["name"], args,
                                    extra=slot.get("extra"))
                 u = getattr(ch, "usage", None)

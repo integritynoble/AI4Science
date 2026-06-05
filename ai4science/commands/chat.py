@@ -72,6 +72,12 @@ def chat(
              "Defaults to AI4SCIENCE_MODEL, else your claude CLI default. "
              "In-session, type /model to pick from a menu.",
     ),
+    backend: Optional[str] = typer.Option(
+        None, "--backend", "-b",
+        help="LLM backend: anthropic | openai | gemini | deepseek | qwen. "
+             "If omitted it is inferred from --model, else auto-detected. "
+             "In-session, type /model <backend> to switch.",
+    ),
     continue_session: bool = typer.Option(
         False, "--continue", "-c",
         help="Resume the most recent conversation in this workspace.",
@@ -105,6 +111,7 @@ def chat(
     # session (registry + system prompt) inside run_common_repl; here we only pass
     # mode_label and the spec's prompt as a harmless fallback.
     mode = (mode or os.environ.get("AI4SCIENCE_MODE") or "common").lower()
+    backend = backend or os.environ.get("AI4SCIENCE_BACKEND")
     spec = agent_registry.get(mode)
     if spec is None:
         names = ", ".join(sorted(agent_registry.AGENT_REGISTRY))
@@ -126,6 +133,7 @@ def chat(
             workspace,
             read_only=read_only or plan,
             auto_yes=yes,
+            backend=backend,
             model=model,
             resume_history=resume_hist,
             session_id=sid,

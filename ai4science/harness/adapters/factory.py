@@ -14,14 +14,25 @@ from ai4science.llm import ledger, pricing, routing
 
 def adapter_for(backend: str):
     from ai4science.harness.adapters import creds as _creds
+    # OpenAI runs via the codex/ChatGPT OAuth subscription when present — the
+    # api-key path 401s in this deployment. (Responses API, not chat/completions.)
+    if backend == "openai":
+        from ai4science.harness.adapters import codex_creds
+        if codex_creds.codex_available():
+            from ai4science.harness.adapters.codex import CodexAdapter
+            return CodexAdapter()
     c = _creds.resolve(backend)
     if c.kind == "anthropic":
         return AnthropicAdapter(creds=c)
-    return OpenAIAdapter(creds=c)   # openai/gemini/deepseek/qwen are OpenAI-compatible
+    return OpenAIAdapter(creds=c)   # gemini/deepseek/qwen (+ openai api-key) are OpenAI-compatible
 
 
 def harness_available(backend: str) -> bool:
     from ai4science.harness.adapters import creds as _creds
+    if backend == "openai":
+        from ai4science.harness.adapters import codex_creds
+        if codex_creds.codex_available():
+            return True
     return _creds.available(backend)
 
 
