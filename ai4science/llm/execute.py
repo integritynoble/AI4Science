@@ -5,8 +5,9 @@ backend executor, and returns the text + token usage + the Route used (so usage
 can later be priced and attributed to the provider's wallet).
 
   anthropic → `claude -p --output-format json` (subscription)
-  openai    → `codex exec --output-last-message` (subscription), with
-              model_reasoning_effort applied
+  openai    → codex/ChatGPT subscription via the Responses API (CodexAdapter,
+              pure HTTP — works on Windows); falls back to `codex exec` CLI, then
+              the OpenAI api-key path
   gemini    → OpenAI-compatible Gemini endpoint (comparegpt key)
 """
 from __future__ import annotations
@@ -65,16 +66,28 @@ def _oc_executor(backend: str):
     return _run
 
 
-def _run_openai(model: str, prompt: str, reasoning: str, timeout: int):
-    codex = shutil.which("codex")
-    if not codex:
-        # No codex subscription — fall back to the OpenAI api-key path if a key
-        # is configured (point 5: api-key execution).
-        from ai4science.llm import openai_compat as oc
-        if oc.is_available("openai"):
-            return _oc_executor("openai")(model, prompt, reasoning, timeout)
-        raise RuntimeError("`codex` CLI not on PATH and no OPENAI_API_KEY "
-                           "(install @openai/codex or `ai4science login`)")
+def _run_codex_responses(model: str, prompt: str, reasoning: str, timeout: int):
+    """One-shot via the codex/ChatGPT subscription Responses API (CodexAdapter).
+
+    Pure HTTP, so it works on every OS — unlike `codex exec`, whose npm shim
+    fails to launch on Windows (WinError 193). This is the same path codex MODE
+    uses; preferred whenever a codex subscription login exists.
+    """
+    from ai4science.harness.adapters.codex import CodexAdapter
+    from ai4science.harness.events import Message, TextDelta, Usage
+    parts = []
+    usage = {"input": None, "output": None, "total": None}
+    for ev in CodexAdapter().stream([Message(role="user", content=prompt)], [],
+                                    model=model, reasoning=reasoning or "medium"):
+        if isinstance(ev, TextDelta):
+            parts.append(ev.text)
+        elif isinstance(ev, Usage):
+            usage = {"input": ev.input, "output": ev.output, "total": ev.total}
+    return "".join(parts).strip(), usage
+
+
+def _run_codex_exec(codex: str, model: str, prompt: str, reasoning: str, timeout: int):
+    """One-shot via the `codex exec` CLI subprocess (POSIX; fails on Windows)."""
     fd, last = tempfile.mkstemp(suffix=".txt"); os.close(fd)
     try:
         proc = subprocess.run(
@@ -101,6 +114,25 @@ def _run_openai(model: str, prompt: str, reasoning: str, timeout: int):
             os.unlink(last)
         except OSError:
             pass
+
+
+def _run_openai(model: str, prompt: str, reasoning: str, timeout: int):
+    # 1. Codex subscription via the Responses API (CodexAdapter) — pure HTTP,
+    #    works on Windows. Same path as codex MODE; preferred when logged in.
+    from ai4science.harness.adapters import codex_creds
+    if codex_creds.codex_available():
+        return _run_codex_responses(model, prompt, reasoning, timeout)
+    # 2. The `codex exec` CLI subprocess (POSIX hosts without subscription creds
+    #    resolvable by codex_creds but with the CLI logged in).
+    codex = shutil.which("codex")
+    if codex:
+        return _run_codex_exec(codex, model, prompt, reasoning, timeout)
+    # 3. OpenAI api-key path if a key is configured (point 5: api-key execution).
+    from ai4science.llm import openai_compat as oc
+    if oc.is_available("openai"):
+        return _oc_executor("openai")(model, prompt, reasoning, timeout)
+    raise RuntimeError("no codex subscription, no `codex` CLI, and no OPENAI_API_KEY "
+                       "(run `codex login` or `ai4science login`)")
 
 
 def _run_gemini(model: str, prompt: str, reasoning: str, timeout: int):
