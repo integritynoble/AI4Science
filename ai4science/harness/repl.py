@@ -28,7 +28,8 @@ from ai4science.harness.agents.context import BuildContext
 from ai4science.harness.agents.registry import build_registry_for
 from ai4science.harness.events import Message
 from ai4science.harness.session import AgentSession
-from ai4science.llm import routing
+from ai4science.harness.pwm_gate import PwmGate
+from ai4science.llm import routing, pricing
 
 
 def _dispatch_slash(line: str, state: dict) -> tuple[bool, str]:
@@ -65,6 +66,17 @@ def _clean_turn_error(exc) -> str:
     s = str(exc).strip()
     name = type(exc).__name__
     return f"{name}: {s}" if s else name
+
+
+def _turn_cost_for(backend: str, model: str, usage):
+    """(pwm, wallet) for one Usage — the same pricing path make_meter uses."""
+    try:
+        _src, _pid, wallet, mult = routing._select_source(backend)
+        u = {"input": usage.input, "output": usage.output, "total": usage.total}
+        cost = pricing.price_call(model, u, price_multiplier=mult)
+        return float(cost.get("pwm") or 0.0), wallet
+    except Exception:
+        return 0.0, None
 
 
 def _next_available_brand(current: Optional[str]):
@@ -295,6 +307,9 @@ def run_common_repl(
 
     # Per-turn token accumulator (mutated by the meter wrapper).
     turn_tokens: dict = {"total": 0}
+    turn_cost = {"pwm": 0.0, "wallet": None}
+    gate = PwmGate.from_env()
+    turn_counter = {"n": 0}
 
     def _make_wrapped_meter(b: str, m: str):
         """Return a meter that accumulates into turn_tokens AND calls real meter."""
@@ -302,6 +317,10 @@ def run_common_repl(
 
         def _meter(u) -> None:
             turn_tokens["total"] += getattr(u, "total", 0) or 0
+            pwm, wallet = _turn_cost_for(b, m, u)
+            turn_cost["pwm"] += pwm
+            if wallet:
+                turn_cost["wallet"] = wallet
             real(u)
 
         return _meter
@@ -360,6 +379,8 @@ def run_common_repl(
     print(f"\n[harness] {mode_label} mode  backend={active_backend}  model={active_model}", flush=True)
     print(f"[harness] session {_sid}  (resume later with --resume {_sid})", flush=True)
     print("[harness] /help for commands  /exit to quit\n", flush=True)
+    if gate.enabled:
+        print("[harness] PWM gate ON — each turn is charged to the provider in PWM", flush=True)
 
     while True:
         try:
@@ -486,6 +507,13 @@ def run_common_repl(
 
         # Normal turn.
         from ai4science.harness import mentions
+        allowed, _greason = gate.check()
+        if not allowed:
+            print(_greason, flush=True)
+            continue
+        turn_cost["pwm"] = 0.0
+        turn_cost["wallet"] = None
+        turn_counter["n"] += 1
         text, images = mentions.expand(line, workspace)
 
         def _do_turn():
@@ -520,3 +548,9 @@ def run_common_repl(
             else:
                 print(f"\n[harness] turn error: {msg}. "
                       "Try /model <backend> to switch brands.", flush=True)
+
+        ok, _creason = gate.charge(turn_cost["pwm"], turn_cost["wallet"],
+                                   purpose=f"ai4science:{active_spec.name}:{active_model}",
+                                   idempotency_key=f"{_sid}:{turn_counter['n']}")
+        if not ok:
+            print(_creason, flush=True)
