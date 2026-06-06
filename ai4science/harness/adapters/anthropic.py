@@ -88,7 +88,17 @@ class AnthropicAdapter(AgentAdapter):
         from ai4science.harness import transport
         from ai4science.harness.adapters._dotdict import dot
         c = self.creds
-        headers = {"x-api-key": c.api_key or "", "anthropic-version": "2023-06-01"}
+        is_oauth = getattr(c, "auth", "api_key") == "oauth"
+        if is_oauth:
+            # Claude Code subscription: Bearer OAuth token + the oauth beta header
+            # (no x-api-key). Read the token FRESH so a background refresh is used.
+            from ai4science.harness.adapters import claude_sub_creds as csc
+            token = csc.subscription_token() or c.api_key or ""
+            headers = {"authorization": f"Bearer {token}",
+                       "anthropic-version": "2023-06-01",
+                       "anthropic-beta": "oauth-2025-04-20"}
+        else:
+            headers = {"x-api-key": c.api_key or "", "anthropic-version": "2023-06-01"}
         sys_text = next((m.content for m in messages if m.role == "system"), None)
         payload = {
             "model": model,
@@ -99,7 +109,15 @@ class AnthropicAdapter(AgentAdapter):
         tool_specs = self._translate_tools(tools)
         if tool_specs:
             payload["tools"] = tool_specs
-        if sys_text:
+        if is_oauth:
+            # OAuth (Claude Code) tokens require the Claude Code identity as the
+            # leading system block; the mode's own prompt follows it.
+            system_blocks = [{"type": "text",
+                              "text": "You are Claude Code, Anthropic's official CLI for Claude."}]
+            if sys_text:
+                system_blocks.append({"type": "text", "text": sys_text})
+            payload["system"] = system_blocks
+        elif sys_text:
             payload["system"] = sys_text
         raw = transport.sse_post(c.base_url, headers, payload)
         yield from self._parse_stream(dot(ev) for ev in raw)

@@ -11,12 +11,20 @@ class CredInfo:
     base_url: str
     api_key: Optional[str]
     model: Optional[str]
+    auth: str = "api_key"      # "api_key" (x-api-key) | "oauth" (Claude Code subscription)
 
 
 def resolve(backend: str) -> CredInfo:
     if backend == "anthropic":
+        key = os.environ.get("ANTHROPIC_API_KEY")
+        if key:
+            return CredInfo("anthropic", "https://api.anthropic.com/v1/messages",
+                            key, None, auth="api_key")
+        # No API key — fall back to the Claude Code subscription (OAuth).
+        from ai4science.harness.adapters import claude_sub_creds as csc
+        tok = csc.subscription_token() if csc.subscription_available() else None
         return CredInfo("anthropic", "https://api.anthropic.com/v1/messages",
-                        os.environ.get("ANTHROPIC_API_KEY"), None)
+                        tok, None, auth="oauth" if tok else "api_key")
     if backend == "gemini":
         from ai4science.llm import gemini
         base = gemini.resolve_base().rstrip("/") + "/chat/completions"
