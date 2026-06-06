@@ -110,9 +110,9 @@ def route(
             wallet = "—"
         else:
             tag = " [yellow](fallback)[/yellow]" if r.is_fallback else ""
-            src = " [blue](your own)[/blue]" if r.source == "user" else ""
+            src = " [red](no provider — register one with a wallet)[/red]" if r.source == "none" else ""
             resolved = f"[green]{r.backend}:{r.model}[/green]{tag}{src}"
-            wallet = (r.wallet or "—") if r.source == "wallet" else "your own · 0 PWM"
+            wallet = (r.wallet or "—") if r.source == "wallet" else "—"
         # availability is cached-ish per backend within this call
         avail = {b: routing.backend_available(b) for b in {c[0] for c in chain}}
         chain_str = "  ".join(

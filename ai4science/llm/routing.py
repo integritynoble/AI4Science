@@ -77,47 +77,38 @@ def _provider_for(backend: str):
 
 
 def _select_source(backend: str):
-    """Pick the credential source for a backend, honoring user preference (#11).
+    """Pick the wallet-bound provider that bills this backend in PWM.
+
+    AI4Science has NO free 'bring-your-own-API-key' path — every turn is billed
+    in PWM to a wallet-bound provider. To supply an LLM (an API key OR a
+    subscription) you register it as a provider with a wallet address
+    (`ai4science llm providers-add --wallet 0x… --auth api_key|subscription`)
+    and earn PWM whenever it is used.
 
     Returns (source, provider_id, wallet, price_multiplier):
-      source 'user'   → the user's own login/key; no wallet, 0 PWM (billed to
-                        the user's own account).
       source 'wallet' → a wallet-bound provider; usage priced in PWM.
-
-    Preference (user config): 'user' (own first — default), 'wallet' (wallet
-    first), or a specific provider_id.
+      source 'none'   → no provider serves this backend yet; usage is blocked
+                        until one is registered with a wallet.
     """
     from ai4science import user
     from ai4science.llm.registry import get_provider as get_llm_provider
 
-    pref = user.preference()
-    wallet_prov = _provider_for(backend)
-    user_ok = user.has_own_for(backend)
-
     def _wallet(p):
         return ("wallet", p.provider_id, p.wallet_address, p.price_multiplier)
-    user_tuple = ("user", None, None, 0.0)
 
-    # A specific wallet provider was pinned.
+    # A specific provider may be pinned by id (preference set to a provider_id).
+    pref = user.preference()
     if pref not in ("user", "wallet"):
         p = get_llm_provider(pref)
         if p is not None and p.backend == backend and p.status == "active":
             return _wallet(p)
-        # pinned provider doesn't serve this backend → fall through to user-first
+        # pinned provider doesn't serve this backend → fall through to default
 
-    if pref == "wallet":
-        if wallet_prov is not None:
-            return _wallet(wallet_prov)
-        if user_ok:
-            return user_tuple
-    else:  # 'user' (default) or an unmatched pin
-        if user_ok:
-            return user_tuple
-        if wallet_prov is not None:
-            return _wallet(wallet_prov)
-
-    # Last resort.
-    return _wallet(wallet_prov) if wallet_prov is not None else user_tuple
+    wallet_prov = _provider_for(backend)
+    if wallet_prov is not None:
+        return _wallet(wallet_prov)
+    # No wallet-bound provider for this backend: there is no free fallback.
+    return ("none", None, None, 0.0)
 
 
 class Route(NamedTuple):
@@ -129,7 +120,7 @@ class Route(NamedTuple):
     wallet: Optional[str]
     is_fallback: bool          # True if not the agent's first choice
     price_multiplier: float = 1.0   # provider's fraction of official price
-    source: str = "wallet"     # 'user' (own login/key, 0 PWM) | 'wallet'
+    source: str = "wallet"     # 'wallet' (PWM to provider) | 'none' (no provider)
 
 
 def resolve(agent: str) -> Optional[Route]:
