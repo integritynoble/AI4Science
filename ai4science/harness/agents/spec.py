@@ -17,3 +17,4 @@ class AgentSpec:
     capabilities: Tuple[str, ...] = ()          # bundle names added on top of the CC base
     allow_as_subagent: bool = True
     extra_tools: Optional[Callable] = None      # ctx -> list[Tool], optional custom tools
+    aliases: Tuple[str, ...] = ()               # old/alt names that resolve to this spec

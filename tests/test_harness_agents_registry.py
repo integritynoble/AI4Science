@@ -14,9 +14,11 @@ def _restore_default_registry():
 def test_ships_expected_agents():
     registry.reload()  # default specs dir
     reg = registry.AGENT_REGISTRY
-    assert {"common", "research", "computational-imaging",
+    assert {"unified-LLM", "research", "computational-imaging",
             "general-purpose"} <= set(reg)
-    assert reg["common"].tier == "open"
+    assert reg["unified-LLM"].tier == "open"
+    # 'common' is the back-compat alias for the renamed 'unified-LLM' mode
+    assert registry.get("common").name == "unified-LLM"
     assert reg["research"].tier == "science"
     assert reg["research"].system_prompt and "pwm_solutions" in reg["research"].system_prompt
 
@@ -31,7 +33,7 @@ def test_search_finds_by_keyword():
 
 def test_menu_partitions_core_vs_specific():
     registry.reload()
-    assert "common" in {s.name for s in registry.core_agents()}
+    assert "unified-LLM" in {s.name for s in registry.core_agents()}
     assert "computational-imaging" in {s.name for s in registry.specific_agents()}
     assert "general-purpose" not in {s.name for s in registry.core_agents()}
     assert "general-purpose" not in {s.name for s in registry.specific_agents()}

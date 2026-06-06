@@ -5,7 +5,7 @@ from ai4science.harness.agents import registry
 def test_mode_menu_text_lists_core_and_specific():
     registry.reload()
     txt = repl._format_mode_menu()
-    assert "common" in txt and "research" in txt and "specific" in txt.lower()
+    assert "unified-LLM" in txt and "research" in txt and "specific" in txt.lower()
 
 
 def test_mode_specific_search_text():

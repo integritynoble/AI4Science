@@ -401,4 +401,4 @@ def test_chat_unknown_mode_falls_back_to_common(monkeypatch, tmp_path):
     res = CliRunner().invoke(app, ["chat", "--mode", "nonexistent",
                                    "--workspace", str(tmp_path)])
     assert res.exit_code == 0
-    assert captured["mode_label"] == "common"
+    assert captured["mode_label"] == "unified-LLM"

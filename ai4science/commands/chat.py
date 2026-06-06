@@ -89,9 +89,10 @@ def chat(
     ),
     mode: Optional[str] = typer.Option(
         None, "--mode",
-        help="Session mode: 'common' (general Claude-Code-style assistant) or "
-             "'research' (drive problem→principle→spec→benchmark→solution→venue). "
-             "Defaults to AI4SCIENCE_MODE, else common. Switch live with /mode.",
+        help="Session mode: 'unified-LLM' (general assistant across Claude/ChatGPT/Gemini; "
+             "'common' is an alias), 'research', 'paper', 'claude code', 'codex', or a "
+             "'specific' domain agent. Defaults to AI4SCIENCE_MODE, else unified-LLM. "
+             "Switch live with /mode.",
     ),
 ) -> None:
     """Open a persistent chat session with the agent."""
@@ -110,14 +111,14 @@ def chat(
     # Resolve --mode against the agent registry. The active AgentSpec drives the
     # session (registry + system prompt) inside run_common_repl; here we only pass
     # mode_label and the spec's prompt as a harmless fallback.
-    mode = (mode or os.environ.get("AI4SCIENCE_MODE") or "common").lower()
+    mode = (mode or os.environ.get("AI4SCIENCE_MODE") or "unified-LLM").lower()
     backend = backend or os.environ.get("AI4SCIENCE_BACKEND")
     spec = agent_registry.get(mode)
     if spec is None:
         names = ", ".join(sorted(agent_registry.AGENT_REGISTRY))
-        console.print(f"[yellow]Unknown --mode {mode!r}; using 'common'. "
+        console.print(f"[yellow]Unknown --mode {mode!r}; using 'unified-LLM'. "
                       f"Available: {names}[/yellow]")
-        spec = agent_registry.get("common")
+        spec = agent_registry.get("unified-LLM")
 
     from ai4science.harness import persistence
     resume_hist = None
@@ -515,7 +516,7 @@ def _print_welcome(workspace: Path, read_only: bool, auto_yes: bool,
                    memory_file: Optional[Path] = None,
                    continue_session: bool = False,
                    model: Optional[str] = None,
-                   session_mode: str = "common") -> None:
+                   session_mode: str = "unified-LLM") -> None:
     if plan_mode:
         toolmode = "plan"
     elif read_only:
@@ -617,7 +618,7 @@ def _print_help() -> None:
         ("/files",             "list workspace artifact files"),
         ("/commands",          "list custom (user-defined) slash commands"),
         ("/plan <request>",    "single-turn plan mode (no edits, agent returns a plan)"),
-        ("/mode",              "switch mode: common (Claude-Code style) or research (PWM workflow)"),
+        ("/mode",              "switch mode: unified-LLM / research / paper / claude code / codex / specific"),
         ("/model",             "pick the model from a menu (or /model <name> to switch directly)"),
         ("/validate",          "run `ai4science validate` (deterministic)"),
         ("/judge",             "run the CASSI Physics Judge"),

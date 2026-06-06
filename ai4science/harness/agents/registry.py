@@ -86,10 +86,15 @@ def _load_spec_file(path: Path) -> AgentSpec:
     return agent
 
 
+# Alias → canonical name (e.g. the old "common" → "unified-LLM"). Rebuilt by reload().
+AGENT_ALIASES: Dict[str, str] = {}
+
+
 def reload(specs_dir: Optional[Path] = None) -> Dict[str, AgentSpec]:
     """Discover all specs/*.py (each exposing AGENT) into AGENT_REGISTRY."""
     directory = Path(specs_dir) if specs_dir else _SPECS_DIR
     found: Dict[str, AgentSpec] = {}
+    aliases: Dict[str, str] = {}
     for path in sorted(directory.glob("*.py")):
         if path.name == "__init__.py":
             continue
@@ -103,13 +108,38 @@ def reload(specs_dir: Optional[Path] = None) -> Dict[str, AgentSpec]:
                     f"agent {agent.name!r} ({path}) uses unknown capability "
                     f"{cap!r}; valid: {valid}")
         found[agent.name] = agent
+        for alias in agent.aliases:
+            aliases[alias] = agent.name
     AGENT_REGISTRY.clear()
     AGENT_REGISTRY.update(found)
+    AGENT_ALIASES.clear()
+    AGENT_ALIASES.update(aliases)
     return AGENT_REGISTRY
 
 
 def get(name: str) -> Optional[AgentSpec]:
-    return AGENT_REGISTRY.get(name)
+    """Resolve a mode by exact name, then alias, then case-insensitively.
+
+    Case-insensitive so a caller that lower-cases input (e.g. the CLI) still
+    resolves a mixed-case id like 'unified-LLM', and so 'common' →
+    'unified-LLM' via the alias regardless of casing.
+    """
+    if not name:
+        return None
+    spec = AGENT_REGISTRY.get(name)
+    if spec is not None:
+        return spec
+    canonical = AGENT_ALIASES.get(name)
+    if canonical:
+        return AGENT_REGISTRY.get(canonical)
+    low = name.lower()
+    for n, s in AGENT_REGISTRY.items():
+        if n.lower() == low:
+            return s
+    for alias, n in AGENT_ALIASES.items():
+        if alias.lower() == low:
+            return AGENT_REGISTRY.get(n)
+    return None
 
 
 def core_agents() -> List[AgentSpec]:

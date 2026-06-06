@@ -241,7 +241,7 @@ def run_common_repl(
     resume_history: Optional[List[Message]] = None,
     session_id: Optional[str] = None,
     system_prompt: Optional[str] = None,
-    mode_label: str = "common",
+    mode_label: str = "unified-LLM",
 ) -> None:
     """Run the native-harness REPL until EOF or /exit.
 
@@ -295,7 +295,7 @@ def run_common_repl(
     # only then do we silently self-heal to another brand on a turn error.
     brand_autodetected = backend is None and model is None
     fell_back = {"v": False}
-    active_spec = agent_registry.get(mode_label) or agent_registry.get("common")
+    active_spec = agent_registry.get(mode_label) or agent_registry.get("unified-LLM")
 
     # Mutable state dict — tracks modes and slash-command flags.
     # _build_session reads read_only/auto_yes from here so toggles take effect.
