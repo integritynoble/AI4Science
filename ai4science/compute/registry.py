@@ -36,6 +36,9 @@ class ComputeProvider(BaseModel):
     kind: str = Field(default="gpu")               # gpu | cpu
     price_usd_per_hour: float = Field(default=0.0, ge=0.0,
                                       description="Provider-set compute price (USD/hour)")
+    max_concurrent: int = Field(default=2, ge=1,
+                                description="Max users this server serves at once "
+                                            "(a counting semaphore; the rest wait)")
     gpu_capability: Dict[str, Any] = Field(default_factory=dict)
     status: str = Field(default="active")          # active | disabled
     trust_tier: str = Field(default="founder")     # founder | approved | open
