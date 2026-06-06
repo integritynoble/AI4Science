@@ -1,25 +1,29 @@
 """PWM wallet (point 6) — local off-chain account OR platform-linked ledger.
 
+This module is the single PWM billing client for AI4Science. The harness usage
+gate (ai4science/harness/pwm_gate.py) routes its balance/spend through the shared
+transport here, so there is one place that knows the platform endpoints.
+
 Two billing modes (env `AI4SCIENCE_BILLING`, or auto-detected):
 
-  local     — the original self-contained file wallet at
-              ~/.config/ai4science/wallet.json (chmod 600). Credited/debited
-              locally. For offline/dev/tests. (default when no token is set)
+  local     — self-contained file wallet at ~/.config/ai4science/wallet.json
+              (chmod 600). Credited/debited locally. Offline/dev/tests.
+              (default when no PWM token is set)
 
   platform  — LINKED MODE: the canonical balance lives on the platform reward
               ledger (`pwm_token_account`, physicsworldmodel.org). `balance()`
-              reads it and `debit()` posts an atomic, idempotent charge via the
-              billing API (see pwm-team/plan/easy_onboarding/ledger_link_spec.md).
-              This closes the earn->spend loop: PWM earned via the onboarding
-              portal becomes spendable in AI4Science. (default when a token IS set)
+              reads it (GET /api/v1/pwm-token/balance) and `debit()` posts an
+              atomic, idempotent spend (POST /api/v1/pwm-token/spend). This closes
+              the earn->spend loop: PWM earned via the onboarding portal becomes
+              spendable in AI4Science. (default when a PWM token IS set)
 
 Config (platform mode):
-  AI4SCIENCE_PWM_TOKEN   per-user bearer token from the platform account
-  AI4SCIENCE_PWM_API     billing API base (default https://physicsworldmodel.org/pwm/v1)
-  AI4SCIENCE_BILLING     force "platform" or "local" (overrides auto-detect)
+  PWM_TOKEN / PWM_ONBOARD_TOKEN / AI4SCIENCE_PWM_TOKEN   per-user bearer token
+  PWM_BASE  / PWM_ONBOARD_BASE  / AI4SCIENCE_PWM_API      API base (default https://physicsworldmodel.org)
+  AI4SCIENCE_BILLING                                      force "platform" or "local"
 
-Real on-chain key signing / withdrawal is a later phase (relay M1 + bridge M6);
-this layer is off-chain accounting only and never moves on-chain tokens.
+On-chain key signing / withdrawal is a later phase (relay M1 + bridge M6); this
+layer is off-chain accounting only and never moves on-chain tokens.
 """
 from __future__ import annotations
 
@@ -30,9 +34,11 @@ import stat
 import urllib.error
 import urllib.request
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple
 
-DEFAULT_API = "https://physicsworldmodel.org/pwm/v1"
+DEFAULT_BASE = "https://physicsworldmodel.org"
+BALANCE_PATH = "/api/v1/pwm-token/balance"
+SPEND_PATH = "/api/v1/pwm-token/spend"
 
 
 # ───────────────────────────── errors ─────────────────────────────
@@ -59,89 +65,109 @@ class InsufficientPWM(BillingError, ValueError):
 
 # ───────────────────────────── mode / config ─────────────────────────────
 
+def platform_token() -> Optional[str]:
+    return (os.environ.get("AI4SCIENCE_PWM_TOKEN")
+            or os.environ.get("PWM_TOKEN")
+            or os.environ.get("PWM_ONBOARD_TOKEN"))
+
+
+def platform_base() -> str:
+    base = (os.environ.get("AI4SCIENCE_PWM_API")
+            or os.environ.get("PWM_BASE")
+            or os.environ.get("PWM_ONBOARD_BASE")
+            or DEFAULT_BASE)
+    return base.rstrip("/")
+
+
 def billing_mode() -> str:
     """'platform' (linked) or 'local' (file). Explicit env wins; else auto:
     platform iff a PWM token is configured."""
     m = os.environ.get("AI4SCIENCE_BILLING", "").strip().lower()
     if m in ("platform", "local"):
         return m
-    return "platform" if os.environ.get("AI4SCIENCE_PWM_TOKEN") else "local"
+    return "platform" if platform_token() else "local"
 
 
-def _api_base() -> str:
-    return os.environ.get("AI4SCIENCE_PWM_API", DEFAULT_API).rstrip("/")
-
-
-def _token() -> str:
-    t = os.environ.get("AI4SCIENCE_PWM_TOKEN")
+def _require_token() -> str:
+    t = platform_token()
     if not t:
         raise BillingAuthError(
-            "AI4SCIENCE_PWM_TOKEN not set — required for platform billing. "
-            "Get a token from your physicsworldmodel.org account."
+            "no PWM token — set PWM_TOKEN to your physicsworldmodel.org key "
+            "(required for platform billing)."
         )
     return t
 
 
-# ───────────────────────────── HTTP seam (monkeypatched in tests) ─────────────────────────────
+# ───────────── shared HTTP transport (used by wallet AND PwmGate) ─────────────
 
-def _request(method: str, path: str, token: str, body: Optional[dict] = None) -> Tuple[int, dict]:
-    """Single HTTP entry point. Returns (status_code, parsed_json). Raises
-    BillingError only when the API is unreachable (HTTP error statuses are
-    returned, not raised, so callers can branch on 402/401)."""
-    url = _api_base() + path
+def http_request(method: str, base: str, path: str, token: Optional[str],
+                 body: Optional[dict] = None) -> Tuple[int, dict]:
+    """Single HTTP entry point for all PWM billing calls. Returns
+    (status_code, parsed_json). HTTP error *statuses* are returned (not raised)
+    so callers can branch on 402/401; only true unreachability raises."""
+    url = base.rstrip("/") + path
     data = json.dumps(body).encode("utf-8") if body is not None else None
     req = urllib.request.Request(url, data=data, method=method)
-    req.add_header("Authorization", f"Bearer {token}")
+    if token:
+        req.add_header("Authorization", f"Bearer {token}")
     req.add_header("Accept", "application/json")
     if data is not None:
         req.add_header("Content-Type", "application/json")
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
-            raw = resp.read().decode("utf-8") or "{}"
-            return resp.status, json.loads(raw)
+            return resp.status, json.loads(resp.read().decode("utf-8") or "{}")
     except urllib.error.HTTPError as e:
         try:
-            payload = json.loads(e.read().decode("utf-8") or "{}")
+            return e.code, json.loads(e.read().decode("utf-8") or "{}")
         except Exception:
-            payload = {}
-        return e.code, payload
-    except urllib.error.URLError as e:  # unreachable / DNS / timeout
+            return e.code, {}
+    except urllib.error.URLError as e:
         raise BillingError(f"PWM billing API unreachable at {url}: {e}") from e
 
 
-# ───────────────────────────── platform-linked balance/charge ─────────────────────────────
+def http_get(base: str, path: str, token: Optional[str]) -> Tuple[int, dict]:
+    return http_request("GET", base, path, token)
+
+
+def http_post(base: str, path: str, token: Optional[str], body: dict) -> Tuple[int, dict]:
+    return http_request("POST", base, path, token, body)
+
+
+# ───────────────────────────── platform-linked balance/spend ─────────────────────────────
 
 def _platform_balance() -> float:
-    code, j = _request("GET", "/balance", _token())
-    if code == 401:
+    status, j = http_get(platform_base(), BALANCE_PATH, _require_token())
+    if status == 401:
         raise BillingAuthError("PWM token rejected (401)")
-    if code != 200:
-        raise BillingError(f"balance check failed ({code}): {j}")
-    return round(float(j.get("pwm", 0.0)), 6)
+    if status != 200:
+        raise BillingError(f"balance check failed ({status}): {j}")
+    b = j.get("balance")
+    if b is None:
+        raise BillingError(f"balance response missing 'balance': {j}")
+    return round(float(b), 6)
 
 
 def _platform_debit(amount: float, *, idempotency_key: Optional[str],
-                    provider_wallet: Optional[str], reason: Optional[str],
-                    meta: Optional[dict]) -> float:
+                    provider_wallet: Optional[str], purpose: Optional[str]) -> float:
     if not idempotency_key:
         raise ValueError("platform debit requires an idempotency_key (the op id)")
     if not provider_wallet:
         raise ValueError("platform debit requires provider_wallet (who earns the PWM)")
-    body = {
-        "idempotency_key": idempotency_key,
-        "amount_pwm": round(float(amount), 6),
+    status, j = http_post(platform_base(), SPEND_PATH, _require_token(), {
+        "amount": round(float(amount), 6),
+        "purpose": purpose or "ai4science",
         "provider_wallet": provider_wallet,
-        "reason": reason or "ai4science",
-        "meta": meta or {},
-    }
-    code, j = _request("POST", "/charge", _token(), body)
-    if code == 401:
+        "idempotency_key": idempotency_key,
+    })
+    if status == 401:
         raise BillingAuthError("PWM token rejected (401)")
-    if code == 402 or (isinstance(j, dict) and j.get("charged") is False):
-        raise InsufficientPWM(j.get("needed", amount), j.get("balance", 0.0))
-    if code != 200 or not (isinstance(j, dict) and j.get("charged")):
-        raise BillingError(f"charge failed ({code}): {j}")
-    return round(float(j.get("new_balance", 0.0)), 6)
+    if status == 402:
+        raise InsufficientPWM(j.get("needed", amount),
+                              j.get("balance", j.get("balance_after", 0.0)))
+    if status >= 400 or (isinstance(j, dict) and j.get("success") is False):
+        raise BillingError(f"spend failed ({status}): {j}")
+    ba = j.get("balance_after")
+    return round(float(ba), 6) if ba is not None else _platform_balance()
 
 
 # ───────────────────────────── local file wallet ─────────────────────────────
@@ -152,8 +178,7 @@ def wallet_path() -> Path:
 
 
 def _new_address() -> str:
-    """A 0x + 40-hex local address. (Phase 1: random, not an ECDSA account —
-    on-chain key derivation comes with the settlement layer.)"""
+    """A 0x + 40-hex local address. (Phase 1: random, not an ECDSA account.)"""
     return "0x" + secrets.token_hex(20)
 
 
@@ -217,14 +242,13 @@ def mode() -> str:
 
 
 def address() -> str:
-    """Local wallet address. In platform mode, account identity is the platform
-    token; the local address is still returned for display/back-compat."""
+    """Local wallet address (display / back-compat). In platform mode, account
+    identity is the platform token."""
     return ensure()["address"]
 
 
 def balance() -> float:
-    """Spendable PWM balance — from the platform ledger (platform mode) or the
-    local file (local mode)."""
+    """Spendable PWM balance — platform ledger (platform mode) or local file."""
     return _platform_balance() if billing_mode() == "platform" else _local_balance()
 
 
@@ -240,17 +264,18 @@ def credit(amount: float) -> float:
 
 
 def debit(amount: float, *, idempotency_key: Optional[str] = None,
-          provider_wallet: Optional[str] = None, reason: Optional[str] = None,
-          meta: Optional[dict] = None) -> float:
+          provider_wallet: Optional[str] = None, purpose: Optional[str] = None,
+          reason: Optional[str] = None, meta: Optional[dict] = None) -> float:
     """Spend PWM, returning the new balance. Raises InsufficientPWM if short.
 
-    platform mode: posts an atomic, idempotent charge to the platform ledger;
-      requires `idempotency_key` (the billable op id) and `provider_wallet`
-      (who earns the PWM, e.g. the paper-fn provider).
+    platform mode: POST /api/v1/pwm-token/spend (atomic, idempotent); requires
+      `idempotency_key` (the billable op id) and `provider_wallet` (who earns).
+      `purpose` labels the spend (`reason` accepted as an alias).
     local mode: deducts from the local file (kwargs ignored)."""
     if amount < 0:
         raise ValueError("debit must be non-negative")
     if billing_mode() == "platform":
         return _platform_debit(amount, idempotency_key=idempotency_key,
-                               provider_wallet=provider_wallet, reason=reason, meta=meta)
+                               provider_wallet=provider_wallet,
+                               purpose=purpose or reason)
     return _local_debit(amount)

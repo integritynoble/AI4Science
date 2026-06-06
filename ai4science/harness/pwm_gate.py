@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-import json
 import os
-import urllib.error
-import urllib.request
 from typing import Optional, Tuple
+
+from ai4science import wallet  # shared PWM billing transport (linked mode)
 
 _EARN = ("Earn PWM by submitting verified principles, specs, benchmarks, or solutions "
          "(physicsworldmodel.org) — every AI4Science turn costs PWM.")
@@ -29,24 +28,13 @@ class PwmGate:
         self.min_balance = min_balance
 
     def _get(self, path: str) -> dict:
-        req = urllib.request.Request(self.base + path, method="GET", headers={
-            "Authorization": f"Bearer {self.token}", "Accept": "application/json"})
-        with urllib.request.urlopen(req, timeout=30) as r:
-            return json.loads(r.read().decode("utf-8"))
+        # Route through the shared wallet transport (single billing client).
+        _status, data = wallet.http_get(self.base, path, self.token)
+        return data
 
     def _post(self, path: str, body: dict):
-        data = json.dumps(body).encode("utf-8")
-        req = urllib.request.Request(self.base + path, data=data, method="POST", headers={
-            "Authorization": f"Bearer {self.token}", "Content-Type": "application/json",
-            "Accept": "application/json"})
-        try:
-            with urllib.request.urlopen(req, timeout=30) as r:
-                return r.status, json.loads(r.read().decode("utf-8"))
-        except urllib.error.HTTPError as e:
-            try:
-                return e.code, json.loads(e.read().decode("utf-8"))
-            except Exception:
-                return e.code, {}
+        # Route through the shared wallet transport (single billing client).
+        return wallet.http_post(self.base, path, self.token, body)
 
     def _get_balance(self) -> Optional[float]:
         try:
