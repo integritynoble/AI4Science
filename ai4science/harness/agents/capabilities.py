@@ -33,6 +33,11 @@ def _computational_imaging(ctx: BuildContext) -> List[Tool]:
     return list(cassi_tools())
 
 
+def _compute_providers(ctx: BuildContext) -> List[Tool]:
+    from ai4science.harness.compute_tools import compute_tools
+    return list(compute_tools())
+
+
 # name -> provider(ctx) -> list[Tool].
 CAPABILITY_BUNDLES: Dict[str, Callable[[BuildContext], List[Tool]]] = {
     "pwm-actions": _pwm_actions,
@@ -40,6 +45,7 @@ CAPABILITY_BUNDLES: Dict[str, Callable[[BuildContext], List[Tool]]] = {
     "onboarding": _onboarding,
     "paper-review": _paper_review,
     "computational-imaging": _computational_imaging,
+    "compute-providers": _compute_providers,
 }
 
 

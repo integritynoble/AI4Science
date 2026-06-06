@@ -28,5 +28,5 @@ AGENT = AgentSpec(
     keywords=("cassi", "spectral", "optics", "reconstruction", "hyperspectral",
               "snapshot", "imaging", "inverse problem"),
     system_prompt=PROMPT,
-    capabilities=("pwm-actions", "pwm-data", "computational-imaging"),
+    capabilities=("pwm-actions", "pwm-data", "computational-imaging", "compute-providers"),
 )
