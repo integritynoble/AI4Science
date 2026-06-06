@@ -10,4 +10,5 @@ AGENT = AgentSpec(
     system_prompt=None,
     capabilities=("compute-providers",),
     aliases=("common",),
+    order=1,
 )

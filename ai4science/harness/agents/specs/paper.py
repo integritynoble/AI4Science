@@ -18,4 +18,5 @@ AGENT = AgentSpec(
     keywords=("paper", "review", "peer review", "referee", "manuscript"),
     system_prompt=PAPER_PROMPT,
     capabilities=("pwm-actions", "paper-review", "compute-providers"),
+    order=3,
 )

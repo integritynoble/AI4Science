@@ -290,12 +290,19 @@ def run_common_repl(
             return False
         return ans in ("y", "yes")
 
-    active_backend, active_model = _pick_brand(backend, model)
-    # The brand was auto-detected (not user-chosen) when no override was given;
-    # only then do we silently self-heal to another brand on a turn error.
-    brand_autodetected = backend is None and model is None
-    fell_back = {"v": False}
     active_spec = agent_registry.get(mode_label) or agent_registry.get("unified-LLM")
+    # A mode may prefer a backend (e.g. 'codex' → openai, 'claude-code' →
+    # anthropic). Honor it only when the user pinned nothing, so an explicit
+    # --backend/--model always wins.
+    eff_backend = backend
+    if eff_backend is None and model is None and active_spec.default_backend:
+        eff_backend = active_spec.default_backend
+    active_backend, active_model = _pick_brand(eff_backend, model)
+    # The brand was truly auto-detected (self-heal allowed) only when nothing —
+    # not even a mode default — pinned it. A mode that requires its backend
+    # (codex) must not silently self-heal to a different brand.
+    brand_autodetected = backend is None and model is None and eff_backend is None
+    fell_back = {"v": False}
 
     # Mutable state dict — tracks modes and slash-command flags.
     # _build_session reads read_only/auto_yes from here so toggles take effect.

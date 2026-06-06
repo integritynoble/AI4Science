@@ -18,3 +18,5 @@ class AgentSpec:
     allow_as_subagent: bool = True
     extra_tools: Optional[Callable] = None      # ctx -> list[Tool], optional custom tools
     aliases: Tuple[str, ...] = ()               # old/alt names that resolve to this spec
+    default_backend: Optional[str] = None       # preferred LLM backend when user gives none
+    order: int = 100                            # display order in the /mode menu (lower first)

@@ -143,7 +143,8 @@ def get(name: str) -> Optional[AgentSpec]:
 
 
 def core_agents() -> List[AgentSpec]:
-    return [s for s in AGENT_REGISTRY.values() if s.category == "core"]
+    return sorted((s for s in AGENT_REGISTRY.values() if s.category == "core"),
+                  key=lambda s: (s.order, s.name))
 
 
 def specific_agents() -> List[AgentSpec]:
