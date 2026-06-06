@@ -114,6 +114,27 @@ class CodexAgent(BaseAgent):
         return AgentResult(status="ok", message=out)
 
 
+def _codex_executable() -> str:
+    """Resolve the `codex` CLI to a form subprocess can actually exec.
+
+    On Windows, `shutil.which('codex')` returns the extensionless npm shim, which
+    CreateProcess cannot launch (WinError 193: "%1 is not a valid Win32 application").
+    Prefer the `codex.cmd` wrapper — CPython's subprocess runs `.cmd` correctly.
+    On other platforms the resolved `codex` (or the bare name) is fine.
+    """
+    if os.name == "nt":
+        cmd = shutil.which("codex.cmd")
+        if cmd:
+            return cmd
+        bare = shutil.which("codex")
+        if bare and not bare.lower().endswith((".cmd", ".bat", ".exe")):
+            cand = bare + ".cmd"
+            if os.path.exists(cand):
+                return cand
+        return bare or "codex.cmd"
+    return shutil.which("codex") or "codex"
+
+
 def _build_codex_command(workspace: Path) -> List[str]:
     """Build the codex CLI invocation.
 
@@ -129,10 +150,13 @@ def _build_codex_command(workspace: Path) -> List[str]:
     override = os.environ.get("AI4SCIENCE_CODEX_CMD")
     if override:
         parts = override.split()
+        # Make a leading bare `codex` token Windows-safe (WinError 193 fix).
+        if parts and parts[0] == "codex":
+            parts[0] = _codex_executable()
         # Treat the final token as the position where the cwd argument
         # belongs only if it matches a known flag.
         if parts and parts[-1] in ("--cd", "-C"):
             return parts + [str(workspace.resolve())]
         return parts
     # Default: `codex exec --cd <workspace>` — prompt piped via stdin.
-    return ["codex", "exec", "--cd", str(workspace.resolve())]
+    return [_codex_executable(), "exec", "--cd", str(workspace.resolve())]

@@ -7,7 +7,8 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from ai4science.agents.codex_agent import CodexAgent, _build_codex_command
+import ai4science.agents.codex_agent as ca
+from ai4science.agents.codex_agent import CodexAgent, _build_codex_command, _codex_executable
 
 
 # ─── Command construction ────────────────────────────────────────────
@@ -15,7 +16,8 @@ from ai4science.agents.codex_agent import CodexAgent, _build_codex_command
 
 def test_default_codex_command_uses_exec_with_cd(tmp_path):
     cmd = _build_codex_command(tmp_path)
-    assert cmd[:2] == ["codex", "exec"]
+    assert cmd[0] == _codex_executable()   # resolved binary (codex.cmd on Windows)
+    assert cmd[1] == "exec"
     assert "--cd" in cmd
     cd_index = cmd.index("--cd")
     assert Path(cmd[cd_index + 1]).resolve() == tmp_path.resolve()
@@ -24,7 +26,23 @@ def test_default_codex_command_uses_exec_with_cd(tmp_path):
 def test_env_override_replaces_default(monkeypatch, tmp_path):
     monkeypatch.setenv("AI4SCIENCE_CODEX_CMD", "codex --quiet")
     cmd = _build_codex_command(tmp_path)
-    assert cmd == ["codex", "--quiet"]
+    # leading bare `codex` is resolved to the real executable (Windows-safe)
+    assert cmd == [_codex_executable(), "--quiet"]
+
+
+def test_codex_executable_prefers_cmd_on_windows(monkeypatch):
+    """WinError 193 fix: on Windows resolve codex.cmd, not the bare npm shim."""
+    monkeypatch.setattr(ca.os, "name", "nt")
+    monkeypatch.setattr(ca.shutil, "which",
+                        lambda n: r"C:\npm\codex.cmd" if n == "codex.cmd" else r"C:\npm\codex")
+    assert _codex_executable() == r"C:\npm\codex.cmd"
+
+
+def test_codex_executable_plain_on_posix(monkeypatch):
+    monkeypatch.setattr(ca.os, "name", "posix")
+    monkeypatch.setattr(ca.shutil, "which",
+                        lambda n: "/usr/bin/codex" if n == "codex" else None)
+    assert _codex_executable() == "/usr/bin/codex"
 
 
 def test_env_override_with_trailing_cd_flag_appends_workspace(monkeypatch, tmp_path):
