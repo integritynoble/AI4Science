@@ -260,3 +260,33 @@ read from env `PWM_ONBOARD_TOKEN`. The API base is `PWM_ONBOARD_BASE` (default
 `physicsworldmodel.org`).
 
 **Moat.** `onboarding` is `tier=science`; common mode cannot reach these tools.
+
+---
+
+### PWM usage gate (no free tier)
+
+Every AI4Science agent turn costs PWM. There is no free tier. PWM is **earned only by
+contributing** — mining artifacts (principles, digital-twins, benchmarks, solutions) and
+making project contributions. The platform **never sells PWM**: the per-turn cost is a peer
+transfer of earned PWM from the user's balance to the provider wallet that supplied the
+turn's LLM/compute, not a platform fee.
+
+**Gate implementation** (`ai4science/harness/pwm_gate.py`, class `PwmGate`)
+
+- **Before each turn** — checks the user's earned PWM balance via `GET /api/v1/pwm-token/balance`.
+  At ≤ 0 the turn is blocked and the agent returns an "earn PWM by contributing" message; no
+  LLM call is made.
+- **After each turn** — debits the metered per-turn PWM to the provider wallet via
+  `POST /api/v1/pwm-token/spend` (handles 402 responses; idempotent on a per-turn key so
+  retries don't double-charge). The agent already meters PWM per provider wallet; the gate
+  posts the result.
+
+**Config** — the gate is active only when `AI4SCIENCE_PWM_GATE` is set **and** a `pwm_…`
+token is present (`PWM_TOKEN` or `PWM_ONBOARD_TOKEN`). The API base is `PWM_BASE` /
+`PWM_ONBOARD_BASE` (default `physicsworldmodel.org`). Without those env vars the gate is
+disabled, so dev and CI run free.
+
+**Bootstrap** — a newcomer earns their first PWM via the free web onboarding flow (`/cli`
+free-Haiku turn + `/submit` artifact), then spends it running the agent locally.
+
+**Ledger** — off-chain today; on-chain settlement is the separate M6 relayer track.
