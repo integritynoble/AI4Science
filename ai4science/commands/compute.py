@@ -1,6 +1,7 @@
 """ai4science compute — wallet-bound GPU compute providers (Phase 0).
 
 Subcommands:
+  join                   become a CPU/GPU compute provider and earn PWM (open tier)
   providers              list registered providers
   providers-add          register/replace a provider (founder tier)
   dispatch               write a job request to a provider's inbox
@@ -72,6 +73,8 @@ def providers_add(
     kind: str = typer.Option("gpu", "--kind", help="gpu | cpu."),
     price_usd_per_hour: float = typer.Option(
         0.0, "--price-usd-per-hour", help="Provider-set compute price (USD/hour)."),
+    max_concurrent: int = typer.Option(
+        2, "--max-concurrent", help="Max users served at once (counting semaphore)."),
 ) -> None:
     """Register (or replace) a compute provider bound to a wallet."""
     if not is_valid_eth_address(wallet):
@@ -87,6 +90,7 @@ def providers_add(
             label=label,
             kind=kind.lower(),
             price_usd_per_hour=price_usd_per_hour,
+            max_concurrent=max_concurrent,
             trust_tier=tier,
             status="active",
         )
@@ -98,6 +102,75 @@ def providers_add(
                   f"[cyan]{provider_id}[/cyan] → wallet [magenta]{wallet}[/magenta] "
                   f"(tier={tier}, ${price_usd_per_hour:g}/hr)")
     console.print(f"[dim]Registry: {default_registry_path()}[/dim]")
+
+
+@app.command("join")
+def join(
+    wallet: str = typer.Option(..., "--wallet",
+                               help="Your 0x wallet — earns PWM when users run jobs on your box."),
+    kind: str = typer.Option("gpu", "--kind", help="What you provide: gpu | cpu."),
+    provider_id: str = typer.Option("", "--id", help="Provider id (default: derived)."),
+    endpoint: str = typer.Option("", "--endpoint",
+                                  help="Inbox dir you poll (default: ~/.config/ai4science/compute-inbox/<id>)."),
+    price_usd_per_hour: float = typer.Option(
+        -1.0, "--price-usd-per-hour",
+        help="Your compute price (USD/hour). Default: 1.50 gpu / 0.20 cpu."),
+    max_concurrent: int = typer.Option(
+        2, "--max-concurrent", help="How many users you serve at once."),
+    label: str = typer.Option("", "--label", help="Human label."),
+) -> None:
+    """Become an open compute provider and earn PWM.
+
+    Registers your machine as a community (open-tier) CPU/GPU provider bound to
+    your wallet, then tells you how to start serving. When any user dispatches a
+    job to you, they pay PWM to YOUR wallet (price × runtime); the Physics Judge
+    re-verifies results, so you are paid for verified work, not trusted blindly.
+    PWM is earned, never bought — this is one of the earning on-ramps.
+    """
+    kind = kind.lower()
+    if kind not in ("gpu", "cpu"):
+        console.print(f"[red]--kind must be gpu or cpu, got {kind!r}[/red]")
+        raise typer.Exit(2)
+    if not is_valid_eth_address(wallet):
+        console.print(f"[red]Invalid wallet address:[/red] {wallet!r} "
+                      "(expected 0x + 40 hex chars)")
+        raise typer.Exit(2)
+    if price_usd_per_hour < 0:
+        price_usd_per_hour = 1.50 if kind == "gpu" else 0.20
+    pid = provider_id or f"{kind}-{wallet[-6:].lower()}"
+    ep = endpoint or str(default_registry_path().parent / "compute-inbox" / pid)
+    try:
+        provider = ComputeProvider(
+            provider_id=pid,
+            wallet_address=wallet,
+            endpoint_kind="file-inbox",
+            endpoint_path=str(Path(ep).expanduser()),
+            label=label or f"Community {kind.upper()} provider",
+            kind=kind,
+            price_usd_per_hour=price_usd_per_hour,
+            max_concurrent=max_concurrent,
+            trust_tier="open",
+            status="active",
+        )
+    except ValueError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(2)
+    Path(provider.endpoint_path).expanduser().mkdir(parents=True, exist_ok=True)
+    add_provider(provider)
+
+    console.print(f"[green]✓ You're registered as a compute provider![/green]")
+    console.print(f"  id:       [cyan]{pid}[/cyan]  ({kind}, ${price_usd_per_hour:g}/hr, "
+                  f"serves {max_concurrent} at once)")
+    console.print(f"  earns to: [magenta]{wallet}[/magenta]")
+    console.print(f"  inbox:    {provider.endpoint_path}")
+    console.print("\n[bold]How you earn PWM:[/bold] when a user runs a job on your box, "
+                  "they pay PWM (price × runtime) to your wallet. Verified by the "
+                  "Physics Judge, so you're paid for real work.")
+    console.print("\n[bold]Start serving[/bold] (executes dispatched code — only on a host "
+                  "you trust):")
+    console.print(f"  [cyan]ai4science compute serve -p {pid} --allow-exec[/cyan]")
+    console.print(f"[dim]Track earnings:[/dim] ai4science compute spend   "
+                  f"[dim]· registry:[/dim] {default_registry_path()}")
 
 
 @app.command("select")
