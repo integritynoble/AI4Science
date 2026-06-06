@@ -13,9 +13,11 @@
 set -euo pipefail
 
 # Founder wallets (see pwm-team/funds + the wallet-provider notes).
-WALLET_SUBGPU="0x1A84386863cd900DC2d61fCeeea1d09E876B977a"   # wallet 2 — sub-GPU
 WALLET_ANTHROPIC_GEMINI_DS_QWEN="0xde81b29E42F95C92c9A4Dc78882d0F05D2C81A29"  # wallet 3
 WALLET_OPENAI="0x3CeA937cd8114Efa8120C011f1035c9b428C9d05"   # wallet 4 — ChatGPT
+# ALL founder COMPUTE (CPU + sub-GPU) pays the third-founder wallet (wallet 3),
+# matching the founder-cpu/founder-gpu defaults in ai4science/compute/founders.py.
+WALLET_FOUNDER_COMPUTE="$WALLET_ANTHROPIC_GEMINI_DS_QWEN"
 
 SUBGPU_INBOX="${SUBGPU_INBOX:-$HOME/pwm/Physics_World_Model/pwm/pwm-team/coordination/agent-coord/inbox/compute_jobs}"
 
@@ -49,12 +51,13 @@ ai4science llm providers-add --id founder-3-qwen \
   --auth vertex --models '*' --price-multiplier 1.0 \
   --label "Founder-3 Qwen (Vertex)"
 
-echo "▸ Compute provider (sub-GPU, wallet 2, git-synced inbox)"
+echo "▸ Compute provider (sub-GPU, third-founder wallet, git-synced inbox)"
 # $1.50/hr — mid-range GPU rate; priced PWM = wall-clock × rate ÷ $5.
+# Serves 2 users at once (counting-semaphore lease in ai4science/compute/lease.py).
 ai4science compute providers-add --id founder-1-subgpu \
-  --wallet "$WALLET_SUBGPU" --endpoint "$SUBGPU_INBOX" \
-  --kind gpu --tier founder --price-usd-per-hour 1.50 \
-  --label "Sub-GPU server (wallet 2)"
+  --wallet "$WALLET_FOUNDER_COMPUTE" --endpoint "$SUBGPU_INBOX" \
+  --kind gpu --tier founder --price-usd-per-hour 1.50 --max-concurrent 2 \
+  --label "Sub-GPU server (third-founder wallet)"
 
 echo
 echo "✓ Founder providers registered. Verify:"
