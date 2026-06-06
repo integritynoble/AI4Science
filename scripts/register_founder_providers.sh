@@ -13,11 +13,14 @@
 set -euo pipefail
 
 # Founder wallets (see pwm-team/funds + the wallet-provider notes).
-WALLET_ANTHROPIC_GEMINI_DS_QWEN="0xde81b29E42F95C92c9A4Dc78882d0F05D2C81A29"  # wallet 3
-WALLET_OPENAI="0x3CeA937cd8114Efa8120C011f1035c9b428C9d05"   # wallet 4 — ChatGPT
-# ALL founder COMPUTE (CPU + sub-GPU) pays the third-founder wallet (wallet 3),
-# matching the founder-cpu/founder-gpu defaults in ai4science/compute/founders.py.
-WALLET_FOUNDER_COMPUTE="$WALLET_ANTHROPIC_GEMINI_DS_QWEN"
+# The THIRD-FOUNDER wallet receives PWM for ALL founder-provided services:
+# every LLM provider (Anthropic, ChatGPT/codex, Gemini, DeepSeek, Qwen) AND all
+# founder compute (CPU + sub-GPU). Single recipient by director decision.
+WALLET_FOUNDER3="0xde81b29E42F95C92c9A4Dc78882d0F05D2C81A29"   # wallet 3 — all founder LLM + compute
+# Back-compat aliases (all point at the third-founder wallet now).
+WALLET_ANTHROPIC_GEMINI_DS_QWEN="$WALLET_FOUNDER3"
+WALLET_OPENAI="$WALLET_FOUNDER3"            # ChatGPT/codex earnings → third founder (was wallet 4)
+WALLET_FOUNDER_COMPUTE="$WALLET_FOUNDER3"   # CPU + sub-GPU compute → third founder
 
 SUBGPU_INBOX="${SUBGPU_INBOX:-$HOME/pwm/Physics_World_Model/pwm/pwm-team/coordination/agent-coord/inbox/compute_jobs}"
 
@@ -28,11 +31,11 @@ ai4science llm providers-add --id founder-3-anthropic \
   --auth subscription --models '*' --price-multiplier 0.5 \
   --label "Founder-3 Anthropic (subscription)"
 
-# ChatGPT — codex subscription, half price.
+# ChatGPT — codex subscription, half price. Earnings → third-founder wallet.
 ai4science llm providers-add --id founder-4-openai \
   --wallet "$WALLET_OPENAI" --backend openai \
   --auth subscription --models 'gpt-5.5,*' --price-multiplier 0.5 \
-  --label "Founder-4 ChatGPT (codex subscription)"
+  --label "ChatGPT/codex subscription (→ third founder)"
 
 # Gemini — via the comparegpt key.
 ai4science llm providers-add --id founder-3-gemini \
