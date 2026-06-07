@@ -28,7 +28,18 @@ scripts/test_agents_mining.sh 0x7E57000000000000000000000000000000000001
 
 It spins up the real backend on SQLite, provisions one wallet-bound account,
 funds it 100 PWM, runs a gated turn + `/feedback` on all six agents, emits one
-weekly epoch, prints the result, and cleans up. **Expected output:**
+weekly epoch, prints the result, and cleans up.
+
+**Against an existing staging/remote backend** (skip the local server — needs an
+admin token for the admin ops):
+
+```bash
+scripts/test_agents_mining.sh 0x7E57…0001 \
+  --backend https://staging.example \
+  --admin-token <admin key/JWT>      # or env PWM_ADMIN_TOKEN
+```
+
+**Expected output (either mode):**
 
 ```
    unified-LLM            charged 0.0022 PWM   feedback submitted
