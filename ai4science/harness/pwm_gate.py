@@ -71,6 +71,24 @@ class PwmGate:
             return False, f"[pwm] charge failed (HTTP {status})"
         return True, ""
 
+    def post_usage(self, *, contribution_id: str, agent_name: str, turn_id: str,
+                   weight_units: float = 1.0) -> bool:
+        """Record that this paid turn used a registered contribution (agent-mining
+        usage logging). No-op when the gate is off; fire-and-forget — a failure
+        never breaks the turn. Idempotent on the backend per (contribution, turn)."""
+        if not self.enabled or not contribution_id:
+            return False
+        try:
+            status, _ = self._post("/api/v1/agent-pool/usage", {
+                "contribution_id": contribution_id,
+                "agent_name": agent_name,
+                "turn_id": turn_id,
+                "weight_units": float(weight_units),
+            })
+            return status < 400
+        except Exception:
+            return False
+
     @classmethod
     def from_env(cls) -> "PwmGate":
         token = os.environ.get("PWM_TOKEN") or os.environ.get("PWM_ONBOARD_TOKEN")

@@ -190,6 +190,20 @@ def _dispatch_tool() -> Tool:
                         "Pass confirm=true to dispatch.")
             job = dispatch_job(provider=prov, workspace=Path(workspace).resolve(),
                                benchmark_id=benchmark, solver_code_path=solver)
+            # Agent-mining usage logging: record that this paid run used the
+            # solution contribution → its author earns a share of the agent pool.
+            # Off by default (PwmGate disabled); fire-and-forget; idempotent per
+            # (contribution, turn) on the backend (turn = this job).
+            if solution_ref:
+                try:
+                    from ai4science.harness.pwm_gate import PwmGate
+                    PwmGate.from_env().post_usage(
+                        contribution_id=solution_ref,
+                        agent_name="computational-imaging",
+                        turn_id=job.job_id,
+                    )
+                except Exception:
+                    pass
             return (f"Dispatched job {job.job_id} to sub-GPU provider {prov.provider_id}. "
                     f"PWM cost {cost} -> {recipient}. "
                     f"Poll with cassi_result(job_id=\"{job.job_id}\").")
