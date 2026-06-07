@@ -1,5 +1,6 @@
-"""E1 AI4Science hook — PwmGate.post_usage + cassi_dispatch usage logging."""
-from ai4science.harness.pwm_gate import PwmGate
+"""AI4Science agent-mining hooks — PwmGate.post_usage/post_feedback,
+cassi_dispatch usage logging (E1), and the generic in-agent usage hook + /feedback."""
+from ai4science.harness.pwm_gate import PwmGate, BASE_TOOLS
 from ai4science import wallet
 
 
@@ -94,3 +95,57 @@ def test_cassi_dispatch_no_solution_no_usage(monkeypatch, tmp_path):
     # no solution_ref → user's own solver → no contribution usage to log
     tool.func(str(tmp_path), benchmark="L3-x", confirm=True)
     assert called["n"] == 0
+
+
+# ── in-agent generic usage hook (all agents) ──────────────────────────────
+def test_on_tool_hook_fires_on_tool_use(tmp_path):
+    from ai4science.harness.adapters.stub import StubAdapter
+    from ai4science.harness.session import AgentSession
+    from ai4science.harness.tools import default_registry
+    from ai4science.harness.events import TextDelta, ToolCall, Usage, Done
+
+    (tmp_path / "a.py").write_text("x = 1\n")
+    script = [
+        [ToolCall("c1", "read", {"path": "a.py"}), Usage(1, 1, 2), Done("tool_use")],
+        [TextDelta("done"), Usage(1, 1, 2), Done("end")],
+    ]
+    used = []
+    sess = AgentSession(adapter=StubAdapter(script), model="stub", backend="anthropic",
+                        workspace=tmp_path, registry=default_registry(),
+                        read_only=False, auto_yes=True, on_text=lambda t: None,
+                        meter=lambda u: None, on_tool=lambda name: used.append(name))
+    sess.run_turn("read a.py")
+    assert "read" in used                       # the hook saw the tool invocation
+
+
+def test_base_tools_excluded_from_mining():
+    # base Claude-Code tools are infra; domain/capability tools are minable
+    assert {"read", "write", "bash", "grep"} <= BASE_TOOLS
+    assert "cassi_dispatch" not in BASE_TOOLS
+    assert "compute_dispatch" not in BASE_TOOLS
+    assert "pwm_solutions" not in BASE_TOOLS
+
+
+# ── PwmGate.post_feedback ─────────────────────────────────────────────────
+def test_post_feedback_off_is_noop(monkeypatch):
+    calls = []
+    monkeypatch.setattr(wallet, "http_post", lambda *a, **k: (calls.append(a), (200, {}))[1])
+    g = PwmGate(token=None, base="http://x", enabled=False)
+    ok, status = g.post_feedback(agent_name="research", text="nice")
+    assert ok is False and calls == []
+
+
+def test_post_feedback_on_posts_to_active_agent(monkeypatch):
+    cap = {}
+
+    def fake_post(base, path, token, body):
+        cap.update(path=path, body=body, token=token)
+        return 200, {"status": "accepted"}
+
+    monkeypatch.setattr(wallet, "http_post", fake_post)
+    g = PwmGate(token="pwm_x", base="http://h", enabled=True)
+    ok, status = g.post_feedback(agent_name="research", text="add streaming")
+    assert ok is True and status == "accepted"
+    assert cap["path"] == "/api/v1/agent-pool/research/feedback"
+    assert cap["body"]["text"] == "add streaming"
+    assert cap["token"] == "pwm_x"

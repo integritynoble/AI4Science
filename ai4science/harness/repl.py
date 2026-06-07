@@ -28,7 +28,7 @@ from ai4science.harness.agents.context import BuildContext
 from ai4science.harness.agents.registry import build_registry_for
 from ai4science.harness.events import Message
 from ai4science.harness.session import AgentSession
-from ai4science.harness.pwm_gate import PwmGate
+from ai4science.harness.pwm_gate import PwmGate, BASE_TOOLS
 from ai4science.llm import routing, pricing
 
 
@@ -317,6 +317,9 @@ def run_common_repl(
     turn_cost = {"pwm": 0.0, "wallet": None}
     gate = PwmGate.from_env()
     turn_counter = {"n": 0}
+    # Agent-mining: domain tools invoked this turn (their authors earn from the
+    # agent pool). Base Claude-Code tools are platform infra, not contributions.
+    turn_tools: set = set()
 
     def _make_wrapped_meter(b: str, m: str):
         """Return a meter that accumulates into turn_tokens AND calls real meter."""
@@ -343,6 +346,7 @@ def run_common_repl(
             confirm=_confirm,
             on_text=on_text,
             meter=_make_wrapped_meter(active_backend, active_model),
+            on_tool=lambda name: turn_tools.add(name),
             registry=build_registry_for(spec, is_subagent=True, ctx=ctx),
         )
         if spec.system_prompt:
@@ -360,6 +364,7 @@ def run_common_repl(
             confirm=_confirm,
             on_text=on_text,
             meter=_make_wrapped_meter(active_backend, active_model),
+            on_tool=lambda name: turn_tools.add(name),
             registry=_registry_for_spec(
                 active_spec, is_subagent=False,
                 ctx=_make_build_context(
@@ -406,6 +411,24 @@ def run_common_repl(
             cmd, _, arg = line[1:].partition(" ")
             cmd = cmd.lower().strip()
             arg = arg.strip()
+
+            # /feedback — early-user feedback on the ACTIVE agent (agent-mining).
+            if cmd == "feedback":
+                if not arg:
+                    print(f"[harness] usage: /feedback <your experience + how to improve "
+                          f"{active_spec.name}>", flush=True)
+                    continue
+                if not gate.enabled:
+                    print("[pwm] feedback needs the PWM gate on (AI4SCIENCE_PWM_GATE=1 + "
+                          "PWM_TOKEN). Earn PWM on physicsworldmodel.org.", flush=True)
+                    continue
+                ok, status = gate.post_feedback(agent_name=active_spec.name, text=arg)
+                note = ("submitted — you'll earn from the agent pool" if ok and status == "accepted"
+                        else "already submitted" if status == "already_submitted"
+                        else "program full (first-N users only)" if status == "program_full"
+                        else f"failed ({status})")
+                print(f"[pwm] feedback for {active_spec.name}: {note}", flush=True)
+                continue
 
             # /model needs the live session — handle inline.
             if cmd == "model":
@@ -520,6 +543,7 @@ def run_common_repl(
             continue
         turn_cost["pwm"] = 0.0
         turn_cost["wallet"] = None
+        turn_tools.clear()
         turn_counter["n"] += 1
         text, images = mentions.expand(line, workspace)
 
@@ -561,3 +585,14 @@ def run_common_repl(
                                    idempotency_key=f"{_sid}:{turn_counter['n']}")
         if not ok:
             print(_creason, flush=True)
+
+        # Agent-mining: log usage of any registered contribution (domain tool)
+        # invoked this turn → its author earns a share of the agent pool. Off by
+        # default; the backend attributes only registered contributions and is
+        # idempotent per (contribution, turn).
+        if gate.enabled and turn_tools:
+            _tid = f"{_sid}:{turn_counter['n']}"
+            for _name in turn_tools:
+                if _name not in BASE_TOOLS:
+                    gate.post_usage(contribution_id=_name, agent_name=active_spec.name,
+                                    turn_id=_tid)

@@ -13,6 +13,11 @@ def _truthy(v) -> bool:
     return str(v or "").strip().lower() in ("1", "true", "yes", "on")
 
 
+# Base Claude-Code tools are platform infra, not minable contributions — usage
+# logging skips them (only domain/capability tools can be registered contributions).
+BASE_TOOLS = frozenset({"read", "write", "edit", "grep", "glob", "bash", "task", "ls"})
+
+
 class PwmGate:
     """Gate the agent on the user's earned PWM balance (off-chain ledger).
 
@@ -88,6 +93,20 @@ class PwmGate:
             return status < 400
         except Exception:
             return False
+
+    def post_feedback(self, *, agent_name: str, text: str) -> Tuple[bool, str]:
+        """Submit early-user feedback for an agent (agent-mining E3). Returns
+        (ok, status). No-op when the gate is off."""
+        if not self.enabled:
+            return False, "off"
+        try:
+            status, data = self._post(f"/api/v1/agent-pool/{agent_name}/feedback",
+                                      {"text": text})
+            if status >= 400:
+                return False, f"http {status}"
+            return True, (data or {}).get("status", "ok")
+        except Exception as exc:
+            return False, f"{type(exc).__name__}"
 
     @classmethod
     def from_env(cls) -> "PwmGate":

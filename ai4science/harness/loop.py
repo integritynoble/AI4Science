@@ -12,7 +12,8 @@ MAX_TOOL_ITERATIONS = 50
 
 def run_loop(*, adapter, model: str, reasoning: str, history: List[Message],
              workspace: Path, registry: Registry, gate: PermissionGate,
-             on_text: Callable[[str], None], meter: Callable[[Usage], None]) -> str:
+             on_text: Callable[[str], None], meter: Callable[[Usage], None],
+             on_tool: Callable[[str], None] = lambda name: None) -> str:
     """Drive one user turn to completion (text + any tool calls). Returns final text."""
     final_text_parts: List[str] = []
 
@@ -49,6 +50,7 @@ def run_loop(*, adapter, model: str, reasoning: str, history: List[Message],
                         result = tool.func(workspace, **tc.arguments, _sink=on_text)
                     else:
                         result = tool.func(workspace, **tc.arguments)
+                    on_tool(tc.name)   # contribution-usage hook (agent-mining)
                 except Exception as exc:
                     result = f"[error] {exc}"
             history.append(Message(role="tool", content=str(result), tool_call_id=tc.id))
