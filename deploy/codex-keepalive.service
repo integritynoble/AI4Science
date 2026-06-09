@@ -1,0 +1,8 @@
+[Unit]
+Description=Codex token keepalive (weekly refresh so the codex agent keeps billing)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/home/spiritai/pwm/Physics_World_Model/AI4Science/scripts/codex_keepalive.sh

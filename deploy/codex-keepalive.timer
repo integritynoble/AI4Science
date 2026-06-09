@@ -1,0 +1,11 @@
+[Unit]
+Description=Weekly codex token keepalive
+# Token life is ~10 days; weekly with a persistent catch-up keeps it ahead of expiry.
+
+[Timer]
+OnCalendar=Mon 03:30 UTC
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target
