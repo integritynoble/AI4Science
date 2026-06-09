@@ -90,6 +90,11 @@ class CodexAdapter(AgentAdapter):
             yield TextDelta("[codex] no ChatGPT subscription — run `codex login`.")
             yield Done("error")
             return
+        if codex_creds.codex_token_expired():
+            yield TextDelta("[codex] login expired — refresh it: run `codex exec "
+                            "\"ok\"` (or `codex login`) to renew the token, then retry.")
+            yield Done("error")
+            return
         tok, acct = codex_creds.codex_auth()
         instructions, items = self._translate_input(messages)
         payload = {
