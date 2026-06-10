@@ -140,6 +140,23 @@ def chat(
         console.print(f"[dim]claude-code: real engine unavailable ({why}) — "
                       f"using the native harness.[/dim]")
 
+    # codex mode runs the REAL OpenAI codex engine (codex exec --json) when the
+    # CLI + login are present — its own prompts, AGENTS.md memory, sandboxing —
+    # wrapped with the PWM gate. Fallback: native harness.
+    if spec.name == "codex":
+        from ai4science.harness import codex_repl
+        ok, why = codex_repl.codex_engine_available()
+        if ok:
+            try:
+                codex_repl.run_codex_repl(workspace, auto_yes=yes,
+                                          read_only=read_only or plan, model=model)
+            except KeyboardInterrupt:
+                console.print("\n[dim](Ctrl-C — exiting)[/dim]")
+                raise typer.Exit(0)
+            return
+        console.print(f"[dim]codex: real engine unavailable ({why}) — "
+                      f"using the native harness.[/dim]")
+
     from ai4science.harness import persistence
     resume_hist = None
     sid = resume

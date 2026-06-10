@@ -330,3 +330,29 @@ founder-1-subgpu + founder-gpu at $1.50/hr. Original Claude Code has no GPU
 provider layer; this is PWM's addition on top of the genuine product
 experience. GPU tool usage in paid turns is also logged for agent-mining
 attribution (`post_usage`, mcp prefix stripped).
+
+
+## codex mode runs the REAL OpenAI codex engine too (2026-06-10)
+
+`--mode codex` now drives the installed **codex CLI** (`codex exec --json`) —
+OpenAI's genuine agentic loop (their prompts, shell + apply_patch, AGENTS.md
+project memory, session resume via thread_id) — wrapped with the same PWM
+layer as claude-code (per-turn charge from the `turn.completed` usage event,
+/feedback intercept, post_usage for MCP tools). Fallback to the native
+harness when the CLI/login is missing.
+
+**GPU service for codex:** the new stdio MCP server
+(`ai4science/harness/mcp_compute_server.py`, registered via `codex mcp add
+ai4science`) exposes compute_providers / compute_dispatch / compute_result to
+any MCP-speaking engine. **Upstream limitation** (openai/codex #24135): codex
+exec auto-cancels MCP calls non-interactively with no config override — so GPU
+tools (and broken-bwrap hosts) require full-trust mode (`--yes` or
+AI4SCIENCE_CODEX_GPU=1 → `--dangerously-bypass-approvals-and-sandbox`). The
+PWM paid-dispatch guard still applies independently: even a full-trust codex
+session cannot spend GPU PWM without AI4SCIENCE_COMPUTE_AUTOCONFIRM=1.
+
+**Live-verified (2026-06-10):** AGENTS.md memory obeyed (planted MAGNOLIA rule,
+every reply); coding loop apply_patch + shell → "self-test passed"
+(independently re-run); multi-turn resume; the real codex called
+mcp__ai4science compute_providers and summarized both GPU providers; 4 prod
+ledger rows `ai4science:codex:gpt-5.5`. Units: tests/test_codex_repl.py (5).

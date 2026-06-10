@@ -95,7 +95,7 @@ ai4science chat --mode <agent>
 | `research` | Science research harness with read-only access to the PWM registry & solutions | ~0.005 |
 | `paper` | Deterministic peer-review panel (3 reviewers + area chair) → review bundle | ~0.003 |
 | `claude-code` | The **real Claude Code engine** (claude-agent-sdk: its own system prompt, todos, plan mode, CLAUDE.md memory) **+ PWM GPU providers** (dispatch jobs to the sub-GPU server — stock Claude Code can't) | ~0.002 |
-| `codex` | The OpenAI Codex coding agent | ~0.0001 |
+| `codex` | The **real OpenAI codex engine** (codex CLI: its prompts, AGENTS.md memory, apply_patch/shell) **+ PWM GPU providers** via MCP (full-trust mode) | ~0.0001 |
 | `computational-imaging` | CASSI/imaging specialist: forward checks, GPU dispatch, result evaluation | ~0.005 |
 
 Anthropic-backed turns are served by **Claude Fable 5** first (fallback chain:
