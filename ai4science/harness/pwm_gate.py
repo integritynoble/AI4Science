@@ -5,8 +5,11 @@ from typing import Optional, Tuple
 
 from ai4science import wallet  # shared PWM billing transport (linked mode)
 
-_EARN = ("Earn PWM by submitting verified principles, specs, benchmarks, or solutions "
-         "(physicsworldmodel.org) — every AI4Science turn costs PWM.")
+_EARN = ("Earn PWM two ways: (1) IMPROVE THE AGENTS — /feedback a problem or "
+         "suggestion in any agent chat, or contribute tools/solutions others use; "
+         "the agent pools (4M PWM) pay weekly, and early feedback earns the most. "
+         "(2) Mine on physicsworldmodel.org by submitting principles, digital twins, "
+         "benchmarks, or solutions to bootstrap your first balance.")
 
 
 def _truthy(v) -> bool:

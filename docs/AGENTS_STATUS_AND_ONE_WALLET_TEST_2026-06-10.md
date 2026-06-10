@@ -27,6 +27,9 @@ wallet address to test them?"*
 - Verified one‑wallet run result: the single test wallet **paid** PWM on every
   agent and **earned 150,100 PWM lifetime** across the six pools
   (computational‑imaging largest at 52,500).
+- **Agent improvement is the primary user earning track** (feedback time-decay
+  + usage-weighted contributions, one `A_k` formula; can out-earn website
+  mining by orders of magnitude): `docs/AGENT_IMPROVEMENT_EARNING_METHOD.md`.
 
 ### Model lineup (directive 2026‑06‑10): Fable 5 leads
 All agents that routed to Opus 4.8 now lead with **`claude-fable-5`**

@@ -32,6 +32,20 @@ Then just run `ai4science` to start a chat session (like Claude Code) — the in
 
 `ai4science` is a session-style command-line tool (in the spirit of `claude` or `codex`) that helps you contribute reproducible scientific work to the **Physics World Model (PWM)** protocol. It's the user-facing product layer; PWM is the protocol, registry, and verification layer underneath.
 
+### Earning PWM — improve the agents
+
+Usage is paid in PWM, and **the primary way to earn PWM is improving the
+agents themselves**: `/feedback` a problem or suggestion in any agent chat
+(time-decay reward — the earliest feedback locks in the highest weight, even
+at zero balance), or contribute tools/solutions that agents use in paid turns
+(usage-weighted, earns weekly for as long as it's used). The six agent pools
+hold 4,000,000 PWM and pay out weekly via
+`A_k = (M_pool − M(t)) × w_k / Σw_j` — this can out-earn website mining by
+orders of magnitude. Bootstrap your first balance by mining on
+[physicsworldmodel.org](https://physicsworldmodel.org) (0.1–5 PWM per accepted
+artifact). Details: `docs/AGENT_IMPROVEMENT_EARNING_METHOD.md` ·
+`docs/AI4SCIENCE_USER_MANUAL.md`.
+
 The CLI runs **locally** in v0.1: nothing leaves your machine. You can:
 
 - Create a four-layer contribution (Principle → Spec → Benchmark → Solution) from templates or examples.

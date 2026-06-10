@@ -12,8 +12,15 @@ accounts; your PWM balance on **physicsworldmodel.org** is debited a few
 **The loop in one line:**
 
 > **Mine your first PWM on the website → log the CLI in with one browser
-> approval → use the agents → give feedback → PWM flows back to you
-> automatically.**
+> approval → use the agents → improve them (feedback, tools, solutions) →
+> PWM flows back to you automatically.**
+
+**Where the real earning is:** website mining pays **0.1–5 PWM per artifact**
+— it bootstraps you. **Improving the agents pays from 4,000,000 PWM of agent
+pools, weekly** — early feedback alone can earn thousands of PWM in the first
+epochs, and contributed tools/solutions earn every week others use them. Agent
+improvement is the primary way to earn, and can out-earn website mining by
+orders of magnitude (full math: `AGENT_IMPROVEMENT_EARNING_METHOD.md`).
 
 Your wallet **private key is never needed and never asked for** — anywhere.
 If anything ever asks you for it, it is not us. (Why this is safe:
@@ -21,9 +28,11 @@ If anything ever asks you for it, it is not us. (Why this is safe:
 
 ---
 
-## Step 1 — Mine your first PWM on physicsworldmodel.org
+## Step 1 — Mine your first PWM on physicsworldmodel.org (the bootstrap)
 
-Everyone starts here. PWM is **earned by contributing physics**, on
+Everyone starts here — but note this is the *bootstrap*, not the main earning
+track (that's improving the agents, Steps 4–5). PWM is **earned by
+contributing physics**, on
 [https://physicsworldmodel.org](https://physicsworldmodel.org):
 
 1. **Create an account** — sign in with your wallet (SIWE: your wallet signs a
@@ -102,7 +111,9 @@ the agent's total usage grows**, so the earliest feedback is worth the most:
 /feedback the dispatch step was confusing — suggest showing the queue position
 ```
 
-Type `/feedback <your suggestion or problem>` inside any agent chat. That
+Type `/feedback <your suggestion or problem>` inside any agent chat. It
+costs nothing — `/feedback` works **even at zero balance** (only LLM turns
+charge), so you can stake your first claim before you've mined anything. That
 registers a **feedback contribution** in that agent's pool, bound to your
 wallet — and then, **automatically, with no claim step**:
 
@@ -140,16 +151,18 @@ disabled by governance and earns nothing.)
 As the agents accumulate usage, new feedback locks in ever-smaller weights and
 stops covering your turn costs. Keep earning by:
 
-1. **Mining on [physicsworldmodel.org](https://physicsworldmodel.org)** — more
-   principles, digital twins, benchmarks, solutions (the bootstrap path never
-   closes).
+1. **Improve the agents with registered contributions** — THE main earning
+   track. Contribute a tool, solution, or dataset to an agent (e.g. a CASSI
+   solver to computational-imaging); every paid turn that *uses* it adds
+   usage-weight, and you earn from that agent's pool **every week it keeps
+   being used** — usage-weighted, not first-come, and it scales with the
+   agent's success (same `A_k` formula as feedback; see
+   `AGENT_IMPROVEMENT_EARNING_METHOD.md`).
 2. **Weekly wins** — benchmark competitions and weekly challenge rewards on
    the site.
-3. **Registered contributions used by others** — contribute a tool, solution,
-   or dataset to an agent (e.g. a CASSI solver to computational-imaging);
-   every paid turn that *uses* it adds usage-weight, and you earn from that
-   agent's pool every week it keeps being used. This is the long-term track —
-   usage-weighted, not first-come.
+3. **Mining on [physicsworldmodel.org](https://physicsworldmodel.org)** — more
+   principles, digital twins, benchmarks, solutions (the bootstrap path never
+   closes).
 4. **Compute provision** — serve GPU jobs for the compute loop and earn the
    provider side of the 90/10 split.
 
