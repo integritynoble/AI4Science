@@ -290,3 +290,32 @@ disabled, so dev and CI run free.
 free-Haiku turn + `/submit` artifact), then spends it running the agent locally.
 
 **Ledger** — off-chain today; on-chain settlement is the separate M6 relayer track.
+
+
+## Option A landed — `--mode claude-code` runs the REAL Claude Code engine (2026-06-10)
+
+**Honest correction first:** between 2026-05-31 (native harness) and today,
+`ai4science chat --mode claude-code` ran on the brand-agnostic native harness —
+same tool surface, but NOT the product experience this document's earlier
+sections describe (those described the then-dormant claude-agent-sdk path: no
+Claude Code system prompt, no TodoWrite, no plan mode, no compaction/hooks in
+the native REPL).
+
+**Now:** `--mode claude-code` routes to `harness/sdk_repl.py`, which runs the
+**claude-agent-sdk** — the actual engine inside Claude Code — with:
+
+- Claude Code's own system prompt (`system_prompt={"type":"preset","preset":"claude_code"}`)
+- TodoWrite, plan mode (`--plan` → `permission_mode="plan"`), auto-compaction,
+  hooks, sub-agents, CLAUDE.md project memory (`setting_sources=["user","project"]`)
+- Anthropic maintains the experience; we don't chase parity feature-by-feature.
+
+**PWM wrapper** (the AI4Science layer on top): `gate.check()` per turn;
+`gate.charge()` metered from the SDK's per-model usage (bills the ACTUAL served
+model — verified live: Claude Code routed a trivial turn to `claude-sonnet-4-6`,
+ledger row `ai4science:claude-code:claude-sonnet-4-6`, 1.7e-05 PWM); non-base
+tool uses → `post_usage`; `/feedback` intercepted locally (sustenance path).
+
+**Fallback:** when the SDK or `claude` CLI is missing, chat prints why and
+drops to the native harness — other modes untouched. Install:
+`pip install 'pwm-ai4science[claude]'` + `claude login`.
+Tests: `tests/test_sdk_repl.py` (5) + live verification 2026-06-10.

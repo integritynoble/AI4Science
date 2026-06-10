@@ -94,7 +94,7 @@ ai4science chat --mode <agent>
 | `unified-LLM` | General assistant across Claude / GPT / Gemini (switch with `/model`) | ~0.002 |
 | `research` | Science research harness with read-only access to the PWM registry & solutions | ~0.005 |
 | `paper` | Deterministic peer-review panel (3 reviewers + area chair) → review bundle | ~0.003 |
-| `claude-code` | The Claude Code coding agent | ~0.002 |
+| `claude-code` | The **real Claude Code engine** (claude-agent-sdk: its own system prompt, todos, plan mode, CLAUDE.md memory) | ~0.002 |
 | `codex` | The OpenAI Codex coding agent | ~0.0001 |
 | `computational-imaging` | CASSI/imaging specialist: forward checks, GPU dispatch, result evaluation | ~0.005 |
 

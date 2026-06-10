@@ -120,6 +120,26 @@ def chat(
                       f"Available: {names}[/yellow]")
         spec = agent_registry.get("unified-LLM")
 
+    # Option A (2026-06-10): claude-code mode runs the REAL Claude Code engine
+    # (claude-agent-sdk) when available — Anthropic's own system prompt, todos,
+    # plan mode, compaction, hooks — wrapped with the PWM gate. Other modes and
+    # the fallback path stay on the native harness.
+    if spec.name == "claude-code":
+        from ai4science.harness import sdk_repl
+        ok, why = sdk_repl.sdk_available()
+        if ok:
+            try:
+                sdk_repl.run_sdk_repl(
+                    workspace, auto_yes=yes, read_only=read_only,
+                    plan_mode=plan, model=model, resume=resume,
+                    continue_session=continue_session)
+            except KeyboardInterrupt:
+                console.print("\n[dim](Ctrl-C — exiting)[/dim]")
+                raise typer.Exit(0)
+            return
+        console.print(f"[dim]claude-code: real engine unavailable ({why}) — "
+                      f"using the native harness.[/dim]")
+
     from ai4science.harness import persistence
     resume_hist = None
     sid = resume
