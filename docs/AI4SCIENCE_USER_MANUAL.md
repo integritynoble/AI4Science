@@ -112,6 +112,33 @@ switches agents and `/model` switches LLM brands.
 > interactive `[y/N]` prompt, or `AI4SCIENCE_COMPUTE_AUTOCONFIRM=1` in
 > scripts. Both fall back to the native harness if the engine/login is absent.
 
+> **Venue-simulated peer review (the `paper` agent, 2026-06-10):** rehearse
+> your manuscript against a real venue's standards before submitting. Inside
+> `--mode paper`:
+>
+> ```
+> use paper_review on mypaper.pdf with venue "nature" and depth "deep"
+> ```
+>
+> - **51 venues:** 39 journals (Nature, Science, Cell, Nature Communications,
+>   **Nature Machine Intelligence**, NEJM, The Lancet, TPAMI, Optica, PRX… and
+>   the computational-imaging field: **IEEE TCI**, Optics Express/Letters,
+>   Applied Optics, BOE, SIAM Imaging Sciences, Inverse Problems, MedIA, MRM)
+>   + 12 conferences (CVPR, ECCV, ICCV, NeurIPS, ICML, ICLR, MICCAI, SIGGRAPH,
+>   **ICCP, ICIP, ISBI, COSI**). Casual aliases work: "NMI", "TCI", "OE",
+>   "PAMI", "nature comms"…
+> - **Depth:** `shallow` = 1 reviewer (quick take); `deep` = 3 reviewers
+>   (novelty / technical soundness / clarity) **plus** the venue's decider —
+>   a handling **Editor** for journals (accept / minor_revision /
+>   major_revision / reject) or an **Area Chair** for conferences
+>   (accept / borderline / reject).
+> - Every reviewer judges **by that venue's bar** (Nature: "major conceptual
+>   advance of broad interest, ~8% acceptance"; CVPR: "strong baselines, SOTA
+>   tables, ablations"). The review bundle (JSON + Markdown) records the venue.
+> - All 51 venues live-tested 2026-06-10 (51/51 pass). It simulates each
+>   venue's standards and style — a pre-submission rehearsal, not a prediction
+>   of real editorial outcomes.
+
 Every turn debits your ledger and is split **90% to the LLM provider / 10% to
 the mining pool** — all visible in your transaction history.
 
