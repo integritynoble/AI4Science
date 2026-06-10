@@ -112,40 +112,15 @@ def login(
         _finish_own(provider.lower(), auth, api_key)
         return
 
-    # --- Interactive ---
-    if not sys.stdin.isatty():
-        console.print("Usage (non-interactive):")
-        console.print("  ai4science login --provider anthropic --auth subscription")
-        console.print("  ai4science login --provider openai --auth api-key --api-key sk-…")
-        console.print("  ai4science login --wallet")
-        raise typer.Exit(2)
-
-    console.print("\n[bold]How do you want to power AI4Science?[/bold]")
-    console.print("  [cyan]1[/cyan]. Your own LLM (subscription or API key) — no PWM spent")
-    console.print("  [cyan]2[/cyan]. Wallet / PWM — pay per use from your local hot-key wallet")
-    console.print("  [cyan]3[/cyan]. physicsworldmodel.org account — pay PWM from your site "
-                  "balance (browser login; no private key)")
-    choice = typer.prompt("Choose [1/2/3]", default="1").strip()
-    if choice == "2":
-        login(wallet=True)
-        return
-    if choice == "3":
-        _login_pwm(None)
-        return
-
-    console.print("\n[bold]Pick a provider:[/bold]")
-    for i, p in enumerate(user_cfg.PROVIDERS, 1):
-        console.print(f"  [cyan]{i}[/cyan]. {p}")
-    sel = typer.prompt("Provider [1-5 or name]").strip().lower()
-    if sel.isdigit() and 1 <= int(sel) <= len(user_cfg.PROVIDERS):
-        provider = user_cfg.PROVIDERS[int(sel) - 1]
-    else:
-        provider = sel
-    auth = typer.prompt("Auth [subscription/api-key]", default="subscription").replace("-", "_")
-    key = None
-    if auth == "api_key":
-        key = typer.prompt(f"{provider} API key", hide_input=True).strip()
-    _finish_own(provider, auth, key)
+    # --- Default: the Claude Code pattern (directive 2026-06-10) ---
+    # Bare `ai4science login` = browser-approval device flow against
+    # physicsworldmodel.org — exactly like `claude login`. The other power
+    # modes stay reachable via flags:
+    #   --provider <p> [--auth subscription|api-key]   your own LLM
+    #   --wallet                                        local hot-key wallet
+    console.print("[dim]Logging in to physicsworldmodel.org (browser approval — "
+                  "like `claude login`). Other modes: --provider / --wallet.[/dim]")
+    _login_pwm(base)
 
 
 def whoami() -> None:

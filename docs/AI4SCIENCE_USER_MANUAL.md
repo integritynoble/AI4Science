@@ -63,11 +63,16 @@ promotion payout.
 Install and log in:
 
 ```bash
-pip install pwm-ai4science          # installs the `ai4science` command
-ai4science login --pwm              # device-flow login
+# one line, like Claude Code:
+curl -fsSL https://physicsworldmodel.org/install.sh | bash
+
+ai4science login                    # browser approval — like `claude login`
 ```
 
-`login --pwm` prints a short code and opens
+(Equivalent manual install:
+`pip install "pwm-ai4science[claude] @ git+https://github.com/integritynoble/AI4Science.git"`.)
+
+`ai4science login` prints a short code and opens
 `https://physicsworldmodel.org/cli-auth?code=XXXX-XXXX`. Log in there (if you
 aren't already), check the code matches your terminal, click **Approve**. The
 CLI receives a **revocable API key** — never your password, never your wallet

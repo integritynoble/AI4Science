@@ -106,7 +106,7 @@ app.command("status", help="Show local workspace status.")(status_cmd.status)
 app.command("chat", help="Open a persistent REPL chat session with the agent.")(chat_cmd.chat)
 
 from ai4science.commands import login as login_cmd
-app.command("login", help="Choose how to power the agent: your own LLM or the PWM wallet.")(login_cmd.login)
+app.command("login", help="Log in via browser approval on physicsworldmodel.org (like `claude login`). Flags: --provider for your own LLM, --wallet for the local hot-key wallet.")(login_cmd.login)
 app.command("whoami", help="Show how the agent is currently powered.")(login_cmd.whoami)
 app.command("logout", help="Clear the current login.")(login_cmd.logout)
 app.command("prefer", help="Set credential preference: user | wallet | <provider_id>.")(login_cmd.prefer)
