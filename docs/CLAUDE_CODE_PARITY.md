@@ -319,3 +319,14 @@ tool uses → `post_usage`; `/feedback` intercepted locally (sustenance path).
 drops to the native harness — other modes untouched. Install:
 `pip install 'pwm-ai4science[claude]'` + `claude login`.
 Tests: `tests/test_sdk_repl.py` (5) + live verification 2026-06-10.
+
+**The differentiator vs. stock Claude Code (director, 2026-06-10):** AI4Science's
+claude-code can use **GPU compute from PWM GPU providers** (currently the
+sub-GPU server) from inside the session — the harness compute tools
+(`compute_providers` / `compute_dispatch` / `compute_result`) are bridged into
+the engine as an in-process MCP server (`mcp__ai4science__*`, pre-allowed).
+Verified live: the engine called `compute_providers` and listed
+founder-1-subgpu + founder-gpu at $1.50/hr. Original Claude Code has no GPU
+provider layer; this is PWM's addition on top of the genuine product
+experience. GPU tool usage in paid turns is also logged for agent-mining
+attribution (`post_usage`, mcp prefix stripped).

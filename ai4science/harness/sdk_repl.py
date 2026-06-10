@@ -62,6 +62,34 @@ def _pwm_for(model_usage: dict, fallback_model: Optional[str]) -> Tuple[float, s
     return round(total, 6), last_model
 
 
+def _build_mcp(workspace: Path):
+    """Bridge AI4Science's GPU/compute tools into the engine as an in-process
+    MCP server — the differentiator vs. stock Claude Code: dispatch jobs to
+    PWM GPU providers (currently the sub-GPU server) from inside the session.
+
+    Returns (mcp_servers dict, allowed tool names) for ClaudeAgentOptions."""
+    from claude_agent_sdk import create_sdk_mcp_server, tool as sdk_tool
+    from ai4science.harness.compute_tools import compute_tools
+
+    wrapped = []
+    for t in compute_tools():
+        def _make(ht):
+            async def _handler(args: dict):
+                loop = asyncio.get_event_loop()
+                try:
+                    out = await loop.run_in_executor(
+                        None, lambda: ht.func(workspace, **(args or {})))
+                except Exception as e:                      # surface, don't crash
+                    out = f"[{ht.name} error] {type(e).__name__}: {e}"
+                return {"content": [{"type": "text", "text": str(out)}]}
+            return _handler
+        wrapped.append(sdk_tool(t.name, t.description, t.parameters)(_make(t)))
+
+    server = create_sdk_mcp_server(name="ai4science", version="1.0", tools=wrapped)
+    allowed = [f"mcp__ai4science__{t.name}" for t in compute_tools()]
+    return {"ai4science": server}, allowed
+
+
 def _provider_wallet() -> Optional[str]:
     try:
         from ai4science.llm import routing
@@ -84,6 +112,7 @@ async def _loop(workspace: Path, *, auto_yes: bool, read_only: bool,
     permission_mode = ("plan" if plan_mode
                        else "acceptEdits" if auto_yes
                        else "default")
+    mcp_servers, mcp_allowed = _build_mcp(workspace)
     options = ClaudeAgentOptions(
         cwd=str(workspace),
         # THE Claude Code system prompt — the product experience, not a clone.
@@ -93,9 +122,14 @@ async def _loop(workspace: Path, *, auto_yes: bool, read_only: bool,
         model=model,
         resume=resume,
         continue_conversation=continue_session,
+        # AI4Science's edge over stock Claude Code: PWM GPU providers
+        # (compute_providers / compute_dispatch / compute_result via MCP).
+        mcp_servers=mcp_servers,
+        allowed_tools=mcp_allowed,
     )
     print(f"[harness] claude-code mode — REAL Claude Code engine "
-          f"(claude-agent-sdk; permission_mode={permission_mode}). "
+          f"(claude-agent-sdk; permission_mode={permission_mode}) "
+          f"+ PWM GPU tools ({', '.join(n.split('__')[-1] for n in mcp_allowed)}). "
           f"/feedback /exit are local; everything else is Claude Code.", flush=True)
 
     sid = secrets.token_hex(4)
@@ -181,7 +215,8 @@ async def _loop(workspace: Path, *, auto_yes: bool, read_only: bool,
                         idempotency_key=f"{sid}:{n}")
                     if not ok:
                         print(creason, flush=True)
-                for t in {t for t in tools_used if t.lower() not in BASE_TOOLS}:
+                seen = {t.split("__")[-1] for t in tools_used}   # mcp__srv__name → name
+                for t in {t for t in seen if t.lower() not in BASE_TOOLS}:
                     gate.post_usage(contribution_id=t, agent_name=AGENT_NAME,
                                     turn_id=f"{sid}:{n}")
 
