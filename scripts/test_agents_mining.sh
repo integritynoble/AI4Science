@@ -62,6 +62,8 @@ os.environ.setdefault("CSRF_SECRET", secrets.token_hex(32))
 os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///${DB}"
 for k in ("GOOGLE_CLIENT_ID","SSO_VALIDATE_URL","SSO_REDIRECT_URL"): os.environ.setdefault(k,"")
 os.environ.setdefault("GCS_BUCKET","test-bucket")
+os.environ.setdefault("AGENT_FEEDBACK_TURNS_START","1")   # test ladder: 1 turn unlocks
+os.environ.setdefault("AGENT_FEEDBACK_TURNS_FLOOR","1")
 import sqlalchemy.dialects.postgresql as pg
 from sqlalchemy import JSON
 pg.JSONB = JSON
@@ -135,15 +137,20 @@ echo
 echo "════════ RESULT — one wallet $WALLET across all 6 agents ════════"
 LIFE=$(curl -s "$B/api/v1/pwm-token/balance" -H "$USER_H" | jget lifetime_earned)
 BALN=$(curl -s "$B/api/v1/pwm-token/balance" -H "$USER_H" | jget balance)
-python3 - "$TUID" <<PY
-import json, sys
-uid=sys.argv[1]
+echo "feedback pays an INSTANT usage-sized reward (see the 'earned ... PWM' lines"
+echo "above — sized to ~the next usage block, decaying with agent usage)."
+echo "Weekly pool epochs pay usage-weighted contributions (tools/solutions) only:"
+python3 - <<REPORT
+import json
 emit=json.load(open("/tmp/_emit.json")).get("agents",{})
-print(f"{'agent':24} {'feedback A_k':>13} {'→ wallet 75%':>13}")
-for a in ["unified-LLM","research","paper","claude-code","codex","computational-imaging"]:
-    alloc=emit.get(a,{}).get("allocations",{}).get(f"feedback:{a}:{uid}",0.0)
-    print(f"{a:24} {round(alloc,2):>13} {round(alloc*0.75,2):>13}")
-PY
+rows=[(a,d.get("allocations",{})) for a,d in emit.items() if d.get("allocations")]
+if rows:
+    for a,alloc in rows:
+        for cid,v in alloc.items():
+            print(f"  {a:24} {cid:32} A_k={round(v,4)}")
+else:
+    print("  (none this run — no registered tool/solution usage)")
+REPORT
 echo
 echo "wallet $WALLET"
 echo "  balance         $BALN PWM"

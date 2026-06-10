@@ -1,6 +1,6 @@
 # Agent-Improvement PWM Earning Method
 
-*The single formula behind all agent-improvement rewards (feedback included),
+*Agent-improvement rewards: instant usage-sized feedback + the A_k pool formula,
 as implemented and live. (2026-06-10)*
 
 ## 1. The formula — one per agent, per weekly epoch
@@ -26,16 +26,19 @@ A_k = (M_pool − M(t)) × w_k / Σ(w_j over active contributions j)    × λ
 
 | Type | How you earn it | w_k rule |
 |---|---|---|
-| **feedback** | `/feedback <problem/suggestion>` while using the agent | **Frozen at submission (time-decay)**: `10/(1 + 0.1×agent_total_usage_at_submission) × quality`. First usage locks 10 forever; after ~1,000 turns locks ≈0.1. **Usage-ladder unlock (directive 2026-06-10):** the n‑th feedback requires the user's own paid turns on that agent — 20 for the 1st, +19 for the 2nd, … floor +5 (`feedback_turns_cumulative`); zero-usage submissions return `need_more_usage` and earn nothing. Repeatable per rung; no head-count cap. |
+| **feedback** | `/feedback <problem/suggestion>` while using the agent | **Outside A_k — paid INSTANTLY at submission (sustenance, directive 2026-06-10):** `reward = next_block_turns × user's own avg turn cost × 1/(1 + 0.1×agent_total_usage)`. Early ≈ refunds the next 19, 18, … turns; decays toward 0 with agent usage. **Unlock ladder:** the n‑th feedback requires the user's own paid turns — 20, +19, … floor +5 (`feedback_turns_cumulative`); zero-usage → `need_more_usage`, earns nothing. Repeatable per rung; 100% to the user (no treasury slice on these micro-rewards); draws down the pool via the `agent_feedback_reward` txn (counted in M(t)); takes no weekly-epoch share (weight stays 0). |
 | **tool** | a domain tool the agent invokes in paid turns | **Usage-weighted**: Σ weight_units per DISTINCT non-author user (self-usage excluded; optional per-user sybil cap) × quality |
 | **solution** | e.g. a CASSI solver dispatched by computational-imaging (`cassi_dispatch` auto-attributes) | same usage-weighted rule |
 | **digital_twin / benchmark** | forward models / tasks the agent runs against | same usage-weighted rule |
 
-Two tracks, one formula:
-- **Feedback = time-decay bootstrap** — rewards being EARLY; sustains the first
-  users' usage, tapers to a nudge ("contribute or mine") for later users.
-- **Tools/solutions = usage track** — rewards being USEFUL, forever: every paid
-  turn that touches your contribution adds weight, week after week.
+Two tracks, two mechanisms:
+- **Feedback = instant sustenance (outside A_k)** — sized to refund the user's
+  next, shrinking usage block while the agent is young (the "20 turns →
+  feedback funds the next 19 → … " metaphor); tapers to a nudge ("contribute
+  or mine") as agent usage grows.
+- **Tools/solutions = the A_k usage track** — rewards being USEFUL, forever:
+  every paid turn that touches your contribution adds weight, and the weekly
+  epochs pay `A_k` (75% author / 25% treasury), week after week.
 
 ## 3. Payout split — automatic, no claim step
 
@@ -47,20 +50,27 @@ Accounts settle on-chain (PWM ERC-20 on Base) on the weekly settlement batch.
 
 ## 4. Worked examples (epoch-1, unified-LLM, verified live)
 
-Single feedback contributor, fresh pool:
+A_k (weekly, usage-weighted contributions only) — single used tool, fresh pool:
 ```
 remaining = 480,000 − 0      budget = 0.05 × 480,000 = 24,000
-Σw = 10 (only contribution)  A_k = 24,000 × 10/10 = 24,000
+Σw = 30 (only contribution)  A_k = 24,000
 → author 18,000 (75%) · treasury 6,000
 ```
-This is exactly the verified one-wallet harness output
-(`unified-LLM A_k 24000.0 → wallet 18000.0`; six pools → 150,100 lifetime).
+With competition — your tool w=30 vs. another solution w=10:
+```
+Σw = 40 → tool author:     24,000 × 30/40 × 0.75 = 13,500
+          solution author: 24,000 × 10/40 × 0.75 = 4,500
+```
 
-With competition — early feedback w=10 vs. a popular tool w=30:
+Feedback (instant sustenance, outside A_k) — early user on unified-LLM at
+~0.0025 PWM/turn:
 ```
-Σw = 40 → feedback author: 24,000 × 10/40 × 0.75 = 4,500
-          tool author:     24,000 × 30/40 × 0.75 = 13,500
+feedback #1 (after 20 turns): 19 × 0.0025 × ~1.0 ≈ 0.0475 PWM  (funds the next 19 turns)
+feedback #2 (after 39 turns): 18 × 0.0025 × ~1.0 ≈ 0.045  PWM
+late user (decay 0.01):        5 × 0.0025 × 0.01 ≈ 0.0001 PWM  (won't sustain — contribute or mine)
 ```
+Live-verified (harness, test ladder=1): each feedback refunded almost exactly
+the next turn's cost — net balance change per use+feedback cycle ≈ 0.
 
 ## 5. Implementation map
 

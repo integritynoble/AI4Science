@@ -42,21 +42,15 @@ scripts/test_agents_mining.sh 0x7E57…0001 \
 **Expected output (either mode):**
 
 ```
-   unified-LLM            charged 0.0022 PWM   feedback submitted
-   research               charged 0.0047 PWM   feedback submitted
-   paper                  charged 0.0032 PWM   feedback submitted
-   claude-code            charged 0.0022 PWM   feedback submitted
-   codex                  charged 6.7e-05 PWM  feedback submitted
-   computational-imaging  charged 0.0051 PWM   feedback submitted
+   unified-LLM            charged 0.0   feedback: accepted — earned 0.0024 PWM (sustains ~1 more turns)
+   research               charged 0.0   feedback: accepted — earned 0.0050 PWM (sustains ~1 more turns)
+   ...
+   (test ladder = 1 turn; "charged 0.0" = the instant feedback reward refunded
+    the turn cost — net zero, the sustenance loop working)
 
-agent                     feedback A_k  → wallet 75%
-unified-LLM                    24000.0       18000.0
-research                       30000.0       22500.0
-paper                          24000.0       18000.0
-claude-code                    26000.0       19500.0
-codex                          26000.0       19500.0
-computational-imaging          70000.0       52500.0   ← largest pool
-wallet 0x7E57…0001  lifetime_earned 150,100.00 PWM
+   feedback pays an INSTANT usage-sized reward; weekly pool epochs pay
+   usage-weighted contributions (tools/solutions) only.
+   wallet 0x7E57…0001  balance 100.0  lifetime_earned ≈ 100.013
 ```
 
 > **Model lineup (since 2026-06-10):** anthropic-backed turns now serve
@@ -112,8 +106,8 @@ So you understand each hop.
        | ai4science chat --mode "$a" --workspace /tmp --yes
    done
    ```
-   Each turn charges PWM to the provider; `/feedback` registers a front-loaded
-   feedback contribution for that agent, authored by your wallet.
+   Each turn charges PWM to the provider; `/feedback` (once unlocked by the
+   20→5 turn ladder) pays an instant usage-sized reward to your wallet.
 
 3. **Emit one weekly epoch** (admin) — pays your wallet from each pool:
    ```bash
@@ -136,9 +130,11 @@ So you understand each hop.
 - **One wallet/token covers all six agents** — no per-agent credentials. The
   founder providers serve the LLMs; your wallet pays PWM.
 - **Pays to run:** every turn debits PWM from your wallet to the provider.
-- **Earns from each agent:** `/feedback` (and any registered tool/solution you
-  use) earns your wallet **75%** of each agent's emission (treasury 25%), with
-  **computational-imaging the largest pool**.
+- **Earns from each agent:** `/feedback` pays an **instant usage-sized
+  reward** (≈ your next usage block, decaying with agent usage; ladder-gated
+  20→5 turns), and any registered tool/solution you author earns **75%** of
+  each agent's weekly emission (treasury 25%), with **computational-imaging
+  the largest pool**.
 
 ## Notes
 

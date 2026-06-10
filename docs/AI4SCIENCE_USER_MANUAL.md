@@ -16,11 +16,12 @@ accounts; your PWM balance on **physicsworldmodel.org** is debited a few
 > PWM flows back to you automatically.**
 
 **Where the real earning is:** website mining pays **0.1–5 PWM per artifact**
-— it bootstraps you. **Improving the agents pays from 4,000,000 PWM of agent
-pools, weekly** — early feedback alone can earn thousands of PWM in the first
-epochs, and contributed tools/solutions earn every week others use them. Agent
-improvement is the primary way to earn, and can out-earn website mining by
-orders of magnitude (full math: `AGENT_IMPROVEMENT_EARNING_METHOD.md`).
+— it bootstraps you. **Improving the agents is the
+primary track:** feedback instantly refunds (roughly) your next block of usage
+while an agent is young, and contributed tools/solutions earn weekly from
+4,000,000 PWM of agent pools for as long as others use them — which can
+out-earn website mining by orders of magnitude (full math:
+`AGENT_IMPROVEMENT_EARNING_METHOD.md`).
 
 Your wallet **private key is never needed and never asked for** — anywhere.
 If anything ever asks you for it, it is not us. (Why this is safe:
@@ -99,61 +100,48 @@ switches agents and `/model` switches LLM brands.
 Every turn debits your ledger and is split **90% to the LLM provider / 10% to
 the mining pool** — all visible in your transaction history.
 
-## Step 4 — Earn while you use: time-decay feedback rewards
+## Step 4 — Earn while you use: feedback sustains your usage
 
-**This is the part early users should not miss.** Each agent has its own
-PWM mining pool (4,000,000 PWM across the six; computational-imaging's
-1,400,000 is the largest). **Anyone, at any time**, can earn from that pool
-just by reporting their experience — but the reward per feedback **decays as
-the agent's total usage grows**, so the earliest feedback is worth the most:
+**The sustenance loop.** Use an agent, then tell us what you found — each
+accepted `/feedback` pays an **instant PWM reward sized to roughly fund your
+next block of usage**:
 
 ```
 /feedback the dispatch step was confusing — suggest showing the queue position
 ```
 
-Type `/feedback <your suggestion or problem>` inside any agent chat.
-**Feedback must be earned with real usage** — the n‑th feedback on an agent
-unlocks only after you've paid for enough turns on it: **20 turns for the
-first, 19 more for the second, … decreasing to a 5‑turn floor**. (Submitting
-without enough usage returns `need_more_usage` and earns nothing — feedback
-PWM is for genuine users, not drive‑by claims.) Each accepted feedback
-registers a **feedback contribution** in that agent's pool, bound to your
-wallet — and then, **automatically, with no claim step**:
+How it works, end to end:
 
-- **Your reward weight is locked the moment you submit** —
-  `w = 10 / (1 + 0.1 × agent_total_usage_so_far)`. Feedback at the very first
-  usage locks in the maximum weight (10) *forever*; the same feedback after
-  ~1,000 turns of agent usage locks in ≈0.1. Early feedback keeps its full
-  value no matter how big the agent later gets.
-- At each **weekly emission epoch**, the pool pays out
-  `A(t) = (M_pool − M_solo) × w_k / Σ w_j` per contribution — **75% to you**,
-  25% to the treasury — credited straight to your account (bound to your
-  address), automatically, no claim step.
-- **Double early-bird:** the pool also emits a fixed fraction of what
-  *remains*, so epoch 1 pays more than epoch 10 even at equal weight. Early
-  feedback × early epochs is where the real money is.
-- Feedback is **repeatable per agent** — every ladder rung (20, +19, … +5
-  turns) unlocks another one, each freezing its own weight at submission. Using
-  all six agents and feeding back on each stakes you in all six pools.
+- **The ladder:** the n‑th feedback on an agent unlocks after your own paid
+  turns on it — **20 turns for the first, 19 more for the second, … down to a
+  5‑turn floor**. Submitting early returns `need_more_usage` and earns nothing
+  (feedback PWM is for genuine users, not drive‑by claims).
+- **The reward — instant, automatic, no claim step:**
+  `reward = next_block_turns × your own average turn cost × decay`, where
+  `decay = 1/(1 + 0.1 × agent_total_usage)`. Early in an agent's life decay ≈
+  1.0, so your feedback roughly **refunds your next 19, 18, … turns** — early
+  users keep using agents nearly for free.
+- **The decay is the design:** as the agent accumulates usage the multiplier
+  falls toward 0 — late feedback pays a fraction of a turn and **won't sustain
+  usage**. That's the signal to move to contributing or mining (Step 5).
+- Feedback is recorded against your wallet (governance can mark down spam),
+  but it takes **no share of the weekly pool epochs** — the big `A_k` emission
+  from the 4M PWM pools is reserved for **usage‑weighted contributions**
+  (tools, solutions — Step 5).
 
 What good feedback looks like: a problem you actually hit, a confusing step, a
-missing capability, a concrete suggestion. (Spam/duplicate feedback can be
-disabled by governance and earns nothing.)
+missing capability, a concrete suggestion.
 
-> **In short: early users don't need to keep mining — use an agent for ~20
-> turns, feed back what you found, and the weekly payouts from that early,
-> high-weight feedback can sustain (and exceed) what you spend.** Later users' feedback locks
-> in a small weight — it still registers and still pays, but won't cover
-> continued usage by itself; that is by design, and it's the signal to move to
-> contributing or mining (Step 5).
-> Note: the first weekly epoch pays out once the reward pool goes live
-> (expected late June 2026); your contribution — and its frozen weight — is
-> registered from the moment you submit it.
+> **In short: use an agent ~20 turns → feedback → your next block of usage is
+> roughly refunded → repeat, with shrinking blocks.** Early users ride this
+> loop almost for free; later users' rewards taper below their costs — by
+> design — and the real earning shifts to contributed tools/solutions (or
+> mining).
 
 ## Step 5 — Earning later, once feedback rewards have decayed
 
-As the agents accumulate usage, new feedback locks in ever-smaller weights and
-stops covering your turn costs. Keep earning by:
+As the agents accumulate usage, the feedback multiplier decays and rewards stop
+covering your turn costs. Keep earning by:
 
 1. **Improve the agents with registered contributions** — THE main earning
    track. Contribute a tool, solution, or dataset to an agent (e.g. a CASSI
@@ -199,23 +187,19 @@ A_k = (M_pool − M(t)) × w_k / Σ(w_j over active contributions j)    × λ
 
   | Improvement type | w_k rule |
   |---|---|
-  | **feedback** (`/feedback` in chat) | **Frozen at submission (time-decay):** `10/(1 + 0.1 × agent_total_usage_so_far) × quality`. First usage locks 10 forever; after ~1,000 turns locks ≈0.1. **Unlock ladder:** the n‑th feedback needs 20, +19, … (floor +5) of your own paid turns on that agent. |
+  | **feedback** (`/feedback` in chat) | **Not part of A_k** — paid **instantly** at submission, sized to your next usage block: `next_block_turns × your avg turn cost × 1/(1 + 0.1 × agent_usage)`. **Unlock ladder:** 20, +19, … (floor +5) of your own paid turns on that agent. |
   | **tool / solution / digital twin / benchmark** (registered, used by agents in paid turns) | **Usage-weighted:** Σ weight_units per *distinct non-author* user × quality (self-usage excluded; sybil-capped). Grows every week others keep using it. |
 
 - **Payout:** each epoch, every active contribution receives its A_k —
   **75% to you** (your wallet-bound account, automatically, no claim step),
   25% to the treasury.
 
-**Worked example** (epoch 1, unified-LLM, fresh pool): you are the only
-contributor with an early feedback (w=10) →
-`A_k = 0.05 × 480,000 × 10/10 = 24,000` → **you get 18,000 PWM**. With
-competition — your feedback w=10 vs. a popular tool w=30 → Σw=40 → you get
-`24,000 × 10/40 × 0.75 = 4,500`, the tool's author 13,500.
-
-Note how the pool shifts on its own: early on, frozen feedback weights
-dominate; as real tools/solutions accumulate usage-weight, they take over the
-emission share — rewards move from "thanks for trying it early" to "thanks
-for making it better" with no parameter changes.
+**Worked example** (epoch 1, unified-LLM, fresh pool): your contributed tool
+is the only used contribution → `A_k = 0.05 × 480,000 = 24,000` → **you get
+18,000 PWM** (75%). With competition — your tool w=30 vs. another author's
+solution w=10 → Σw=40 → you get `24,000 × 30/40 × 0.75 = 13,500`, the other
+author 4,500. (Feedback is *not* in this race — it is paid instantly and
+modestly at submission, Step 4.)
 
 Full implementation map (files, endpoints, config):
 `AGENT_IMPROVEMENT_EARNING_METHOD.md`.

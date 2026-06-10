@@ -9,8 +9,8 @@ _EARN = ("Earn PWM two ways: (1) Mine on physicsworldmodel.org (principles, digi
          "twins, benchmarks, solutions) to bootstrap your first balance. (2) IMPROVE "
          "THE AGENTS — use them, then /feedback problems + suggestions (each feedback "
          "unlocks after real usage: 20 paid turns for the first, fewer for the next, "
-         "floor 5) or contribute tools/solutions others use; the agent pools (4M PWM) "
-         "pay weekly, and EARLY feedback earns the most.")
+         "floor 5) — early feedback roughly refunds your next turns — or contribute "
+         "tools/solutions others use; the agent pools (4M PWM) pay weekly for those.")
 
 
 def _truthy(v) -> bool:
@@ -108,7 +108,11 @@ class PwmGate:
                                       {"text": text})
             if status >= 400:
                 return False, f"http {status}"
-            return True, (data or {}).get("status", "ok")
+            d = data or {}
+            if d.get("status") == "accepted" and d.get("reward") is not None:
+                return True, (f"accepted — earned {d['reward']:g} PWM "
+                              f"(sustains ~{d.get('covers_turns')} more turns)")
+            return True, d.get("status", "ok")
         except Exception as exc:
             return False, f"{type(exc).__name__}"
 
