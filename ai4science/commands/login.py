@@ -12,10 +12,27 @@ from typing import Optional
 import typer
 from rich.console import Console
 
+from ai4science import pwm_account
 from ai4science import user as user_cfg
 from ai4science import wallet as local_wallet
 
 console = Console()
+
+
+def _login_pwm(base: Optional[str]) -> None:
+    """Device-flow login to a physicsworldmodel.org account (token only —
+    the wallet private key is never requested or stored)."""
+    target = (base or pwm_account.DEFAULT_BASE).rstrip("/")
+    try:
+        acct = pwm_account.login_device_flow(target, echo=console.print)
+    except Exception as e:
+        console.print(f"[red]login failed:[/red] {e}")
+        raise typer.Exit(2)
+    who = acct.get("email") or f"user #{acct.get('user_id')}"
+    console.print(f"[green]✓ Logged in to {target}[/green] as [bold]{who}[/bold]"
+                  + (f"  wallet [magenta]{acct['wallet']}[/magenta]" if acct.get("wallet") else ""))
+    console.print("[dim]  stored: a revocable pwm_ API key (chmod 600) — never a private key.\n"
+                  "  The PWM gate now uses it automatically when AI4SCIENCE_PWM_GATE=1.[/dim]")
 
 
 def _reachable(provider: str, auth: str) -> Optional[bool]:
@@ -67,8 +84,18 @@ def login(
         None, "--api-key", help="API key (with --auth api-key)."),
     wallet: bool = typer.Option(
         False, "--wallet", help="Use the local hot-key PWM wallet instead of your own LLM."),
+    pwm: bool = typer.Option(
+        False, "--pwm", help="Log in to your physicsworldmodel.org account "
+                             "(browser approval; token only, never a private key)."),
+    base: Optional[str] = typer.Option(
+        None, "--base", help="Backend URL for --pwm (default https://physicsworldmodel.org)."),
 ) -> None:
     """Choose how to power AI4Science: your own LLM, or the PWM wallet."""
+    # --- physicsworldmodel.org account (device flow) ---
+    if pwm:
+        _login_pwm(base)
+        return
+
     # --- Wallet mode ---
     if wallet:
         user_cfg.login_wallet()
@@ -96,9 +123,14 @@ def login(
     console.print("\n[bold]How do you want to power AI4Science?[/bold]")
     console.print("  [cyan]1[/cyan]. Your own LLM (subscription or API key) — no PWM spent")
     console.print("  [cyan]2[/cyan]. Wallet / PWM — pay per use from your local hot-key wallet")
-    choice = typer.prompt("Choose [1/2]", default="1").strip()
+    console.print("  [cyan]3[/cyan]. physicsworldmodel.org account — pay PWM from your site "
+                  "balance (browser login; no private key)")
+    choice = typer.prompt("Choose [1/2/3]", default="1").strip()
     if choice == "2":
         login(wallet=True)
+        return
+    if choice == "3":
+        _login_pwm(None)
         return
 
     console.print("\n[bold]Pick a provider:[/bold]")
@@ -130,6 +162,11 @@ def whoami() -> None:
         console.print(f"[bold]Powered by:[/bold] your own [bold]{cfg.get('provider')}[/bold] "
                       f"via {cfg.get('auth')}"
                       + ("  [dim](API key stored)[/dim]" if cfg.get("api_key_set") else ""))
+    acct = pwm_account.load()
+    if acct:
+        console.print(f"[bold]PWM account:[/bold] {acct.get('email') or acct.get('user_id')} "
+                      f"[dim]({acct.get('base')})[/dim]"
+                      + (f"  wallet [magenta]{acct['wallet']}[/magenta]" if acct.get("wallet") else ""))
     console.print(f"[dim]Source preference: {user_cfg.preference()} "
                   "(change with [/dim][cyan]ai4science prefer <user|wallet|provider_id>[/cyan][dim])[/dim]")
 
@@ -152,5 +189,8 @@ def prefer(
 def logout() -> None:
     """Clear the login (keys + wallet are left on disk; delete them manually)."""
     user_cfg.logout()
+    if pwm_account.clear():
+        console.print("[green]✓ PWM account token removed.[/green] "
+                      "[dim](revoke server-side too: Account → API key)[/dim]")
     console.print("[green]✓ Logged out.[/green] "
                   "[dim](API keys / wallet files are kept; remove manually if desired.)[/dim]")

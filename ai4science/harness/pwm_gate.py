@@ -111,7 +111,17 @@ class PwmGate:
     @classmethod
     def from_env(cls) -> "PwmGate":
         token = os.environ.get("PWM_TOKEN") or os.environ.get("PWM_ONBOARD_TOKEN")
-        base = (os.environ.get("PWM_BASE") or os.environ.get("PWM_ONBOARD_BASE")
-                or "https://physicsworldmodel.org")
+        base = os.environ.get("PWM_BASE") or os.environ.get("PWM_ONBOARD_BASE")
+        if not token:
+            # `ai4science login --pwm` stored account (revocable pwm_ API key —
+            # never a wallet private key). Env vars always win for CI/scripts.
+            try:
+                from ai4science import pwm_account
+                acct = pwm_account.load() or {}
+                token = acct.get("token")
+                base = base or acct.get("base")
+            except Exception:
+                pass
+        base = base or "https://physicsworldmodel.org"
         enabled = _truthy(os.environ.get("AI4SCIENCE_PWM_GATE")) and bool(token)
         return cls(token=token, base=base, enabled=enabled)
