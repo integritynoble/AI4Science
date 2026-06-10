@@ -27,7 +27,8 @@ def _contained(workspace: Path, rel: str) -> Path:
     return target
 
 
-_IMAGING_KEYWORDS = ("cassi", "spectral", "imaging", "hyperspectral", "snapshot")
+_IMAGING_KEYWORDS = ("cassi", "cacti", "spectral", "imaging", "hyperspectral",
+                     "snapshot", "tomograph", " ct ", "mri")
 
 
 def _chain_bases():
@@ -65,7 +66,8 @@ def _imaging_benchmark_ids(bdata) -> list:
             continue
         hay = " ".join(str(b.get(k, "")) for k in ("benchmark_id", "title", "category")).lower()
         if any(kw in hay for kw in _IMAGING_KEYWORDS):
-            bid = b.get("benchmark_id") or b.get("id")
+            # explorer genesis rows key on artifact_id (L3-003, …)
+            bid = b.get("benchmark_id") or b.get("artifact_id") or b.get("id")
             if bid:
                 ids.append(bid)
     return ids
