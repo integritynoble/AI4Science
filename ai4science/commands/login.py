@@ -151,10 +151,14 @@ def login(
 def whoami() -> None:
     """Show how the agent is currently powered."""
     cfg = user_cfg.load()
-    if not cfg:
+    acct = pwm_account.load()
+    if not cfg and not acct:
         console.print("[dim]Not logged in.[/dim] Run [cyan]ai4science login[/cyan].")
         return
-    if cfg.get("power") == "wallet":
+    if not cfg:
+        console.print("[dim]No LLM login (run [/dim][cyan]ai4science login[/cyan][dim] "
+                      "to pick a provider).[/dim]")
+    elif cfg.get("power") == "wallet":
         console.print("[bold]Powered by:[/bold] local hot-key PWM wallet")
         console.print(f"  address: [magenta]{local_wallet.address()}[/magenta]")
         console.print(f"  balance: [bold]{local_wallet.balance():g} PWM[/bold]")
@@ -162,10 +166,9 @@ def whoami() -> None:
         console.print(f"[bold]Powered by:[/bold] your own [bold]{cfg.get('provider')}[/bold] "
                       f"via {cfg.get('auth')}"
                       + ("  [dim](API key stored)[/dim]" if cfg.get("api_key_set") else ""))
-    acct = pwm_account.load()
     if acct:
-        console.print(f"[bold]PWM account:[/bold] {acct.get('email') or acct.get('user_id')} "
-                      f"[dim]({acct.get('base')})[/dim]"
+        who = acct.get("email") or f"user #{acct.get('user_id')}"
+        console.print(f"[bold]PWM account:[/bold] {who} [dim]({acct.get('base')})[/dim]"
                       + (f"  wallet [magenta]{acct['wallet']}[/magenta]" if acct.get("wallet") else ""))
     console.print(f"[dim]Source preference: {user_cfg.preference()} "
                   "(change with [/dim][cyan]ai4science prefer <user|wallet|provider_id>[/cyan][dim])[/dim]")
