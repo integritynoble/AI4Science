@@ -102,6 +102,16 @@ Anthropic-backed turns are served by **Claude Fable 5** first (fallback chain:
 Fable 5 → Opus 4.8 → Sonnet 4.6 → GPT-5.5 → Gemini). Inside a chat, `/mode`
 switches agents and `/model` switches LLM brands.
 
+> **Real engines (2026-06-10):** `claude-code` and `codex` run the **genuine
+> products** — the claude-agent-sdk and the codex CLI — so the experience
+> matches the originals exactly (their prompts, todos/AGENTS.md memory, plan
+> mode, session resume), plus the PWM layer on top. One codex caveat: its GPU
+> tools need full-trust mode (`--yes`, or `AI4SCIENCE_CODEX_GPU=1`) because of
+> an upstream codex limitation (openai/codex #24135). Either way, a **paid**
+> GPU dispatch always needs your separate, explicit confirmation — an
+> interactive `[y/N]` prompt, or `AI4SCIENCE_COMPUTE_AUTOCONFIRM=1` in
+> scripts. Both fall back to the native harness if the engine/login is absent.
+
 Every turn debits your ledger and is split **90% to the LLM provider / 10% to
 the mining pool** — all visible in your transaction history.
 
