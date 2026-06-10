@@ -28,6 +28,18 @@ wallet address to test them?"*
   agent and **earned 150,100 PWM lifetime** across the six pools
   (computational‑imaging largest at 52,500).
 
+### Model lineup (directive 2026‑06‑10): Fable 5 leads
+All agents that routed to Opus 4.8 now lead with **`claude-fable-5`**
+(orchestration + checking chains, repl default, pricing at Opus‑tier $15/$75
+per M until an official list price lands); **`claude-opus-4-8`** moves to the
+fallback slot (Opus 4.7's old role — the 4.7 pricing row was dropped, 4.6 had
+no remaining references). Chain: Fable 5 → Opus 4.8 → Sonnet 4.6 → GPT‑5.5 →
+Gemini. AI4Science commit `82dc980`; **verified live on prod** — turn served
+and billed as `ai4science:unified-LLM:claude-fable-5` (0.002501 PWM). The
+charge column above reflects the Opus 4.8 runs; per‑turn costs on Fable 5 are
+within ~15% at the same price tier. Open item: confirm Fable 5 list price
+(`pricing.py:23`).
+
 ### codex note (fixed 2026‑06‑09)
 codex initially billed **0.0**: the ChatGPT/codex access token (~10‑day life,
 only refreshed by a live CLI call) had expired → silent 401. Fixed three ways:
