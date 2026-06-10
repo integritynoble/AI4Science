@@ -8,7 +8,10 @@ def test_famous_venues_present():
               "nature-machine-intelligence", "nature-photonics",
               "nature-medicine", "scientific-reports", "nejm", "lancet",
               "tpami", "tip", "tmi", "optica", "prx",
-              "cvpr", "eccv", "iccv", "neurips", "icml", "iclr"):
+              "tci", "optics-express", "siims", "inverse-problems", "media",
+              "mrm", "biomedical-optics-express",
+              "cvpr", "eccv", "iccv", "neurips", "icml", "iclr",
+              "iccp", "icip", "isbi", "cosi"):
         assert v in VENUE_PROFILES, v
 
 
@@ -18,6 +21,9 @@ def test_resolve_aliases_and_case():
     assert resolve_venue("NMI")[1] == "Nature Machine Intelligence"
     assert resolve_venue("Nature Machine Intelligence")[1] == "Nature Machine Intelligence"
     assert resolve_venue("PAMI")[1] == "IEEE TPAMI"
+    assert resolve_venue("TCI")[1] == "IEEE Transactions on Computational Imaging"
+    assert resolve_venue("OE")[1] == "Optics Express"
+    assert resolve_venue("ICCP")[0] == "conference"
     assert resolve_venue("CVPR")[0] == "conference"
     assert resolve_venue("cell")[0] == "journal"
     assert resolve_venue("") is None and resolve_venue("unknown-venue") is None

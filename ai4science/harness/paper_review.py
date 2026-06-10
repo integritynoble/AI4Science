@@ -151,6 +151,55 @@ VENUE_PROFILES = {
     "advanced-materials": ("journal", "Advanced Materials",
         "Bar: high-impact materials science with strong performance metrics "
         "and application relevance."),
+    # ── computational imaging — the flagship PWM field ──
+    "tci": ("journal", "IEEE Transactions on Computational Imaging",
+        "Bar: a principled computational-imaging advance — forward model + "
+        "inversion clearly specified, rigorous simulation AND real-hardware "
+        "validation, fair comparison to current learned and classical methods."),
+    "optics-express": ("journal", "Optics Express",
+        "Bar: sound, original optics/imaging work with complete experimental "
+        "detail; rapid-publication culture but referees demand real "
+        "measurements and honest performance reporting."),
+    "optics-letters": ("journal", "Optics Letters",
+        "Bar: a sharp, novel optics result presentable in 4 pages; "
+        "significance and brevity over completeness."),
+    "applied-optics": ("journal", "Applied Optics",
+        "Bar: solid applied/engineering optics with thorough quantitative "
+        "characterization; practical utility over conceptual novelty."),
+    "biomedical-optics-express": ("journal", "Biomedical Optics Express",
+        "Bar: biomedical optics/imaging methods with validation on relevant "
+        "biological or clinical data."),
+    "photonics-research": ("journal", "Photonics Research",
+        "Bar: high-quality photonics advances — strong novelty plus complete "
+        "experimental verification."),
+    "siims": ("journal", "SIAM Journal on Imaging Sciences",
+        "Bar: mathematically rigorous imaging science — well-posed models, "
+        "provable properties (convergence, stability), careful analysis; "
+        "proofs matter more than benchmark tables."),
+    "inverse-problems": ("journal", "Inverse Problems",
+        "Bar: rigorous inverse-problems theory or methodology — "
+        "identifiability, regularization, convergence analysis with "
+        "convincing numerics."),
+    "media": ("journal", "Medical Image Analysis",
+        "Bar: methodologically deep medical image analysis with extensive "
+        "validation, ablations, and clinically meaningful evaluation."),
+    "mrm": ("journal", "Magnetic Resonance in Medicine",
+        "Bar: MR methodology advances (acquisition, reconstruction, "
+        "quantification) with in-vivo demonstration and reproducibility."),
+    "iccp": ("conference", "ICCP",
+        "Bar: International Conference on Computational Photography — novel "
+        "co-designed optics+algorithms; working prototypes and real captures "
+        "weigh heavily; systems papers welcome."),
+    "icip": ("conference", "ICIP",
+        "Bar: solid image/video processing contributions with clear "
+        "quantitative evaluation; 4-page conference scope."),
+    "isbi": ("conference", "ISBI",
+        "Bar: biomedical imaging methods with sound validation on real "
+        "biomedical data; clinical plausibility matters."),
+    "cosi": ("conference", "COSI (Optica Imaging Congress)",
+        "Bar: computational optical sensing and imaging — co-design of "
+        "encoding optics and reconstruction; physical-experiment evidence "
+        "valued over simulation-only results."),
     "cvpr": ("conference", "CVPR",
         "Bar: novel vision method + convincing experiments — strong baselines, "
         "SOTA tables, ablations, ideally code. Reviewers are adversarial about "
@@ -193,7 +242,13 @@ def resolve_venue(name):
                "light": "light-science-applications",
                "sci-rep": "scientific-reports", "srep": "scientific-reports",
                "the-lancet": "lancet",
-               "nat-comp-sci": "nature-computational-science"}
+               "nat-comp-sci": "nature-computational-science",
+               "ieee-tci": "tci", "transactions-on-computational-imaging": "tci",
+               "oe": "optics-express", "ol": "optics-letters",
+               "boe": "biomedical-optics-express",
+               "ao": "applied-optics",
+               "siam-imaging": "siims", "sj-imaging-sciences": "siims",
+               "medical-image-analysis": "media", "mia": "media"}
     key = aliases.get(key, key)
     return VENUE_PROFILES.get(key)
 
