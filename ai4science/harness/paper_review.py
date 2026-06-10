@@ -58,6 +58,81 @@ REVIEWER_PERSONAS = [
 GENERALIST_PERSONA = ("generalist", "overall assessment",
     "You are a peer reviewer giving a complete overall assessment of the paper.")
 
+# ── Venue profiles (directive 2026-06-10): simulate the review culture and
+# acceptance bar of the major journals and conferences. `kind` drives the
+# decision vocabulary (journal: editor + revisions; conference: area chair).
+VENUE_PROFILES = {
+    "nature": ("journal", "Nature",
+        "Bar: a major conceptual advance of broad interest to ALL scientists, "
+        "not just the subfield; airtight evidence; ~8% acceptance. Editors "
+        "desk-reject most papers; referees demand extraordinary support for "
+        "extraordinary claims."),
+    "science": ("journal", "Science",
+        "Bar: a landmark result that changes how the field thinks; broad "
+        "general-reader significance; rigorous, complete evidence."),
+    "cell": ("journal", "Cell",
+        "Bar: a deep mechanistic biological advance with definitive, "
+        "multi-angle experimental support; conceptual novelty in biology."),
+    "nature-communications": ("journal", "Nature Communications",
+        "Bar: a solid, important advance for the specific field — rigor and "
+        "completeness matter more than universal appeal."),
+    "nature-methods": ("journal", "Nature Methods",
+        "Bar: a method the community will adopt — validated against the state "
+        "of the art, with usable code/protocols and demonstrated robustness."),
+    "prl": ("journal", "Physical Review Letters",
+        "Bar: a significant, broadly interesting physics result presentable in "
+        "4 pages; correctness and importance over completeness."),
+    "pnas": ("journal", "PNAS",
+        "Bar: an important multi-disciplinary advance with solid evidence."),
+    "cvpr": ("conference", "CVPR",
+        "Bar: novel vision method + convincing experiments — strong baselines, "
+        "SOTA tables, ablations, ideally code. Reviewers are adversarial about "
+        "missing comparisons; ~25% acceptance."),
+    "iccv": ("conference", "ICCV",
+        "Bar: like CVPR — novelty + rigorous vision experiments + ablations."),
+    "eccv": ("conference", "ECCV",
+        "Bar: like CVPR — novelty + rigorous vision experiments + ablations."),
+    "neurips": ("conference", "NeurIPS",
+        "Bar: significant ML contribution — theory or strong empirics; clarity "
+        "of claims and evidence; reproducibility checklist culture."),
+    "icml": ("conference", "ICML",
+        "Bar: rigorous ML methodology — proofs or thorough experiments; "
+        "precise claims."),
+    "iclr": ("conference", "ICLR",
+        "Bar: novel learning-representation ideas; open-review culture — "
+        "expect direct, public scrutiny of claims."),
+    "miccai": ("conference", "MICCAI",
+        "Bar: medical-imaging methodology with clinical relevance and sound "
+        "validation on real datasets."),
+    "siggraph": ("conference", "SIGGRAPH",
+        "Bar: striking, technically deep graphics/visual-computing results "
+        "with flawless execution and visuals."),
+}
+
+
+def resolve_venue(name):
+    """(kind, title, culture) or None. Accepts 'Nature', 'nature comms', etc."""
+    if not name:
+        return None
+    key = str(name).strip().lower().replace(" ", "-").replace("_", "-")
+    aliases = {"nature-comms": "nature-communications",
+               "ncomms": "nature-communications", "nat-comm": "nature-communications",
+               "nature-com": "nature-communications"}
+    key = aliases.get(key, key)
+    return VENUE_PROFILES.get(key)
+
+
+_JOURNAL_META_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "summary": {"type": "string"},
+        "key_points": {"type": "array", "items": {"type": "string"}},
+        "decision": {"type": "string",
+                     "enum": ["accept", "minor_revision", "major_revision", "reject"]},
+        "justification": {"type": "string"}},
+    "required": ["summary", "decision"],
+}
+
 _REVIEW_INSTRUCTION = (
     "Read the paper below and write a rigorous conference review. When done, call "
     "the `submit_review` tool with: summary, strengths[], weaknesses[], questions[], "
@@ -126,8 +201,33 @@ def _aggregate(reviews: List[ReviewerReview]) -> Dict:
 
 def run_panel(*, doc: PaperDoc, depth: str, adapter, model: str, backend: str,
               workspace, registry_tools=None, reasoning="low",
-              created_at: Optional[str] = None) -> ReviewBundle:
+              created_at: Optional[str] = None,
+              venue: Optional[str] = None) -> ReviewBundle:
     paper_block = f"TITLE: {doc.title}\n\nPAPER:\n{doc.text}"
+    vprof = resolve_venue(venue)
+    venue_label = None
+    venue_prefix = ""
+    meta_instruction = _META_INSTRUCTION
+    meta_schema = _META_SCHEMA
+    if vprof:
+        vkind, vtitle, vculture = vprof
+        venue_label = vtitle
+        venue_prefix = (f"This is a submission to **{vtitle}** ({vkind}). Review it "
+                        f"BY {vtitle}'S STANDARDS. {vculture}\n\n")
+        if vkind == "journal":
+            meta_schema = _JOURNAL_META_SCHEMA
+            meta_instruction = (
+                f"You are the handling EDITOR at {vtitle}. {vculture} Read the paper "
+                "and the referee reports below, then call `submit_meta_review` with: "
+                "summary, key_points[], decision "
+                "(accept|minor_revision|major_revision|reject), justification. "
+                "Finish by calling submit_meta_review.")
+        else:
+            meta_instruction = (
+                f"You are the Area Chair for {vtitle}. {vculture} Read the paper and "
+                "the reviewer reviews below, then call `submit_meta_review` with: "
+                "summary, key_points[], decision (accept|borderline|reject), "
+                "justification. Finish by calling submit_meta_review.")
     reviews: List[ReviewerReview] = []
     meta: Optional[MetaReview] = None
 
@@ -139,7 +239,7 @@ def run_panel(*, doc: PaperDoc, depth: str, adapter, model: str, backend: str,
         extra = []
 
     for key, _lens, persona_prompt in personas:
-        system = f"{persona_prompt}\n\n{_REVIEW_INSTRUCTION}"
+        system = f"{venue_prefix}{persona_prompt}\n\n{_REVIEW_INSTRUCTION}"
         try:
             args = structured_subrun(
                 adapter=adapter, model=model, system=system,
@@ -158,9 +258,9 @@ def run_panel(*, doc: PaperDoc, depth: str, adapter, model: str, backend: str,
             f"[{r.persona}] rating {r.rating}: {r.summary}" for r in reviews if not r.error)
         try:
             margs = structured_subrun(
-                adapter=adapter, model=model, system=_META_INSTRUCTION,
+                adapter=adapter, model=model, system=meta_instruction,
                 user_content=f"{paper_block}\n\nREVIEWS:\n{rev_text}",
-                capture_tool="submit_meta_review", schema=_META_SCHEMA,
+                capture_tool="submit_meta_review", schema=meta_schema,
                 workspace=workspace, reasoning=reasoning)
             meta = MetaReview(summary=margs.get("summary", ""),
                               key_points=list(margs.get("key_points", [])),
@@ -177,4 +277,5 @@ def run_panel(*, doc: PaperDoc, depth: str, adapter, model: str, backend: str,
                "truncated": doc.truncated},
         depth=depth, reviews=reviews, meta_review=meta, decision=decision,
         aggregate=_aggregate(reviews), model=model, backend=backend,
-        created_at=created_at or datetime.now().isoformat(timespec="seconds"))
+        created_at=created_at or datetime.now().isoformat(timespec="seconds"),
+        venue=venue_label)

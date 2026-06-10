@@ -35,7 +35,8 @@ def _contained(workspace: Path, rel: str):
 
 def paper_tools(*, brand_provider: Callable[[], tuple],
                 research_tools_provider: Callable[[], List[Tool]]) -> List[Tool]:
-    def _paper_review(workspace, *, path: str, depth: str = "shallow") -> str:
+    def _paper_review(workspace, *, path: str, depth: str = "shallow",
+                  venue: str = "") -> str:
         try:
             target = _contained(Path(workspace), path)
             doc = load_paper(target)
@@ -49,7 +50,7 @@ def paper_tools(*, brand_provider: Callable[[], tuple],
             registry_tools = research_tools_provider() if depth == "deep" else None
             bundle = run_panel(doc=doc, depth=depth, adapter=adapter, model=model,
                                backend=backend, workspace=Path(workspace),
-                               registry_tools=registry_tools)
+                               registry_tools=registry_tools, venue=venue)
             # Ensure slug is derived from the actual input file, not bundle metadata
             try:
                 rel = target.relative_to(Path(workspace).resolve())
@@ -70,10 +71,15 @@ def paper_tools(*, brand_provider: Callable[[], tuple],
         name="paper_review",
         description=("Run a multi-agent peer review of a paper file (PDF/Markdown/"
                      "LaTeX) in the workspace. depth 'shallow' (1 reviewer, free) or "
-                     "'deep' (3 reviewers + area chair). Writes a JSON+Markdown "
-                     "review bundle and returns the decision."),
+                     "'deep' (3 reviewers + area chair/editor). Optional venue "
+                     "simulates a target journal/conference's standards: nature, "
+                     "science, cell, nature-communications, nature-methods, prl, "
+                     "pnas, cvpr, iccv, eccv, neurips, icml, iclr, miccai, siggraph. "
+                     "Journals decide accept/minor_revision/major_revision/reject. "
+                     "Writes a JSON+Markdown review bundle and returns the decision."),
         parameters={"type": "object", "properties": {
             "path": {"type": "string"},
-            "depth": {"type": "string", "enum": ["shallow", "deep"]}},
+            "depth": {"type": "string", "enum": ["shallow", "deep"]},
+            "venue": {"type": "string"}},
             "required": ["path"]},
         func=_paper_review, mutating=False)]

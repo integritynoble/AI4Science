@@ -46,13 +46,17 @@ class ReviewBundle:
     model: str
     backend: str
     created_at: str
+    venue: Optional[str] = None
 
     def to_json(self) -> str:
         return json.dumps(asdict(self), indent=2, default=str)
 
     def to_markdown(self) -> str:
         p = self.paper.get("title", "(untitled)")
-        lines = [f"# Review: {p}", "",
+        lines = [f"# Review: {p}", ""]
+        if self.venue:
+            lines += [f"**Venue:** {self.venue}", ""]
+        lines += [
                  f"**Decision:** {self.decision}  ·  **Depth:** {self.depth}  "
                  f"·  **Backend:** {self.backend}/{self.model}", ""]
         if self.aggregate:
