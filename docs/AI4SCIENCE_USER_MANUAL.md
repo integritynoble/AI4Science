@@ -15,8 +15,8 @@ accounts; your PWM balance on **physicsworldmodel.org** is debited a few
 > approval → use the agents → improve them (feedback, tools, solutions) →
 > PWM flows back to you automatically.**
 
-**Where the real earning is:** website mining pays **0.1–5 PWM per artifact**
-— it bootstraps you. **Improving the agents is the
+**Where the real earning is:** website mining pays **≈2 PWM at LLM-accept
+plus 0.5–10 PWM at founder promotion** per artifact — it bootstraps you. **Improving the agents is the
 primary track:** feedback instantly refunds (roughly) your next block of usage
 while an agent is young, and contributed tools/solutions earn weekly from
 4,000,000 PWM of agent pools for as long as others use them — which can
