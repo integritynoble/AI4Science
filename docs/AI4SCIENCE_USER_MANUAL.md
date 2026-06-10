@@ -111,9 +111,12 @@ the agent's total usage grows**, so the earliest feedback is worth the most:
 /feedback the dispatch step was confusing — suggest showing the queue position
 ```
 
-Type `/feedback <your suggestion or problem>` inside any agent chat. It
-costs nothing — `/feedback` works **even at zero balance** (only LLM turns
-charge), so you can stake your first claim before you've mined anything. That
+Type `/feedback <your suggestion or problem>` inside any agent chat.
+**Feedback must be earned with real usage** — the n‑th feedback on an agent
+unlocks only after you've paid for enough turns on it: **20 turns for the
+first, 19 more for the second, … decreasing to a 5‑turn floor**. (Submitting
+without enough usage returns `need_more_usage` and earns nothing — feedback
+PWM is for genuine users, not drive‑by claims.) Each accepted feedback
 registers a **feedback contribution** in that agent's pool, bound to your
 wallet — and then, **automatically, with no claim step**:
 
@@ -129,16 +132,17 @@ wallet — and then, **automatically, with no claim step**:
 - **Double early-bird:** the pool also emits a fixed fraction of what
   *remains*, so epoch 1 pays more than epoch 10 even at equal weight. Early
   feedback × early epochs is where the real money is.
-- One feedback contribution **per agent** per user — so trying all six agents
-  and giving honest feedback on each stakes you in all six pools.
+- Feedback is **repeatable per agent** — every ladder rung (20, +19, … +5
+  turns) unlocks another one, each freezing its own weight at submission. Using
+  all six agents and feeding back on each stakes you in all six pools.
 
 What good feedback looks like: a problem you actually hit, a confusing step, a
 missing capability, a concrete suggestion. (Spam/duplicate feedback can be
 disabled by governance and earns nothing.)
 
-> **In short: early users don't need to keep mining — feedback given during
-> the agent's first usage locks in a high weight, and the weekly payouts it
-> earns can sustain (and exceed) what you spend.** Later users' feedback locks
+> **In short: early users don't need to keep mining — use an agent for ~20
+> turns, feed back what you found, and the weekly payouts from that early,
+> high-weight feedback can sustain (and exceed) what you spend.** Later users' feedback locks
 > in a small weight — it still registers and still pays, but won't cover
 > continued usage by itself; that is by design, and it's the signal to move to
 > contributing or mining (Step 5).
@@ -195,7 +199,7 @@ A_k = (M_pool − M(t)) × w_k / Σ(w_j over active contributions j)    × λ
 
   | Improvement type | w_k rule |
   |---|---|
-  | **feedback** (`/feedback` in chat) | **Frozen at submission (time-decay):** `10/(1 + 0.1 × agent_total_usage_so_far) × quality`. First usage locks 10 forever; after ~1,000 turns locks ≈0.1. One per agent per user. |
+  | **feedback** (`/feedback` in chat) | **Frozen at submission (time-decay):** `10/(1 + 0.1 × agent_total_usage_so_far) × quality`. First usage locks 10 forever; after ~1,000 turns locks ≈0.1. **Unlock ladder:** the n‑th feedback needs 20, +19, … (floor +5) of your own paid turns on that agent. |
   | **tool / solution / digital twin / benchmark** (registered, used by agents in paid turns) | **Usage-weighted:** Σ weight_units per *distinct non-author* user × quality (self-usage excluded; sybil-capped). Grows every week others keep using it. |
 
 - **Payout:** each epoch, every active contribution receives its A_k —

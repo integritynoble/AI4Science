@@ -26,7 +26,7 @@ A_k = (M_pool − M(t)) × w_k / Σ(w_j over active contributions j)    × λ
 
 | Type | How you earn it | w_k rule |
 |---|---|---|
-| **feedback** | `/feedback <problem/suggestion>` while using the agent | **Frozen at submission (time-decay)**: `10/(1 + 0.1×agent_total_usage_at_submission) × quality`. First usage locks 10 forever; after ~1,000 turns locks ≈0.1. One per (agent, user). No head-count cap (directive 2026-06-10). |
+| **feedback** | `/feedback <problem/suggestion>` while using the agent | **Frozen at submission (time-decay)**: `10/(1 + 0.1×agent_total_usage_at_submission) × quality`. First usage locks 10 forever; after ~1,000 turns locks ≈0.1. **Usage-ladder unlock (directive 2026-06-10):** the n‑th feedback requires the user's own paid turns on that agent — 20 for the 1st, +19 for the 2nd, … floor +5 (`feedback_turns_cumulative`); zero-usage submissions return `need_more_usage` and earn nothing. Repeatable per rung; no head-count cap. |
 | **tool** | a domain tool the agent invokes in paid turns | **Usage-weighted**: Σ weight_units per DISTINCT non-author user (self-usage excluded; optional per-user sybil cap) × quality |
 | **solution** | e.g. a CASSI solver dispatched by computational-imaging (`cassi_dispatch` auto-attributes) | same usage-weighted rule |
 | **digital_twin / benchmark** | forward models / tasks the agent runs against | same usage-weighted rule |
