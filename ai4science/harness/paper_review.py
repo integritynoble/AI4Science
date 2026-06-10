@@ -84,6 +84,73 @@ VENUE_PROFILES = {
         "4 pages; correctness and importance over completeness."),
     "pnas": ("journal", "PNAS",
         "Bar: an important multi-disciplinary advance with solid evidence."),
+    "nature-machine-intelligence": ("journal", "Nature Machine Intelligence",
+        "Bar: a significant ML/AI advance with demonstrated scientific or "
+        "societal impact — rigorous benchmarks, strong baselines, and "
+        "transparent limitations; broad interest to the AI community."),
+    "nature-physics": ("journal", "Nature Physics",
+        "Bar: a conceptually important physics advance of interest across "
+        "physics; decisive evidence and clear physical insight."),
+    "nature-photonics": ("journal", "Nature Photonics",
+        "Bar: a major optics/photonics advance — new physics or a capability "
+        "leap (imaging, sources, detectors) with rigorous characterization."),
+    "nature-materials": ("journal", "Nature Materials",
+        "Bar: a landmark materials advance with mechanistic understanding and "
+        "robust, reproducible synthesis/characterization."),
+    "nature-medicine": ("journal", "Nature Medicine",
+        "Bar: a clinically meaningful advance — strong human/translational "
+        "evidence, rigorous statistics, clear path to impact on patients."),
+    "nature-biotechnology": ("journal", "Nature Biotechnology",
+        "Bar: an enabling biotechnological capability with head-to-head "
+        "benchmarking and demonstrated real-world utility."),
+    "nature-neuroscience": ("journal", "Nature Neuroscience",
+        "Bar: a major mechanistic or conceptual neuroscience advance with "
+        "convergent evidence across approaches."),
+    "nature-electronics": ("journal", "Nature Electronics",
+        "Bar: a significant device/system electronics advance with rigorous "
+        "performance benchmarking against the state of the art."),
+    "nature-computational-science": ("journal", "Nature Computational Science",
+        "Bar: a computational method or insight of broad scientific value — "
+        "rigorous validation, scalability evidence, open code expected."),
+    "scientific-reports": ("journal", "Scientific Reports",
+        "Bar: technically sound and original — significance/novelty are NOT "
+        "criteria; judge correctness, clarity, and completeness only."),
+    "nejm": ("journal", "NEJM",
+        "Bar: practice-changing clinical evidence — typically rigorous "
+        "randomized trials; statistics and patient outcomes are decisive."),
+    "lancet": ("journal", "The Lancet",
+        "Bar: clinically important, methodologically rigorous studies with "
+        "global health relevance."),
+    "jama": ("journal", "JAMA",
+        "Bar: rigorous clinical research with direct relevance to medical "
+        "practice and policy; statistical review is strict."),
+    "elife": ("journal", "eLife",
+        "Bar: solid, significant life-science work; constructive consolidated "
+        "reviews focused on whether claims are supported."),
+    "prx": ("journal", "Physical Review X",
+        "Bar: first-rate physics of broad interest with lasting value; "
+        "selective but completeness-friendly (no length pressure)."),
+    "tpami": ("journal", "IEEE TPAMI",
+        "Bar: a mature, thorough vision/ML contribution — comprehensive "
+        "experiments, comparisons, and analysis beyond a conference paper."),
+    "tip": ("journal", "IEEE TIP",
+        "Bar: a solid image-processing advance with thorough quantitative "
+        "evaluation against current methods."),
+    "tmi": ("journal", "IEEE TMI",
+        "Bar: a medical-imaging methodology advance with clinically relevant "
+        "validation on real data."),
+    "optica": ("journal", "Optica",
+        "Bar: a high-impact optics result — significant capability or insight "
+        "with rigorous experimental support."),
+    "light-science-applications": ("journal", "Light: Science & Applications",
+        "Bar: a major photonics/optics advance with strong application "
+        "potential and thorough validation."),
+    "jacs": ("journal", "JACS",
+        "Bar: an important chemistry advance with complete characterization "
+        "and mechanistic support."),
+    "advanced-materials": ("journal", "Advanced Materials",
+        "Bar: high-impact materials science with strong performance metrics "
+        "and application relevance."),
     "cvpr": ("conference", "CVPR",
         "Bar: novel vision method + convincing experiments — strong baselines, "
         "SOTA tables, ablations, ideally code. Reviewers are adversarial about "
@@ -117,7 +184,16 @@ def resolve_venue(name):
     key = str(name).strip().lower().replace(" ", "-").replace("_", "-")
     aliases = {"nature-comms": "nature-communications",
                "ncomms": "nature-communications", "nat-comm": "nature-communications",
-               "nature-com": "nature-communications"}
+               "nature-com": "nature-communications",
+               "nmi": "nature-machine-intelligence",
+               "nat-mach-intell": "nature-machine-intelligence",
+               "nature-mi": "nature-machine-intelligence",
+               "pami": "tpami", "t-pami": "tpami",
+               "lsa": "light-science-applications",
+               "light": "light-science-applications",
+               "sci-rep": "scientific-reports", "srep": "scientific-reports",
+               "the-lancet": "lancet",
+               "nat-comp-sci": "nature-computational-science"}
     key = aliases.get(key, key)
     return VENUE_PROFILES.get(key)
 

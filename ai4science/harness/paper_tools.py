@@ -72,9 +72,12 @@ def paper_tools(*, brand_provider: Callable[[], tuple],
         description=("Run a multi-agent peer review of a paper file (PDF/Markdown/"
                      "LaTeX) in the workspace. depth 'shallow' (1 reviewer, free) or "
                      "'deep' (3 reviewers + area chair/editor). Optional venue "
-                     "simulates a target journal/conference's standards: nature, "
-                     "science, cell, nature-communications, nature-methods, prl, "
-                     "pnas, cvpr, iccv, eccv, neurips, icml, iclr, miccai, siggraph. "
+                     "simulates a target journal/conference's standards — 29 "
+                     "journals (nature, science, cell, nature-communications, "
+                     "nature-machine-intelligence, nature-photonics, "
+                     "nature-medicine, nejm, lancet, tpami, tip, tmi, optica, "
+                     "prx, scientific-reports, …) and 8 conferences (cvpr, iccv, "
+                     "eccv, neurips, icml, iclr, miccai, siggraph). "
                      "Journals decide accept/minor_revision/major_revision/reject. "
                      "Writes a JSON+Markdown review bundle and returns the decision."),
         parameters={"type": "object", "properties": {

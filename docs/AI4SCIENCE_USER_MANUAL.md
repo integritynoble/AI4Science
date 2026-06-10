@@ -93,7 +93,7 @@ ai4science chat --mode <agent>
 |---|---|---|
 | `unified-LLM` | General assistant across Claude / GPT / Gemini (switch with `/model`) | ~0.002 |
 | `research` | Science research harness with read-only access to the PWM registry & solutions | ~0.005 |
-| `paper` | Peer-review panel (3 reviewers + area chair/editor) with **venue simulation** — review "at Nature, Science, Cell, Nature Communications, CVPR, ECCV, NeurIPS…" with that venue's standards and decisions | ~0.003 |
+| `paper` | Peer-review panel (3 reviewers + area chair/editor) with **venue simulation — 29 journals + 8 conferences** (Nature, Science, Cell, Nature Communications, Nature Machine Intelligence, NEJM, Lancet, TPAMI, Optica… · CVPR, ECCV, NeurIPS…), each with its standards and decision vocabulary | ~0.003 |
 | `claude-code` | The **real Claude Code engine** (claude-agent-sdk: its own system prompt, todos, plan mode, CLAUDE.md memory) **+ PWM GPU providers** (dispatch jobs to the sub-GPU server — stock Claude Code can't) | ~0.002 |
 | `codex` | The **real OpenAI codex engine** (codex CLI: its prompts, AGENTS.md memory, apply_patch/shell) **+ PWM GPU providers** via MCP (full-trust mode) | ~0.0001 |
 | `computational-imaging` | CASSI/imaging specialist: forward checks, GPU dispatch, result evaluation | ~0.005 |
