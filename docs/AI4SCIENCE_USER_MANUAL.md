@@ -166,6 +166,56 @@ stops covering your turn costs. Keep earning by:
 4. **Compute provision** — serve GPU jobs for the compute loop and earn the
    provider side of the 90/10 split.
 
+## The agent-improvement earning method (the math)
+
+Everything in Steps 4–5 is one formula, applied per agent, per weekly epoch:
+
+```
+A_k = (M_pool − M(t)) × w_k / Σ(w_j over active contributions j)    × λ
+```
+
+- **M_pool** — that agent's own pool:
+
+  | Agent | Pool (PWM) |
+  |---|---|
+  | computational-imaging | **1,400,000** (largest) |
+  | research | 600,000 |
+  | codex | 520,000 |
+  | claude-code | 520,000 |
+  | paper | 480,000 |
+  | unified-LLM | 480,000 |
+  | **Total** | **4,000,000** |
+
+- **M(t)** — what that pool has already paid out (derived from the ledger, so
+  it can't drift).
+- **λ = 0.05** — each week emits 5% of what *remains*: the pool never runs
+  out, and **early epochs pay more** (unified-LLM epoch-1 budget 24,000 →
+  epoch-10 ≈15,100 → epoch-50 ≈1,950).
+- **w_k** — your contribution's weight. This is where the two tracks differ:
+
+  | Improvement type | w_k rule |
+  |---|---|
+  | **feedback** (`/feedback` in chat) | **Frozen at submission (time-decay):** `10/(1 + 0.1 × agent_total_usage_so_far) × quality`. First usage locks 10 forever; after ~1,000 turns locks ≈0.1. One per agent per user. |
+  | **tool / solution / digital twin / benchmark** (registered, used by agents in paid turns) | **Usage-weighted:** Σ weight_units per *distinct non-author* user × quality (self-usage excluded; sybil-capped). Grows every week others keep using it. |
+
+- **Payout:** each epoch, every active contribution receives its A_k —
+  **75% to you** (your wallet-bound account, automatically, no claim step),
+  25% to the treasury.
+
+**Worked example** (epoch 1, unified-LLM, fresh pool): you are the only
+contributor with an early feedback (w=10) →
+`A_k = 0.05 × 480,000 × 10/10 = 24,000` → **you get 18,000 PWM**. With
+competition — your feedback w=10 vs. a popular tool w=30 → Σw=40 → you get
+`24,000 × 10/40 × 0.75 = 4,500`, the tool's author 13,500.
+
+Note how the pool shifts on its own: early on, frozen feedback weights
+dominate; as real tools/solutions accumulate usage-weight, they take over the
+emission share — rewards move from "thanks for trying it early" to "thanks
+for making it better" with no parameter changes.
+
+Full implementation map (files, endpoints, config):
+`AGENT_IMPROVEMENT_EARNING_METHOD.md`.
+
 ## Your earnings → your wallet on-chain
 
 PWM accrues on your site ledger instantly (free, per-action). On the weekly
