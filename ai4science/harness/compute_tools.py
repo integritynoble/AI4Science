@@ -68,6 +68,36 @@ def _providers_tool() -> Tool:
         func=_list, mutating=False)
 
 
+def _confirm_paid_dispatch(prov, est_pwm, max_runtime_s) -> tuple:
+    """Autonomy guard (directive 2026-06-10): a PAID dispatch must be approved
+    by the HUMAN, not the model — even in --yes / acceptEdits mode. (During the
+    2026-06-10 live test the Claude Code engine auto-dispatched a paid GPU job
+    unprompted under --yes.)
+
+    Interactive TTY → ask on the terminal. Non-interactive (piped/CI) → refuse
+    unless AI4SCIENCE_COMPUTE_AUTOCONFIRM=1 explicitly opts in.
+    Returns (ok, refusal_message)."""
+    import os
+    import sys
+    if str(os.environ.get("AI4SCIENCE_COMPUTE_AUTOCONFIRM", "")).strip().lower() in (
+            "1", "true", "yes", "on"):
+        return True, ""
+    if not sys.stdin.isatty():
+        return False, ("[compute] PAID dispatch blocked: requires a human "
+                       "confirmation and this session is non-interactive. "
+                       "Re-run interactively, or set "
+                       "AI4SCIENCE_COMPUTE_AUTOCONFIRM=1 for scripts/CI.")
+    try:
+        ans = input(f"[compute] PAID GPU dispatch to {prov.provider_id} "
+                    f"(up to {est_pwm} PWM at ${prov.price_usd_per_hour}/hr, "
+                    f"{max_runtime_s}s cap) — proceed? [y/N] ")
+    except (EOFError, KeyboardInterrupt):
+        return False, "[compute] dispatch cancelled."
+    if ans.strip().lower() not in ("y", "yes"):
+        return False, "[compute] dispatch declined by the user."
+    return True, ""
+
+
 def _dispatch_tool() -> Tool:
     def _dispatch(workspace, *, provider: str = "", run_command: str = "",
                   solver: str = "code/", benchmark: str = "",
@@ -91,6 +121,10 @@ def _dispatch_tool() -> Tool:
                     f"  est PWM:    up to {est_pwm} (at ${prov.price_usd_per_hour}/hr "
                     f"× {max_runtime_s}s cap) -> {prov.wallet_address}\n"
                     "Pass confirm=true to dispatch (charged on completion at actual runtime).")
+
+        ok, why = _confirm_paid_dispatch(prov, est_pwm, max_runtime_s)
+        if not ok:
+            return why
 
         holder = uuid.uuid4().hex
         lease = lease_mod.acquire_lease(prov, holder=holder, ttl_s=max_runtime_s)
