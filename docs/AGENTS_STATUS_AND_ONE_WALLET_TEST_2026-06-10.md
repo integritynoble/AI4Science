@@ -99,10 +99,12 @@ for a in unified-LLM research paper claude-code codex computational-imaging; do
 done
 ```
 
-Requirements: a wallet **address alone is not enough** — you need the
-`PWM_TOKEN` (API key or session JWT) of the physicsworldmodel.org account bound
-to the wallet, and that account must hold some PWM. *(Status: pending a token
-for `0xe550…94a74`.)*
+Getting the token is now one command — `ai4science login --pwm` (browser
+approval; stores a revocable key, never a private key; the gate picks it up
+automatically). The account must hold some PWM. *(Status: DONE 2026-06-10 —
+verified live with wallet `0xe550…94a74`: turn charged 0.002185 PWM with the
+90/10 split, `/feedback` contribution registered. See pwm repo
+`pwm-team/doc/PWM_AI4SCIENCE_LOGIN_PWM_LIVE_TEST_2026-06-10.md`.)*
 
 ### Manual hop‑by‑hop
 
