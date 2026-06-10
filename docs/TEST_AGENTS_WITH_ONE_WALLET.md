@@ -59,6 +59,13 @@ computational-imaging          70000.0       52500.0   ← largest pool
 wallet 0x7E57…0001  lifetime_earned 150,100.00 PWM
 ```
 
+> **Model lineup (since 2026-06-10):** anthropic-backed turns now serve
+> **`claude-fable-5`** first (Opus 4.8 is the fallback — chain: Fable 5 →
+> Opus 4.8 → Sonnet 4.6 → GPT-5.5 → Gemini). The charge figures above are
+> from Opus 4.8 runs; Fable 5 turns bill at the same price tier and land
+> within ~15% (e.g. unified-LLM ≈ 0.0025 PWM, verified live). The earnings
+> table is unaffected — A_k depends on the pool config, not the model.
+
 ---
 
 ## B. Manual, step by step
