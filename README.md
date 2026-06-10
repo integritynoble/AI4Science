@@ -43,8 +43,8 @@ or contribute tools/solutions that agents use in paid turns
 hold 4,000,000 PWM and pay out weekly via
 `A_k = (M_pool − M(t)) × w_k / Σw_j` — this can out-earn website mining by
 orders of magnitude. Bootstrap your first balance by mining on
-[physicsworldmodel.org](https://physicsworldmodel.org) (0.1–5 PWM per accepted
-artifact). Details: `docs/AGENT_IMPROVEMENT_EARNING_METHOD.md` ·
+[physicsworldmodel.org](https://physicsworldmodel.org) (≈2 PWM instantly at
+LLM-accept, your full A(t) share at founder promotion). Details: `docs/AGENT_IMPROVEMENT_EARNING_METHOD.md` ·
 `docs/AI4SCIENCE_USER_MANUAL.md`.
 
 The CLI runs **locally** in v0.1: nothing leaves your machine. You can:
