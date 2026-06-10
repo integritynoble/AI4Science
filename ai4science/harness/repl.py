@@ -125,7 +125,7 @@ def _pick_brand(backend: Optional[str], model: Optional[str]):
             if b == backend:
                 return backend, m
         # Backend not in orchestration chain — use a default model.
-        return backend, "claude-opus-4-8"
+        return backend, "claude-fable-5"
 
     if model:
         # Only a model id given — infer its backend so `--model gemini-…` works.

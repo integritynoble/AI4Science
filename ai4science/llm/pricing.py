@@ -20,8 +20,8 @@ PWM_USD = float(os.environ.get("AI4SCIENCE_PWM_USD", "5.0"))
 # (input, output) USD per 1,000,000 tokens — official list prices (approx).
 PRICES_USD_PER_M: Dict[str, Tuple[float, float]] = {
     # Anthropic
+    "claude-fable-5":         (15.0, 75.0),   # Opus-tier pricing until official list price lands
     "claude-opus-4-8":        (15.0, 75.0),
-    "claude-opus-4-7":        (15.0, 75.0),
     "claude-sonnet-4-6":      (3.0, 15.0),
     "claude-haiku-4-5":       (0.80, 4.0),
     # OpenAI
