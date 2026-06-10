@@ -90,12 +90,13 @@ switches agents and `/model` switches LLM brands.
 Every turn debits your ledger and is split **90% to the LLM provider / 10% to
 the mining pool** — all visible in your transaction history.
 
-## Step 4 — Earn while you use: the early-user feedback program
+## Step 4 — Earn while you use: time-decay feedback rewards
 
 **This is the part early users should not miss.** Each agent has its own
 PWM mining pool (4,000,000 PWM across the six; computational-imaging's
-1,400,000 is the largest). The **first ~50 users of each agent** can earn
-directly from that pool just by reporting their experience:
+1,400,000 is the largest). **Anyone, at any time**, can earn from that pool
+just by reporting their experience — but the reward per feedback **decays as
+the agent's total usage grows**, so the earliest feedback is worth the most:
 
 ```
 /feedback the dispatch step was confusing — suggest showing the queue position
@@ -105,13 +106,18 @@ Type `/feedback <your suggestion or problem>` inside any agent chat. That
 registers a **feedback contribution** in that agent's pool, bound to your
 wallet — and then, **automatically, with no claim step**:
 
+- **Your reward weight is locked the moment you submit** —
+  `w = 10 / (1 + 0.1 × agent_total_usage_so_far)`. Feedback at the very first
+  usage locks in the maximum weight (10) *forever*; the same feedback after
+  ~1,000 turns of agent usage locks in ≈0.1. Early feedback keeps its full
+  value no matter how big the agent later gets.
 - At each **weekly emission epoch**, the pool pays out
   `A(t) = (M_pool − M_solo) × w_k / Σ w_j` per contribution — **75% to you**,
   25% to the treasury — credited straight to your account (bound to your
-  address).
-- **Earlier is worth more.** The pool emits a fixed fraction of what *remains*,
-  so the same feedback in epoch 1 earns more than in epoch 10. Feedback weight
-  is also front-loaded: it is highest while the agent has few users.
+  address), automatically, no claim step.
+- **Double early-bird:** the pool also emits a fixed fraction of what
+  *remains*, so epoch 1 pays more than epoch 10 even at equal weight. Early
+  feedback × early epochs is where the real money is.
 - One feedback contribution **per agent** per user — so trying all six agents
   and giving honest feedback on each stakes you in all six pools.
 
@@ -119,16 +125,20 @@ What good feedback looks like: a problem you actually hit, a confusing step, a
 missing capability, a concrete suggestion. (Spam/duplicate feedback can be
 disabled by governance and earns nothing.)
 
-> **In short: the first several users don't need to keep mining — the feedback
-> you give while using the agents earns the PWM you spend, and then some.**
+> **In short: early users don't need to keep mining — feedback given during
+> the agent's first usage locks in a high weight, and the weekly payouts it
+> earns can sustain (and exceed) what you spend.** Later users' feedback locks
+> in a small weight — it still registers and still pays, but won't cover
+> continued usage by itself; that is by design, and it's the signal to move to
+> contributing or mining (Step 5).
 > Note: the first weekly epoch pays out once the reward pool goes live
-> (expected late June 2026); your contribution is registered and queued from
-> the moment you submit it.
+> (expected late June 2026); your contribution — and its frozen weight — is
+> registered from the moment you submit it.
 
-## Step 5 — Earning later, once the early-feedback slots fill
+## Step 5 — Earning later, once feedback rewards have decayed
 
-After the first ~50 users per agent, feedback alone no longer mints. Keep
-earning by:
+As the agents accumulate usage, new feedback locks in ever-smaller weights and
+stops covering your turn costs. Keep earning by:
 
 1. **Mining on [physicsworldmodel.org](https://physicsworldmodel.org)** — more
    principles, digital twins, benchmarks, solutions (the bootstrap path never
