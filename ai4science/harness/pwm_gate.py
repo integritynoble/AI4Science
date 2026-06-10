@@ -7,10 +7,10 @@ from ai4science import wallet  # shared PWM billing transport (linked mode)
 
 _EARN = ("Earn PWM two ways: (1) Mine on physicsworldmodel.org (principles, digital "
          "twins, benchmarks, solutions) to bootstrap your first balance. (2) IMPROVE "
-         "THE AGENTS — use them, then /feedback problems + suggestions (each feedback "
-         "unlocks after real usage: 20 paid turns for the first, fewer for the next, "
-         "floor 5) — early feedback roughly refunds your next turns — or contribute "
-         "tools/solutions others use; the agent pools (4M PWM) pay weekly for those.")
+         "THE AGENTS — use them until your PWM runs low, then /feedback problems + "
+         "suggestions (refills a shrinking runway: ~19 turns, then 18, … floor 5; "
+         "early feedback refills the most) — or contribute tools/solutions others "
+         "use; the agent pools (4M PWM) pay weekly for those.")
 
 
 def _truthy(v) -> bool:

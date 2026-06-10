@@ -36,8 +36,8 @@ Then just run `ai4science` to start a chat session (like Claude Code) — the in
 
 Usage is paid in PWM, and **the primary way to earn PWM is improving the
 agents themselves**: `/feedback` a problem or suggestion in any agent chat
-(an instant reward sized to roughly refund your next block of usage while the
-agent is young — unlocked by real usage: 20 paid turns, then 19, … floor 5),
+(an instant reward that refills a shrinking runway — ~19 turns, then 18, …
+floor 5 — unlocked only when your PWM is nearly used up after real usage),
 or contribute tools/solutions that agents use in paid turns
 (usage-weighted, earns weekly for as long as it's used). The six agent pools
 hold 4,000,000 PWM and pay out weekly via

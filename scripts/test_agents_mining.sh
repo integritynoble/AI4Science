@@ -62,8 +62,9 @@ os.environ.setdefault("CSRF_SECRET", secrets.token_hex(32))
 os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///${DB}"
 for k in ("GOOGLE_CLIENT_ID","SSO_VALIDATE_URL","SSO_REDIRECT_URL"): os.environ.setdefault(k,"")
 os.environ.setdefault("GCS_BUCKET","test-bucket")
-os.environ.setdefault("AGENT_FEEDBACK_TURNS_START","1")   # test ladder: 1 turn unlocks
-os.environ.setdefault("AGENT_FEEDBACK_TURNS_FLOOR","1")
+# test mode: treat any balance as "low" so the sustenance feedback path runs
+# (prod gating: balance ≤ ~3 of the user's own turns)
+os.environ.setdefault("AGENT_FEEDBACK_LOW_WATER_TURNS","1000000000")
 import sqlalchemy.dialects.postgresql as pg
 from sqlalchemy import JSON
 pg.JSONB = JSON

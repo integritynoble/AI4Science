@@ -42,11 +42,12 @@ scripts/test_agents_mining.sh 0x7E57…0001 \
 **Expected output (either mode):**
 
 ```
-   unified-LLM            charged 0.0   feedback: accepted — earned 0.0024 PWM (sustains ~1 more turns)
-   research               charged 0.0   feedback: accepted — earned 0.0050 PWM (sustains ~1 more turns)
+   unified-LLM            charged -0.043   feedback: accepted — earned 0.0455 PWM (sustains ~19 more turns)
+   research               charged -0.215   feedback: accepted — earned 0.2292 PWM (sustains ~19 more turns)
    ...
-   (test ladder = 1 turn; "charged 0.0" = the instant feedback reward refunded
-    the turn cost — net zero, the sustenance loop working)
+   (negative "charged" = the instant refill exceeded the turn cost — the
+    sustenance loop refilling a ~19-turn runway; test mode treats any balance
+    as low, prod requires a nearly-empty balance)
 
    feedback pays an INSTANT usage-sized reward; weekly pool epochs pay
    usage-weighted contributions (tools/solutions) only.
@@ -106,8 +107,8 @@ So you understand each hop.
        | ai4science chat --mode "$a" --workspace /tmp --yes
    done
    ```
-   Each turn charges PWM to the provider; `/feedback` (once unlocked by the
-   20→5 turn ladder) pays an instant usage-sized reward to your wallet.
+   Each turn charges PWM to the provider; `/feedback` (once your balance runs
+   low after real usage) refills a shrinking runway of turns.
 
 3. **Emit one weekly epoch** (admin) — pays your wallet from each pool:
    ```bash
@@ -131,8 +132,9 @@ So you understand each hop.
   founder providers serve the LLMs; your wallet pays PWM.
 - **Pays to run:** every turn debits PWM from your wallet to the provider.
 - **Earns from each agent:** `/feedback` pays an **instant usage-sized
-  reward** (≈ your next usage block, decaying with agent usage; ladder-gated
-  20→5 turns), and any registered tool/solution you author earns **75%** of
+  reward** refilling a shrinking runway (~19→5 turns, decaying with agent
+  usage; unlocked only on a nearly-empty balance), and any registered
+  tool/solution you author earns **75%** of
   each agent's weekly emission (treasury 25%), with **computational-imaging
   the largest pool**.
 

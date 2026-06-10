@@ -102,9 +102,9 @@ the mining pool** — all visible in your transaction history.
 
 ## Step 4 — Earn while you use: feedback sustains your usage
 
-**The sustenance loop.** Use an agent, then tell us what you found — each
-accepted `/feedback` pays an **instant PWM reward sized to roughly fund your
-next block of usage**:
+**The sustenance loop.** Spend your PWM using an agent; when you've nearly
+run out, tell us what you found — each accepted `/feedback` pays an **instant
+PWM reward that refills a shrinking runway of further usage**:
 
 ```
 /feedback the dispatch step was confusing — suggest showing the queue position
@@ -112,15 +112,18 @@ next block of usage**:
 
 How it works, end to end:
 
-- **The ladder:** the n‑th feedback on an agent unlocks after your own paid
-  turns on it — **20 turns for the first, 19 more for the second, … down to a
-  5‑turn floor**. Submitting early returns `need_more_usage` and earns nothing
-  (feedback PWM is for genuine users, not drive‑by claims).
+- **When it unlocks:** only when you have **actually used the agent** AND your
+  **balance is nearly gone** (≤ ~3 of your own turns' worth). A healthy balance
+  returns `balance_not_low`; never having used the agent returns
+  `use_agent_first`; and you must burn each refill before the next one.
+  Feedback is a lifeline for users who've spent their PWM — not bonus income
+  on top of a full wallet.
 - **The reward — instant, automatic, no claim step:**
-  `reward = next_block_turns × your own average turn cost × decay`, where
+  `reward = runway_turns × your own average turn cost × decay`, where the
+  runway **shrinks per feedback** (~19 turns, then 18, … floor 5), the
+  per-turn cost is capped (anti-inflation), and
   `decay = 1/(1 + 0.1 × agent_total_usage)`. Early in an agent's life decay ≈
-  1.0, so your feedback roughly **refunds your next 19, 18, … turns** — early
-  users keep using agents nearly for free.
+  1.0 — run out, feed back, and you're **refilled for ~19 more turns**.
 - **The decay is the design:** as the agent accumulates usage the multiplier
   falls toward 0 — late feedback pays a fraction of a turn and **won't sustain
   usage**. That's the signal to move to contributing or mining (Step 5).
@@ -132,11 +135,11 @@ How it works, end to end:
 What good feedback looks like: a problem you actually hit, a confusing step, a
 missing capability, a concrete suggestion.
 
-> **In short: use an agent ~20 turns → feedback → your next block of usage is
-> roughly refunded → repeat, with shrinking blocks.** Early users ride this
-> loop almost for free; later users' rewards taper below their costs — by
-> design — and the real earning shifts to contributed tools/solutions (or
-> mining).
+> **In short: spend your PWM using an agent → when you're nearly out, feed
+> back what you found → your runway is refilled (~19 turns, then 18, …) →
+> repeat.** Early users ride this loop almost for free; later users' refills
+> taper below their costs — by design — and the real earning shifts to
+> contributed tools/solutions (or mining).
 
 ## Step 5 — Earning later, once feedback rewards have decayed
 
@@ -187,7 +190,7 @@ A_k = (M_pool − M(t)) × w_k / Σ(w_j over active contributions j)    × λ
 
   | Improvement type | w_k rule |
   |---|---|
-  | **feedback** (`/feedback` in chat) | **Not part of A_k** — paid **instantly** at submission, sized to your next usage block: `next_block_turns × your avg turn cost × 1/(1 + 0.1 × agent_usage)`. **Unlock ladder:** 20, +19, … (floor +5) of your own paid turns on that agent. |
+  | **feedback** (`/feedback` in chat) | **Not part of A_k** — paid **instantly** at submission, refilling a shrinking runway: `runway_turns (19, 18, … floor 5) × your capped avg turn cost × 1/(1 + 0.1 × agent_usage)`. **Unlocks only when your balance is nearly exhausted** after real usage of that agent. |
   | **tool / solution / digital twin / benchmark** (registered, used by agents in paid turns) | **Usage-weighted:** Σ weight_units per *distinct non-author* user × quality (self-usage excluded; sybil-capped). Grows every week others keep using it. |
 
 - **Payout:** each epoch, every active contribution receives its A_k —

@@ -424,7 +424,8 @@ def run_common_repl(
                     continue
                 ok, status = gate.post_feedback(agent_name=active_spec.name, text=arg)
                 note = (status if ok and str(status).startswith("accepted")
-                        else status if str(status).startswith("need_more_usage")
+                        else status if any(str(status).startswith(k) for k in
+                                           ("use_agent_first", "balance_not_low", "need_more_usage"))
                         else "program full (first-N guard)" if status == "program_full"
                         else f"failed ({status})")
                 print(f"[pwm] feedback for {active_spec.name}: {note}", flush=True)

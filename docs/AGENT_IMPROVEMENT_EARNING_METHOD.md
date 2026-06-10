@@ -26,15 +26,16 @@ A_k = (M_pool − M(t)) × w_k / Σ(w_j over active contributions j)    × λ
 
 | Type | How you earn it | w_k rule |
 |---|---|---|
-| **feedback** | `/feedback <problem/suggestion>` while using the agent | **Outside A_k — paid INSTANTLY at submission (sustenance, directive 2026-06-10):** `reward = next_block_turns × user's own avg turn cost × 1/(1 + 0.1×agent_total_usage)`. Early ≈ refunds the next 19, 18, … turns; decays toward 0 with agent usage. **Unlock ladder:** the n‑th feedback requires the user's own paid turns — 20, +19, … floor +5 (`feedback_turns_cumulative`); zero-usage → `need_more_usage`, earns nothing. Repeatable per rung; 100% to the user (no treasury slice on these micro-rewards); draws down the pool via the `agent_feedback_reward` txn (counted in M(t)); takes no weekly-epoch share (weight stays 0). |
+| **feedback** | `/feedback <problem/suggestion>` while using the agent | **Outside A_k — paid INSTANTLY at submission (sustenance, directive 2026-06-10):** `reward = next_block_turns × user's own avg turn cost × 1/(1 + 0.1×agent_total_usage)`. Early ≈ refunds the next 19, 18, … turns; decays toward 0 with agent usage. **Unlocks only on LOW BALANCE** (≤ `FEEDBACK_LOW_WATER_TURNS`≈3 × the user's own capped avg turn cost) after real usage of that agent — never used → `use_agent_first`; healthy balance → `balance_not_low`; each runway must be burned before the next refill. Runway shrinks 19, 18, … floor 5 (`feedback_block_turns`); per-turn cost capped (`FEEDBACK_MAX_TURN_COST`) against spend-inflation. Repeatable per rung; 100% to the user (no treasury slice on these micro-rewards); draws down the pool via the `agent_feedback_reward` txn (counted in M(t)); takes no weekly-epoch share (weight stays 0). |
 | **tool** | a domain tool the agent invokes in paid turns | **Usage-weighted**: Σ weight_units per DISTINCT non-author user (self-usage excluded; optional per-user sybil cap) × quality |
 | **solution** | e.g. a CASSI solver dispatched by computational-imaging (`cassi_dispatch` auto-attributes) | same usage-weighted rule |
 | **digital_twin / benchmark** | forward models / tasks the agent runs against | same usage-weighted rule |
 
 Two tracks, two mechanisms:
-- **Feedback = instant sustenance (outside A_k)** — sized to refund the user's
-  next, shrinking usage block while the agent is young (the "20 turns →
-  feedback funds the next 19 → … " metaphor); tapers to a nudge ("contribute
+- **Feedback = instant sustenance (outside A_k)** — unlocks when a user has
+  spent their PWM down to nearly nothing on an agent, and refills a shrinking
+  runway (~19 turns, then 18, … floor 5 — the "use your PWM up → feedback
+  refills the next, smaller block" metaphor); tapers to a nudge ("contribute
   or mine") as agent usage grows.
 - **Tools/solutions = the A_k usage track** — rewards being USEFUL, forever:
   every paid turn that touches your contribution adds weight, and the weekly
@@ -65,8 +66,8 @@ With competition — your tool w=30 vs. another solution w=10:
 Feedback (instant sustenance, outside A_k) — early user on unified-LLM at
 ~0.0025 PWM/turn:
 ```
-feedback #1 (after 20 turns): 19 × 0.0025 × ~1.0 ≈ 0.0475 PWM  (funds the next 19 turns)
-feedback #2 (after 39 turns): 18 × 0.0025 × ~1.0 ≈ 0.045  PWM
+feedback #1 (balance exhausted): 19 × 0.0025 × ~1.0 ≈ 0.0475 PWM  (refills ~19 turns)
+feedback #2 (runway burned):     18 × 0.0025 × ~1.0 ≈ 0.045  PWM
 late user (decay 0.01):        5 × 0.0025 × 0.01 ≈ 0.0001 PWM  (won't sustain — contribute or mine)
 ```
 Live-verified (harness, test ladder=1): each feedback refunded almost exactly
