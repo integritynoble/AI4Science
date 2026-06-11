@@ -111,6 +111,9 @@ app.command("whoami", help="Show how the agent is currently powered.")(login_cmd
 app.command("logout", help="Clear the current login.")(login_cmd.logout)
 app.command("prefer", help="Set credential preference: user | wallet | <provider_id>.")(login_cmd.prefer)
 
+from ai4science.commands import update as update_cmd
+app.command("update", help="Upgrade ai4science to the latest build (like `claude update`).")(update_cmd.update)
+
 
 @app.command("version", help="Print the AI4Science CLI version.")
 def version_cmd() -> None:
@@ -573,7 +576,7 @@ def main() -> None:
     _subcommands = {
         "init", "contribute", "validate", "judge", "overseer", "package",
         "submit", "status", "version", "agents", "chat", "compute", "llm",
-        "stake", "login", "whoami", "logout", "prefer",
+        "stake", "login", "whoami", "logout", "prefer", "update",
     }
     if any(tok in _subcommands for tok in argv_raw):
         app()
@@ -594,6 +597,7 @@ def main() -> None:
             "init", "contribute", "validate", "judge", "overseer",
             "package", "submit", "status", "version", "agents", "chat",
             "compute", "llm", "stake", "login", "whoami", "logout", "prefer",
+            "update",
         }
         if argv[0] not in registered:
             # A mistyped subcommand (e.g. `ai4science dispatch --provider …`,
