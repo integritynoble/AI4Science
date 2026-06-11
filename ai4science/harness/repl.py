@@ -415,7 +415,8 @@ def run_common_repl(
     _interrupts = {"n": 0}
     while True:
         try:
-            line = input("> ").strip()
+            from ai4science.harness import tui
+            line = tui.read_input("> ", mode_label or "chat").strip()
             _interrupts["n"] = 0
         except EOFError:
             print("\n[harness] EOF — exiting", flush=True)

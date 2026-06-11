@@ -148,7 +148,8 @@ def run_codex_repl(workspace: Path, *, auto_yes: bool = False,
     while True:
         try:
             if is_tty:
-                line = input("❯ ")
+                from ai4science.harness import tui
+                line = tui.read_input("❯ ", "codex")
             else:
                 line = sys.stdin.readline()
                 if not line:

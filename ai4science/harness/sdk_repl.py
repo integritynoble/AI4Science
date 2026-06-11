@@ -266,8 +266,9 @@ async def _loop(workspace: Path, *, auto_yes: bool, read_only: bool,
             try:
                 if is_tty:
                     print(_rule(), flush=True)
+                    from ai4science.harness import tui
                     line = await asyncio.get_event_loop().run_in_executor(
-                        None, lambda: input("❯ "))
+                        None, lambda: tui.read_input("❯ ", "claude-code"))
                 else:
                     line = await asyncio.get_event_loop().run_in_executor(
                         None, sys.stdin.readline)
