@@ -235,6 +235,9 @@ async def _loop(workspace: Path, *, auto_yes: bool, read_only: bool,
     n = 0
     is_tty = sys.stdin.isatty()
     if is_tty:
+        from ai4science.harness import lineedit
+        lineedit.enable("claude-code")     # arrow-key history + cursor editing
+    if is_tty:
         # the real Claude Code TUI manages these; in a line REPL they leak
         # escape artifacts into input — turn them off for the session.
         sys.stdout.write("\x1b[?1004l\x1b[?2004l")

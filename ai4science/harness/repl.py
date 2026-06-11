@@ -394,6 +394,8 @@ def run_common_repl(
     if gate.enabled:
         print("[harness] PWM gate ON — each turn is charged to the provider in PWM", flush=True)
 
+    from ai4science.harness import lineedit
+    lineedit.enable(mode_label or "chat")     # ↑/↓ history, ←/→ cursor
     _interrupts = {"n": 0}
     while True:
         try:
