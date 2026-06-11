@@ -61,8 +61,13 @@ def _bordered(prompt: str, mode: str) -> str:
     from prompt_toolkit.layout.containers import HSplit, Window
     from prompt_toolkit.layout.controls import FormattedTextControl
     from prompt_toolkit.widgets import Frame, TextArea
+    from prompt_toolkit.widgets.base import Border
     from prompt_toolkit.styles import Style
     from prompt_toolkit.history import FileHistory
+
+    # Rounded corners (╭╮╰╯) like Claude Code, instead of the default square set.
+    Border.TOP_LEFT, Border.TOP_RIGHT = "╭", "╮"
+    Border.BOTTOM_LEFT, Border.BOTTOM_RIGHT = "╰", "╯"
 
     hp = _history_path(mode)
     ta = TextArea(
@@ -70,7 +75,7 @@ def _bordered(prompt: str, mode: str) -> str:
         history=FileHistory(str(hp)) if hp else None,
         style="class:input",
     )
-    title = [("class:title", f" ai4science · {mode} ")]
+    title = [("class:title", f"ai4science · {mode}")]
     body = HSplit([
         Frame(ta, title=title),
         Window(FormattedTextControl(
