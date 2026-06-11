@@ -77,7 +77,10 @@ irm https://physicsworldmodel.org/install.ps1 | iex
 
 (WSL users: use the Linux one-liner inside WSL. Equivalent manual install on
 any OS — no git required:
-`pip install "pwm-ai4science[claude] @ https://github.com/integritynoble/AI4Science/archive/refs/heads/main.zip"`.)
+`pip install --user "pwm-ai4science[claude] @ https://github.com/integritynoble/AI4Science/archive/refs/heads/main.zip"`
+— on Debian/Ubuntu add `--break-system-packages` (PEP 668); to UPGRADE an
+existing install add `--force-reinstall --no-cache-dir` (pip caches the GitHub
+zip by URL). The one-line installer above handles all of this automatically.)
 
 > **If your network blocks physicsworldmodel.org** (some institutional
 > networks, e.g. hospital/university filters, block newly registered
