@@ -20,6 +20,75 @@ def _bash_cmd_safe(cmd: str) -> tuple:
     return True, ""
 
 
+# ── Read-only bash classification (Claude Code parity) ──────────────────────
+# Commands that only inspect state. A command classified read-only skips the
+# [y/N] confirmation and runs even in /readonly mode — same as Claude Code's
+# auto-allow for reads / plan mode. The classifier is CONSERVATIVE: anything
+# it can't prove read-only (quoted separators, unknown binaries, redirects)
+# falls through to the normal confirm gate. False-negatives prompt; never the
+# reverse.
+
+_READ_ONLY_CMDS = frozenset({
+    "ls", "cat", "head", "tail", "grep", "egrep", "fgrep", "rg", "find",
+    "wc", "file", "stat", "du", "df", "pwd", "echo", "printf", "which",
+    "whereis", "type", "uname", "whoami", "id", "date", "hostname", "nproc",
+    "free", "uptime", "ps", "printenv", "sort", "uniq", "cut", "tr", "diff",
+    "cmp", "column", "nl", "jq", "md5sum", "sha1sum", "sha256sum", "b2sum",
+    "cksum", "basename", "dirname", "realpath", "readlink", "tree", "git",
+})
+
+# git subcommands that never mutate, regardless of arguments.
+_READ_ONLY_GIT = frozenset({
+    "status", "log", "diff", "show", "ls-files", "rev-parse", "blame",
+    "shortlog", "describe", "reflog", "grep",
+})
+
+# find actions that write or execute.
+_FIND_MUTATORS = frozenset({
+    "-delete", "-exec", "-execdir", "-ok", "-okdir",
+    "-fprint", "-fprintf", "-fls",
+})
+
+# Redirects to /dev/null (and stderr merges) are harmless; strip them before
+# rejecting on any remaining redirect character.
+_DEVNULL_REDIRECT = re.compile(r"[0-9]*>{1,2}\s*/dev/null|2>&1")
+
+# Splitting on every separator (incl. quoted ones) is deliberately lossy in
+# the conservative direction: a quoted `;` produces a bogus extra segment
+# whose first word won't be allowlisted, so the command just falls back to
+# the confirm prompt.
+_SEGMENT_SPLIT = re.compile(r"[;|&\n]+")
+
+
+def is_read_only_bash(cmd: str) -> bool:
+    """True iff every part of *cmd* is provably a read-only inspection."""
+    cmd = (cmd or "").strip()
+    if not cmd:
+        return False
+    stripped = _DEVNULL_REDIRECT.sub(" ", cmd)
+    # Command substitution, process substitution, or any remaining redirect
+    # can write or execute — not provably read-only.
+    if any(tok in stripped for tok in ("$(", "`", "<(", ">(", ">")):
+        return False
+    for segment in _SEGMENT_SPLIT.split(stripped):
+        words = segment.split()
+        if not words:
+            continue
+        prog = words[0]
+        if prog not in _READ_ONLY_CMDS:
+            return False
+        if prog == "git":
+            if len(words) < 2 or words[1] not in _READ_ONLY_GIT:
+                return False
+        elif prog == "find":
+            if any(w in _FIND_MUTATORS for w in words[1:]):
+                return False
+        elif prog == "sort":
+            if "-o" in words[1:]:
+                return False
+    return True
+
+
 class SandboxError(Exception):
     pass
 
@@ -56,6 +125,10 @@ class PermissionGate:
             bok, breason = _bash_cmd_safe(args.get("cmd", ""))
             if not bok:
                 return False, breason
+            # Read-only commands skip confirmation and run even in /readonly
+            # mode (Claude Code parity). The sandbox check above still wins.
+            if is_read_only_bash(args.get("cmd", "")):
+                return True, ""
         if name not in self._mutating:
             return True, ""
         if self.read_only:

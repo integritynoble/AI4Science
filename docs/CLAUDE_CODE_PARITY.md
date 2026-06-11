@@ -367,11 +367,13 @@ native (research/unified-LLM), claude-code, and codex REPLs unless noted.
 
 | Capability | Status | How |
 |---|---|---|
-| **Tool lines like the product** | ✅ (engine modes) | `⏺ Bash(ls /home/x)`, `⏺ Read(/a/b)`, `⏺ Todos [1/2] ✔…/▸…`; result summary `  ⎿ first line (+n lines)` / `  ⎿ ERROR: …` (`_fmt_tool`/`_fmt_result`, sdk_repl) |
+| **Tool lines like the product** | ✅ all 3 | `⏺ Bash(ls /home/x)`, `⏺ Read(/a/b)`, `⏺ Todos [1/2] ✔…/▸…`; result summary `  ⎿ first line (+n lines)` / `  ⎿ ERROR: …` (`_fmt_tool`/`_fmt_result`, sdk_repl; `harness/toolfmt.py` + `on_tool_start`/`on_tool_end` for the native loop, v0.5.6 — streaming tools skip the `⎿` to avoid double-printing) |
 | **Shining-star working indicator** | ✅ all 3 | animated `✶✷✸…` + elapsed seconds while thinking and while a tool runs, cleared on first streamed token (`harness/spinner.py`); no-op on pipes/CI |
 | **Arrow keys + command history** | ✅ all 3 | ↑/↓ history, ←/→ cursor via readline (`harness/lineedit.py`); persisted per-mode `~/.config/ai4science/history_<mode>`; Windows via `pyreadline3` |
 | **`/model` live switch** | ✅ all 3 | claude-code uses the SDK's native `set_model` (context kept); native/codex re-route per turn; aliases fable/opus/sonnet/haiku; billing follows the served model |
 | **Interactive permission prompts** | ✅ claude-code | default mode on a TTY → `allow? [y/N/a(lways)]` per tool via `can_use_tool`; `--yes` = acceptEdits, `--plan` = read-only plan |
+| **Read-only bash auto-allow** | ✅ all 3 | `find`/`ls`/`grep`/`cat`/`git log`… run WITHOUT a permission prompt, exactly like the product (v0.5.6). Conservative classifier (`is_read_only_bash`, `harness/permissions.py`): allowlisted binaries only, no redirects (except `2>/dev/null`/`2>&1`), no `$(…)`/backticks, `find` without `-exec`/`-delete`, read-only `git` subcommands, every pipe/`;`/`&&` segment must qualify. Anything unprovable falls back to the y/N confirm. Runs even in `/readonly` (plan-mode parity); protected-dir sandbox still wins |
+| **End-of-turn footer** | ✅ native | dim `✶ crunched 12s · 3 tools · 2.2k tokens` after every turn (`toolfmt.fmt_turn_footer`, replaces the bare `[tokens: N]`) |
 | **Clean exit** | ✅ all 3 | bare `exit`/`quit`/`q`/`:q`, `/exit`, Ctrl-D, or **Ctrl-C twice** (first cancels input) — no "trapped" state |
 | **Input hygiene** | ✅ engine modes | strips tmux focus events (`^[[O`/`^[[I`), bracketed-paste markers, stray CSI; unwraps quote-pasted slash commands; disables focus reporting for the session (`_clean_input` + `\x1b[?1004l/2004l`) |
 | **`❯` prompt + turn separators** | ✅ claude-code | matches the TUI's visual structure |

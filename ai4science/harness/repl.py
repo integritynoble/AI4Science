@@ -342,6 +342,20 @@ def run_common_repl(
     # Per-turn token accumulator (mutated by the meter wrapper).
     turn_tokens: dict = {"total": 0}
     turn_cost = {"pwm": 0.0, "wallet": None}
+    turn_calls = {"n": 0}
+
+    # Collapsed Claude Code-style tool lines (`⏺ bash(ls …)` / dim `⎿ …`).
+    from ai4science.harness import toolfmt
+
+    def _show_tool_start(name: str, args: dict) -> None:
+        _stop_spin()
+        turn_calls["n"] += 1
+        print(f"\n{toolfmt.fmt_tool_start(name, args)}", flush=True)
+
+    def _show_tool_end(name: str, result: str) -> None:
+        line = toolfmt.fmt_tool_result(result)
+        if line:
+            print(line, flush=True)
     gate = PwmGate.from_env()
     turn_counter = {"n": 0}
     # Agent-mining: domain tools invoked this turn (their authors earn from the
@@ -374,6 +388,7 @@ def run_common_repl(
             on_text=on_text,
             meter=_make_wrapped_meter(active_backend, active_model),
             on_tool=lambda name: turn_tools.add(name),
+            on_tool_start=_show_tool_start, on_tool_end=_show_tool_end,
             registry=build_registry_for(spec, is_subagent=True, ctx=ctx),
         )
         if spec.system_prompt:
@@ -392,6 +407,7 @@ def run_common_repl(
             on_text=on_text,
             meter=_make_wrapped_meter(active_backend, active_model),
             on_tool=lambda name: turn_tools.add(name),
+            on_tool_start=_show_tool_start, on_tool_end=_show_tool_end,
             registry=_registry_for_spec(
                 active_spec, is_subagent=False,
                 ctx=_make_build_context(
@@ -592,7 +608,10 @@ def run_common_repl(
         text, images = mentions.expand(line, workspace)
 
         def _do_turn():
+            import time
             turn_tokens["total"] = 0
+            turn_calls["n"] = 0
+            t0 = time.monotonic()
             _spin["s"] = Spinner("thinking").start()   # shine until first token
             try:
                 result = session.run_turn(text, images=images)
@@ -601,7 +620,9 @@ def run_common_repl(
             # Ensure there's a trailing newline after streamed output.
             if result and not result.endswith("\n"):
                 print(flush=True)
-            print(f"[tokens: {turn_tokens['total']}]", flush=True)
+            print(toolfmt.fmt_turn_footer(seconds=time.monotonic() - t0,
+                                          tools=turn_calls["n"],
+                                          tokens=turn_tokens["total"]), flush=True)
             persistence.save(_sid, workspace, session.history)
 
         try:

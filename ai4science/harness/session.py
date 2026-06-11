@@ -21,6 +21,8 @@ class AgentSession:
                  on_text: Callable[[str], None] = lambda t: None,
                  meter: Callable[[Usage], None] = lambda u: None,
                  on_tool: Callable[[str], None] = lambda name: None,
+                 on_tool_start: Callable[[str, dict], None] = lambda name, args: None,
+                 on_tool_end: Callable[[str, str], None] = lambda name, result: None,
                  compact_limit_chars: int = 0,
                  summarize: Optional[Callable[[str], str]] = None) -> None:
         self.adapter = adapter
@@ -32,6 +34,8 @@ class AgentSession:
         self.on_text = on_text
         self.meter = meter
         self.on_tool = on_tool
+        self.on_tool_start = on_tool_start
+        self.on_tool_end = on_tool_end
         self.history: List[Message] = []
         self.gate = PermissionGate(workspace=workspace, read_only=read_only,
                                    auto_yes=auto_yes, confirm=confirm)
@@ -54,4 +58,5 @@ class AgentSession:
             history=self.history, workspace=self.workspace, registry=self.registry,
             gate=self.gate, on_text=self.on_text, meter=self.meter,
             on_tool=self.on_tool,
+            on_tool_start=self.on_tool_start, on_tool_end=self.on_tool_end,
         )

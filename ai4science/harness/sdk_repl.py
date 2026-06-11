@@ -126,6 +126,14 @@ _ARM = "\x1b[2m  ⎿"                # dim result gutter
 _RST = "\x1b[0m"
 
 
+def _bash_auto_allow(tool_name: str, tool_input: dict) -> bool:
+    """Claude Code parity: read-only shell commands run without a prompt."""
+    if tool_name != "Bash":
+        return False
+    from ai4science.harness.permissions import is_read_only_bash
+    return is_read_only_bash((tool_input or {}).get("command", ""))
+
+
 def _fmt_tool(name: str, inp: dict) -> str:
     """Claude Code-style tool line: `⏺ Bash(ls /home/x)` instead of bare names."""
     inp = inp or {}
@@ -206,6 +214,8 @@ async def _loop(workspace: Path, *, auto_yes: bool, read_only: bool,
 
     async def _ask_permission(tool_name, tool_input, _ctx):
         if tool_name in _always:
+            return PermissionResultAllow()
+        if _bash_auto_allow(tool_name, tool_input):
             return PermissionResultAllow()
         _stop_spin()               # never let the star overwrite the prompt
         # The permission prompt OWNS the tool-line display in interactive mode

@@ -63,6 +63,12 @@ def make_workspace_permission_callback(
         if tool_name in AUTO_ALLOW_TOOLS:
             return PermissionResultAllow()
 
+        # Read-only shell commands: allow without prompting (Claude Code parity).
+        if tool_name == "Bash":
+            from ai4science.harness.permissions import is_read_only_bash
+            if is_read_only_bash(input_dict.get("command", "")):
+                return PermissionResultAllow()
+
         # Mutating tools: require confirmation + sandbox check.
         if tool_name in CONFIRM_TOOLS:
             # Sandbox: any file_path arg must resolve inside workspace.
