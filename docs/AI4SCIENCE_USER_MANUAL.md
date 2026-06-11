@@ -1,7 +1,8 @@
 # AI4Science User Manual
 
 *How to get your first PWM, run the six agents, and earn while you use them.*
-*(2026-06-10)*
+*(2026-06-10 · updated 2026-06-11: `ai4science update` one-word upgrade, full
+bordered TUI for all agents)*
 
 AI4Science is a Claude-Code-style agent for science. You pay for usage in
 **PWM** (the Physics World Model token) — not with API keys, not with a credit
@@ -110,6 +111,23 @@ export AI4SCIENCE_PWM_GATE=1        # turn billing on (off by default)
 
 To disconnect: `ai4science logout` (and revoke the key on your account page).
 
+**Upgrading — one word, like `claude update`:**
+
+```bash
+ai4science update
+```
+
+It detects how you installed (installer venv / pipx / Debian system python)
+and runs the right pip itself — including `--break-system-packages` on
+Debian/Ubuntu PEP 668 hosts and `--force-reinstall --no-cache-dir` always
+(pip caches the GitHub zip by URL, so a naive upgrade silently reinstalls the
+stale build). It prints the new version when done. **Restart any running
+`ai4science chat` sessions afterwards** — a live process keeps the old code.
+(Builds older than 0.5.1 don't have `update` yet: upgrade once with
+`pip install --user --break-system-packages --force-reinstall --no-cache-dir
+"pwm-ai4science[claude] @ https://github.com/integritynoble/AI4Science/archive/refs/heads/main.zip"`,
+or just re-run the one-line installer — then it's `ai4science update` forever.)
+
 ## Step 3 — Use the agents
 
 Six agents, one balance, one command:
@@ -130,6 +148,20 @@ ai4science chat --mode <agent>
 Anthropic-backed turns are served by **Claude Fable 5** first (fallback chain:
 Fable 5 → Opus 4.8 → Sonnet 4.6 → GPT-5.5 → Gemini). Inside a chat, `/mode`
 switches agents and `/model` switches LLM brands.
+
+**The terminal experience (all six agents):** the REPL has Claude Code's feel —
+↑/↓ command history, the pulsing coral working star while the agent thinks,
+`⏺ Bash(...)` tool lines with `⎿` result summaries, clean exits (`/exit`,
+Ctrl-D, Ctrl-C twice). For the **full Anthropic-style bordered TUI**, set one
+environment variable:
+
+```bash
+AI4SCIENCE_TUI=full ai4science chat --mode claude-code   # full-screen app:
+#   output pane + coral bordered input box ╭─ ai4science · claude-code ─╮
+#   + persistent status bar (✶ working… · model · cwd)
+AI4SCIENCE_TUI=1 ai4science chat --mode research         # bordered box only
+ai4science chat --mode paper                             # plain line-REPL (default)
+```
 
 > **Real engines (2026-06-10):** `claude-code` and `codex` run the **genuine
 > products** — the claude-agent-sdk and the codex CLI — so the experience
@@ -305,6 +337,9 @@ any time on your account page and via the API.
 | Browser shows a different code than the terminal | **Deny it.** Someone else may be phishing an approval; restart `login --pwm`. |
 | A turn charged but the agent errored | Charges are per completed turn; transient provider errors are not billed. Check `/model` to switch brands. |
 | Want to stop billing immediately | `unset AI4SCIENCE_PWM_GATE` (and/or `ai4science logout`). |
+| `error: externally-managed-environment` when installing (Debian/Ubuntu) | Use the one-line installer, or add `--break-system-packages` to pip. After that, `ai4science update` handles it automatically. |
+| Upgraded but behavior didn't change | pip caches the GitHub zip by URL — use `ai4science update` (it forces a fresh download), then **restart** any running `ai4science chat` session. |
+| Bordered TUI doesn't appear | It's opt-in: set `AI4SCIENCE_TUI=full` (or `1` for box-only), needs a real terminal (TTY) and version ≥ 0.5.0 (`ai4science version`). |
 
 ---
 
