@@ -394,18 +394,30 @@ def run_common_repl(
     if gate.enabled:
         print("[harness] PWM gate ON — each turn is charged to the provider in PWM", flush=True)
 
+    _interrupts = {"n": 0}
     while True:
         try:
             line = input("> ").strip()
+            _interrupts["n"] = 0
         except EOFError:
             print("\n[harness] EOF — exiting", flush=True)
             break
         except KeyboardInterrupt:
-            print("\n[harness] Ctrl-C — type /exit to quit", flush=True)
+            _interrupts["n"] += 1
+            if _interrupts["n"] >= 2:
+                print("\n[harness] exiting", flush=True)
+                break
+            print("\n[harness] Ctrl-C — press again to exit (or type /exit)",
+                  flush=True)
             continue
 
         if not line:
             continue
+
+        # Accept bare exit words too (not only the slash form) — a user who
+        # types `exit`/`quit`/`q` should not be sent to the LLM or trapped.
+        if line.lower() in ("exit", "quit", "q", ":q", ":q!"):
+            break
 
         if line.startswith("/"):
             cmd, _, arg = line[1:].partition(" ")

@@ -160,7 +160,7 @@ def run_codex_repl(workspace: Path, *, auto_yes: bool = False,
         if not line:
             continue
         low = line.lower()
-        if low in ("/exit", "/quit", "/q", "exit", "quit"):
+        if low in ("/exit", "/quit", "/q", "exit", "quit", "q", ":q"):
             break
         if low in ("/help", "/?"):
             print("[harness] local: /model [name]  /feedback <text>  /exit — "
