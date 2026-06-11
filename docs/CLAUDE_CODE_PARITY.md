@@ -379,13 +379,14 @@ native (research/unified-LLM), claude-code, and codex REPLs unless noted.
 ## The bordered TUI — Anthropic's full visual shell, for all agents (2026-06-11)
 
 The last cosmetic mile is closed. `harness/tui.py` (prompt_toolkit) gives every
-agent the product's visual shell, in three tiers via `AI4SCIENCE_TUI`:
+agent the product's visual shell. **The full-screen TUI is the DEFAULT on a
+real terminal (v0.5.5)** — like the product itself; `AI4SCIENCE_TUI` tunes it:
 
 | `AI4SCIENCE_TUI` | Experience |
 |---|---|
-| *(unset)* | plain line-REPL — default, zero regression |
+| *(unset)* / `full` | **full-screen app like Anthropic's TUI — the default**: output pane managed by the app (alt-screen), bordered input fixed at the bottom, persistent status bar with the **pulsing coral working star**, `/exit`/Ctrl-C/Ctrl-D restore the screen |
 | `1` / `box` | Claude-coral **rounded bordered input box** `╭─ ai4science · mode ─╮` with title, status row (`model · cwd`), hint row, Alt+Enter newline, per-mode FileHistory |
-| `full` | **full-screen app like Anthropic's TUI**: output pane managed by the app (alt-screen), bordered input fixed at the bottom, persistent status bar with the **pulsing coral working star**, `/exit`/Ctrl-C/Ctrl-D restore the screen |
+| `0` / `off` / `plain` | classic plain line-REPL (also automatic when stdin **or stdout** isn't a TTY — pipes/CI never see the app, so `ai4science chat \| tee log` stays clean) |
 
 Architecture (full mode): the existing REPL loops run **unchanged** in a worker
 thread. Their prints land in the pane through a stdout proxy (inline spinners
@@ -403,7 +404,8 @@ managed pane (5/5 checks). Suite 158/158 green.
 
 **Versions:** exit `0.3.1` · arrow keys/history `0.3.3`–`0.3.4` (pyreadline3) ·
 shining-star spinner `0.3.5` (engines) / `0.3.6` (native) · bordered box +
-status bar `0.4.0`–`0.4.2` · **full-screen TUI `0.5.0`**. Pick up any build
-with `pip install --user --force-reinstall --no-cache-dir
+status bar `0.4.0`–`0.4.2` · **full-screen TUI `0.5.0`** · **full TUI on by
+default `0.5.5`**. Pick up any build with `ai4science update` (≥ 0.5.3) or
+`pip install --user --force-reinstall --no-cache-dir
 "pwm-ai4science[claude] @ https://github.com/integritynoble/AI4Science/archive/refs/heads/main.zip"`
 (the `--no-cache-dir` matters — pip caches the GitHub zip by URL).

@@ -1,9 +1,11 @@
 """Bordered input box — the Claude-Code-style ╭──╮ input frame, for every agent.
 
-Opt-in via AI4SCIENCE_TUI=1 (default stays the plain line-REPL so it can never
-regress). Uses prompt_toolkit for a real bordered, multiline, history-aware
-input box; falls back to plain input() when the flag is off, stdin isn't a TTY,
-or prompt_toolkit is absent.
+The full-screen bordered TUI is the DEFAULT on a real terminal (like the
+product). `AI4SCIENCE_TUI` tunes it: `full` (default), `1`/`box` for just the
+bordered input line, `0`/`off`/`plain` for the classic line-REPL. Uses
+prompt_toolkit for a real bordered, multiline, history-aware input box; falls
+back to plain input() when opted out, stdin/stdout isn't a TTY, or
+prompt_toolkit is absent.
 
   read_input(prompt, mode) -> str        # one bordered prompt; raises EOFError/
                                          # KeyboardInterrupt like input()
@@ -20,10 +22,9 @@ _CORAL = "ansibrightred"   # closest named pt color; overridden by the rgb style
 
 
 def tui_enabled() -> bool:
-    if str(os.environ.get("AI4SCIENCE_TUI", "")).strip().lower() not in (
-            "1", "true", "yes", "on"):
-        return False
-    if not sys.stdin.isatty():
+    """Bordered single-prompt input (box tier). Full-screen routes through the
+    active screen in read_input, so this only gates the box."""
+    if tui_mode() != "box":
         return False
     try:
         import prompt_toolkit  # noqa: F401
@@ -132,7 +133,8 @@ def _bordered(prompt: str, mode: str, status: str = "") -> str:
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# Full-screen TUI (AI4SCIENCE_TUI=full) — the whole Claude Code experience:
+# Full-screen TUI (the default; AI4SCIENCE_TUI tunes it) — the whole Claude
+# Code experience:
 # output pane managed by the app, bordered input at the bottom, persistent
 # status bar with a pulsing working star. The existing REPL loops run UNCHANGED
 # in a worker thread: their prints land in the pane (stdout redirect) and their
@@ -143,12 +145,16 @@ _ACTIVE = {"screen": None}
 
 
 def tui_mode() -> str:
+    # The full-screen app owns the terminal, so require a real TTY on BOTH
+    # ends — `ai4science chat | tee log` must stay a plain pipe-safe REPL.
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        return "off"
     v = str(os.environ.get("AI4SCIENCE_TUI", "")).strip().lower()
-    if v == "full":
-        return "full" if sys.stdin.isatty() else "off"
+    if v in ("0", "false", "no", "off", "plain"):
+        return "off"
     if v in ("1", "true", "yes", "on", "box"):
-        return "box" if sys.stdin.isatty() else "off"
-    return "off"
+        return "box"
+    return "full"  # default (unset or `full`)
 
 
 class _StdoutProxy:
@@ -320,8 +326,9 @@ class FullScreen:
 
 
 def run_full(mode: str, runner) -> bool:
-    """If AI4SCIENCE_TUI=full, run `runner()` inside the full-screen app and
-    return True; else return False (caller proceeds normally)."""
+    """If the full-screen TUI is active (the default on a TTY), run `runner()`
+    inside the app and return True; else return False (caller proceeds
+    normally)."""
     if tui_mode() != "full":
         return False
     try:

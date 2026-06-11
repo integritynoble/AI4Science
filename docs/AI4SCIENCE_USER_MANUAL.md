@@ -149,18 +149,19 @@ Anthropic-backed turns are served by **Claude Fable 5** first (fallback chain:
 Fable 5 → Opus 4.8 → Sonnet 4.6 → GPT-5.5 → Gemini). Inside a chat, `/mode`
 switches agents and `/model` switches LLM brands.
 
-**The terminal experience (all six agents):** the REPL has Claude Code's feel —
-↑/↓ command history, the pulsing coral working star while the agent thinks,
-`⏺ Bash(...)` tool lines with `⎿` result summaries, clean exits (`/exit`,
-Ctrl-D, Ctrl-C twice). For the **full Anthropic-style bordered TUI**, set one
-environment variable:
+**The terminal experience (all six agents):** every agent opens in the **full
+Anthropic-style bordered TUI by default** (v0.5.5) — output pane, coral
+bordered input box `╭─ ai4science · mode ─╮` fixed at the bottom, persistent
+status bar with the pulsing `✶ working…` star, plus Claude Code's feel
+throughout: ↑/↓ command history, `⏺ Bash(...)` tool lines with `⎿` result
+summaries, clean exits (`/exit`, Ctrl-D, Ctrl-C twice). `AI4SCIENCE_TUI` tunes
+it if you prefer less:
 
 ```bash
-AI4SCIENCE_TUI=full ai4science chat --mode claude-code   # full-screen app:
-#   output pane + coral bordered input box ╭─ ai4science · claude-code ─╮
-#   + persistent status bar (✶ working… · model · cwd)
-AI4SCIENCE_TUI=1 ai4science chat --mode research         # bordered box only
-ai4science chat --mode paper                             # plain line-REPL (default)
+ai4science chat --mode claude-code             # full-screen TUI (default)
+AI4SCIENCE_TUI=box ai4science chat             # bordered input box only
+AI4SCIENCE_TUI=off ai4science chat             # classic plain line-REPL
+# pipes/CI are automatic: no TTY on stdin or stdout → plain REPL, no app
 ```
 
 > **Real engines (2026-06-10):** `claude-code` and `codex` run the **genuine
@@ -339,7 +340,7 @@ any time on your account page and via the API.
 | Want to stop billing immediately | `unset AI4SCIENCE_PWM_GATE` (and/or `ai4science logout`). |
 | `error: externally-managed-environment` when installing (Debian/Ubuntu) | Use the one-line installer, or add `--break-system-packages` to pip. After that, `ai4science update` handles it automatically. |
 | Upgraded but behavior didn't change | pip caches the GitHub zip by URL — use `ai4science update` (it forces a fresh download), then **restart** any running `ai4science chat` session. |
-| Bordered TUI doesn't appear | It's opt-in: set `AI4SCIENCE_TUI=full` (or `1` for box-only), needs a real terminal (TTY) and version ≥ 0.5.0 (`ai4science version`). |
+| Bordered TUI doesn't appear | It's the default since 0.5.5 (`ai4science version`; `ai4science update` to upgrade) but needs a real terminal — a TTY on **both** stdin and stdout (pipes/CI fall back to the plain REPL). To force a tier: `AI4SCIENCE_TUI=full`/`box`; to turn it off: `AI4SCIENCE_TUI=off`. |
 
 ---
 
