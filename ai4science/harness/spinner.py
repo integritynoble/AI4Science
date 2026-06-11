@@ -17,6 +17,12 @@ import time
 # the star reads as "shining".
 _FRAMES = ["✶", "✷", "✸", "✹", "✺", "✹", "✸", "✷"]
 
+# Claude Code's working star is a coral orange (brand ~#d97757);
+# 256-color 173 (#d7875f) is the closest widely-supported match.
+STAR_COLOR = "\x1b[38;5;173m"
+_RESET = "\x1b[0m"
+_DIM = "\x1b[2m"
+
 
 class Spinner:
     def __init__(self, label: str = "working", stream=None):
@@ -32,7 +38,9 @@ class Spinner:
             if self._stop.is_set():
                 break
             secs = int(time.monotonic() - self._t0)
-            self.stream.write(f"\r\x1b[2m{frame} {self.label}… ({secs}s)\x1b[0m")
+            # warm-orange star (like Claude Code), dim label/elapsed
+            self.stream.write(f"\r{STAR_COLOR}{frame}{_RESET} "
+                              f"{_DIM}{self.label}… ({secs}s){_RESET}")
             self.stream.flush()
             self._stop.wait(0.12)
 

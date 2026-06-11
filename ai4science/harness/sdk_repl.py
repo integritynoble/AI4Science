@@ -120,6 +120,12 @@ def _build_mcp(workspace: Path):
     return {"ai4science": server}, allowed
 
 
+from ai4science.harness.spinner import STAR_COLOR as _SC
+_STAR = f"{_SC}⏺\x1b[0m"            # Claude-coral dot (matches the spinner)
+_ARM = "\x1b[2m  ⎿"                # dim result gutter
+_RST = "\x1b[0m"
+
+
 def _fmt_tool(name: str, inp: dict) -> str:
     """Claude Code-style tool line: `⏺ Bash(ls /home/x)` instead of bare names."""
     inp = inp or {}
@@ -138,7 +144,7 @@ def _fmt_tool(name: str, inp: dict) -> str:
             ("✔ " if t.get("status") == "completed" else
              "▸ " if t.get("status") == "in_progress" else "· ")
             + str(t.get("content", ""))[:48] for t in todos[:6])
-        return f"⏺ Todos [{done}/{len(todos)}] {items}"
+        return f"{_STAR} \x1b[1mTodos\x1b[0m [{done}/{len(todos)}] {items}"
     elif name == "WebFetch":
         arg = inp.get("url", "")
     else:
@@ -146,7 +152,7 @@ def _fmt_tool(name: str, inp: dict) -> str:
     arg = str(arg).replace("\n", " ")
     if len(arg) > 88:
         arg = arg[:85] + "…"
-    return f"⏺ {name}({arg})"
+    return f"{_STAR} \x1b[1m{name}\x1b[0m({arg})"
 
 
 def _fmt_result(content, is_error: bool) -> Optional[str]:
@@ -156,11 +162,12 @@ def _fmt_result(content, is_error: bool) -> Optional[str]:
                            if isinstance(b, dict) and b.get("type") == "text")
     text = str(content or "").strip()
     if not text:
-        return "  ⎿ (no output)" if is_error else None
+        return f"{_ARM} (no output){_RST}" if is_error else None
     first = text.splitlines()[0][:100]
     n = len(text.splitlines())
     tail = f" (+{n - 1} lines)" if n > 1 else ""
-    return f"  ⎿ {'ERROR: ' if is_error else ''}{first}{tail}"
+    err = "\x1b[31mERROR: \x1b[0m\x1b[2m" if is_error else ""
+    return f"{_ARM} {err}{first}{tail}{_RST}"
 
 
 def _provider_wallet() -> Optional[str]:
