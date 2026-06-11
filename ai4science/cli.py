@@ -541,7 +541,7 @@ def _bare_launch(read_only: bool, auto_yes: bool, plan_mode: bool,
                 read_only=read_only, yes=auto_yes, plan=plan_mode,
                 no_subagents=False, no_mcp=False,
                 continue_session=continue_session,
-                model=model, resume=resume, mode=mode,
+                model=model, backend=None, resume=resume, mode=mode,
             )
         except typer.Exit as e:
             sys.exit(e.exit_code or 0)

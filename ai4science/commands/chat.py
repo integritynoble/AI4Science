@@ -97,6 +97,16 @@ def chat(
 ) -> None:
     """Open a persistent chat session with the agent."""
     import os
+    # Direct (non-Typer) calls — e.g. the bare `ai4science` launcher — leave
+    # any OMITTED parameter as a Typer OptionInfo object, not its default.
+    # Normalize every param so a newly added option can never leak downstream
+    # (cost: 2026-06-11 "OptionInfo is not JSON serializable" in the proxy).
+    import typer.models as _tm
+    _d = lambda v: v.default if isinstance(v, _tm.ParameterInfo) else v
+    agent, workspace, read_only, yes = _d(agent), _d(workspace), _d(read_only), _d(yes)
+    plan, no_subagents, no_mcp, model = _d(plan), _d(no_subagents), _d(no_mcp), _d(model)
+    backend, continue_session, resume, mode = (
+        _d(backend), _d(continue_session), _d(resume), _d(mode))
     model = model or os.environ.get("AI4SCIENCE_MODEL")
     if agent.lower() != "claude":
         console.print(
