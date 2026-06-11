@@ -197,10 +197,19 @@ async def _loop(workspace: Path, *, auto_yes: bool, read_only: bool,
     # Claude Code parity: in default mode on a TTY, permission requests become
     # interactive y/n/a prompts (a = always allow this tool for the session).
     _always: set = set()
+    _spin = {"s": None}            # shared so the prompt can pause the star
+
+    def _stop_spin() -> None:
+        if _spin["s"] is not None:
+            _spin["s"].stop()
+            _spin["s"] = None
 
     async def _ask_permission(tool_name, tool_input, _ctx):
         if tool_name in _always:
             return PermissionResultAllow()
+        _stop_spin()               # never let the star overwrite the prompt
+        # The permission prompt OWNS the tool-line display in interactive mode
+        # (the stream loop skips re-printing it).
         line = _fmt_tool(tool_name, tool_input or {})
         try:
             ans = await asyncio.get_event_loop().run_in_executor(
@@ -325,33 +334,36 @@ async def _loop(workspace: Path, *, auto_yes: bool, read_only: bool,
             tools_used: list[str] = []
             result: Optional[ResultMessage] = None
             from ai4science.harness.spinner import Spinner
-            spin = Spinner("thinking").start()   # shining star while we wait
+            _spin["s"] = Spinner("thinking").start()   # shining star while we wait
             try:
                 async for msg in client.receive_response():
                     if isinstance(msg, AssistantMessage):
                         for block in msg.content:
                             if isinstance(block, TextBlock):
-                                spin.stop()                 # text streaming = the activity
+                                _stop_spin()                 # text = the activity
                                 print(block.text, end="", flush=True)
                             elif isinstance(block, ToolUseBlock):
-                                spin.stop()
+                                _stop_spin()
                                 tools_used.append(block.name)
-                                print(f"\n{_fmt_tool(block.name, block.input or {})}",
-                                      flush=True)
-                                spin.start(block.name.lower())  # shine while the tool runs
+                                # In interactive mode the permission prompt already
+                                # printed this tool line — don't duplicate it.
+                                if not interactive_perms:
+                                    print(f"\n{_fmt_tool(block.name, block.input or {})}",
+                                          flush=True)
+                                _spin["s"] = Spinner(block.name.lower()).start()
                     elif isinstance(msg, UserMessage):
                         blocks = msg.content if isinstance(msg.content, list) else []
                         for block in blocks:
                             if isinstance(block, ToolResultBlock):
-                                spin.stop()
-                                line = _fmt_result(block.content, bool(block.is_error))
-                                if line:
-                                    print(line, flush=True)
-                                spin.start("thinking")      # shine until the next output
+                                _stop_spin()
+                                line2 = _fmt_result(block.content, bool(block.is_error))
+                                if line2:
+                                    print(line2, flush=True)
+                                _spin["s"] = Spinner("thinking").start()
                     elif isinstance(msg, ResultMessage):
                         result = msg
             finally:
-                spin.stop()
+                _stop_spin()
             print(flush=True)
 
             # ── PWM: charge the turn + log domain-tool usage ─────────────
