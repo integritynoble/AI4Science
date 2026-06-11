@@ -273,10 +273,26 @@ def run_common_repl(
     """
     from ai4science.harness import persistence
 
+    # Shining-star spinner (Claude Code feel): pulses while the model is
+    # thinking; the first streamed token clears it. Holder is per-turn.
+    from ai4science.harness.spinner import Spinner
+    _spin = {"s": None}
+
+    def _stop_spin() -> None:
+        if _spin["s"] is not None:
+            _spin["s"].stop()
+            _spin["s"] = None
+
     if on_text is None:
         def on_text(t: str) -> None:
+            _stop_spin()                  # first token → clear the spinner
             sys.stdout.write(t)
             sys.stdout.flush()
+    else:
+        _user_on_text = on_text
+        def on_text(t: str) -> None:      # noqa: F811 — wrap caller's on_text
+            _stop_spin()
+            _user_on_text(t)
 
     def _confirm(name: str, args: dict, preview: str) -> bool:
         # Per-edit confirmation (Claude-Code style). Skipped by the gate when
@@ -564,7 +580,11 @@ def run_common_repl(
 
         def _do_turn():
             turn_tokens["total"] = 0
-            result = session.run_turn(text, images=images)
+            _spin["s"] = Spinner("thinking").start()   # shine until first token
+            try:
+                result = session.run_turn(text, images=images)
+            finally:
+                _stop_spin()
             # Ensure there's a trailing newline after streamed output.
             if result and not result.endswith("\n"):
                 print(flush=True)
