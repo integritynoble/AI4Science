@@ -324,6 +324,10 @@ def run_full(mode: str, runner) -> bool:
     return True; else return False (caller proceeds normally)."""
     if tui_mode() != "full":
         return False
+    try:
+        import prompt_toolkit  # noqa: F401
+    except Exception:
+        return False           # no TUI dep -> plain REPL, never crash
     screen = FullScreen(mode)
     screen.run(lambda _s: runner())
     return True
