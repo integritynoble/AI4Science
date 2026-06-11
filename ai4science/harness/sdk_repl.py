@@ -317,24 +317,34 @@ async def _loop(workspace: Path, *, auto_yes: bool, read_only: bool,
             await client.query(line)
             tools_used: list[str] = []
             result: Optional[ResultMessage] = None
-            async for msg in client.receive_response():
-                if isinstance(msg, AssistantMessage):
-                    for block in msg.content:
-                        if isinstance(block, TextBlock):
-                            print(block.text, end="", flush=True)
-                        elif isinstance(block, ToolUseBlock):
-                            tools_used.append(block.name)
-                            print(f"\n{_fmt_tool(block.name, block.input or {})}",
-                                  flush=True)
-                elif isinstance(msg, UserMessage):
-                    blocks = msg.content if isinstance(msg.content, list) else []
-                    for block in blocks:
-                        if isinstance(block, ToolResultBlock):
-                            line = _fmt_result(block.content, bool(block.is_error))
-                            if line:
-                                print(line, flush=True)
-                elif isinstance(msg, ResultMessage):
-                    result = msg
+            from ai4science.harness.spinner import Spinner
+            spin = Spinner("thinking").start()   # shining star while we wait
+            try:
+                async for msg in client.receive_response():
+                    if isinstance(msg, AssistantMessage):
+                        for block in msg.content:
+                            if isinstance(block, TextBlock):
+                                spin.stop()                 # text streaming = the activity
+                                print(block.text, end="", flush=True)
+                            elif isinstance(block, ToolUseBlock):
+                                spin.stop()
+                                tools_used.append(block.name)
+                                print(f"\n{_fmt_tool(block.name, block.input or {})}",
+                                      flush=True)
+                                spin.start(block.name.lower())  # shine while the tool runs
+                    elif isinstance(msg, UserMessage):
+                        blocks = msg.content if isinstance(msg.content, list) else []
+                        for block in blocks:
+                            if isinstance(block, ToolResultBlock):
+                                spin.stop()
+                                line = _fmt_result(block.content, bool(block.is_error))
+                                if line:
+                                    print(line, flush=True)
+                                spin.start("thinking")      # shine until the next output
+                    elif isinstance(msg, ResultMessage):
+                        result = msg
+            finally:
+                spin.stop()
             print(flush=True)
 
             # ── PWM: charge the turn + log domain-tool usage ─────────────

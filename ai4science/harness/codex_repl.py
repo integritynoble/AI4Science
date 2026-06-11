@@ -206,6 +206,8 @@ def run_codex_repl(workspace: Path, *, auto_yes: bool = False,
         state: dict = {}
         cmd = _turn_cmd(line, thread_id=thread_id, read_only=read_only,
                         model=model, gpu_optin=gpu_optin, auto_yes=auto_yes)
+        from ai4science.harness.spinner import Spinner
+        spin = Spinner("thinking").start()   # shining star while codex works
         try:
             proc = subprocess.Popen(cmd, cwd=str(workspace),
                                     stdout=subprocess.PIPE,
@@ -214,9 +216,13 @@ def run_codex_repl(workspace: Path, *, auto_yes: bool = False,
             for raw in proc.stdout:
                 out = handle_event(raw, state)
                 if out:
+                    spin.stop()
                     print(out, flush=True)
+                    spin.start("thinking")
+            spin.stop()
             proc.wait(timeout=30)
         except KeyboardInterrupt:
+            spin.stop()
             proc.kill()
             print("\n[harness] turn interrupted", flush=True)
             continue
