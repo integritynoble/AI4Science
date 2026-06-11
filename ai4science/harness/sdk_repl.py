@@ -31,6 +31,36 @@ from ai4science.harness.pwm_gate import BASE_TOOLS, PwmGate
 
 AGENT_NAME = "claude-code"
 
+_MODEL_ALIASES = {
+    "fable": "claude-fable-5", "fable-5": "claude-fable-5",
+    "opus": "claude-opus-4-8", "opus-4-8": "claude-opus-4-8",
+    "sonnet": "claude-sonnet-4-6", "sonnet-4-6": "claude-sonnet-4-6",
+    "haiku": "claude-haiku-4-5", "haiku-4-5": "claude-haiku-4-5",
+}
+
+
+import re as _re
+_CSI = _re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b[@-_]")
+
+
+def _clean_input(line: str) -> str:
+    """Strip terminal escape artifacts that leak into line input — tmux focus
+    events (^[[I / ^[[O), bracketed-paste markers, stray CSI — which the real
+    Claude Code TUI filters but a plain REPL receives raw. Also unwraps
+    quote-pasted slash commands ('/model' → /model)."""
+    line = _CSI.sub("", line)
+    line = line.replace("\x1b", "").strip()
+    if len(line) >= 2 and line[0] == line[-1] and line[0] in ("'", '"') \
+            and line[1:2] == "/":
+        line = line[1:-1].strip()
+    return line
+
+
+def _rule() -> str:
+    import shutil as _sh
+    cols = min(_sh.get_terminal_size((80, 20)).columns, 100)
+    return "\x1b[2m" + "─" * cols + "\x1b[0m"
+
 
 def sdk_available() -> Tuple[bool, str]:
     """Can the real Claude Code engine run here? (SDK import + claude CLI.)"""
@@ -90,6 +120,49 @@ def _build_mcp(workspace: Path):
     return {"ai4science": server}, allowed
 
 
+def _fmt_tool(name: str, inp: dict) -> str:
+    """Claude Code-style tool line: `⏺ Bash(ls /home/x)` instead of bare names."""
+    inp = inp or {}
+    if name == "Bash":
+        arg = inp.get("command", "")
+    elif name in ("Read", "Write", "Edit", "MultiEdit", "NotebookEdit"):
+        arg = inp.get("file_path", "") or inp.get("path", "")
+    elif name in ("Grep", "Glob"):
+        arg = inp.get("pattern", "")
+    elif name in ("Task", "Agent"):
+        arg = inp.get("description", "") or inp.get("prompt", "")
+    elif name == "TodoWrite":
+        todos = inp.get("todos") or []
+        done = sum(1 for t in todos if t.get("status") == "completed")
+        items = "; ".join(
+            ("✔ " if t.get("status") == "completed" else
+             "▸ " if t.get("status") == "in_progress" else "· ")
+            + str(t.get("content", ""))[:48] for t in todos[:6])
+        return f"⏺ Todos [{done}/{len(todos)}] {items}"
+    elif name == "WebFetch":
+        arg = inp.get("url", "")
+    else:
+        arg = next((str(v) for v in inp.values() if isinstance(v, str) and v), "")
+    arg = str(arg).replace("\n", " ")
+    if len(arg) > 88:
+        arg = arg[:85] + "…"
+    return f"⏺ {name}({arg})"
+
+
+def _fmt_result(content, is_error: bool) -> Optional[str]:
+    """One dimmed summary line for a tool result, like Claude Code's `⎿ …`."""
+    if isinstance(content, list):
+        content = " ".join(b.get("text", "") for b in content
+                           if isinstance(b, dict) and b.get("type") == "text")
+    text = str(content or "").strip()
+    if not text:
+        return "  ⎿ (no output)" if is_error else None
+    first = text.splitlines()[0][:100]
+    n = len(text.splitlines())
+    tail = f" (+{n - 1} lines)" if n > 1 else ""
+    return f"  ⎿ {'ERROR: ' if is_error else ''}{first}{tail}"
+
+
 def _provider_wallet() -> Optional[str]:
     try:
         from ai4science.llm import routing
@@ -102,8 +175,10 @@ async def _loop(workspace: Path, *, auto_yes: bool, read_only: bool,
                 plan_mode: bool, model: Optional[str],
                 resume: Optional[str], continue_session: bool) -> None:
     from claude_agent_sdk import (AssistantMessage, ClaudeAgentOptions,
-                                  ClaudeSDKClient, ResultMessage, TextBlock,
-                                  ToolUseBlock)
+                                  ClaudeSDKClient, PermissionResultAllow,
+                                  PermissionResultDeny, ResultMessage,
+                                  TextBlock, ToolResultBlock, ToolUseBlock,
+                                  UserMessage)
 
     gate = PwmGate.from_env()
     if gate.enabled:
@@ -112,6 +187,29 @@ async def _loop(workspace: Path, *, auto_yes: bool, read_only: bool,
     permission_mode = ("plan" if plan_mode
                        else "acceptEdits" if auto_yes
                        else "default")
+    # Claude Code parity: in default mode on a TTY, permission requests become
+    # interactive y/n/a prompts (a = always allow this tool for the session).
+    _always: set = set()
+
+    async def _ask_permission(tool_name, tool_input, _ctx):
+        if tool_name in _always:
+            return PermissionResultAllow()
+        line = _fmt_tool(tool_name, tool_input or {})
+        try:
+            ans = await asyncio.get_event_loop().run_in_executor(
+                None, lambda: input(f"{line}\n  allow? [y/N/a(lways)] "))
+        except (EOFError, KeyboardInterrupt):
+            return PermissionResultDeny(message="denied by user")
+        ans = (ans or "").strip().lower()
+        if ans in ("a", "always"):
+            _always.add(tool_name)
+            return PermissionResultAllow()
+        if ans in ("y", "yes"):
+            return PermissionResultAllow()
+        return PermissionResultDeny(message="denied by user")
+
+    interactive_perms = (permission_mode == "default" and sys.stdin.isatty()
+                         and not read_only)
     mcp_servers, mcp_allowed = _build_mcp(workspace)
     options = ClaudeAgentOptions(
         cwd=str(workspace),
@@ -126,6 +224,7 @@ async def _loop(workspace: Path, *, auto_yes: bool, read_only: bool,
         # (compute_providers / compute_dispatch / compute_result via MCP).
         mcp_servers=mcp_servers,
         allowed_tools=mcp_allowed,
+        can_use_tool=_ask_permission if interactive_perms else None,
     )
     print(f"[harness] claude-code mode — REAL Claude Code engine "
           f"(claude-agent-sdk; permission_mode={permission_mode}) "
@@ -135,21 +234,27 @@ async def _loop(workspace: Path, *, auto_yes: bool, read_only: bool,
     sid = secrets.token_hex(4)
     n = 0
     is_tty = sys.stdin.isatty()
+    if is_tty:
+        # the real Claude Code TUI manages these; in a line REPL they leak
+        # escape artifacts into input — turn them off for the session.
+        sys.stdout.write("\x1b[?1004l\x1b[?2004l")
+        sys.stdout.flush()
     async with ClaudeSDKClient(options=options) as client:
         while True:
             try:
                 if is_tty:
+                    print(_rule(), flush=True)
                     line = await asyncio.get_event_loop().run_in_executor(
-                        None, lambda: input("> "))
+                        None, lambda: input("❯ "))
                 else:
                     line = await asyncio.get_event_loop().run_in_executor(
                         None, sys.stdin.readline)
                     if not line:
                         break
-                    print(f"> {line.rstrip()}", flush=True)
+                    print(f"❯ {line.rstrip()}", flush=True)
             except (EOFError, KeyboardInterrupt):
                 break
-            line = line.strip()
+            line = _clean_input(line)
             if not line:
                 continue
 
@@ -158,9 +263,26 @@ async def _loop(workspace: Path, *, auto_yes: bool, read_only: bool,
             if low in ("/exit", "/quit", "/q", "exit", "quit"):
                 break
             if low in ("/help", "/?"):
-                print("[harness] local: /feedback <text>  /exit — all other input "
-                      "(incl. Claude Code slash commands) goes to the engine.",
-                      flush=True)
+                print("[harness] local: /model [name]  /feedback <text>  /exit — "
+                      "other input goes to the Claude Code engine.", flush=True)
+                continue
+            if low.startswith("/model"):
+                arg = line[len("/model"):].strip().lower()
+                if not arg:
+                    cur = model or "(Claude Code default)"
+                    print(f"[harness] model: {cur}\n  switch: /model "
+                          f"fable | opus | sonnet | haiku  (or any full model id)",
+                          flush=True)
+                    continue
+                new_model = _MODEL_ALIASES.get(arg, arg)
+                try:
+                    await client.set_model(new_model)
+                    model = new_model
+                    print(f"[harness] model → {new_model} (session context kept)",
+                          flush=True)
+                except Exception as e:
+                    print(f"[harness] model switch failed: {type(e).__name__}: {e}",
+                          flush=True)
                 continue
             if low.startswith("/feedback"):
                 arg = line[len("/feedback"):].strip()
@@ -199,7 +321,15 @@ async def _loop(workspace: Path, *, auto_yes: bool, read_only: bool,
                             print(block.text, end="", flush=True)
                         elif isinstance(block, ToolUseBlock):
                             tools_used.append(block.name)
-                            print(f"\n[tool] {block.name}", flush=True)
+                            print(f"\n{_fmt_tool(block.name, block.input or {})}",
+                                  flush=True)
+                elif isinstance(msg, UserMessage):
+                    blocks = msg.content if isinstance(msg.content, list) else []
+                    for block in blocks:
+                        if isinstance(block, ToolResultBlock):
+                            line = _fmt_result(block.content, bool(block.is_error))
+                            if line:
+                                print(line, flush=True)
                 elif isinstance(msg, ResultMessage):
                     result = msg
             print(flush=True)

@@ -37,3 +37,30 @@ def test_sdk_available_true_when_sdk_and_cli_present(monkeypatch):
     ok, why = sdk_repl.sdk_available()
     # claude-agent-sdk is installed in this environment
     assert ok is True and why == ""
+
+
+def test_fmt_tool_shows_args_like_claude_code():
+    assert sdk_repl._fmt_tool("Bash", {"command": "ls /home/x"}) == "⏺ Bash(ls /home/x)"
+    assert sdk_repl._fmt_tool("Read", {"file_path": "/a/b.md"}) == "⏺ Read(/a/b.md)"
+    long = sdk_repl._fmt_tool("Bash", {"command": "x" * 200})
+    assert len(long) < 110 and long.endswith("…)")
+
+
+def test_fmt_tool_todos_checklist():
+    out = sdk_repl._fmt_tool("TodoWrite", {"todos": [
+        {"content": "write fib.py", "status": "completed"},
+        {"content": "run test", "status": "in_progress"}]})
+    assert out.startswith("⏺ Todos [1/2]") and "✔ write fib.py" in out and "▸ run test" in out
+
+
+def test_fmt_result_summarizes():
+    assert sdk_repl._fmt_result("line1\nline2\nline3", False) == "  ⎿ line1 (+2 lines)"
+    assert sdk_repl._fmt_result("boom", True) == "  ⎿ ERROR: boom"
+    assert sdk_repl._fmt_result("", False) is None
+
+
+def test_clean_input_strips_terminal_artifacts():
+    assert sdk_repl._clean_input("\x1b[O/model\x1b[I") == "/model"
+    assert sdk_repl._clean_input("'/model'") == "/model"
+    assert sdk_repl._clean_input("\x1b[200~hello\x1b[201~") == "hello"
+    assert sdk_repl._clean_input("plain text") == "plain text"

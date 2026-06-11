@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 from ai4science.harness.pwm_gate import PwmGate
+from ai4science.harness.sdk_repl import _clean_input
 
 AGENT_NAME = "codex"
 BILLING_MODEL = "gpt-5.5"        # codex CLI default tier; matches the native adapter
@@ -147,23 +148,34 @@ def run_codex_repl(workspace: Path, *, auto_yes: bool = False,
     while True:
         try:
             if is_tty:
-                line = input("> ")
+                line = input("❯ ")
             else:
                 line = sys.stdin.readline()
                 if not line:
                     break
-                print(f"> {line.rstrip()}", flush=True)
+                print(f"❯ {line.rstrip()}", flush=True)
         except (EOFError, KeyboardInterrupt):
             break
-        line = line.strip()
+        line = _clean_input(line)
         if not line:
             continue
         low = line.lower()
         if low in ("/exit", "/quit", "/q", "exit", "quit"):
             break
         if low in ("/help", "/?"):
-            print("[harness] local: /feedback <text>  /exit — everything else goes "
-                  "to the codex engine.", flush=True)
+            print("[harness] local: /model [name]  /feedback <text>  /exit — "
+                  "everything else goes to the codex engine.", flush=True)
+            continue
+        if low.startswith("/model"):
+            arg = line[len("/model"):].strip()
+            if not arg:
+                print(f"[harness] model: {model or '(codex default)'} — "
+                      f"switch with /model <id> (e.g. gpt-5.5, gpt-5.5-codex)",
+                      flush=True)
+            else:
+                model = arg
+                print(f"[harness] model → {model} (next turns use -m {model})",
+                      flush=True)
             continue
         if low.startswith("/feedback"):
             arg = line[len("/feedback"):].strip()
