@@ -54,8 +54,10 @@ def test_fmt_tool_todos_checklist():
 
 
 def test_fmt_result_summarizes():
-    assert sdk_repl._fmt_result("line1\nline2\nline3", False) == "  ⎿ line1 (+2 lines)"
-    assert sdk_repl._fmt_result("boom", True) == "  ⎿ ERROR: boom"
+    import re
+    strip = lambda s: re.sub(r"\x1b\[[0-9;]*m", "", s)  # styling (dim/red) is cosmetic
+    assert strip(sdk_repl._fmt_result("line1\nline2\nline3", False)) == "  ⎿ line1 (+2 lines)"
+    assert strip(sdk_repl._fmt_result("boom", True)) == "  ⎿ ERROR: boom"
     assert sdk_repl._fmt_result("", False) is None
 
 
