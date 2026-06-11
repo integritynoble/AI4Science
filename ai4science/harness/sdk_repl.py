@@ -240,6 +240,9 @@ async def _loop(workspace: Path, *, auto_yes: bool, read_only: bool,
         # (compute_providers / compute_dispatch / compute_result via MCP).
         mcp_servers=mcp_servers,
         allowed_tools=mcp_allowed,
+        # AskUserQuestion is a TUI picker the line-REPL can't render — it would
+        # hang the turn. Disallow it so the engine asks in plain text instead.
+        disallowed_tools=["AskUserQuestion"],
         can_use_tool=_ask_permission if interactive_perms else None,
     )
     print(f"[harness] claude-code mode — REAL Claude Code engine "
