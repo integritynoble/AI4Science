@@ -149,7 +149,8 @@ def run_codex_repl(workspace: Path, *, auto_yes: bool = False,
         try:
             if is_tty:
                 from ai4science.harness import tui
-                line = tui.read_input("❯ ", "codex")
+                _st = f"{model or BILLING_MODEL} · {workspace.name or workspace}"
+                line = tui.read_input("❯ ", "codex", _st)
             else:
                 line = sys.stdin.readline()
                 if not line:

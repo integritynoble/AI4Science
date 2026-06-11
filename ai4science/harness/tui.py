@@ -41,12 +41,16 @@ def _history_path(mode: str) -> Optional[Path]:
         return None
 
 
-def read_input(prompt: str = "› ", mode: str = "chat") -> str:
-    """Bordered TUI input when enabled, else plain input(prompt)."""
+def read_input(prompt: str = "› ", mode: str = "chat", status: str = "") -> str:
+    """Bordered TUI input when enabled, else plain input(prompt).
+
+    `status` is a one-line status bar (e.g. 'model · 7056 PWM · ~/proj') shown
+    under the box, like Claude Code's bottom line.
+    """
     if not tui_enabled():
         return input(prompt)
     try:
-        return _bordered(prompt, mode)
+        return _bordered(prompt, mode, status)
     except (EOFError, KeyboardInterrupt):
         raise
     except Exception:
@@ -54,7 +58,7 @@ def read_input(prompt: str = "› ", mode: str = "chat") -> str:
         return input(prompt)
 
 
-def _bordered(prompt: str, mode: str) -> str:
+def _bordered(prompt: str, mode: str, status: str = "") -> str:
     from prompt_toolkit import Application
     from prompt_toolkit.key_binding import KeyBindings
     from prompt_toolkit.layout import Layout
@@ -76,12 +80,14 @@ def _bordered(prompt: str, mode: str) -> str:
         style="class:input",
     )
     title = [("class:title", f"ai4science · {mode}")]
-    body = HSplit([
-        Frame(ta, title=title),
-        Window(FormattedTextControl(
-            [("class:hint", " Enter ⏎ send · Alt+Enter newline · ↑/↓ history · Ctrl-C exit ")]),
-            height=1),
-    ])
+    rows = [Frame(ta, title=title)]
+    if status:
+        rows.append(Window(FormattedTextControl(
+            [("class:status", f" {status} ")]), height=1))
+    rows.append(Window(FormattedTextControl(
+        [("class:hint", " Enter ⏎ send · Alt+Enter newline · ↑/↓ history · Ctrl-C exit ")]),
+        height=1))
+    body = HSplit(rows)
 
     kb = KeyBindings()
     out = {"text": None}
@@ -108,6 +114,7 @@ def _bordered(prompt: str, mode: str) -> str:
         "frame.border": "fg:#d7875f",     # Claude coral box
         "frame.title": "fg:#d7875f bold",
         "input": "",
+        "status": "fg:#a8a8a8",
         "hint": "fg:#8a8a8a",
     })
 

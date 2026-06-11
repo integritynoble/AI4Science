@@ -32,6 +32,15 @@ from ai4science.harness.pwm_gate import PwmGate, BASE_TOOLS
 from ai4science.llm import routing, pricing
 
 
+def _shortcwd(p) -> str:
+    import os
+    try:
+        s = str(p); h = os.path.expanduser("~")
+        return ("~" + s[len(h):]) if s.startswith(h) else s
+    except Exception:
+        return str(p)
+
+
 def _dispatch_slash(line: str, state: dict) -> tuple[bool, str]:
     """Handle simple slash commands by mutating `state`. Returns (handled, message).
 
@@ -416,7 +425,8 @@ def run_common_repl(
     while True:
         try:
             from ai4science.harness import tui
-            line = tui.read_input("> ", mode_label or "chat").strip()
+            _st = f"{active_model} · {_shortcwd(workspace)}"
+            line = tui.read_input("> ", mode_label or "chat", _st).strip()
             _interrupts["n"] = 0
         except EOFError:
             print("\n[harness] EOF — exiting", flush=True)
