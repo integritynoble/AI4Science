@@ -29,12 +29,12 @@ say "▸ installing AI4Science (pwm-ai4science[claude]) …"
 
 # ── install: venv > pipx > pip --user ──────────────────────────────────────
 if [ -n "${VIRTUAL_ENV:-}" ]; then
-  "$PY" -m pip install --upgrade "$SPEC"
+  "$PY" -m pip install --upgrade --no-cache-dir "$SPEC"
 elif command -v pipx >/dev/null 2>&1; then
   pipx install --force "$SPEC"
 else
-  "$PY" -m pip install --user --upgrade "$SPEC" 2>/dev/null \
-    || "$PY" -m pip install --user --upgrade --break-system-packages "$SPEC" \
+  "$PY" -m pip install --user --upgrade --no-cache-dir "$SPEC" 2>/dev/null \
+    || "$PY" -m pip install --user --upgrade --no-cache-dir --break-system-packages "$SPEC" \
     || die "pip install failed — try: pipx install '$SPEC'"
 fi
 

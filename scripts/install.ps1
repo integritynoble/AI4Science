@@ -26,7 +26,7 @@ if (-not $Py) {
 }
 
 Write-Host "- installing AI4Science (pwm-ai4science[claude]) ..." -ForegroundColor Cyan
-Invoke-Expression "$Py -m pip install --user --upgrade `"$Spec`""
+Invoke-Expression "$Py -m pip install --user --upgrade --no-cache-dir `"$Spec`""
 
 # Add the user scripts dir to PATH automatically (like Claude Code's installer)
 $UserScripts = Invoke-Expression "$Py -c `"import sysconfig; print(sysconfig.get_path('scripts', 'nt_user'))`""
