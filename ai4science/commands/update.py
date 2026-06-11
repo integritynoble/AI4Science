@@ -71,8 +71,9 @@ def update() -> None:
     # the old module loaded)
     out = subprocess.run(
         [sys.executable, "-c",
-         "import importlib.metadata as m; print(m.version('pwm-ai4science'))"],
-        capture_output=True, text=True)
+         "import ai4science; print(ai4science.__version__)"],
+        capture_output=True, text=True)  # same source `ai4science version` uses
+        # (importlib.metadata can hit a stale dist-info shadowing the install)
     new = (out.stdout or "").strip() or "?"
     typer.echo(f"[update] done — now at {new}. "
                "Restart any running `ai4science chat` sessions to pick it up.")
