@@ -69,8 +69,29 @@ curl -fsSL https://physicsworldmodel.org/install.sh | bash
 ai4science login                    # browser approval — like `claude login`
 ```
 
-(Equivalent manual install:
-`pip install "pwm-ai4science[claude] @ git+https://github.com/integritynoble/AI4Science.git"`.)
+**Windows** (PowerShell — like Claude Code's Windows installer):
+
+```powershell
+irm https://physicsworldmodel.org/install.ps1 | iex
+```
+
+(WSL users: use the Linux one-liner inside WSL. Equivalent manual install on
+any OS — no git required:
+`pip install "pwm-ai4science[claude] @ https://github.com/integritynoble/AI4Science/archive/refs/heads/main.zip"`.)
+
+> **If your network blocks physicsworldmodel.org** (some institutional
+> networks, e.g. hospital/university filters, block newly registered
+> domains): everything also works from GitHub, which institutions rarely
+> block.
+> 1. **Install from GitHub directly:**
+>    `curl -fsSL https://raw.githubusercontent.com/integritynoble/AI4Science/main/scripts/install.sh | bash`
+>    (Windows: `irm https://raw.githubusercontent.com/integritynoble/AI4Science/main/scripts/install.ps1 | iex`)
+> 2. **Point the CLI at a mirror backend** for login/billing:
+>    `ai4science login --base <mirror-url>` or `export PWM_BASE=<mirror-url>`
+>    — every command honors it. (Ask in the community channel for the current
+>    mirror, or request your IT department whitelist physicsworldmodel.org.)
+> 3. The manual itself is mirrored on GitHub:
+>    `AI4Science/docs/AI4SCIENCE_USER_MANUAL.md`.
 
 `ai4science login` prints a short code and opens
 `https://physicsworldmodel.org/cli-auth?code=XXXX-XXXX`. Log in there (if you

@@ -8,7 +8,8 @@
 # Sources from GitHub (integritynoble/AI4Science). Safe to re-run (upgrades).
 set -e
 
-SPEC="pwm-ai4science[claude] @ git+https://github.com/integritynoble/AI4Science.git"
+# zip archive → no git required on the target machine
+SPEC="pwm-ai4science[claude] @ https://github.com/integritynoble/AI4Science/archive/refs/heads/main.zip"
 
 say() { printf '%s\n' "$*"; }
 die() { printf 'install.sh: %s\n' "$*" >&2; exit 1; }
