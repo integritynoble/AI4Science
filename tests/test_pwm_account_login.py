@@ -123,3 +123,40 @@ def test_gate_disabled_without_any_token(store, monkeypatch):
         monkeypatch.delenv(v, raising=False)
     monkeypatch.setenv("AI4SCIENCE_PWM_GATE", "1")
     assert PwmGate.from_env().enabled is False
+
+
+def test_login_falls_back_to_published_mirror(store, monkeypatch):
+    calls = []
+
+    class _Resp:
+        def __init__(self, code, data=None, text=""):
+            self.status_code = code; self._d = data; self.text = text
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise RuntimeError(f"http {self.status_code}")
+        def json(self):
+            return self._d
+
+    def fake_post(url, **kw):
+        calls.append(url)
+        if url.startswith("https://physicsworldmodel.org"):
+            return _Resp(403)                       # institutional block
+        if "/start" in url:
+            return _Resp(200, {"device_code": "d", "user_code": "AAAA-1111",
+                               "verification_url": "https://mirror.example/cli-auth?code=AAAA-1111",
+                               "interval": 0, "expires_in": 5})
+        return _Resp(200, {"status": "approved", "token": "pwm_mirrored",
+                           "user_id": 9})
+
+    def fake_get(url, **kw):
+        assert "MIRROR.url" in url
+        return _Resp(200, text="https://mirror.example\n")
+
+    import httpx
+    monkeypatch.setattr(httpx, "post", fake_post)
+    monkeypatch.setattr(httpx, "get", fake_get)
+    acct = pwm_account.login_device_flow(echo=lambda *_: None,
+                                         sleeper=lambda _s: None, open_browser=False)
+    assert acct["token"] == "pwm_mirrored"
+    assert acct["base"] == "https://mirror.example"   # stored → gate uses mirror too
+    assert any(u.startswith("https://mirror.example") for u in calls)

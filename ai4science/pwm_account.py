@@ -19,6 +19,25 @@ from pathlib import Path
 from typing import Callable, Optional
 
 DEFAULT_BASE = "https://physicsworldmodel.org"
+# When the primary is blocked (institutional filters: "PersonalWebSites"
+# category etc.), the CLI auto-falls-back to the mirror published here —
+# GitHub is reachable on networks that block the primary.
+MIRROR_POINTER = ("https://raw.githubusercontent.com/integritynoble/"
+                  "AI4Science/main/MIRROR.url")
+
+
+def fetch_mirror() -> Optional[str]:
+    """Current mirror base from the GitHub pointer file, or None."""
+    try:
+        import httpx
+        r = httpx.get(MIRROR_POINTER, timeout=10)
+        if r.status_code == 200:
+            url = r.text.strip().splitlines()[0].strip()
+            if url.startswith("https://"):
+                return url.rstrip("/")
+    except Exception:
+        pass
+    return None
 
 
 def _path() -> Path:
@@ -68,10 +87,31 @@ def login_device_flow(base: str = DEFAULT_BASE, *,
     import httpx
 
     base = base.rstrip("/")
-    r = httpx.post(f"{base}/api/v1/cli-auth/start",
-                   json={"client": "ai4science-cli"}, timeout=15)
-    r.raise_for_status()
-    d = r.json()
+
+    def _start(b):
+        r = httpx.post(f"{b}/api/v1/cli-auth/start",
+                       json={"client": "ai4science-cli"}, timeout=15)
+        r.raise_for_status()
+        return r.json()
+
+    try:
+        d = _start(base)
+    except Exception as e:
+        if base != DEFAULT_BASE.rstrip("/"):
+            raise            # explicit --base: don't second-guess the user
+        # Primary blocked/unreachable (e.g. an institutional category filter
+        # returning 403) — try the published mirror automatically.
+        echo(f"[login] {base} unreachable ({type(e).__name__}: "
+             f"{str(e)[:80]}) — checking for a mirror…")
+        mirror = fetch_mirror()
+        if not mirror:
+            echo("[login] no mirror published. Fixes: ask IT to whitelist "
+                 "physicsworldmodel.org, or pass --base <mirror-url>. "
+                 "See the manual's blocked-network section.")
+            raise
+        echo(f"[login] using mirror: {mirror}")
+        base = mirror
+        d = _start(base)
     url, code = d["verification_url"], d["user_code"]
     echo(f"\nTo log in, open:\n\n    {url}\n")
     echo(f"and approve the code:  {code}")

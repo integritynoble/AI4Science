@@ -28,11 +28,16 @@ if (-not $Py) {
 Write-Host "- installing AI4Science (pwm-ai4science[claude]) ..." -ForegroundColor Cyan
 Invoke-Expression "$Py -m pip install --user --upgrade `"$Spec`""
 
-# PATH hint for the user scripts dir
+# Add the user scripts dir to PATH automatically (like Claude Code's installer)
 $UserScripts = Invoke-Expression "$Py -c `"import sysconfig; print(sysconfig.get_path('scripts', 'nt_user'))`""
 if ($env:Path -notlike "*$UserScripts*") {
-    Write-Host "- note: add the Python user scripts dir to PATH if 'ai4science' isn't found:" -ForegroundColor Yellow
-    Write-Host "    $UserScripts" -ForegroundColor Yellow
+    $up = [Environment]::GetEnvironmentVariable("Path", "User")
+    if (-not $up) { $up = "" }
+    if ($up -notlike "*$UserScripts*") {
+        [Environment]::SetEnvironmentVariable("Path", ($up.TrimEnd(';') + ";" + $UserScripts), "User")
+        Write-Host "- added to your user PATH: $UserScripts" -ForegroundColor Cyan
+    }
+    $env:Path = $env:Path.TrimEnd(';') + ";" + $UserScripts   # current session too
 }
 
 Write-Host ""
