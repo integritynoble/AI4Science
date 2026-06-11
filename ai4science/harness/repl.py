@@ -560,26 +560,29 @@ def run_common_repl(
         try:
             _do_turn()
         except Exception as exc:
-            msg = _clean_turn_error(exc)
-            alt = (_next_available_brand(active_backend)
-                   if brand_autodetected and not fell_back["v"] else None)
-            if alt:
-                fell_back["v"] = True
-                nb, nm = alt
-                print(f"\n[harness] {active_backend} failed ({msg}); "
-                      f"switching to {nb} and retrying…", flush=True)
+            # Directive 2026-06-11: NEVER stop the user — walk the whole
+            # orchestration chain (Fable 5 → Opus 4.8 → GPT-5.5 → safety net),
+            # switching automatically until one model serves the turn.
+            from ai4science.harness.adapters.factory import harness_available
+            last = exc
+            rest = [(b, m) for b, m in routing.AGENT_CHAINS.get("orchestration", [])
+                    if (b, m) != (active_backend, active_model) and harness_available(b)]
+            served = False
+            for nb, nm in rest:
+                print(f"\n[harness] {active_model} unavailable "
+                      f"({_clean_turn_error(last)}) — switching to {nm}…", flush=True)
                 active_backend, active_model = nb, nm
                 session.set_brand(adapter_for(nb), nm, nb)
                 session.meter = _make_wrapped_meter(nb, nm)
                 try:
                     _do_turn()
-                except Exception as exc2:
-                    print(f"\n[harness] still failing on {nb}: "
-                          f"{_clean_turn_error(exc2)}. Try /model <backend> to switch.",
-                          flush=True)
-            else:
-                print(f"\n[harness] turn error: {msg}. "
-                      "Try /model <backend> to switch brands.", flush=True)
+                    served = True
+                    break
+                except Exception as e2:
+                    last = e2
+            if not served:
+                print(f"\n[harness] all models are temporarily unavailable "
+                      f"({_clean_turn_error(last)}). Retry in a moment.", flush=True)
 
         ok, _creason = gate.charge(turn_cost["pwm"], turn_cost["wallet"],
                                    purpose=f"ai4science:{active_spec.name}:{active_model}",

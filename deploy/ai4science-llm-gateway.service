@@ -1,0 +1,18 @@
+[Unit]
+Description=AI4Science LLM gateway (founder-credentialed LLMs → backend proxy, charged in PWM)
+After=network.target
+
+[Service]
+Type=simple
+Environment=AI4SCIENCE_GATEWAY_TOKEN=__TOKEN__
+Environment=AI4SCIENCE_GATEWAY_HOST=172.17.0.1
+Environment=AI4SCIENCE_GATEWAY_PORT=8791
+Environment=PYTHONPATH=/home/spiritai/pwm/Physics_World_Model/AI4Science
+EnvironmentFile=-%h/.config/ai4science_gateway.env
+WorkingDirectory=/home/spiritai/pwm/Physics_World_Model/AI4Science
+ExecStart=/usr/bin/python3 -m ai4science.harness.llm_gateway
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
