@@ -68,4 +68,8 @@ def test_from_env_enabled_requires_flag_and_token(monkeypatch):
     assert PwmGate.from_env().enabled is True
     monkeypatch.delenv("PWM_TOKEN", raising=False)
     monkeypatch.delenv("PWM_ONBOARD_TOKEN", raising=False)
+    # without env tokens from_env falls back to the stored `ai4science login`
+    # account; stub it out so the test doesn't depend on this machine's login
+    from ai4science import pwm_account
+    monkeypatch.setattr(pwm_account, "load", lambda: None)
     assert PwmGate.from_env().enabled is False

@@ -57,7 +57,10 @@ def test_dispatch_preview_shows_pwm_and_recipient(tmp_path):
 
 
 # ── lease gating: 2 concurrent, 3rd refused ──────────────────────────────
-def test_dispatch_is_lease_gated_at_two(tmp_path):
+def test_dispatch_is_lease_gated_at_two(tmp_path, monkeypatch):
+    # pytest is non-interactive: opt in the way scripts/CI do, so the paid-
+    # dispatch autonomy guard lets the lease logic under test run
+    monkeypatch.setenv("AI4SCIENCE_COMPUTE_AUTOCONFIRM", "1")
     disp = _tool("compute_dispatch").func
     r1 = disp(tmp_path, provider="founder-cpu", run_command="a", confirm=True)
     r2 = disp(tmp_path, provider="founder-cpu", run_command="b", confirm=True)

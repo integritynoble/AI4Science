@@ -37,8 +37,20 @@ def test_adapter_for_wires_creds(monkeypatch):
 def test_harness_available(monkeypatch):
     from ai4science.harness.adapters import factory, creds
     monkeypatch.setattr(creds, "available", lambda b: b == "gemini")
+    # a PWM login on this machine would satisfy any backend via the founder
+    # proxy; stub it so the test only exercises the local-credential path
+    monkeypatch.setattr(factory, "_proxy_creds", lambda: None)
     assert factory.harness_available("gemini") is True
     assert factory.harness_available("anthropic") is False
+
+
+def test_harness_available_via_proxy(monkeypatch):
+    # no local credential, but a PWM login -> served by the founder proxy
+    from ai4science.harness.adapters import factory, creds
+    monkeypatch.setattr(creds, "available", lambda b: False)
+    monkeypatch.setattr(factory, "_proxy_creds",
+                        lambda: ("pwm_k", "https://physicsworldmodel.org"))
+    assert factory.harness_available("anthropic") is True
 
 
 def test_stream_no_key_guard(tmp_path):
