@@ -128,11 +128,14 @@ def chat(
         from ai4science.harness import sdk_repl
         ok, why = sdk_repl.sdk_available()
         if ok:
+            from ai4science.harness import tui
+            _run = lambda: sdk_repl.run_sdk_repl(
+                workspace, auto_yes=yes, read_only=read_only,
+                plan_mode=plan, model=model, resume=resume,
+                continue_session=continue_session)
             try:
-                sdk_repl.run_sdk_repl(
-                    workspace, auto_yes=yes, read_only=read_only,
-                    plan_mode=plan, model=model, resume=resume,
-                    continue_session=continue_session)
+                if not tui.run_full("claude-code", _run):
+                    _run()
             except KeyboardInterrupt:
                 console.print("\n[dim](Ctrl-C — exiting)[/dim]")
                 raise typer.Exit(0)
@@ -147,9 +150,12 @@ def chat(
         from ai4science.harness import codex_repl
         ok, why = codex_repl.codex_engine_available()
         if ok:
+            from ai4science.harness import tui
+            _run = lambda: codex_repl.run_codex_repl(
+                workspace, auto_yes=yes, read_only=read_only or plan, model=model)
             try:
-                codex_repl.run_codex_repl(workspace, auto_yes=yes,
-                                          read_only=read_only or plan, model=model)
+                if not tui.run_full("codex", _run):
+                    _run()
             except KeyboardInterrupt:
                 console.print("\n[dim](Ctrl-C — exiting)[/dim]")
                 raise typer.Exit(0)
@@ -167,7 +173,8 @@ def chat(
         resume_hist = persistence.load(sid) if sid else None
 
     try:
-        run_common_repl(
+        from ai4science.harness import tui as _tui
+        _run_native = lambda: run_common_repl(
             workspace,
             read_only=read_only or plan,
             auto_yes=yes,
@@ -178,6 +185,8 @@ def chat(
             system_prompt=spec.system_prompt,
             mode_label=spec.name,
         )
+        if not _tui.run_full(spec.name, _run_native):
+            _run_native()
     except KeyboardInterrupt:
         console.print("\n[dim](Ctrl-C — exiting)[/dim]")
         raise typer.Exit(0)

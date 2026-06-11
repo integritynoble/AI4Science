@@ -212,8 +212,10 @@ async def _loop(workspace: Path, *, auto_yes: bool, read_only: bool,
         # (the stream loop skips re-printing it).
         line = _fmt_tool(tool_name, tool_input or {})
         try:
+            from ai4science.harness import tui
             ans = await asyncio.get_event_loop().run_in_executor(
-                None, lambda: input(f"{line}\n  allow? [y/N/a(lways)] "))
+                None, lambda: tui.read_input(f"{line}\n  allow? [y/N/a(lways)] ",
+                                             "claude-code"))
         except (EOFError, KeyboardInterrupt):
             return PermissionResultDeny(message="denied by user")
         ans = (ans or "").strip().lower()

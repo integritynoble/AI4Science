@@ -310,7 +310,9 @@ def run_common_repl(
         # `cmd` is NOT path-sandboxed (see permissions.py) — the human approval
         # IS the bash sandbox in Plan 1.
         try:
-            ans = input(f"\n[harness] allow {name}?  {preview}\n  [y/N] ").strip().lower()
+            from ai4science.harness import tui
+            ans = tui.read_input(f"\n[harness] allow {name}?  {preview}\n  [y/N] ",
+                                 mode_label or "chat").strip().lower()
         except EOFError:
             return False
         return ans in ("y", "yes")
