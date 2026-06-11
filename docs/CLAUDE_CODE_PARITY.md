@@ -356,3 +356,36 @@ every reply); coding loop apply_patch + shell → "self-test passed"
 (independently re-run); multi-turn resume; the real codex called
 mcp__ai4science compute_providers and summarized both GPU providers; 4 prod
 ledger rows `ai4science:codex:gpt-5.5`. Units: tests/test_codex_repl.py (5).
+
+## Interaction-UX parity — the terminal experience (2026-06-11)
+
+After the real engines landed, a round of field use on real terminals (agent
+host, Windows PowerShell, the UTSW cluster) surfaced the remaining gaps
+between our REPL and Anthropic's Claude Code TUI. All fixed; the interaction
+now matches the product's feel, not just its engine. Applies across the
+native (research/unified-LLM), claude-code, and codex REPLs unless noted.
+
+| Capability | Status | How |
+|---|---|---|
+| **Tool lines like the product** | ✅ (engine modes) | `⏺ Bash(ls /home/x)`, `⏺ Read(/a/b)`, `⏺ Todos [1/2] ✔…/▸…`; result summary `  ⎿ first line (+n lines)` / `  ⎿ ERROR: …` (`_fmt_tool`/`_fmt_result`, sdk_repl) |
+| **Shining-star working indicator** | ✅ all 3 | animated `✶✷✸…` + elapsed seconds while thinking and while a tool runs, cleared on first streamed token (`harness/spinner.py`); no-op on pipes/CI |
+| **Arrow keys + command history** | ✅ all 3 | ↑/↓ history, ←/→ cursor via readline (`harness/lineedit.py`); persisted per-mode `~/.config/ai4science/history_<mode>`; Windows via `pyreadline3` |
+| **`/model` live switch** | ✅ all 3 | claude-code uses the SDK's native `set_model` (context kept); native/codex re-route per turn; aliases fable/opus/sonnet/haiku; billing follows the served model |
+| **Interactive permission prompts** | ✅ claude-code | default mode on a TTY → `allow? [y/N/a(lways)]` per tool via `can_use_tool`; `--yes` = acceptEdits, `--plan` = read-only plan |
+| **Clean exit** | ✅ all 3 | bare `exit`/`quit`/`q`/`:q`, `/exit`, Ctrl-D, or **Ctrl-C twice** (first cancels input) — no "trapped" state |
+| **Input hygiene** | ✅ engine modes | strips tmux focus events (`^[[O`/`^[[I`), bracketed-paste markers, stray CSI; unwraps quote-pasted slash commands; disables focus reporting for the session (`_clean_input` + `\x1b[?1004l/2004l`) |
+| **`❯` prompt + turn separators** | ✅ claude-code | matches the TUI's visual structure |
+
+**Honest remaining boundary:** the engine IS Claude Code (its brain, prompts,
+todos, permissions) and the interaction now uses its idioms, but the shell is
+our line-REPL — not Anthropic's full TUI (no bordered input box, animated
+pickers, or "press up to edit queued messages"). Closing that last cosmetic
+mile means launching the real `claude` binary, which we deliberately don't:
+the SDK is what lets us meter PWM per turn, intercept `/feedback`, and inject
+the GPU tools.
+
+**Versions:** exit `0.3.1` · arrow keys/history `0.3.3`–`0.3.4` (pyreadline3) ·
+shining-star spinner `0.3.5` (engines) / `0.3.6` (native). Pick up any build
+with `pip install --user --force-reinstall --no-cache-dir
+"pwm-ai4science[claude] @ https://github.com/integritynoble/AI4Science/archive/refs/heads/main.zip"`
+(the `--no-cache-dir` matters — pip caches the GitHub zip by URL).
