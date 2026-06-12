@@ -70,6 +70,34 @@ def _dispatch_slash(line: str, state: dict) -> tuple[bool, str]:
     return False, ""
 
 
+def make_confirm(read_input, mode_label: str):
+    """Per-edit confirmation with `a(lways)` (Claude Code / SDK-path parity).
+
+    `read_input(prompt, mode)` supplies the answer (tui.read_input in the
+    REPL; injectable for tests). Answering `a` allows THIS tool name for the
+    rest of the session. NOTE: bash is confirm-gated because its `cmd` is NOT
+    path-sandboxed (see permissions.py) — the human approval IS the bash
+    sandbox in Plan 1 (read-only commands are auto-allowed by the gate and
+    never reach here).
+    """
+    always: set = set()
+
+    def _confirm(name: str, args: dict, preview: str) -> bool:
+        if name in always:
+            return True
+        try:
+            ans = read_input(f"\n[harness] allow {name}?  {preview}\n  [y/N/a(lways)] ",
+                             mode_label or "chat").strip().lower()
+        except EOFError:
+            return False
+        if ans in ("a", "always"):
+            always.add(name)
+            return True
+        return ans in ("y", "yes")
+
+    return _confirm
+
+
 def _clean_turn_error(exc) -> str:
     """One-line, human-readable turn error (no traceback)."""
     s = str(exc).strip()
@@ -303,19 +331,13 @@ def run_common_repl(
             _stop_spin()
             _user_on_text(t)
 
-    def _confirm(name: str, args: dict, preview: str) -> bool:
-        # Per-edit confirmation (Claude-Code style). Skipped by the gate when
-        # auto_yes or read_only. Without this, mutating tools are blocked in
-        # default mode. NOTE: bash is confirm-gated here precisely because its
-        # `cmd` is NOT path-sandboxed (see permissions.py) — the human approval
-        # IS the bash sandbox in Plan 1.
-        try:
-            from ai4science.harness import tui
-            ans = tui.read_input(f"\n[harness] allow {name}?  {preview}\n  [y/N] ",
-                                 mode_label or "chat").strip().lower()
-        except EOFError:
-            return False
-        return ans in ("y", "yes")
+    # Per-edit confirmation with a(lways) (Claude-Code style). Skipped by the
+    # gate when auto_yes or read_only; read-only bash is auto-allowed earlier.
+    def _tui_read(prompt: str, mode: str) -> str:
+        from ai4science.harness import tui
+        return tui.read_input(prompt, mode)
+
+    _confirm = make_confirm(_tui_read, mode_label)
 
     active_spec = agent_registry.get(mode_label) or agent_registry.get("unified-LLM")
     # A mode may prefer a backend (e.g. 'codex' → openai, 'claude-code' →
@@ -620,9 +642,23 @@ def run_common_repl(
             # Ensure there's a trailing newline after streamed output.
             if result and not result.endswith("\n"):
                 print(flush=True)
-            print(toolfmt.fmt_turn_footer(seconds=time.monotonic() - t0,
+            elapsed = time.monotonic() - t0
+            print(toolfmt.fmt_turn_footer(seconds=elapsed,
                                           tools=turn_calls["n"],
                                           tokens=turn_tokens["total"]), flush=True)
+            # One-sentence recap after substantial turns (Claude Code parity).
+            # Decoration only — any failure is swallowed.
+            from ai4science.harness import recap as recap_mod
+            if recap_mod.should_recap(seconds=elapsed, tools=turn_calls["n"]):
+                try:
+                    rtext = recap_mod.generate_recap(
+                        session.adapter, session.model,
+                        user_text=text, final_text=result or "",
+                        meter=session.meter)
+                    if rtext:
+                        print(f"\x1b[2m✶ recap: {rtext}\x1b[0m", flush=True)
+                except Exception:
+                    pass
             persistence.save(_sid, workspace, session.history)
 
         try:

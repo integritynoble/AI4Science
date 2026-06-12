@@ -2,7 +2,7 @@
 
 *How to get your first PWM, run the six agents, and earn while you use them.*
 *(2026-06-10 · updated 2026-06-11: `ai4science update` one-word upgrade, full
-bordered TUI for all agents, read-only bash auto-allow + turn footer v0.5.6)*
+bordered TUI for all agents, read-only bash auto-allow + turn footer v0.5.6, shell-aware classifier + a(lways) + recap v0.5.7)*
 
 AI4Science is a Claude-Code-style agent for science. You pay for usage in
 **PWM** (the Physics World Model token) — not with API keys, not with a credit
@@ -161,7 +161,11 @@ Since v0.5.6 the harness also behaves like the product, not just looks like
 it: **read-only shell commands (`find`, `ls`, `grep`, `cat`, `git log`, …) run
 without an `allow? [y/N]` prompt** in every agent — only mutating commands ask
 — and each turn ends with a dim `✶ crunched 12s · 3 tools · 2.2k tokens`
-footer.
+footer. v0.5.7 finishes the set: the classifier is shell-aware (quoted
+operators like `grep -E "a|b"` auto-run), the confirm prompt gained
+**`a(lways)`** (approve a tool for the whole session), and substantial turns
+(≥2 tools or ≥20s) end with a one-sentence `✶ recap: …` — set
+`AI4SCIENCE_RECAP=0` to turn recaps off, `always` for every turn.
 
 ```bash
 ai4science chat --mode claude-code             # full-screen TUI (default)

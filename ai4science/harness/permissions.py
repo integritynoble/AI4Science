@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import shlex
 from pathlib import Path
 from typing import Callable, Dict, Optional, Tuple
 
@@ -49,31 +50,66 @@ _FIND_MUTATORS = frozenset({
     "-fprint", "-fprintf", "-fls",
 })
 
-# Redirects to /dev/null (and stderr merges) are harmless; strip them before
-# rejecting on any remaining redirect character.
-_DEVNULL_REDIRECT = re.compile(r"[0-9]*>{1,2}\s*/dev/null|2>&1")
+_SHELL_PUNCT = ";|&<>()"
 
-# Splitting on every separator (incl. quoted ones) is deliberately lossy in
-# the conservative direction: a quoted `;` produces a bogus extra segment
-# whose first word won't be allowlisted, so the command just falls back to
-# the confirm prompt.
-_SEGMENT_SPLIT = re.compile(r"[;|&\n]+")
+
+def _shell_segments(cmd: str):
+    """Tokenize *cmd* shell-aware (quotes respected) and split into command
+    segments at control operators. Returns None when the command is not
+    provably safe to segment (unbalanced quotes, write-redirects, …).
+
+    Redirect rules: `>`/`>>`/`&>` only to /dev/null; `>&` only to fd 1/2;
+    `<`/`<<` consume their target as data (reading is fine). Runs of
+    punctuation arrive as single tokens (shlex punctuation_chars), so `<(`
+    lands here as a control operator and the inner command becomes its own
+    segment — validated like any other.
+    """
+    try:
+        lex = shlex.shlex(cmd, posix=True, punctuation_chars=_SHELL_PUNCT)
+        lex.whitespace_split = True
+        tokens = list(lex)
+    except ValueError:                      # unbalanced quotes etc.
+        return None
+    segments: list[list[str]] = []
+    cur: list[str] = []
+    i = 0
+    while i < len(tokens):
+        tok = tokens[i]
+        if tok and all(c in _SHELL_PUNCT for c in tok):
+            if ">" in tok:
+                nxt = tokens[i + 1] if i + 1 < len(tokens) else ""
+                if tok == ">&":
+                    if nxt not in ("1", "2"):
+                        return None         # >&file writes
+                elif nxt != "/dev/null":
+                    return None             # any other write target
+                i += 2                      # consume the redirect target
+                continue
+            if set(tok) <= {"<"}:           # < / << read input — consume target
+                i += 2
+                continue
+            if cur:                         # ; | & && || ( ) — segment boundary
+                segments.append(cur)
+                cur = []
+        else:
+            cur.append(tok)
+        i += 1
+    if cur:
+        segments.append(cur)
+    return segments
 
 
 def is_read_only_bash(cmd: str) -> bool:
     """True iff every part of *cmd* is provably a read-only inspection."""
     cmd = (cmd or "").strip()
-    if not cmd:
+    # Command substitution / backticks can execute anything — reject globally
+    # (even quoted: a literal `$(` in a grep pattern is rare; conservative).
+    if not cmd or "`" in cmd or "$(" in cmd:
         return False
-    stripped = _DEVNULL_REDIRECT.sub(" ", cmd)
-    # Command substitution, process substitution, or any remaining redirect
-    # can write or execute — not provably read-only.
-    if any(tok in stripped for tok in ("$(", "`", "<(", ">(", ">")):
+    segments = _shell_segments(cmd)
+    if not segments:
         return False
-    for segment in _SEGMENT_SPLIT.split(stripped):
-        words = segment.split()
-        if not words:
-            continue
+    for words in segments:
         prog = words[0]
         if prog not in _READ_ONLY_CMDS:
             return False

@@ -185,3 +185,37 @@ def test_loop_suppresses_result_summary_for_streaming_tools(tmp_path):
     assert ends == [""]                       # display suppressed…
     tool_msgs = [m for m in history if m.role == "tool"]
     assert tool_msgs and tool_msgs[-1].content == "live output"   # …history keeps it
+
+
+# ── native confirm: y/N/a(lways) like the SDK path ───────────────────────────
+
+def test_make_confirm_always_remembers_tool():
+    from ai4science.harness.repl import make_confirm
+
+    asked = []
+    answers = iter(["a", "y"])
+
+    def _reader(prompt, mode):
+        asked.append(prompt)
+        return next(answers)
+
+    confirm = make_confirm(_reader, "chat")
+    assert confirm("bash", {"cmd": "rm x"}, "$ rm x") is True       # 'a' → yes
+    assert confirm("bash", {"cmd": "rm y"}, "$ rm y") is True       # remembered
+    assert len(asked) == 1                                          # no 2nd ask
+    assert confirm("write", {"path": "a"}, "diff") is True          # new tool → asks
+    assert len(asked) == 2
+    assert "a(lways)" in asked[0]                                   # prompt offers it
+
+
+def test_make_confirm_deny_and_eof():
+    from ai4science.harness.repl import make_confirm
+
+    confirm = make_confirm(lambda p, m: "n", "chat")
+    assert confirm("bash", {"cmd": "rm x"}, "$ rm x") is False
+
+    def _eof(p, m):
+        raise EOFError
+
+    confirm2 = make_confirm(_eof, "chat")
+    assert confirm2("bash", {"cmd": "rm x"}, "$ rm x") is False

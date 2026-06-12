@@ -179,3 +179,35 @@ def test_sdk_repl_bash_auto_allow_helper():
     assert _bash_auto_allow("Bash", {"command": "ls -la"})
     assert not _bash_auto_allow("Bash", {"command": "rm -rf build"})
     assert not _bash_auto_allow("Write", {"file_path": "a.py"})
+
+
+# ── shell-aware tokenization: quoted operators are NOT separators ────────────
+
+def test_classifier_accepts_quoted_operators():
+    # Regex alternation / semicolons inside quotes are data, not control flow.
+    assert is_read_only_bash('grep -E "foo|bar" src/main.py')
+    assert is_read_only_bash("grep -E 'a;b' notes.md")
+    assert is_read_only_bash('find . -name "x&y*"')
+    assert is_read_only_bash('echo "hello > world"')
+
+
+def test_classifier_still_rejects_unquoted_operators_to_unknown_cmds():
+    assert not is_read_only_bash('grep foo a.txt | sh')
+    assert not is_read_only_bash('ls; rm -rf x')
+
+
+def test_classifier_rejects_quoted_but_executed_payloads():
+    # Quoting the operator doesn't matter when the COMMAND itself executes.
+    assert not is_read_only_bash('bash -c "rm -rf x"')
+    assert not is_read_only_bash('sh -c "ls"')
+
+
+def test_classifier_rejects_unbalanced_quotes():
+    assert not is_read_only_bash('grep "unclosed pattern file.txt')
+
+
+def test_classifier_redirect_targets():
+    assert is_read_only_bash('grep foo a.txt 2> /dev/null')   # spaced /dev/null ok
+    assert not is_read_only_bash('grep foo a.txt > out.txt')
+    assert not is_read_only_bash('cat a.txt >> log.md')
+    assert is_read_only_bash('wc -l < a.txt')                 # input redirect reads only
