@@ -380,6 +380,7 @@ native (research/unified-LLM), claude-code, and codex REPLs unless noted.
 | **Clean exit** | ✅ all 3 | bare `exit`/`quit`/`q`/`:q`, `/exit`, Ctrl-D, or **Ctrl-C twice** (first cancels input) — no "trapped" state |
 | **Input hygiene** | ✅ engine modes | strips tmux focus events (`^[[O`/`^[[I`), bracketed-paste markers, stray CSI; unwraps quote-pasted slash commands; disables focus reporting for the session (`_clean_input` + `\x1b[?1004l/2004l`) |
 | **`❯` prompt + turn separators** | ✅ claude-code | matches the TUI's visual structure |
+| **Fast scoped `glob`/`grep` (vs `find /`)** | ✅ all agents | native `grep`/`glob` now match the product's Glob/Grep (`harness/tools/fs.py`, v0.5.10): both take an optional `path` that may be **absolute** (search anywhere on the machine, not just the workspace) — so the model stops falling back to slow `bash(find /)`. `grep` is **ripgrep-backed** (prunes `.git`/`node_modules`/`.venv`/…, `--hidden`, optional `*.ext` glob filter); `glob` uses pruned `find` (matches names **regardless of .gitignore** — the global `~/.config/git/ignore` blinds `rg` here — and returns **folders too**, suffixed `/`). Both default to the workspace (instant) and `glob` is **time-bounded** (~20s → partial + "scope with `path`" note, never hangs). 6/6 tool-parity examples (glob/grep/read/write/edit/bash) green |
 
 ## The bordered TUI — Anthropic's full visual shell, for all agents (2026-06-11)
 

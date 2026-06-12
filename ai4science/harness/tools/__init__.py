@@ -20,12 +20,30 @@ def default_registry() -> Registry:
     reg.add(Tool("bash", "Run a shell command in the workspace.",
                  {"type": "object", "properties": {"cmd": _STR}, "required": ["cmd"]},
                  shell.bash, mutating=True, streams=True))
-    reg.add(Tool("grep", "Regex search across files.",
-                 {"type": "object", "properties": {"pattern": _STR}, "required": ["pattern"]},
-                 fs.grep, mutating=False))
-    reg.add(Tool("glob", "Glob for files by pattern.",
-                 {"type": "object", "properties": {"pattern": _STR}, "required": ["pattern"]},
-                 fs.glob, mutating=False))
+    reg.add(Tool(
+        "grep",
+        "Fast regex content search (ripgrep-backed, prunes .git/node_modules/"
+        ".venv/etc). PREFER THIS over `grep`/`find` in bash. `path` sets the "
+        "root and may be ABSOLUTE to search anywhere on the machine (e.g. "
+        "'/home/user' or '/'); default is the workspace. `glob` filters files "
+        "(e.g. '*.py'). Returns 'path:line:text' rows.",
+        {"type": "object", "properties": {
+            "pattern": {"type": "string", "description": "regex matched against file contents"},
+            "path": {"type": "string", "description": "search root; absolute path searches outside the workspace. Default: workspace."},
+            "glob": {"type": "string", "description": "optional filename filter, e.g. '*.md'"}},
+         "required": ["pattern"]},
+        fs.grep, mutating=False))
+    reg.add(Tool(
+        "glob",
+        "Fast file/folder NAME search by glob pattern (e.g. '*lowdose*', "
+        "'**/*.py'). Returns matching files AND folders. PREFER THIS over "
+        "`find` in bash. `path` sets the root and may be ABSOLUTE to search "
+        "anywhere on the machine; default is the workspace.",
+        {"type": "object", "properties": {
+            "pattern": {"type": "string", "description": "glob matched against file/folder names and paths"},
+            "path": {"type": "string", "description": "search root; absolute path searches outside the workspace. Default: workspace."}},
+         "required": ["pattern"]},
+        fs.glob, mutating=False))
     return reg
 
 

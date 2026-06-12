@@ -36,6 +36,41 @@ def test_glob_and_grep(tmp_path):
     assert "x.py" in fs.grep(tmp_path, pattern="import os")
 
 
+def test_glob_returns_folders(tmp_path):
+    (tmp_path / "low_dose_CT").mkdir()
+    (tmp_path / "low_dose_CT" / "data.txt").write_text("x")
+    out = fs.glob(tmp_path, pattern="*low*dose*")
+    assert "low_dose_CT/" in out          # the FOLDER, suffixed with '/'
+
+
+def test_glob_path_searches_outside_workspace(tmp_path):
+    # workspace is empty; the data lives in a SIBLING dir reached via `path`.
+    ws = tmp_path / "ws"; ws.mkdir()
+    data = tmp_path / "data"; data.mkdir()
+    (data / "ldct_scan.dcm").write_text("x")
+    assert fs.glob(ws, pattern="*ldct*") == ""              # not under workspace
+    out = fs.glob(ws, pattern="*ldct*", path=str(data))     # absolute root
+    assert "ldct_scan.dcm" in out
+
+
+def test_glob_prunes_heavy_dirs(tmp_path):
+    (tmp_path / "node_modules").mkdir()
+    (tmp_path / "node_modules" / "lowdose.js").write_text("x")
+    (tmp_path / "real_lowdose.py").write_text("x")
+    out = fs.glob(tmp_path, pattern="*lowdose*")
+    assert "real_lowdose.py" in out
+    assert "node_modules" not in out                        # pruned
+
+
+def test_grep_path_and_glob_filter(tmp_path):
+    sub = tmp_path / "proj"; sub.mkdir()
+    (sub / "a.py").write_text("DOSE = 'low'\n")
+    (sub / "a.md").write_text("DOSE notes\n")
+    # path roots the search; glob filters to .py only
+    out = fs.grep(tmp_path, pattern="DOSE", path=str(sub), glob="*.py")
+    assert "a.py" in out and "a.md" not in out
+
+
 def test_tool_dataclass_is_callable():
     t = Tool(name="read", description="d",
              parameters={"type": "object"}, func=fs.read, mutating=False)
