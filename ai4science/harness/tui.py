@@ -1,11 +1,12 @@
-"""Bordered input box — the Claude-Code-style ╭──╮ input frame, for every agent.
+"""Claude-Code-style input for every agent — a borderless two-line prompt.
 
-The full-screen bordered TUI is the DEFAULT on a real terminal (like the
-product). `AI4SCIENCE_TUI` tunes it: `full` (default), `1`/`box` for just the
-bordered input line, `0`/`off`/`plain` for the classic line-REPL. Uses
-prompt_toolkit for a real bordered, multiline, history-aware input box; falls
-back to plain input() when opted out, stdin/stdout isn't a TTY, or
-prompt_toolkit is absent.
+The full-screen TUI is the DEFAULT on a real terminal (like the product): a
+managed transcript pane above a borderless input that grows 1→N as you type,
+with one info line (mode · status · shortcuts) beneath it — no box frame.
+`AI4SCIENCE_TUI` tunes it: `full` (default), `1`/`box` for the bordered single
+input line (no pane), `0`/`off`/`plain` for the classic line-REPL. Uses
+prompt_toolkit for a real multiline, history-aware input; falls back to plain
+input() when opted out, stdin/stdout isn't a TTY, or prompt_toolkit is absent.
 
   read_input(prompt, mode) -> str        # one bordered prompt; raises EOFError/
                                          # KeyboardInterrupt like input()
@@ -31,6 +32,36 @@ def tui_enabled() -> bool:
         return True
     except Exception:
         return False
+
+
+def input_box_rows(text: str, cols: int, max_rows: int = 10) -> int:
+    """Visual rows a borderless input needs for `text` at terminal width `cols`,
+    clamped to [1, max_rows]. Grows like Claude Code's prompt: one row per
+    logical line, plus extra rows for any line that soft-wraps."""
+    inner = max(cols - 3, 10)            # leave room for the "❯ " prompt
+    rows = 0
+    for line in text.split("\n"):
+        rows += max(1, -(-len(line) // inner))   # ceil(len/inner), min 1 per line
+    return min(max(rows, 1), max_rows)
+
+
+def _grow_height(get_text, max_rows: int = 10):
+    """prompt_toolkit height callable: size the input to its content so the
+    two-line prompt grows 1→N as you type (no fixed-height box)."""
+    from prompt_toolkit.application import get_app
+    from prompt_toolkit.layout.dimension import Dimension
+
+    def _h():
+        try:
+            cols = get_app().output.get_size().columns
+        except Exception:
+            cols = 80
+        r = input_box_rows(get_text(), cols, max_rows)
+        # Exact height (min==max): the input is precisely its content rows so the
+        # transcript pane absorbs all slack and the input stays flush at the
+        # bottom — no inflated blank box.
+        return Dimension(min=r, max=r, preferred=r)
+    return _h
 
 
 def _history_path(mode: str) -> Optional[Path]:
@@ -135,8 +166,9 @@ def _bordered(prompt: str, mode: str, status: str = "") -> str:
 # ════════════════════════════════════════════════════════════════════════════
 # Full-screen TUI (the default; AI4SCIENCE_TUI tunes it) — the whole Claude
 # Code experience:
-# output pane managed by the app, bordered input at the bottom, persistent
-# status bar with a pulsing working star. The existing REPL loops run UNCHANGED
+# output pane managed by the app, a borderless two-line input at the bottom
+# (growing prompt + one info line, no box), with a pulsing working star. The
+# existing REPL loops run UNCHANGED
 # in a worker thread: their prints land in the pane (stdout redirect) and their
 # input()s route here (read_input checks the active screen).
 # ════════════════════════════════════════════════════════════════════════════
@@ -222,39 +254,41 @@ class FullScreen:
         from prompt_toolkit import Application
         from prompt_toolkit.formatted_text import ANSI
         from prompt_toolkit.key_binding import KeyBindings
-        from prompt_toolkit.layout import Layout, ScrollablePane
+        from prompt_toolkit.layout import Layout
         from prompt_toolkit.layout.containers import HSplit, Window
         from prompt_toolkit.layout.controls import FormattedTextControl
-        from prompt_toolkit.widgets import Frame, TextArea
-        from prompt_toolkit.widgets.base import Border
+        from prompt_toolkit.widgets import TextArea
         from prompt_toolkit.styles import Style
         from prompt_toolkit.history import FileHistory
 
-        Border.TOP_LEFT, Border.TOP_RIGHT = "╭", "╮"
-        Border.BOTTOM_LEFT, Border.BOTTOM_RIGHT = "╰", "╯"
-
         hp = _history_path(self.mode)
-        ta = TextArea(height=1, multiline=True, wrap_lines=True, prompt=self.prompt,
+        # Borderless, two-line input like Claude Code: a coral prompt line that
+        # grows 1→N as you type, with a single info line beneath it (no box).
+        ta = TextArea(multiline=True, wrap_lines=True,
+                      prompt=[("class:prompt", self.prompt)],
                       history=FileHistory(str(hp)) if hp else None, style="class:input")
+        ta.window.height = _grow_height(lambda: ta.text)
 
         def _pane_text():
             with self._lock:
                 return ANSI(self._text)
 
-        def _status():
+        def _info():
             self._frame_i = (self._frame_i + 1) % len(self._FRAMES)
-            star = (f"\x1b[38;5;173m{self._FRAMES[self._frame_i]} working…\x1b[0m  "
+            star = (f"\x1b[38;5;173m{self._FRAMES[self._frame_i]}\x1b[0m working…  "
                     if self._busy else "")
-            return ANSI(f" {star}\x1b[38;5;245m{self._status_extra}\x1b[0m")
+            mode = f"\x1b[38;5;173mai4science · {self.mode}\x1b[0m"
+            extra = (f" · \x1b[38;5;245m{self._status_extra}\x1b[0m"
+                     if self._status_extra else "")
+            hints = ("   \x1b[38;5;240m⏎ send · ⌥⏎ newline · esc stop · ↑↓ history "
+                     "· /exit\x1b[0m")
+            return ANSI(f" {star}{mode}{extra}{hints}")
 
         out_win = Window(FormattedTextControl(_pane_text), wrap_lines=True)
         body = HSplit([
             out_win,
-            Frame(ta, title=[("class:title", f"ai4science · {self.mode}")]),
-            Window(FormattedTextControl(_status), height=1),
-            Window(FormattedTextControl(
-                [("class:hint", " Enter ⏎ send · Alt+Enter newline · Esc interrupt · ↑/↓ history · /exit quit ")]),
-                height=1),
+            ta,                                          # line 1: growing prompt
+            Window(FormattedTextControl(_info), height=1),   # line 2: info/status
         ])
 
         kb = KeyBindings()
@@ -295,9 +329,8 @@ class FullScreen:
                 event.app.exit()
 
         style = Style.from_dict({
-            "frame.border": "fg:#d7875f",
-            "frame.title": "fg:#d7875f bold",
-            "hint": "fg:#8a8a8a",
+            "prompt": "fg:#d7875f bold",   # coral ❯ like Claude Code
+            "input": "",
         })
         self._app = Application(layout=Layout(body, focused_element=ta),
                                 key_bindings=kb, style=style, full_screen=True,

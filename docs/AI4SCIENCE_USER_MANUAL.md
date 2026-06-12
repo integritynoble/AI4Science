@@ -1,8 +1,8 @@
 # AI4Science User Manual
 
 *How to get your first PWM, run the six agents, and earn while you use them.*
-*(2026-06-10 · updated 2026-06-11: `ai4science update` one-word upgrade, full
-bordered TUI for all agents, read-only bash auto-allow + turn footer v0.5.6, shell-aware classifier + a(lways) + recap v0.5.7, Esc-interrupt v0.5.8)*
+*(2026-06-10 · updated 2026-06-12: `ai4science update` one-word upgrade, full
+TUI for all agents, read-only bash auto-allow + turn footer v0.5.6, shell-aware classifier + a(lways) + recap v0.5.7, Esc-interrupt v0.5.8, borderless two-line growing input v0.5.9)*
 
 AI4Science is a Claude-Code-style agent for science. You pay for usage in
 **PWM** (the Physics World Model token) — not with API keys, not with a credit
@@ -150,9 +150,11 @@ Fable 5 → Opus 4.8 → Sonnet 4.6 → GPT-5.5 → Gemini). Inside a chat, `/mo
 switches agents and `/model` switches LLM brands.
 
 **The terminal experience (all six agents):** every agent opens in the **full
-Anthropic-style bordered TUI by default** (v0.5.5) — output pane, coral
-bordered input box `╭─ ai4science · mode ─╮` fixed at the bottom, persistent
-status bar with the pulsing `✶ working…` star, plus Claude Code's feel
+Anthropic-style TUI by default** (v0.5.5) — output pane, with a **borderless
+two-line input** at the bottom (v0.5.9): a coral `❯` prompt that **grows as you
+type** (Alt+Enter for newlines — no box) above one info line
+(`ai4science · mode · status · shortcuts`) with the pulsing `✶ working…` star,
+plus Claude Code's feel
 throughout: ↑/↓ command history, `⏺ Bash(...)` tool lines with `⎿` result
 summaries, clean exits (`/exit`, Ctrl-D, Ctrl-C twice). `AI4SCIENCE_TUI` tunes
 it if you prefer less:
@@ -355,7 +357,7 @@ any time on your account page and via the API.
 | Want to stop billing immediately | `unset AI4SCIENCE_PWM_GATE` (and/or `ai4science logout`). |
 | `error: externally-managed-environment` when installing (Debian/Ubuntu) | Use the one-line installer, or add `--break-system-packages` to pip. After that, `ai4science update` handles it automatically. |
 | Upgraded but behavior didn't change | pip caches the GitHub zip by URL — use `ai4science update` (it forces a fresh download), then **restart** any running `ai4science chat` session. |
-| Bordered TUI doesn't appear | It's the default since 0.5.5 (`ai4science version`; `ai4science update` to upgrade) but needs a real terminal — a TTY on **both** stdin and stdout (pipes/CI fall back to the plain REPL). To force a tier: `AI4SCIENCE_TUI=full`/`box`; to turn it off: `AI4SCIENCE_TUI=off`. |
+| Full TUI doesn't appear | It's the default since 0.5.5 (`ai4science version`; `ai4science update` to upgrade) but needs a real terminal — a TTY on **both** stdin and stdout (pipes/CI fall back to the plain REPL). To force a tier: `AI4SCIENCE_TUI=full`/`box`; to turn it off: `AI4SCIENCE_TUI=off`. |
 
 ---
 
