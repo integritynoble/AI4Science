@@ -4,6 +4,7 @@ import os
 import signal
 import subprocess
 import threading
+import time
 from pathlib import Path
 from typing import Callable, List, Optional
 
@@ -54,11 +55,23 @@ def bash(workspace: Path, *, cmd: str, _sink: Optional[Callable[[str], None]] = 
 
     reader = threading.Thread(target=_reader, daemon=True)
     reader.start()
-    try:
-        proc.wait(timeout=BASH_TIMEOUT_SECONDS)
-    except subprocess.TimeoutExpired:
-        _kill_tree(proc)
-        buf.append(f"\n(timed out after {BASH_TIMEOUT_SECONDS}s)")
+    # Wait in short slices so a user interrupt (Esc in the TUI) kills the
+    # command within ~200ms instead of blocking until the wall timeout.
+    from ai4science.harness import interrupt
+    deadline = time.monotonic() + BASH_TIMEOUT_SECONDS
+    while True:
+        try:
+            proc.wait(timeout=0.2)
+            break
+        except subprocess.TimeoutExpired:
+            if interrupt.requested():
+                _kill_tree(proc)
+                buf.append("\n(interrupted by user)")
+                break
+            if time.monotonic() >= deadline:
+                _kill_tree(proc)
+                buf.append(f"\n(timed out after {BASH_TIMEOUT_SECONDS}s)")
+                break
     reader.join(timeout=5)
 
     out = "".join(buf)

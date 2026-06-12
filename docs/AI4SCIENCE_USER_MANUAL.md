@@ -2,7 +2,7 @@
 
 *How to get your first PWM, run the six agents, and earn while you use them.*
 *(2026-06-10 · updated 2026-06-11: `ai4science update` one-word upgrade, full
-bordered TUI for all agents, read-only bash auto-allow + turn footer v0.5.6, shell-aware classifier + a(lways) + recap v0.5.7)*
+bordered TUI for all agents, read-only bash auto-allow + turn footer v0.5.6, shell-aware classifier + a(lways) + recap v0.5.7, Esc-interrupt v0.5.8)*
 
 AI4Science is a Claude-Code-style agent for science. You pay for usage in
 **PWM** (the Physics World Model token) — not with API keys, not with a credit
@@ -166,6 +166,11 @@ operators like `grep -E "a|b"` auto-run), the confirm prompt gained
 **`a(lways)`** (approve a tool for the whole session), and substantial turns
 (≥2 tools or ≥20s) end with a one-sentence `✶ recap: …` — set
 `AI4SCIENCE_RECAP=0` to turn recaps off, `always` for every turn.
+
+**Press Esc to interrupt** (v0.5.8): if the agent is grinding on a slow
+command (say, a `find /` over the whole disk), Esc kills the running command
+and ends the turn immediately — anything you typed in the meantime runs next.
+Before, a runaway command froze the session until the 300s bash timeout.
 
 ```bash
 ai4science chat --mode claude-code             # full-screen TUI (default)

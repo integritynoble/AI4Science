@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable, List
 
+from ai4science.harness import interrupt
 from ai4science.harness.events import Message, TextDelta, ToolCall, Usage, Done
 from ai4science.harness.permissions import PermissionGate
 from ai4science.harness.tools.base import Registry
@@ -41,7 +42,15 @@ def run_loop(*, adapter, model: str, reasoning: str, history: List[Message],
         if not calls:
             break
 
+        interrupted = False
         for tc in calls:
+            if interrupted:
+                # Every tool_call id still needs an answer for the next API
+                # call — record the skip without executing.
+                history.append(Message(role="tool",
+                                       content="[skipped — user interrupted the turn]",
+                                       tool_call_id=tc.id))
+                continue
             on_tool_start(tc.name, tc.arguments)
             ok, reason = gate.allow(tc.name, tc.arguments)
             streamed = False
@@ -62,6 +71,14 @@ def run_loop(*, adapter, model: str, reasoning: str, history: List[Message],
             # `⎿` summary (empty string formats to nothing) to avoid doubling.
             on_tool_end(tc.name, "" if streamed else str(result))
             history.append(Message(role="tool", content=str(result), tool_call_id=tc.id))
+            if interrupt.requested():
+                interrupted = True
+        if interrupted:
+            interrupt.clear()                     # consumed — don't leak
+            note = "\n[harness] turn interrupted by user (Esc)"
+            on_text(note)
+            final_text_parts.append(note)
+            break
     else:
         note = (f"\n[harness] stopped after {MAX_TOOL_ITERATIONS} tool iterations "
                 f"(possible truncation)")

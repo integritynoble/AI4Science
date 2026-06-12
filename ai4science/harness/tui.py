@@ -253,7 +253,7 @@ class FullScreen:
             Frame(ta, title=[("class:title", f"ai4science · {self.mode}")]),
             Window(FormattedTextControl(_status), height=1),
             Window(FormattedTextControl(
-                [("class:hint", " Enter ⏎ send · Alt+Enter newline · ↑/↓ history · /exit quit ")]),
+                [("class:hint", " Enter ⏎ send · Alt+Enter newline · Esc interrupt · ↑/↓ history · /exit quit ")]),
                 height=1),
         ])
 
@@ -272,6 +272,16 @@ class FullScreen:
         @kb.add("escape", "enter")
         def _(event):
             ta.buffer.insert_text("\n")
+
+        @kb.add("escape")
+        def _(event):
+            # Esc while the agent is busy → interrupt the running turn (kills
+            # a running bash, ends the turn). Non-eager so the Alt+Enter
+            # (escape,enter) chord above still matches.
+            if self._busy:
+                from ai4science.harness import interrupt
+                interrupt.request()
+                self.append("\n\x1b[2m[esc] interrupting…\x1b[0m\n")
 
         @kb.add("c-c")
         def _(event):

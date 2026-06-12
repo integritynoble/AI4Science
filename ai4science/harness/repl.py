@@ -631,6 +631,8 @@ def run_common_repl(
 
         def _do_turn():
             import time
+            from ai4science.harness import interrupt
+            interrupt.clear()                   # stale Esc must not kill this turn
             turn_tokens["total"] = 0
             turn_calls["n"] = 0
             t0 = time.monotonic()
