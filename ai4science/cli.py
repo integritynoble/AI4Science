@@ -54,6 +54,14 @@ if os.name == "nt":
         except (AttributeError, ValueError):
             pass
 
+# Terminals that don't answer ESC[6n (some SSH/web/CI shells — e.g. agent-prod)
+# would otherwise trap prompt_toolkit in a repeating "Press ENTER to continue…
+# (CPR not supported)" loop. The full-screen TUI paints from (0,0) and never
+# needs cursor-position reports, so disable CPR process-wide BEFORE any
+# prompt_toolkit Application is created. setdefault → an explicit
+# PROMPT_TOOLKIT_NO_CPR in the environment still wins.
+os.environ.setdefault("PROMPT_TOOLKIT_NO_CPR", "1")
+
 console = Console()
 
 # Module-level state for the agent the user selected via --agent. We thread
@@ -96,6 +104,10 @@ app.add_typer(llm_cmd.app, name="llm",
 from ai4science.commands import stake as stake_cmd
 app.add_typer(stake_cmd.app, name="stake",
               help="Provider stake / collateral (lock PWM to be eligible).")
+
+from ai4science.commands import plugins as plugins_cmd
+app.add_typer(plugins_cmd.app, name="plugins",
+              help="Install community plug-ins (agents/tools) from physicsworldmodel.org.")
 
 # Single-command leaves
 app.command("init", help="Create a new contribution workspace.")(init_cmd.init)
@@ -584,7 +596,7 @@ def main() -> None:
     _subcommands = {
         "init", "contribute", "validate", "judge", "overseer", "package",
         "submit", "status", "version", "agents", "chat", "compute", "llm",
-        "stake", "login", "whoami", "logout", "prefer", "update",
+        "stake", "plugins", "login", "whoami", "logout", "prefer", "update",
     }
     if any(tok in _subcommands for tok in argv_raw):
         app()
@@ -604,8 +616,8 @@ def main() -> None:
         registered = {
             "init", "contribute", "validate", "judge", "overseer",
             "package", "submit", "status", "version", "agents", "chat",
-            "compute", "llm", "stake", "login", "whoami", "logout", "prefer",
-            "update",
+            "compute", "llm", "stake", "plugins", "login", "whoami", "logout",
+            "prefer", "update",
         }
         if argv[0] not in registered:
             # A mistyped subcommand (e.g. `ai4science dispatch --provider …`,
