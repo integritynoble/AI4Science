@@ -269,9 +269,20 @@ class FullScreen:
                       history=FileHistory(str(hp)) if hp else None, style="class:input")
         ta.window.height = _grow_height(lambda: ta.text)
 
+        from prompt_toolkit.data_structures import Point
+
         def _pane_text():
             with self._lock:
                 return ANSI(self._text)
+
+        def _pane_cursor():
+            # Pin an (invisible) cursor to the last line so the Window scrolls
+            # to follow it — keeps the LATEST output in view as the conversation
+            # grows, like a normal terminal / Claude Code (without this the pane
+            # stays stuck on the first screenful).
+            with self._lock:
+                y = self._text.count("\n")
+            return Point(x=0, y=y)
 
         def _info():
             self._frame_i = (self._frame_i + 1) % len(self._FRAMES)
@@ -284,7 +295,9 @@ class FullScreen:
                      "· /exit\x1b[0m")
             return ANSI(f" {star}{mode}{extra}{hints}")
 
-        out_win = Window(FormattedTextControl(_pane_text), wrap_lines=True)
+        out_win = Window(
+            FormattedTextControl(_pane_text, get_cursor_position=_pane_cursor),
+            wrap_lines=True, always_hide_cursor=True)
         body = HSplit([
             out_win,
             ta,                                          # line 1: growing prompt
