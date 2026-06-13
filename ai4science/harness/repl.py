@@ -554,6 +554,11 @@ def run_common_repl(
                     continue
                 active_spec = target
                 session = _build_session()
+                # keep the full-TUI info line ("ai4science · <mode>") in sync
+                from ai4science.harness import tui as _tui
+                _scr = getattr(_tui, "_ACTIVE", {}).get("screen")
+                if _scr is not None:
+                    _scr.mode = target.name
                 print(f"[harness] switched mode: {target.name}", flush=True)
                 continue
 
