@@ -327,8 +327,9 @@ async def _loop(workspace: Path, *, auto_yes: bool, read_only: bool,
                           "improve claude-code>", flush=True)
                     continue
                 if not gate.enabled:
-                    print("[pwm] feedback needs the PWM gate on "
-                          "(AI4SCIENCE_PWM_GATE=1 + login --pwm).", flush=True)
+                    print("[pwm] feedback earns PWM once you're logged in — run "
+                          "`ai4science login --pwm` (or --wallet), then /feedback. "
+                          "Earn on physicsworldmodel.org.", flush=True)
                     continue
                 ok, status = gate.post_feedback(agent_name=AGENT_NAME, text=arg)
                 note = (status if ok and str(status).startswith("accepted")

@@ -26,8 +26,9 @@ class PwmGate:
     """Gate the agent on the user's earned PWM balance (off-chain ledger).
 
     check() blocks a turn when balance <= min_balance; charge() debits the metered
-    per-turn PWM to the provider wallet via /spend. Disabled unless AI4SCIENCE_PWM_GATE
-    is set AND a pwm_ token is present (so dev/CI run free)."""
+    per-turn PWM to the provider wallet via /spend. On automatically once a pwm_
+    token is remembered (logged in); AI4SCIENCE_PWM_GATE=0 opts out, no token runs
+    free (dev/CI)."""
 
     def __init__(self, *, token: Optional[str], base: str, enabled: bool,
                  min_balance: float = 0.0):
@@ -131,5 +132,11 @@ class PwmGate:
             except Exception:
                 pass
         base = base or "https://physicsworldmodel.org"
-        enabled = _truthy(os.environ.get("AI4SCIENCE_PWM_GATE")) and bool(token)
+        # On automatically once an identity is remembered (logged in / PWM_TOKEN):
+        # logging in is all it takes to earn + spend PWM. AI4SCIENCE_PWM_GATE=0
+        # (false/no/off) is the explicit opt-out; no token → always off so
+        # dev/CI run free.
+        _g = os.environ.get("AI4SCIENCE_PWM_GATE")
+        explicit_off = _g is not None and not _truthy(_g)
+        enabled = bool(token) and not explicit_off
         return cls(token=token, base=base, enabled=enabled)

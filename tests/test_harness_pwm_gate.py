@@ -60,16 +60,21 @@ def test_charge_zero_amount_is_noop(monkeypatch):
     assert g.charge(0.0, "0xW", "p", "idem")[0] is True
 
 
-def test_from_env_enabled_requires_flag_and_token(monkeypatch):
+def test_from_env_auto_enabled_when_logged_in(monkeypatch):
+    # Logged in (token present) → gate ON automatically, no flag needed.
     monkeypatch.delenv("AI4SCIENCE_PWM_GATE", raising=False)
     monkeypatch.setenv("PWM_TOKEN", "pwm_k")
-    assert PwmGate.from_env().enabled is False
+    assert PwmGate.from_env().enabled is True
+    # Explicit flag still works and still needs a token.
     monkeypatch.setenv("AI4SCIENCE_PWM_GATE", "1")
     assert PwmGate.from_env().enabled is True
+    # AI4SCIENCE_PWM_GATE=0 is the explicit opt-out, even with a token.
+    monkeypatch.setenv("AI4SCIENCE_PWM_GATE", "0")
+    assert PwmGate.from_env().enabled is False
+    # No token → always off (dev/CI run free), regardless of the flag.
+    monkeypatch.setenv("AI4SCIENCE_PWM_GATE", "1")
     monkeypatch.delenv("PWM_TOKEN", raising=False)
     monkeypatch.delenv("PWM_ONBOARD_TOKEN", raising=False)
-    # without env tokens from_env falls back to the stored `ai4science login`
-    # account; stub it out so the test doesn't depend on this machine's login
     from ai4science import pwm_account
     monkeypatch.setattr(pwm_account, "load", lambda: None)
     assert PwmGate.from_env().enabled is False

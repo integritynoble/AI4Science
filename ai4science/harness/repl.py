@@ -500,8 +500,9 @@ def run_common_repl(
                           f"{active_spec.name}>", flush=True)
                     continue
                 if not gate.enabled:
-                    print("[pwm] feedback needs the PWM gate on (AI4SCIENCE_PWM_GATE=1 + "
-                          "PWM_TOKEN). Earn PWM on physicsworldmodel.org.", flush=True)
+                    print("[pwm] feedback earns PWM once you're logged in — run "
+                          "`ai4science login --pwm` (or --wallet), then /feedback. "
+                          "Earn on physicsworldmodel.org.", flush=True)
                     continue
                 ok, status = gate.post_feedback(agent_name=active_spec.name, text=arg)
                 note = (status if ok and str(status).startswith("accepted")
