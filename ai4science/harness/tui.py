@@ -274,20 +274,50 @@ class FullScreen:
                       history=FileHistory(str(hp)) if hp else None, style="class:input")
         ta.window.height = _grow_height(lambda: ta.text)
 
+        from prompt_toolkit.application import get_app
         from prompt_toolkit.data_structures import Point
+        from prompt_toolkit.mouse_events import MouseEventType
 
         def _pane_text():
             with self._lock:
                 return ANSI(self._text)
 
-        def _pane_cursor():
-            # Pin an (invisible) cursor to the last line so the Window scrolls
-            # to follow it — keeps the LATEST output in view as the conversation
-            # grows, like a normal terminal / Claude Code (without this the pane
-            # stays stuck on the first screenful).
+        # self._cursor_line: None = follow the latest output (auto-scroll to
+        # bottom); an int pins the view there while you wheel back through history.
+        self._cursor_line = None
+
+        def _line_count() -> int:
             with self._lock:
-                y = self._text.count("\n")
-            return Point(x=0, y=y)
+                t = self._text
+            return max(1, len(t.rstrip("\n").split("\n")))
+
+        def _pane_cursor():
+            # An (invisible) cursor the Window scrolls to keep visible. Clamp to
+            # the last REAL line — never past it: a too-large y crashes
+            # prompt_toolkit's line-wrap scroll with "list index out of range".
+            last = _line_count() - 1
+            y = last if self._cursor_line is None else min(self._cursor_line, last)
+            return Point(x=0, y=max(0, y))
+
+        out_ctrl = FormattedTextControl(_pane_text, get_cursor_position=_pane_cursor)
+
+        def _pane_mouse(mouse_event):
+            if mouse_event.event_type not in (
+                    MouseEventType.SCROLL_UP, MouseEventType.SCROLL_DOWN):
+                return NotImplemented          # let other handlers have it
+            last = _line_count() - 1
+            cur = last if self._cursor_line is None else min(self._cursor_line, last)
+            if mouse_event.event_type == MouseEventType.SCROLL_UP:
+                self._cursor_line = max(0, cur - 3)
+            else:
+                nv = cur + 3
+                self._cursor_line = None if nv >= last else nv   # bottom → follow
+            try:
+                get_app().invalidate()
+            except Exception:
+                pass
+            return None
+        out_ctrl.mouse_handler = _pane_mouse
 
         def _info():
             self._frame_i = (self._frame_i + 1) % len(self._FRAMES)
@@ -300,9 +330,8 @@ class FullScreen:
                      "· /exit\x1b[0m")
             return ANSI(f" {star}{mode}{extra}{hints}")
 
-        out_win = Window(
-            FormattedTextControl(_pane_text, get_cursor_position=_pane_cursor),
-            wrap_lines=True, always_hide_cursor=True, style="class:pane")
+        out_win = Window(out_ctrl, wrap_lines=True, always_hide_cursor=True,
+                         style="class:pane")
         # Claude-Code-style input framed by ONLY a top + bottom horizontal rule
         # (no left/right verticals); the prompt grows between them.
         def _rule():
@@ -362,7 +391,7 @@ class FullScreen:
         })
         self._app = Application(layout=Layout(body, focused_element=ta),
                                 key_bindings=kb, style=style, full_screen=True,
-                                refresh_interval=0.15, mouse_support=False)
+                                refresh_interval=0.15, mouse_support=True)
 
         _ACTIVE["screen"] = self
         old_out, old_err = sys.stdout, sys.stderr
