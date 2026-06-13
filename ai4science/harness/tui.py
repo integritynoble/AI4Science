@@ -302,7 +302,7 @@ class FullScreen:
 
         out_win = Window(
             FormattedTextControl(_pane_text, get_cursor_position=_pane_cursor),
-            wrap_lines=True, always_hide_cursor=True)
+            wrap_lines=True, always_hide_cursor=True, style="class:pane")
         # Claude-Code-style input framed by ONLY a top + bottom horizontal rule
         # (no left/right verticals); the prompt grows between them.
         def _rule():
@@ -355,7 +355,10 @@ class FullScreen:
         style = Style.from_dict({
             "prompt": "fg:#d7875f bold",   # coral ❯ like Claude Code
             "rule": "fg:#d7875f",          # coral top/bottom horizontal lines
-            "input": "",
+            # Bright/white body text like Claude Code (explicit coral accents and
+            # the dim ⎿ result gutter keep their own colors and override this).
+            "pane": "fg:#ffffff",
+            "input": "fg:#ffffff",         # what you type is bright too
         })
         self._app = Application(layout=Layout(body, focused_element=ta),
                                 key_bindings=kb, style=style, full_screen=True,
