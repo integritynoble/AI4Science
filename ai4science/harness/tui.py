@@ -250,6 +250,11 @@ class FullScreen:
     def run(self, worker) -> None:
         """Run the full-screen app; `worker(screen)` runs the REPL loop in a
         background thread with stdout redirected into the pane."""
+        # The alt-screen app paints from (0,0) and never needs cursor-position
+        # reports. Disable CPR so terminals that don't answer ESC[6n (some
+        # SSH/web/CI shells) don't get stuck on prompt_toolkit's repeated
+        # "WARNING: …CPR… Press ENTER to continue" loop.
+        os.environ["PROMPT_TOOLKIT_NO_CPR"] = "1"
         import threading
         from prompt_toolkit import Application
         from prompt_toolkit.formatted_text import ANSI
