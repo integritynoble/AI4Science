@@ -303,10 +303,16 @@ class FullScreen:
         out_win = Window(
             FormattedTextControl(_pane_text, get_cursor_position=_pane_cursor),
             wrap_lines=True, always_hide_cursor=True)
+        # Claude-Code-style input framed by ONLY a top + bottom horizontal rule
+        # (no left/right verticals); the prompt grows between them.
+        def _rule():
+            return Window(height=1, char="─", style="class:rule")
         body = HSplit([
             out_win,
-            ta,                                          # line 1: growing prompt
-            Window(FormattedTextControl(_info), height=1),   # line 2: info/status
+            _rule(),                                     # upper horizontal line
+            ta,                                          # input (grows; no side borders)
+            _rule(),                                     # bottom horizontal line
+            Window(FormattedTextControl(_info), height=1),   # info/status line
         ])
 
         kb = KeyBindings()
@@ -348,6 +354,7 @@ class FullScreen:
 
         style = Style.from_dict({
             "prompt": "fg:#d7875f bold",   # coral ❯ like Claude Code
+            "rule": "fg:#d7875f",          # coral top/bottom horizontal lines
             "input": "",
         })
         self._app = Application(layout=Layout(body, focused_element=ta),
