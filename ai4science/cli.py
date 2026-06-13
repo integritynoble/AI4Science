@@ -569,6 +569,14 @@ def main() -> None:
     """Entry point: `ai4science` (bare → chat), `ai4science <subcommand>`, or
     `ai4science "prompt"`."""
     argv_raw = sys.argv[1:]
+    # Friendly command aliases — a bare synonym should run the command, not get
+    # routed to the LLM as a prompt. `ai4science upgrade` == `update` (the CLI
+    # accepts both, like `claude update`); without this, `upgrade` fell through
+    # to prompt-first mode and errored inside the agent.
+    _ALIASES = {"upgrade": "update"}
+    if argv_raw and argv_raw[0] in _ALIASES:
+        argv_raw = [_ALIASES[argv_raw[0]]] + argv_raw[1:]
+        sys.argv = [sys.argv[0]] + argv_raw
     # Subcommand path: flags after the subcommand belong to it
     # (e.g. `chat --mode research`). Skip session/agent-flag stripping and let
     # typer dispatch with the original argv intact, otherwise --mode/--resume/
