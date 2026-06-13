@@ -105,9 +105,15 @@ from ai4science.commands import stake as stake_cmd
 app.add_typer(stake_cmd.app, name="stake",
               help="Provider stake / collateral (lock PWM to be eligible).")
 
-from ai4science.commands import plugins as plugins_cmd
-app.add_typer(plugins_cmd.app, name="plugins",
-              help="Install community plug-ins (agents/tools) from physicsworldmodel.org.")
+# Optional: the `plugins` command ships separately. Import defensively so a
+# build WITHOUT ai4science/commands/plugins.py can never crash the whole CLI on
+# startup (which would also break `ai4science update`, making it unrecoverable).
+try:
+    from ai4science.commands import plugins as plugins_cmd
+    app.add_typer(plugins_cmd.app, name="plugins",
+                  help="Install community plug-ins (agents/tools) from physicsworldmodel.org.")
+except Exception:
+    plugins_cmd = None
 
 # Single-command leaves
 app.command("init", help="Create a new contribution workspace.")(init_cmd.init)
