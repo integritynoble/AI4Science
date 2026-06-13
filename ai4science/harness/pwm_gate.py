@@ -100,13 +100,22 @@ class PwmGate:
             return False
 
     def post_feedback(self, *, agent_name: str, text: str) -> Tuple[bool, str]:
-        """Submit early-user feedback for an agent (agent-mining E3). Returns
-        (ok, status). No-op when the gate is off."""
-        if not self.enabled:
-            return False, "off"
+        """Submit early-user feedback for an agent (agent-mining E3).
+
+        Zero-login by design: with a logged-in account the token is the
+        identity; WITHOUT one, auto-provision a local off-chain wallet
+        (`wallet.ensure`) and submit identified by its address, so users earn
+        without logging in. Returns (ok, status). (Server must accept
+        wallet-attributed feedback for the no-login path to actually pay out.)"""
+        body: dict = {"text": text}
+        if not self.token:
+            try:
+                body["wallet"] = wallet.address()   # ensures + returns local addr
+            except Exception:
+                pass
         try:
             status, data = self._post(f"/api/v1/agent-pool/{agent_name}/feedback",
-                                      {"text": text})
+                                      body)
             if status >= 400:
                 return False, f"http {status}"
             d = data or {}

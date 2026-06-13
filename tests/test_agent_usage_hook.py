@@ -127,12 +127,24 @@ def test_base_tools_excluded_from_mining():
 
 
 # ── PwmGate.post_feedback ─────────────────────────────────────────────────
-def test_post_feedback_off_is_noop(monkeypatch):
-    calls = []
-    monkeypatch.setattr(wallet, "http_post", lambda *a, **k: (calls.append(a), (200, {}))[1])
+def test_post_feedback_no_login_uses_local_wallet(monkeypatch):
+    """Zero-login (#2): with no account token, feedback still submits —
+    identified by the auto-provisioned local wallet address, no Authorization."""
+    cap = {}
+
+    def fake_post(base, path, token, body):
+        cap.update(path=path, body=body, token=token)
+        return 200, {"status": "accepted", "reward": 0.5, "covers_turns": 12}
+
+    monkeypatch.setattr(wallet, "http_post", fake_post)
+    monkeypatch.setattr(wallet, "address", lambda: "0xLOCALWALLET")
     g = PwmGate(token=None, base="http://x", enabled=False)
     ok, status = g.post_feedback(agent_name="research", text="nice")
-    assert ok is False and calls == []
+    assert ok is True
+    assert cap["token"] is None                        # no account token sent
+    assert cap["body"]["wallet"] == "0xLOCALWALLET"    # identified by local wallet
+    assert cap["body"]["text"] == "nice"
+    assert "earned 0.5 PWM" in status
 
 
 def test_post_feedback_on_posts_to_active_agent(monkeypatch):

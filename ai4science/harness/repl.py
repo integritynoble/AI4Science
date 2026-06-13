@@ -499,11 +499,8 @@ def run_common_repl(
                     print(f"[harness] usage: /feedback <your experience + how to improve "
                           f"{active_spec.name}>", flush=True)
                     continue
-                if not gate.enabled:
-                    print("[pwm] feedback earns PWM once you're logged in — run "
-                          "`ai4science login --pwm` (or --wallet), then /feedback. "
-                          "Earn on physicsworldmodel.org.", flush=True)
-                    continue
+                # Zero-login: post_feedback auto-provisions a local wallet when
+                # not logged in, so feedback always submits and can earn PWM.
                 ok, status = gate.post_feedback(agent_name=active_spec.name, text=arg)
                 note = (status if ok and str(status).startswith("accepted")
                         else status if any(str(status).startswith(k) for k in
