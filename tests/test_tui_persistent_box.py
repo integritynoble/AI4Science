@@ -344,3 +344,44 @@ def test_box_does_not_bounce_during_token_stream():
     except OSError: pass
     # All samples are mid-line (no newline committed yet) → the box must not move.
     assert len(set(rows)) == 1, f"box bounced while streaming one line: rows={rows}"
+
+
+def test_busy_message_is_queued_not_interleaved():
+    # A message sent during work shows as "(queued)" above the box (stable), and
+    # is NOT committed into the middle of the current turn's streaming output.
+    import os as _os, pty, select, time as _t, pyte
+    repo = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+    pid, fd = pty.fork()
+    if pid == 0:
+        _os.environ["TERM"] = "xterm-256color"
+        _os.environ["PYTHONPATH"] = repo + _os.pathsep + _os.environ.get("PYTHONPATH", "")
+        _os.execvp("python3", ["python3", "-c", _DRIVER_BUSY])
+        _os._exit(127)
+    screen = pyte.Screen(80, 24); stream = pyte.ByteStream(screen)
+    def pump(dl):
+        while _t.monotonic() < dl:
+            r, _, _ = select.select([fd], [], [], 0.1)
+            if fd in r:
+                try: c = _os.read(fd, 65536)
+                except OSError: return
+                if not c: return
+                stream.feed(c)
+    t0 = _t.monotonic(); pump(t0 + 1.5)
+    _os.write(fd, b"start\r"); pump(_t.monotonic() + 1.0)
+    _os.write(fd, b"queued one\r"); pump(_t.monotonic() + 0.8)
+    mid = [ln.rstrip() for ln in screen.display]
+    midtext = "\n".join(mid)
+    assert "queued one" in midtext and "(queued)" in midtext, \
+        f"message not shown as queued:\n{midtext}"
+    assert "tok19" not in midtext, "stream finished too early; inconclusive"
+    # The queued line must be BELOW the streamed tokens (just above the box),
+    # not interleaved into them.
+    tok_rows = [i for i, ln in enumerate(mid) if ln.startswith("tok")]
+    q_rows = [i for i, ln in enumerate(mid) if "(queued)" in ln]
+    assert tok_rows and q_rows and q_rows[0] > max(tok_rows), \
+        f"queued message interleaved into output:\n{midtext}"
+    _os.write(fd, b"/exit\r"); pump(_t.monotonic() + 5.0)
+    try: _os.close(fd)
+    except OSError: pass
+    try: _os.waitpid(pid, 0)
+    except OSError: pass

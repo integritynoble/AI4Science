@@ -448,6 +448,8 @@ class FullScreen:
         self._partial = ""              # in-progress streaming line (live region)
         self._stream = None             # the _StreamCommit proxy (set in run)
         self._choice = None             # active permission picker, or None
+        self._queued = []               # sent-but-not-yet-processed messages
+        self._qlock = threading.Lock()
 
     def _invalidate(self) -> None:
         app = self._app
@@ -460,6 +462,21 @@ class FullScreen:
     def _set_partial(self, s: str) -> None:
         self._partial = s
         self._invalidate()
+
+    def _queue_msg(self, shown: str) -> None:
+        # A message sent while the agent is busy: show it as PENDING just above
+        # the composer (stable at the bottom) instead of committing it into the
+        # middle of the streaming output. It commits to the transcript only when
+        # the worker actually dequeues it (_dequeue_msg), like Claude Code.
+        with self._qlock:
+            self._queued.append(shown)
+        self._invalidate()
+
+    def _dequeue_msg(self):
+        with self._qlock:
+            shown = self._queued.pop(0) if self._queued else None
+        self._invalidate()
+        return shown
 
     def request_choice(self, question: str, options) -> int:
         """Block the worker while the user picks an option with ↑/↓/⏎ (or 1/2/3)
@@ -508,9 +525,13 @@ class FullScreen:
         self._busy = True
         if line is None:
             raise EOFError
-        # NOTE: the `❯ <line>` echo happens in the Enter handler at SEND time —
-        # not here — so a message typed WHILE the agent is busy shows instantly
-        # instead of vanishing until the turn ends.
+        # The message was shown as PENDING above the box since SEND time; now
+        # that it's actually being processed, move it into the transcript (so it
+        # never gets committed into the middle of the previous turn's output).
+        shown = self._dequeue_msg()
+        echo = shown if shown is not None else line
+        if str(echo).strip():
+            self.append(f"\n\x1b[38;5;173m❯\x1b[0m {echo}\n")
         return line
 
     # ── the app ─────────────────────────────────────────────────────────────
@@ -577,6 +598,25 @@ class FullScreen:
                              height=_partial_height, wrap_lines=False,
                              style="class:input")
 
+        # Queued messages: sent while the agent is busy, shown as pending just
+        # above the box until the worker processes them (then they move into the
+        # transcript). Keeps a just-sent message stable at the bottom instead of
+        # scrolling up inside the current turn's output.
+        def _queued_text():
+            with self._qlock:
+                q = list(self._queued)
+            if not q:
+                return ANSI("")
+            return ANSI("\n".join(
+                f"\x1b[38;5;173m❯\x1b[0m \x1b[2m{m}  (queued)\x1b[0m" for m in q))
+
+        def _queued_height():
+            with self._qlock:
+                return len(self._queued)
+        queued_win = Window(FormattedTextControl(_queued_text),
+                            height=_queued_height, wrap_lines=False,
+                            style="class:input")
+
         # Permission picker (Claude Code's arrow-key menu). When self._choice is
         # set, this panel REPLACES the input box: ↑/↓ move the highlight, ⏎
         # selects, 1/2/3 jump, esc = the last option.
@@ -612,6 +652,7 @@ class FullScreen:
         ]), filter=in_choice)
         input_panel = ConditionalContainer(HSplit([
             partial_win,                                 # live streaming line
+            queued_win,                                  # pending sent messages
             _rule(),                                     # upper horizontal line
             ta,                                          # input (grows; no side borders)
             _rule(),                                     # bottom horizontal line
@@ -635,10 +676,11 @@ class FullScreen:
                 self._inq.put(None)
                 event.app.exit()
                 return
-            # Echo at SEND time (not when the worker dequeues) so a message typed
-            # while the agent is busy appears immediately instead of vanishing.
+            # Show the message as PENDING just above the box (stable at the
+            # bottom) — it commits to the transcript when the worker processes
+            # it, so it never lands in the middle of the current turn's output.
             if shown.strip():
-                self.append(f"\n\x1b[38;5;173m❯\x1b[0m {shown}\n")
+                self._queue_msg(shown)
             self._inq.put(full)
 
         @kb.add("escape", "enter")
