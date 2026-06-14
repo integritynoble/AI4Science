@@ -32,6 +32,16 @@ class Spinner:
         self._thread = None
         self._t0 = 0.0
         self._enabled = bool(getattr(self.stream, "isatty", lambda: False)())
+        # When the persistent composer (tui.run_full) owns the screen it shows
+        # its OWN working-star in the status line, and patch_stdout would turn
+        # this spinner's \r animation into a cascade of lines. Stay silent.
+        if self._enabled:
+            try:
+                from ai4science.harness import tui
+                if tui._ACTIVE.get("screen") is not None:
+                    self._enabled = False
+            except Exception:
+                pass
 
     def _run(self) -> None:
         for frame in itertools.cycle(_FRAMES):

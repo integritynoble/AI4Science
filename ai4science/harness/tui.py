@@ -131,6 +131,11 @@ def read_input(prompt: str = "› ", mode: str = "chat", status: str = "") -> st
     `status` is a one-line status bar (e.g. 'model · 7056 PWM · ~/proj') shown
     under the box, like Claude Code's bottom line.
     """
+    # When a persistent composer (run_full) owns the screen, ALL input must come
+    # through its queue — the worker thread calls us, the main thread reads keys.
+    scr = _ACTIVE.get("screen")
+    if scr is not None:
+        return scr.read_input(prompt, status)
     m = tui_mode()
     if m == "off":
         return input(prompt)
@@ -328,22 +333,6 @@ def tui_mode() -> str:
     return "full"  # default (unset or `full`)
 
 
-class _StdoutProxy:
-    """Routes the REPL's prints into the screen pane. isatty()=False on purpose:
-    the inline Spinner checks it and silences itself (the screen has its own
-    star in the status bar)."""
-    def __init__(self, screen):
-        self._s = screen
-    def write(self, text):
-        if text:
-            self._s.append(text)
-        return len(text or "")
-    def flush(self):
-        pass
-    def isatty(self):
-        return False
-
-
 class FullScreen:
     _FRAMES = ["✶", "✷", "✸", "✹", "✺", "✹", "✸", "✷"]
 
@@ -352,26 +341,25 @@ class FullScreen:
         import threading
         self.mode = mode
         self.prompt = prompt
-        self._text = ""                 # raw (ANSI) transcript
         self._inq = queue.Queue()       # Enter → lines for the worker
         self._busy = True
         self._frame_i = 0
         self._status_extra = ""
-        self._lock = threading.Lock()
         self._app = None
+        self._expand = lambda t: t      # paste-collapse expander (set in run)
 
     # ── worker-side API ────────────────────────────────────────────────────
     def append(self, text: str) -> None:
-        with self._lock:
-            self._text += text
-            if len(self._text) > 400_000:        # keep the pane bounded
-                self._text = self._text[-300_000:]
-        app = self._app
-        if app is not None:
-            try:
-                app.loop.call_soon_threadsafe(app.invalidate)
-            except Exception:
-                pass
+        # Worker thread → write ABOVE the pinned box. Under patch_stdout this
+        # lands in the terminal's native scrollback, so the mouse wheel and
+        # click-drag copy keep working (no alt-screen pane to trap them).
+        if not text:
+            return
+        try:
+            sys.stdout.write(text)
+            sys.stdout.flush()
+        except Exception:
+            pass
 
     def read_input(self, prompt: str = "", status: str = "") -> str:
         if prompt and prompt not in ("❯ ", "> "):
@@ -387,12 +375,13 @@ class FullScreen:
 
     # ── the app ─────────────────────────────────────────────────────────────
     def run(self, worker) -> None:
-        """Run the full-screen app; `worker(screen)` runs the REPL loop in a
-        background thread with stdout redirected into the pane."""
-        # The alt-screen app paints from (0,0) and never needs cursor-position
-        # reports. Disable CPR so terminals that don't answer ESC[6n (some
-        # SSH/web/CI shells) don't get stuck on prompt_toolkit's repeated
-        # "WARNING: …CPR… Press ENTER to continue" loop.
+        """Render the pinned composer on the main thread; `worker()` (no args)
+        runs the REPL loop in a background thread, reading input through the
+        module-level `read_input` (routed here) and printing output ABOVE the
+        box via patch_stdout."""
+        # Disable CPR so terminals that don't answer ESC[6n (some SSH/web/CI
+        # shells) don't get stuck on prompt_toolkit's repeated "WARNING: …CPR…
+        # Press ENTER to continue" loop.
         os.environ["PROMPT_TOOLKIT_NO_CPR"] = "1"
         import threading
         from prompt_toolkit import Application
@@ -404,6 +393,7 @@ class FullScreen:
         from prompt_toolkit.widgets import TextArea
         from prompt_toolkit.styles import Style
         from prompt_toolkit.history import FileHistory
+        from prompt_toolkit.patch_stdout import patch_stdout
 
         hp = _history_path(self.mode)
         # Borderless, two-line input like Claude Code: a coral prompt line that
@@ -413,55 +403,6 @@ class FullScreen:
                       history=FileHistory(str(hp)) if hp else None, style="class:input")
         ta.window.height = _grow_height(lambda: ta.text)
 
-        from prompt_toolkit.application import get_app
-        from prompt_toolkit.data_structures import Point
-        from prompt_toolkit.mouse_events import MouseEventType
-
-        def _pane_text():
-            with self._lock:
-                return ANSI(self._text)
-
-        # self._cursor_line: None = follow the latest output (auto-scroll to
-        # bottom); an int pins the view there while you wheel back through history.
-        self._cursor_line = None
-
-        def _line_count() -> int:
-            with self._lock:
-                t = self._text
-            return max(1, len(t.rstrip("\n").split("\n")))
-
-        def _pane_cursor():
-            # An (invisible) cursor the Window scrolls to keep visible. Clamp to
-            # the last REAL line — never past it: a too-large y crashes
-            # prompt_toolkit's line-wrap scroll with "list index out of range".
-            last = _line_count() - 1
-            y = last if self._cursor_line is None else min(self._cursor_line, last)
-            return Point(x=0, y=max(0, y))
-
-        out_ctrl = FormattedTextControl(_pane_text, get_cursor_position=_pane_cursor)
-
-        def _scroll_pane(up_lines: int) -> None:
-            # up_lines > 0 → move the view UP into history; reaching the bottom
-            # resumes following the latest output. Used by the wheel AND PageUp/Dn.
-            last = _line_count() - 1
-            cur = last if self._cursor_line is None else min(self._cursor_line, last)
-            nv = cur - up_lines
-            self._cursor_line = None if nv >= last else max(0, nv)
-            try:
-                get_app().invalidate()
-            except Exception:
-                pass
-
-        def _pane_mouse(mouse_event):
-            if mouse_event.event_type == MouseEventType.SCROLL_UP:
-                _scroll_pane(3)
-            elif mouse_event.event_type == MouseEventType.SCROLL_DOWN:
-                _scroll_pane(-3)
-            else:
-                return NotImplemented          # let other handlers have it
-            return None
-        out_ctrl.mouse_handler = _pane_mouse
-
         def _info():
             self._frame_i = (self._frame_i + 1) % len(self._FRAMES)
             star = (f"\x1b[38;5;173m{self._FRAMES[self._frame_i]}\x1b[0m working…  "
@@ -469,18 +410,15 @@ class FullScreen:
             mode = f"\x1b[38;5;173mai4science · {_display_mode(self.mode)}\x1b[0m"
             extra = (f" · \x1b[38;5;245m{self._status_extra}\x1b[0m"
                      if self._status_extra else "")
-            hints = ("   \x1b[38;5;240m⏎ send · ⌥⏎ newline · PgUp/Dn scroll · "
-                     "esc stop · /exit\x1b[0m")
+            hints = ("   \x1b[38;5;240m⏎ send · ⌥⏎ newline · esc stop · /exit\x1b[0m")
             return ANSI(f" {star}{mode}{extra}{hints}")
 
-        out_win = Window(out_ctrl, wrap_lines=True, always_hide_cursor=True,
-                         style="class:pane")
-        # Claude-Code-style input framed by ONLY a top + bottom horizontal rule
-        # (no left/right verticals); the prompt grows between them.
+        # Claude-Code-style composer: ONLY a top + bottom horizontal rule (no
+        # left/right verticals, no transcript pane). The REPL's output streams
+        # ABOVE this box via patch_stdout, into the terminal's own scrollback.
         def _rule():
             return Window(height=1, char="─", style="class:rule")
         body = HSplit([
-            out_win,
             _rule(),                                     # upper horizontal line
             ta,                                          # input (grows; no side borders)
             _rule(),                                     # bottom horizontal line
@@ -488,10 +426,12 @@ class FullScreen:
         ])
 
         kb = KeyBindings()
+        # Paste-collapse (Claude-Code's `[Pasted text #N +M lines]`); expand on send.
+        self._expand = _attach_paste_collapse(ta, kb)
 
         @kb.add("enter")
         def _(event):
-            text = ta.text
+            text = self._expand(ta.text)
             ta.buffer.reset(append_to_history=True)
             if text.strip().lower() in ("/exit", "/quit", "exit", "quit", "q"):
                 self._inq.put(None)
@@ -524,41 +464,25 @@ class FullScreen:
                 self._inq.put(None)
                 event.app.exit()
 
-        @kb.add("pageup")          # scroll the transcript without the mouse
-        def _(event):
-            _scroll_pane(10)
-
-        @kb.add("pagedown")
-        def _(event):
-            _scroll_pane(-10)
-
         style = Style.from_dict({
             "prompt": "fg:#d7875f bold",   # coral ❯ like Claude Code
             "rule": "fg:#d7875f",          # coral top/bottom horizontal lines
-            # Bright/white body text like Claude Code (explicit coral accents and
-            # the dim ⎿ result gutter keep their own colors and override this).
-            "pane": "fg:#ffffff",
             "input": "fg:#ffffff",         # what you type is bright too
         })
-        # Mouse capture trade-off. DEFAULT OFF so native click-drag text
-        # selection / copy works like Claude Code; scroll the transcript with
-        # PageUp/PageDown. Set `AI4SCIENCE_TUI_MOUSE=on` to make the WHEEL scroll
-        # instead — but that captures the mouse, so copy then needs Shift+drag.
-        _mouse = os.environ.get("AI4SCIENCE_TUI_MOUSE", "off").strip().lower() \
-            in ("1", "on", "yes", "true")
+        # full_screen=False + patch_stdout = the composer stays PINNED at the
+        # bottom while the worker's output scrolls above it in the terminal's
+        # native scrollback. mouse_support stays OFF so the terminal (not
+        # prompt_toolkit) owns the wheel + click-drag copy, like Claude Code.
         self._app = Application(layout=Layout(body, focused_element=ta),
-                                key_bindings=kb, style=style, full_screen=True,
-                                refresh_interval=0.15, mouse_support=_mouse)
+                                key_bindings=kb, style=style, full_screen=False,
+                                refresh_interval=0.2, mouse_support=False)
 
         _ACTIVE["screen"] = self
-        old_out, old_err = sys.stdout, sys.stderr
-        sys.stdout = _StdoutProxy(self)          # REPL prints → the pane
-        sys.stderr = _StdoutProxy(self)
         done = {"v": False}
 
         def _work():
             try:
-                worker(self)
+                worker()
             except Exception as e:
                 self.append(f"\n[tui] worker error: {type(e).__name__}: {e}\n")
             finally:
@@ -573,9 +497,11 @@ class FullScreen:
         t = threading.Thread(target=_work, daemon=True)
         t.start()
         try:
-            self._app.run()
+            # patch_stdout reroutes the worker thread's prints to render ABOVE the
+            # live input box instead of corrupting it.
+            with patch_stdout(raw=True):
+                self._app.run()
         finally:
-            sys.stdout, sys.stderr = old_out, old_err
             _ACTIVE["screen"] = None
             if not done["v"]:
                 self._inq.put(None)              # unblock a waiting worker
@@ -583,8 +509,31 @@ class FullScreen:
 
 
 def run_full(mode: str, runner) -> bool:
-    """Deprecated alt-screen wrapper. We now render INLINE (the REPL prints to the
-    terminal normally and `read_input` shows the two-line inline prompt) so the
-    terminal's native scrollback (mouse wheel) and text selection (copy) work,
-    like Claude Code. Always return False → the caller runs the REPL directly."""
-    return False
+    """Run the REPL with a PERSISTENT two-line composer pinned at the bottom
+    (Claude-Code parity: the input box never disappears while the agent works).
+
+    The box is rendered INLINE (no alt-screen) by a prompt_toolkit app on the
+    main thread; `runner()` — the REPL loop — runs in a worker thread and its
+    output streams ABOVE the box via patch_stdout, into the terminal's native
+    scrollback (so wheel-scroll + click-drag copy still work). The worker reads
+    input through `tui.read_input`, which is routed to the active screen's queue.
+
+    Returns True when it owns the loop; False to let the caller run the REPL
+    directly (no TTY, prompt_toolkit missing, or AI4SCIENCE_TUI=off/box)."""
+    if tui_mode() != "full":
+        return False
+    try:
+        import prompt_toolkit  # noqa: F401
+        from prompt_toolkit.patch_stdout import patch_stdout  # noqa: F401
+    except Exception:
+        return False
+    try:
+        FullScreen(mode).run(runner)
+        return True
+    except (EOFError, KeyboardInterrupt):
+        raise
+    except Exception:
+        # Any TUI failure → tell the caller to fall back to the plain REPL.
+        # (Safe only because read_input below also de-routes once the screen is
+        # gone; a failure here means the worker never started consuming input.)
+        return False
