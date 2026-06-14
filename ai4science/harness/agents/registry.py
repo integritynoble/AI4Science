@@ -4,13 +4,20 @@ import importlib.util
 from pathlib import Path
 from typing import Dict, List, Optional
 
+import dataclasses
+
 from ai4science.harness.tools.base import Registry, Tool
 from ai4science.harness.agents.spec import AgentSpec
 from ai4science.harness.agents.context import BuildContext
-from ai4science.harness.agents.capabilities import resolve_capability, CAPABILITY_BUNDLES
+from ai4science.harness.agents.capabilities import (
+    resolve_capability, CAPABILITY_BUNDLES,
+    register_plugin_bundle, clear_plugin_bundles,
+)
 
 _SPECS_DIR = Path(__file__).parent / "specs"
 AGENT_REGISTRY: Dict[str, AgentSpec] = {}
+# Non-fatal problems from the last reload (bad manifests, etc.) — surfaced by /mcp diag.
+PLUGIN_ERRORS: List[str] = []
 
 
 def _claude_code_base(ctx: BuildContext) -> Registry:
@@ -25,11 +32,29 @@ def _claude_code_base(ctx: BuildContext) -> Registry:
     return reg
 
 
+def _attach_spec_mcp_servers(spec: AgentSpec, ctx: BuildContext, reg: Registry) -> None:
+    """A plug-in agent's own tool code: build a client per declared MCP server and
+    merge its namespaced tools. Needs ctx.mcp_client_factory; no-op otherwise."""
+    servers = getattr(spec, "mcp_servers", ()) or ()
+    factory = getattr(ctx, "mcp_client_factory", None)
+    if not servers or factory is None:
+        return
+    from ai4science.harness.mcp_client import mcp_tools
+    for s in servers:
+        try:
+            client = factory(s)
+            for t in mcp_tools(client):
+                reg.add(t)
+        except Exception:
+            continue  # a broken plug-in server never breaks the registry
+
+
 def build_registry_for(spec: AgentSpec, *, is_subagent: bool, ctx: BuildContext) -> Registry:
     reg = _claude_code_base(ctx)
     for cap in spec.capabilities:
         for t in resolve_capability(cap, ctx):
             reg.add(t)
+    _attach_spec_mcp_servers(spec, ctx, reg)
     if spec.extra_tools:
         for t in spec.extra_tools(ctx):
             reg.add(t)
@@ -90,26 +115,73 @@ def _load_spec_file(path: Path) -> AgentSpec:
 AGENT_ALIASES: Dict[str, str] = {}
 
 
-def reload(specs_dir: Optional[Path] = None) -> Dict[str, AgentSpec]:
-    """Discover all specs/*.py (each exposing AGENT) into AGENT_REGISTRY."""
+def _validate_caps(name: str, caps, where: str) -> None:
+    for cap in caps:
+        if cap not in CAPABILITY_BUNDLES:
+            valid = ", ".join(sorted(CAPABILITY_BUNDLES))
+            raise ValueError(
+                f"agent {name!r} ({where}) uses unknown capability "
+                f"{cap!r}; valid: {valid}")
+
+
+def reload(specs_dir: Optional[Path] = None, *, load_plugins: bool = True) -> Dict[str, AgentSpec]:
+    """Discover built-in specs/*.py (each exposing AGENT), then merge manifest
+    plug-ins from the plugins dir, into AGENT_REGISTRY."""
     directory = Path(specs_dir) if specs_dir else _SPECS_DIR
     found: Dict[str, AgentSpec] = {}
     aliases: Dict[str, str] = {}
+    clear_plugin_bundles()
+    PLUGIN_ERRORS.clear()
     for path in sorted(directory.glob("*.py")):
         if path.name == "__init__.py":
             continue
         agent = _load_spec_file(path)
         if agent.name in found:
             raise ValueError(f"duplicate agent name {agent.name!r} ({path})")
-        for cap in agent.capabilities:
-            if cap not in CAPABILITY_BUNDLES:
-                valid = ", ".join(sorted(CAPABILITY_BUNDLES))
-                raise ValueError(
-                    f"agent {agent.name!r} ({path}) uses unknown capability "
-                    f"{cap!r}; valid: {valid}")
+        _validate_caps(agent.name, agent.capabilities, str(path))
         found[agent.name] = agent
         for alias in agent.aliases:
             aliases[alias] = agent.name
+
+    # ── manifest plug-ins (tools register bundles first, so agent plug-ins and
+    #    attach_to can reference them) ──
+    extra_caps: Dict[str, List[str]] = {}   # agent name -> bundles to inject (attach_to)
+    if load_plugins:
+        from ai4science.harness.agents import plugins as _plugins
+        plug_agents, plug_tools, errors = _plugins.load_plugins()
+        PLUGIN_ERRORS.extend(errors)
+        for tp in plug_tools:
+            if tp.name in CAPABILITY_BUNDLES:
+                PLUGIN_ERRORS.append(f"tool plug-in {tp.name!r}: name collides with an "
+                                     "existing bundle; skipped")
+                continue
+            register_plugin_bundle(tp.name, tp.provider())
+            for target in tp.attach_to:
+                extra_caps.setdefault(target, []).append(tp.name)
+        for agent in plug_agents:
+            if agent.name in found:
+                PLUGIN_ERRORS.append(f"agent plug-in {agent.name!r}: name collides with a "
+                                     "built-in agent; skipped")
+                continue
+            try:
+                _validate_caps(agent.name, agent.capabilities, "plugin")
+            except ValueError as exc:
+                PLUGIN_ERRORS.append(str(exc))
+                continue
+            found[agent.name] = agent
+            for alias in agent.aliases:
+                aliases[alias] = agent.name
+
+    # attach_to: add each tool plug-in's bundle to the named agents (frozen specs
+    # → replace with a copy whose capabilities include the bundle, de-duped).
+    for target, bundles in extra_caps.items():
+        spec = found.get(target)
+        if spec is None:
+            PLUGIN_ERRORS.append(f"attach_to target {target!r} is not a known agent; skipped")
+            continue
+        merged = tuple(dict.fromkeys(spec.capabilities + tuple(bundles)))
+        found[target] = dataclasses.replace(spec, capabilities=merged)
+
     AGENT_REGISTRY.clear()
     AGENT_REGISTRY.update(found)
     AGENT_ALIASES.clear()

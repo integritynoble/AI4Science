@@ -16,7 +16,13 @@ PROMPT = (
     "solver on the sub-GPU server (it returns a PREVIEW with the PWM cost and the "
     "recipient - running a registered solution costs PWM paid to its solution "
     "provider; confirm=true to actually spend) and `cassi_result` to poll + judge. "
-    "Always preview cost before dispatching."
+    "Always preview cost before dispatching.\n\n"
+    "The full PWM reconstruction-algorithm base is yours: `ci_modalities` lists "
+    "the imaging modalities, `ci_algorithms` lists every registered algorithm "
+    "for one (GAP-TV, MST-L, HDNet, DAUHST, FBP, SART, ...), `ci_algorithm_info` "
+    "gives the implementation + hyperparameters, and `ci_run_algorithm` runs a "
+    "CPU algorithm locally on workspace data (GPU algorithms must go through "
+    "cassi_dispatch / compute_dispatch)."
 )
 
 AGENT = AgentSpec(
@@ -28,5 +34,6 @@ AGENT = AgentSpec(
     keywords=("cassi", "spectral", "optics", "reconstruction", "hyperspectral",
               "snapshot", "imaging", "inverse problem"),
     system_prompt=PROMPT,
-    capabilities=("pwm-actions", "pwm-data", "computational-imaging", "compute-providers"),
+    capabilities=("pwm-actions", "pwm-data", "computational-imaging", "compute-providers",
+                  "ci-algorithms"),
 )

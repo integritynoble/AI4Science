@@ -1,0 +1,12 @@
+{
+  "kind": "tool",
+  "name": "denoise-suite",
+  "title": "Denoise Suite",
+  "description": "A bundle of image-denoising tools exposed as an MCP server, usable by any science-tier agent.",
+  "mcp_servers": [
+    {"name": "denoise", "command": "python", "args": ["-m", "denoise_suite.mcp"]}
+  ],
+  "attach_to": ["research", "computational-imaging"],
+  "wallet": "0xYOUR_WALLET_ADDRESS_HERE",
+  "price_pwm": 1.0
+}

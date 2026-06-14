@@ -9,6 +9,8 @@ AGENT = AgentSpec(
     keywords=("codex", "openai", "chatgpt", "coding", "agent"),
     system_prompt=None,
     capabilities=("compute-providers",),
+    # Base coding agent (the original Codex): main agent only — never a sub-agent.
+    allow_as_subagent=False,
     default_backend="openai",
     order=5,
 )

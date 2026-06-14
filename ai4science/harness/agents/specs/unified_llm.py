@@ -9,6 +9,9 @@ AGENT = AgentSpec(
     keywords=("general", "code", "claude", "chatgpt", "gemini", "common", "unified"),
     system_prompt=None,
     capabilities=("compute-providers",),
+    # Base coding agent (one harness over Claude/ChatGPT/Gemini): main agent
+    # only — never a sub-agent.
+    allow_as_subagent=False,
     aliases=("common",),
     order=1,
 )

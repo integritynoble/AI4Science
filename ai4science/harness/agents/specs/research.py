@@ -24,6 +24,7 @@ AGENT = AgentSpec(
     description="PWM-grounded science agent: principles, specs, benchmarks, solutions.",
     keywords=("science", "pwm", "benchmark", "solution", "principle"),
     system_prompt=RESEARCH_PROMPT,
-    capabilities=("pwm-actions", "pwm-data", "onboarding", "compute-providers"),
+    capabilities=("pwm-actions", "pwm-data", "onboarding", "compute-providers",
+                  "ci-algorithms"),
     order=2,
 )

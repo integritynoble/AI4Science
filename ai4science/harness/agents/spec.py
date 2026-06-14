@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple
 
 
 @dataclass(frozen=True)
 class AgentSpec:
-    """One pluggable agent. Discovered from agents/specs/*.py (module attr AGENT)."""
+    """One pluggable agent. Discovered from agents/specs/*.py (module attr AGENT)
+    or from a plug-in manifest in the plugins dir (see agents/plugins.py)."""
     name: str                                   # unique id, e.g. "research"
     tier: str                                   # "open" (no PWM) | "science" (PWM moat)
     category: str                               # "core" | "specific" | "hidden"
@@ -20,3 +21,8 @@ class AgentSpec:
     aliases: Tuple[str, ...] = ()               # old/alt names that resolve to this spec
     default_backend: Optional[str] = None       # preferred LLM backend when user gives none
     order: int = 100                            # display order in the /mode menu (lower first)
+    # Plug-and-play extensions (manifest plug-ins; builtin specs leave these empty):
+    wallet: Optional[str] = None                # PWM address that charges for using this agent
+    price_pwm: float = 0.0                      # per-use price set by the contributor (0 = free)
+    mcp_servers: Tuple[Dict[str, Any], ...] = ()  # external MCP servers providing this agent's tools
+    source: str = "builtin"                     # "builtin" | "plugin" (provenance)

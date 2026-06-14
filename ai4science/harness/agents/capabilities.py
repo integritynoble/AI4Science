@@ -38,15 +38,46 @@ def _compute_providers(ctx: BuildContext) -> List[Tool]:
     return list(compute_tools())
 
 
-# name -> provider(ctx) -> list[Tool].
-CAPABILITY_BUNDLES: Dict[str, Callable[[BuildContext], List[Tool]]] = {
+def _ci_algorithms(ctx: BuildContext) -> List[Tool]:
+    from ai4science.harness.algorithm_tools import algorithm_tools
+    return list(algorithm_tools())
+
+
+# name -> provider(ctx) -> list[Tool]. Built-in bundles.
+BUILTIN_BUNDLES: Dict[str, Callable[[BuildContext], List[Tool]]] = {
     "pwm-actions": _pwm_actions,
     "pwm-data": _pwm_data,
     "onboarding": _onboarding,
     "paper-review": _paper_review,
     "computational-imaging": _computational_imaging,
     "compute-providers": _compute_providers,
+    "ci-algorithms": _ci_algorithms,
 }
+
+# Dynamic bundles registered by tool plug-ins (manifest kind="tool"). Kept apart
+# from BUILTIN_BUNDLES so a registry reload can clear/rebuild them without
+# touching the built-ins.
+PLUGIN_BUNDLES: Dict[str, Callable[[BuildContext], List[Tool]]] = {}
+
+# Back-compat name: the union view used for validation + lookup.
+CAPABILITY_BUNDLES: Dict[str, Callable[[BuildContext], List[Tool]]] = dict(BUILTIN_BUNDLES)
+
+
+def _rebuild_union() -> None:
+    CAPABILITY_BUNDLES.clear()
+    CAPABILITY_BUNDLES.update(BUILTIN_BUNDLES)
+    CAPABILITY_BUNDLES.update(PLUGIN_BUNDLES)
+
+
+def register_plugin_bundle(name: str, provider: Callable[[BuildContext], List[Tool]]) -> None:
+    """Register a tool plug-in as a capability bundle any agent can reference."""
+    PLUGIN_BUNDLES[name] = provider
+    _rebuild_union()
+
+
+def clear_plugin_bundles() -> None:
+    PLUGIN_BUNDLES.clear()
+    _rebuild_union()
 
 
 def resolve_capability(name: str, ctx: BuildContext) -> List[Tool]:
