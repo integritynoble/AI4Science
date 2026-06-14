@@ -16,7 +16,9 @@
 set -euo pipefail
 
 PKG="pwm-ai4science"
-GIT_URL="git+https://github.com/integritynoble/AI4Science.git"
+# GitHub source = the branch ZIP archive, NOT git+https — pip downloads it over
+# plain HTTP, so `git` need not be installed (locked-down boxes often lack it).
+ZIP_URL="https://github.com/integritynoble/AI4Science/archive/refs/heads/main.zip"
 INSTALL_DIR="${AI4SCIENCE_HOME:-$HOME/.ai4science}"
 VENV="$INSTALL_DIR/venv"
 BIN_DIR="${AI4SCIENCE_BIN:-$HOME/.local/bin}"
@@ -56,11 +58,13 @@ if [ -n "${AI4SCIENCE_REF:-}" ]; then
 elif "$VENV/bin/pip" install --quiet "${PKG}${extra}" 2>/dev/null; then
   ok "Installed $PKG from PyPI"
 else
-  say "PyPI unavailable; installing from GitHub…"
+  say "PyPI unavailable; installing from GitHub (zip archive — no git needed)…"
   # PEP 508 direct reference for extras (the old '#egg=name[extra]' fragment is
-  # rejected by modern pip as an invalid egg fragment).
-  src="$GIT_URL"; [ -n "$extra" ] && src="${PKG}${extra} @ ${GIT_URL}"
-  "$VENV/bin/pip" install --quiet "$src" || die "install from GitHub failed"
+  # rejected by modern pip as an invalid egg fragment). The ZIP archive means
+  # pip never shells out to `git`.
+  src="$ZIP_URL"; [ -n "$extra" ] && src="${PKG}${extra} @ ${ZIP_URL}"
+  "$VENV/bin/pip" install --quiet "$src" \
+    || die "install from GitHub failed — check network access to github.com"
   ok "Installed $PKG from GitHub"
 fi
 
