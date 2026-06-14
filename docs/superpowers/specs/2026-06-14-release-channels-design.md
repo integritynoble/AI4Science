@@ -1,4 +1,4 @@
-# AI4Science Release Channels — Stable vs Dev
+# AI4Science Release Channels — Dev → RC → Stable
 
 **Date:** 2026-06-14
 **Status:** Design (approved decisions recorded; implementation pending)
@@ -6,8 +6,10 @@
 `main` branch. `install.sh` falls back to `main`, and `ai4science update`
 *always* pulls `archive/refs/heads/main.zip`. So every user runs the
 bleeding-edge dev tip, which changes on every commit. With many contributors
-about to land work, users need a **stable** version to install, kept separate
-from the fast-moving **dev** line.
+about to land work, we need (a) a **stable** version for users, kept apart from
+the fast-moving dev line, and (b) a **release-candidate** that managers and
+testers can exercise — where **only an explicit approval** lets a candidate
+become a release.
 
 ---
 
@@ -17,113 +19,146 @@ from the fast-moving **dev** line.
 |---|----------|--------|
 | 1 | Stable distribution mechanism | **PyPI (primary) + git `stable` branch (no-account fallback)** |
 | 2 | How a commit becomes stable | **Maintainer cuts releases** (contributors land on dev, CI-gated; a human promotes) |
-| 3 | Context | **Many contributors** — dev churns fast; CI must keep `main` releasable |
+| 3 | How testers receive a candidate | **RC channel** — `vX.Y.Z-rcN` pre-release tags, published to an `rc` channel; testers install the real packaged artifact |
+| 4 | How "approved to release" is captured | **GitHub Environment approval** — protected `production` environment with named required reviewers; no stable release without a recorded approval |
+| — | Context | **Many contributors** — dev churns fast; CI keeps `main` releasable |
 
 ---
 
-## 1. Channels, branches, tags
+## 1. Three channels
 
-| Channel | Git ref | Who writes it | What users get |
-|---------|---------|---------------|----------------|
-| **dev** | `main` branch | every contributor (CI-gated PRs) | the bleeding edge; changes per commit |
-| **stable** | `stable` branch + `vX.Y.Z` tags | the release cut only (fast-forward) | the last release a maintainer promoted |
+```
+ main (dev) ──cut RC──► rc (vX.Y.Z-rcN) ──test + approve──► stable (vX.Y.Z) + PyPI
+ contributors           managers + testers                  end users
+ (CI-gated PRs)         (install real artifact)             (production env approval)
+```
+
+| Channel | Git ref | Who installs it | What they get | Install selector |
+|---------|---------|-----------------|---------------|------------------|
+| **dev** | `main` branch | contributors / the curious | bleeding edge; changes per commit | `AI4SCIENCE_CHANNEL=dev` |
+| **rc** | `rc` branch + `vX.Y.Z-rcN` pre-release tags | **managers + testers** | a frozen candidate — the exact bits that will ship | `AI4SCIENCE_CHANNEL=rc` |
+| **stable** | `stable` branch + `vX.Y.Z` tags | **end users** | the last *approved* release | default |
 
 Rules:
-- **`main`** is the integration branch. All core contributions merge here. It is
-  always *intended* to be releasable (CI enforces this) but is never *promised*
-  to users.
-- **`stable`** is maintainer-controlled and **only ever fast-forwards** to a
-  tagged commit on the `main` line. It never receives direct commits or merges.
-  `archive/refs/heads/stable.zip` therefore always equals the latest release —
-  the no-PyPI-account install fallback.
-- **`vX.Y.Z`** tags are immutable release points. They are what gets published to
-  PyPI and what users can pin to.
+- **`main`** is the integration branch. All core contributions merge here. CI
+  keeps it *intended*-to-be-releasable, but it is never *promised* to users.
+- **`rc`** is a **frozen candidate** branch. It is reset to a chosen `main`
+  commit at cut time and thereafter receives **only cherry-picked
+  release-blocking fixes** — never general dev churn — so testers always
+  validate a stable target. Each fix batch produces a new `rcN`.
+- **`stable`** is approval-gated and **only ever fast-forwards** to the commit
+  that an RC was approved at. It never receives direct commits.
+  `archive/refs/heads/stable.zip` therefore always equals the latest approved
+  release (the no-PyPI-account install fallback).
+- **Tags:** `vX.Y.Z-rcN` are pre-releases (rc channel); `vX.Y.Z` are immutable
+  final releases (stable channel + PyPI).
+
+**Key property:** the commit tested as `vX.Y.Z-rcN` and the commit released as
+`vX.Y.Z` are the *same tree* — promotion changes only the version string
+(`0.6.1rc2` → `0.6.1`), never the code. You ship exactly what was approved.
 
 ---
 
-## 2. Two contribution paths (important: they are independent)
+## 2. Two contribution paths (independent — don't block plug-in authors)
 
-A "contributor" can mean two very different things. Keep the paths separate so
-plug-in authors are never blocked on a CLI release.
+A "contributor" means two different things; keep the paths separate.
 
 ### 2a. Core contributions — ride the release train
 Code changes to the CLI / harness (`ai4science/**`, tests, install scripts).
 ```
-contributor PR ─► main (CI gate: full pytest must pass) ─► maintainer cuts release ─► stable + PyPI
+contributor PR ─► main (CI gate: full pytest) ─► RC ─► test+approve ─► stable + PyPI
 ```
-These reach end users **only** when a maintainer next cuts a stable release.
+These reach end users only when an RC built from them is approved.
 
 ### 2b. Plug-in contributions — do NOT ride the release train
-Agent / tool **manifests** (the plug-in system in `PLUGIN_STANDARD.md`). These
-are pure-data manifests published to the website gallery
+Agent / tool **manifests** (the plug-in system in `PLUGIN_STANDARD.md`) are
+pure-data, published to the website gallery
 (`physicsworldmodel.org/agents/contribute`) and installed at runtime:
 ```
-contributor uploads manifest ─► website gallery ─► any user: `ai4science plugins pull <name>`
+contributor uploads manifest ─► gallery ─► any user: `ai4science plugins pull <name>`
 ```
-A plug-in is live the moment it is in the gallery. It needs **no** CLI release,
-works against both stable and dev CLIs, and its author earns PWM from per-agent
-pool emission independently of the release cadence. This is the path most
-"many contributors" should use; it has no maintainer bottleneck.
+A plug-in is live the moment it is in the gallery, works against any CLI
+channel, and earns PWM independently of the release cadence. This is the
+bottleneck-free path most contributors should use.
 
-> The rest of this document is about path **2a** (the CLI release train).
+> The rest of this document concerns path **2a** (the CLI release train).
 
 ---
 
 ## 3. Version scheme (PEP 440)
 
-`ai4science/__init__.py` holds the single source of truth (`__version__`,
-consumed by `pyproject.toml`'s dynamic version).
+`ai4science/__init__.py` is the single source of truth (`__version__`, consumed
+by `pyproject.toml`'s dynamic version). One release cycle for `0.6.1`:
 
-| State | Example | Meaning |
-|-------|---------|---------|
-| Stable release | `0.6.0` | a tagged, promoted, PyPI-published version |
-| Dev (on `main` between releases) | `0.6.1.dev0` | work toward the next release; not yet promoted |
+| State | Version | Channel | Tag |
+|-------|---------|---------|-----|
+| Dev on `main` | `0.6.1.dev0` | dev | — |
+| Candidate 1 | `0.6.1rc1` | rc | `v0.6.1-rc1` |
+| Candidate 2 (after fixes) | `0.6.1rc2` | rc | `v0.6.1-rc2` |
+| **Approved release** | `0.6.1` | stable | `v0.6.1` |
+| Next dev cycle opens | `0.6.2.dev0` | dev | — |
 
-PEP 440 orders these correctly:
-`0.6.0  <  0.6.1.dev0  <  0.6.1`. A dev build is unambiguously *newer than the
-last stable* and *older than the next stable*, so `pip` upgrades and version
-comparisons behave. `ai4science version` shows the marker, so a user can always
-tell which line they are on (e.g. `ai4science 0.6.1.dev0 (dev)`).
-
----
-
-## 4. The maintainer release cut
-
-A documented checklist backed by a helper script `scripts/release.sh`
-(idempotent, refuses to run on a dirty tree or red CI). Cutting `X.Y.Z` from
-the current `main`:
-
-1. **Pre-flight** — on `main`, clean working tree, remote CI green for the head
-   commit. Run the full suite locally as the final gate (`pytest` → all pass).
-2. **Finalize version** — drop the dev marker in `__init__.py`
-   (`X.Y.Z.dev0` → `X.Y.Z`); commit `release: vX.Y.Z`.
-3. **Tag** — `git tag -a vX.Y.Z -m "vX.Y.Z"`.
-4. **Promote `stable`** — fast-forward the `stable` branch to this commit; push
-   `stable` and the tag.
-5. **Publish to PyPI** — `python -m build` then `twine upload dist/*` (or let the
-   tag-push CI workflow do it; see §6). This is what makes
-   `pip install pwm-ai4science` serve the new release.
-6. **Open the next dev cycle** — bump `main` to `X.Y.(Z+1).dev0`; commit
-   `chore: open X.Y.(Z+1) dev cycle`; push `main`.
-
-Only the maintainer running this script moves users forward. Day-to-day
-contributor merges to `main` never reach stable users until the next cut.
+PEP 440 orders these correctly (verified):
+`0.6.0 < 0.6.1.dev0 < 0.6.1rc1 < 0.6.1rc2 < 0.6.1 < 0.6.2.dev0`.
+So `pip install --pre` on the rc channel always prefers the newest candidate
+over the last final, and a stable upgrade never accidentally pulls an rc.
+`ai4science version` shows the marker, so everyone knows their line
+(e.g. `ai4science 0.6.1rc2 (rc)`).
 
 ---
 
-## 5. install.sh — default to stable
+## 4. The release flow (cut → test → approve → promote)
 
-Channel is selected by `--dev` flag or `AI4SCIENCE_CHANNEL` (default `stable`).
+### 4a. Cut an RC (maintainer; `scripts/cut-rc.sh`)
+1. **Pre-flight** — choose the `main` commit; clean tree; remote CI green; full
+   local `pytest` passes.
+2. **Freeze** — reset the `rc` branch to that commit.
+3. **Version** — set `__version__ = X.Y.ZrcN`; commit `rc: vX.Y.Z-rcN`.
+4. **Tag & push** — tag `vX.Y.Z-rcN`; push `rc` + tag. This triggers the **rc
+   publish** workflow → builds and publishes a **PyPI pre-release** + updates
+   `archive/refs/heads/rc.zip`. No approval needed to publish an RC.
+
+### 4b. Test (managers + testers)
+Install the candidate exactly as users will:
+```bash
+AI4SCIENCE_CHANNEL=rc curl -fsSL .../install.sh | bash    # or: ai4science update --rc
+```
+Exercise it. Testing requires **no special access** — anyone can install the rc
+channel. File results as issues / a test checklist.
+
+- **Bug found** → fix lands on `main` (normal CI-gated PR), is cherry-picked onto
+  `rc`, and the maintainer cuts `rcN+1` (back to 4a step 3).
+- **Looks good** → proceed to approval.
+
+### 4c. Approve & promote (`release.yml`, GitHub Environment-gated)
+Promotion is a `workflow_dispatch` run (input: the rc version to promote). The
+publish job targets a protected **`production`** environment with **named
+required reviewers (the managers)**. The run **pauses** until a reviewer clicks
+**Approve** in the Actions UI. Only then does the job:
+1. Finalize the version on the rc commit (`X.Y.ZrcN` → `X.Y.Z`); tag `vX.Y.Z`.
+2. **Fast-forward `stable`** to that commit; push `stable` + tag.
+3. Build + **publish the final to PyPI** (`pip install pwm-ai4science` now serves it).
+4. Create a GitHub Release (attach wheel/sdist).
+5. Open the next dev cycle: bump `main` to `X.Y.(Z+1).dev0`.
+
+Because the publish is environment-gated, **no stable release can happen without
+an approval on record** — auditable and not bypassable by a stray push.
+
+---
+
+## 5. install.sh — channel-aware, default stable
+
+Channel from `--dev` / `--rc` flag or `AI4SCIENCE_CHANNEL` (default `stable`).
 `AI4SCIENCE_REF` still overrides everything (explicit escape hatch).
 
 | Channel | Resolution order |
 |---------|------------------|
-| `stable` (default) | 1) PyPI `pip install pwm-ai4science[claude]` (latest release) → 2) fallback `pwm-ai4science[claude] @ .../archive/refs/heads/stable.zip` |
-| `dev` | GitHub `.../archive/refs/heads/main.zip` (today's behavior) |
+| `stable` (default) | PyPI `pip install pwm-ai4science[claude]` → fallback `... @ .../archive/refs/heads/stable.zip` |
+| `rc` | PyPI `pip install --pre pwm-ai4science[claude]` → fallback `rc.zip` |
+| `dev` | GitHub `... @ .../archive/refs/heads/main.zip` (today's behavior) |
 
-After install, **record the channel** the user chose — write
-`$AI4SCIENCE_HOME/channel` (one line: `stable` or `dev`). `update` reads it so a
-user stays on the line they installed.
+After install, **record the channel** — write `$AI4SCIENCE_HOME/channel`
+(`stable` / `rc` / `dev`). `update` reads it so a user stays on their line.
 
 ---
 
@@ -131,48 +166,51 @@ user stays on the line they installed.
 
 Today `update` hard-codes the `main` zip. New behavior:
 
-- Read `$AI4SCIENCE_HOME/channel` (default `stable` if absent).
-- **stable** → `pip install --upgrade pwm-ai4science[claude]`
-  (PyPI), fallback to `stable.zip`.
-- **dev** → `main.zip` (the current `--force-reinstall --no-cache-dir` path).
-- `ai4science update --stable` / `--dev` explicitly switches channel and rewrites
-  the recorded `channel` file.
+- Read `$AI4SCIENCE_HOME/channel` (default `stable`).
+- **stable** → `pip install --upgrade pwm-ai4science[claude]`, fallback `stable.zip`.
+- **rc** → `pip install --pre --upgrade pwm-ai4science[claude]`, fallback `rc.zip`.
+- **dev** → `main.zip` (current `--force-reinstall --no-cache-dir` path).
+- `ai4science update --stable | --rc | --dev` switches channel and rewrites the
+  `channel` file. (Lets a tester flip to `rc`, then back to `stable` after release.)
 
-All the existing environment detection (venv / pipx / PEP 668 system python) is
+Existing environment detection (venv / pipx / PEP 668 system python) is
 preserved; only the *source spec* changes per channel.
 
 ---
 
-## 7. CI gate (the safety net for many contributors)
+## 7. CI / GitHub Actions
 
-Because the maintainer's release cut trusts that `main` is releasable, `main`
-must stay green:
+| Workflow | Trigger | Does | Gate |
+|----------|---------|------|------|
+| `ci.yml` | PR to `main` | full `pytest` (745 tests) + lint | branch protection blocks merge on red — keeps `main` releasable |
+| `rc.yml` | push tag `v*-rc*` (or dispatch) | build + publish **PyPI pre-release**; update `rc` branch | none (RCs publish freely) |
+| `release.yml` | `workflow_dispatch` (promote rc) | finalize version, tag `vX.Y.Z`, fast-forward `stable`, **publish final to PyPI**, GitHub Release, open next dev | **`production` environment, required reviewers (managers)** |
 
-- **PR workflow** (GitHub Actions, on PR to `main`): run the full `pytest` suite
-  (currently 745 tests) + lint. Branch protection blocks merge on failure. This
-  is what lets a single maintainer cut releases confidently despite many
-  contributors.
-- **Release workflow** (on tag push `v*`): build + `twine upload` to PyPI using a
-  stored API token, then attach the built wheel/sdist to a GitHub Release. This
-  automates §4 step 5 (optional but recommended once PyPI is set up).
+Roles:
+- **Contributors** — open PRs to `main`.
+- **Maintainer** — cuts RCs, dispatches the promote workflow.
+- **Approvers (managers)** — named reviewers on the `production` environment;
+  their click is the release authorization.
+- **Testers** — anyone; just install the `rc` channel.
 
 ---
 
-## 8. Channel visibility (so dev users know)
+## 8. Channel visibility
 
-- `ai4science version` → `ai4science X.Y.Z (stable)` or `X.Y.Z.devN (dev)`.
-- The chat banner / REPL status shows the channel, so a dev user is never
-  surprised that their CLI changed under them.
+- `ai4science version` → `ai4science X.Y.Z (stable)` / `X.Y.ZrcN (rc)` /
+  `X.Y.Z.devN (dev)`.
+- The chat banner / REPL status shows the channel, so rc/dev users are never
+  surprised their CLI changed under them.
 
 ---
 
 ## Out of scope (YAGNI for now)
 
-- Publishing **dev** builds to PyPI (`--pre`). Dev stays GitHub-only; simpler.
+- Publishing **dev** builds to PyPI. Dev stays GitHub-only.
 - Multiple concurrently-supported stable lines / back-port branches. One
   `stable` line until there's a real need.
-- LTS / deprecation policy.
-- Auto-promotion or scheduled release trains (explicitly rejected in §Decisions).
+- LTS / deprecation policy; beta (`bN`) / alpha (`aN`) tiers beyond `rc`.
+- Auto-promotion or scheduled release trains (explicitly rejected).
 
 ---
 
@@ -180,11 +218,13 @@ must stay green:
 
 | File | Change |
 |------|--------|
-| `ai4science/__init__.py` | dev marker convention (`.devN`) |
-| `scripts/release.sh` (new) | the §4 cut procedure |
-| `install.sh` | `AI4SCIENCE_CHANNEL`/`--dev`, stable default, write `channel` file |
-| `ai4science/commands/update.py` | read channel; stable=PyPI/stable.zip, dev=main.zip; `--stable`/`--dev` |
+| `ai4science/__init__.py` | dev/rc/final marker convention |
+| `scripts/cut-rc.sh` (new) | §4a freeze `rc`, set rcN, tag, push |
+| `install.sh` | `AI4SCIENCE_CHANNEL` (`stable`/`rc`/`dev`) + `--rc`/`--dev`; stable default; write `channel` file; `--pre` for rc |
+| `ai4science/commands/update.py` | read channel; stable=PyPI/stable.zip, rc=PyPI --pre/rc.zip, dev=main.zip; `--stable`/`--rc`/`--dev` |
 | `ai4science/commands/*version*` | show channel marker |
 | `.github/workflows/ci.yml` (new) | PR pytest gate |
-| `.github/workflows/release.yml` (new) | tag → PyPI publish |
-| `docs/` | contributor guide: "core PR → dev; plug-in → gallery; releases are cut by maintainers" |
+| `.github/workflows/rc.yml` (new) | rc tag → PyPI pre-release + `rc` branch |
+| `.github/workflows/release.yml` (new) | promote (env-gated) → finalize, tag, fast-forward `stable`, PyPI final, GitHub Release, open next dev |
+| GitHub repo settings | `production` environment + required reviewers; branch protection on `main`; PyPI API token secret |
+| `docs/` | contributor + release runbook: "core PR → dev; plug-in → gallery; maintainer cuts RC; managers approve in the production environment" |
