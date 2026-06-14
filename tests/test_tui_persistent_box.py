@@ -156,3 +156,41 @@ def test_sent_message_stays_visible():
     raw, lines = _spawn_and_drive([b"keep me visible\n", b"/exit\n"])
     assert any("keep me visible" in ln for ln in lines), \
         "sent message vanished from the transcript"
+
+
+# Token-by-token streaming (partial lines, NO trailing newline) must NOT corrupt
+# the box's top rule, and the streamed text must survive (the real-terminal bug
+# whole-line print() tests missed).
+_DRIVER_STREAM = r'''
+import os, sys, time
+os.environ["AI4SCIENCE_TUI"] = "full"
+os.environ["PROMPT_TOOLKIT_NO_CPR"] = "1"
+from ai4science.harness import tui
+fs = tui.FullScreen("claude-code")
+def worker():
+    tui.read_input("X ", "claude-code", "demo")
+    for tk in "the forward model is linear and monochromatic here".split(" "):
+        sys.stdout.write(tk + " "); sys.stdout.flush(); time.sleep(0.03)
+    sys.stdout.write("\n")
+    tui.read_input("X ", "claude-code", "demo")
+fs.run(worker)
+'''
+
+
+def test_token_streaming_keeps_box_intact_and_content():
+    raw, lines = _spawn_and_drive([b"go\r", b"/exit\r"],
+                                  driver=_DRIVER_STREAM, settle=1.5,
+                                  total_timeout=16.0)
+    # The streamed text survived (not erased on repaint).
+    text = "\n".join(lines)
+    assert "monochromatic" in text, f"streamed text vanished:\n{text}"
+    # No box rule has streamed words fused onto it (the corruption signature:
+    # a run of '─' on the SAME line as letters).
+    import re
+    for ln in lines:
+        if "─" in ln and re.search(r"[A-Za-z]", ln):
+            # the info/status line legitimately mixes text; a RULE line is mostly
+            # box-drawing — flag a line that is a rule with words welded on.
+            dashes = ln.count("─")
+            if dashes >= 10:
+                raise AssertionError(f"box rule corrupted by stream: {ln!r}")

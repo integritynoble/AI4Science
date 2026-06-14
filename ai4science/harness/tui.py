@@ -343,6 +343,53 @@ def tui_mode() -> str:
     return "full"  # default (unset or `full`)
 
 
+class _StreamCommit:
+    """stdout wrapper that commits ONLY complete lines to the scrollback (via the
+    patch_stdout proxy it wraps); the in-progress partial line is handed to the
+    screen so it renders in the app's live region — NOT printed onto the pinned
+    box's top border. This is what stops token-by-token streaming (no trailing
+    newline) from corrupting the box and then vanishing on the next repaint."""
+    def __init__(self, inner, screen):
+        self._inner = inner            # patch_stdout's StdoutProxy
+        self._screen = screen
+        self._buf = ""
+
+    def write(self, text):
+        if not text:
+            return 0
+        self._buf += text
+        if "\n" in self._buf:
+            cut = self._buf.rfind("\n") + 1
+            whole, self._buf = self._buf[:cut], self._buf[cut:]
+            self._inner.write(whole)
+            try:
+                self._inner.flush()
+            except Exception:
+                pass
+        self._screen._set_partial(self._buf)
+        return len(text)
+
+    def commit_partial(self):
+        """Flush any dangling partial line to the scrollback (turn boundary)."""
+        if self._buf:
+            self._inner.write(self._buf + "\n")
+            try:
+                self._inner.flush()
+            except Exception:
+                pass
+            self._buf = ""
+            self._screen._set_partial("")
+
+    def flush(self):
+        pass                            # deliberately DON'T flush partials
+
+    def isatty(self):
+        return getattr(self._inner, "isatty", lambda: False)()
+
+    def __getattr__(self, k):
+        return getattr(self._inner, k)
+
+
 class FullScreen:
     _FRAMES = ["✶", "✷", "✸", "✹", "✺", "✹", "✸", "✷"]
 
@@ -357,6 +404,17 @@ class FullScreen:
         self._status_extra = ""
         self._app = None
         self._expand = lambda t: t      # paste-collapse expander (set in run)
+        self._partial = ""              # in-progress streaming line (live region)
+        self._stream = None             # the _StreamCommit proxy (set in run)
+
+    def _set_partial(self, s: str) -> None:
+        self._partial = s
+        app = self._app
+        if app is not None:
+            try:
+                app.loop.call_soon_threadsafe(app.invalidate)
+            except Exception:
+                pass
 
     # ── worker-side API ────────────────────────────────────────────────────
     def append(self, text: str) -> None:
@@ -372,6 +430,11 @@ class FullScreen:
             pass
 
     def read_input(self, prompt: str = "", status: str = "") -> str:
+        # Commit any dangling partial line (a response that didn't end in \n) to
+        # the scrollback before we prompt, so it isn't left hanging in the live
+        # region or lost.
+        if self._stream is not None:
+            self._stream.commit_partial()
         if prompt and prompt not in ("❯ ", "> "):
             self.append("\n" + prompt)           # e.g. permission questions
         self._status_extra = status
@@ -423,12 +486,25 @@ class FullScreen:
             hints = ("   \x1b[38;5;240m⏎ send · ⌥⏎ newline · ↑ edit · esc stop · /exit\x1b[0m")
             return ANSI(f" {star}{mode}{extra}{hints}")
 
+        # Live region: the in-progress streaming line (no trailing newline yet).
+        # It renders here, just above the box, until a newline commits it to the
+        # scrollback — so it never lands on the box's top rule.
+        def _partial_text():
+            try:
+                return ANSI(self._partial)
+            except Exception:
+                return self._partial
+        partial_win = Window(FormattedTextControl(_partial_text),
+                             wrap_lines=True, dont_extend_height=True,
+                             style="class:input")
+
         # Claude-Code-style composer: ONLY a top + bottom horizontal rule (no
-        # left/right verticals, no transcript pane). The REPL's output streams
-        # ABOVE this box via patch_stdout, into the terminal's own scrollback.
+        # left/right verticals). Completed output streams ABOVE this box (native
+        # scrollback); the current partial line sits in `partial_win`.
         def _rule():
             return Window(height=1, char="─", style="class:rule")
         body = HSplit([
+            partial_win,                                 # live streaming line
             _rule(),                                     # upper horizontal line
             ta,                                          # input (grows; no side borders)
             _rule(),                                     # bottom horizontal line
@@ -527,12 +603,22 @@ class FullScreen:
                         pass
 
         t = threading.Thread(target=_work, daemon=True)
-        t.start()
         try:
             # patch_stdout reroutes the worker thread's prints to render ABOVE the
             # live input box instead of corrupting it.
             with patch_stdout(raw=True):
-                self._app.run()
+                # Wrap patch_stdout's proxy: only COMPLETE lines reach the
+                # scrollback; the in-progress partial line renders in the live
+                # region (see _StreamCommit), so token streaming never lands on
+                # the box's top rule. Start the worker only after this is set.
+                self._stream = _StreamCommit(sys.stdout, self)
+                sys.stdout = self._stream
+                try:
+                    t.start()
+                    self._app.run()
+                finally:
+                    sys.stdout = self._stream._inner
+                    self._stream = None
         finally:
             _ACTIVE["screen"] = None
             if not done["v"]:
