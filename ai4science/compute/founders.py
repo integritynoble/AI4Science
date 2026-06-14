@@ -42,7 +42,7 @@ def founder_providers() -> List[ComputeProvider]:
             endpoint_path=str(base / "cpu"),
             label="Main CPU server (founder)",
             kind="cpu",
-            price_usd_per_hour=0.20,
+            price_pwm_per_hour=0.04,   # ≈ $0.20/hr at $5/PWM
             max_concurrent=1,
             trust_tier="founder",
         ),
@@ -52,7 +52,7 @@ def founder_providers() -> List[ComputeProvider]:
             endpoint_path=str(base / "gpu"),
             label="Sub-GPU server (founder)",
             kind="gpu",
-            price_usd_per_hour=1.50,
+            price_pwm_per_hour=0.30,   # ≈ $1.50/hr at $5/PWM
             max_concurrent=1,
             trust_tier="founder",
         ),

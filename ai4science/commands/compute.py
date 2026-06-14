@@ -49,7 +49,7 @@ def providers_list() -> None:
     table = Table(title="Compute providers", show_lines=True)
     table.add_column("provider_id", style="cyan")
     table.add_column("kind")
-    table.add_column("$/hr", justify="right")
+    table.add_column("PWM/hr", justify="right")
     table.add_column("wallet", style="magenta")
     table.add_column("tier")
     table.add_column("eligible")
@@ -58,7 +58,7 @@ def providers_list() -> None:
         disabled = "" if p.status == "active" else " [red](disabled)[/red]"
         w = p.wallet_address
         short = f"{w[:12]}…{w[-4:]}" if len(w) > 18 else w   # 0xf1Fa5803daA…7DEE
-        table.add_row(p.provider_id, p.kind, f"{p.price_usd_per_hour:g}",
+        table.add_row(p.provider_id, p.kind, f"{p.pwm_per_hour():g}",
                       short, p.trust_tier + disabled, elig)
     console.print(table)
 
@@ -71,8 +71,8 @@ def providers_add(
     label: str = typer.Option("", "--label", help="Human label."),
     tier: str = typer.Option("founder", "--tier", help="founder | approved | open."),
     kind: str = typer.Option("gpu", "--kind", help="gpu | cpu."),
-    price_usd_per_hour: float = typer.Option(
-        0.0, "--price-usd-per-hour", help="Provider-set compute price (USD/hour)."),
+    price_pwm_per_hour: float = typer.Option(
+        0.0, "--price-pwm-per-hour", help="Provider-set compute price (PWM/hour)."),
     max_concurrent: int = typer.Option(
         1, "--max-concurrent",
         help="Max users served at once (counting semaphore). Default 1 — one "
@@ -91,7 +91,7 @@ def providers_add(
             endpoint_path=str(Path(endpoint).expanduser()),
             label=label,
             kind=kind.lower(),
-            price_usd_per_hour=price_usd_per_hour,
+            price_pwm_per_hour=price_pwm_per_hour,
             max_concurrent=max_concurrent,
             trust_tier=tier,
             status="active",
@@ -102,7 +102,7 @@ def providers_add(
     add_provider(provider)
     console.print(f"[green]✓[/green] Bound [bold]{kind.lower()}[/bold] provider "
                   f"[cyan]{provider_id}[/cyan] → wallet [magenta]{wallet}[/magenta] "
-                  f"(tier={tier}, ${price_usd_per_hour:g}/hr)")
+                  f"(tier={tier}, {price_pwm_per_hour:g} PWM/hr)")
     console.print(f"[dim]Registry: {default_registry_path()}[/dim]")
 
 
@@ -114,9 +114,9 @@ def join(
     provider_id: str = typer.Option("", "--id", help="Provider id (default: derived)."),
     endpoint: str = typer.Option("", "--endpoint",
                                   help="Inbox dir you poll (default: ~/.config/ai4science/compute-inbox/<id>)."),
-    price_usd_per_hour: float = typer.Option(
-        -1.0, "--price-usd-per-hour",
-        help="Your compute price (USD/hour). Default: 1.50 gpu / 0.20 cpu."),
+    price_pwm_per_hour: float = typer.Option(
+        -1.0, "--price-pwm-per-hour",
+        help="Your compute price (PWM/hour). Default: 0.30 gpu / 0.04 cpu."),
     max_concurrent: int = typer.Option(
         1, "--max-concurrent",
         help="How many users you serve at once. Default 1 (one job at a time); "
@@ -139,8 +139,8 @@ def join(
         console.print(f"[red]Invalid wallet address:[/red] {wallet!r} "
                       "(expected 0x + 40 hex chars)")
         raise typer.Exit(2)
-    if price_usd_per_hour < 0:
-        price_usd_per_hour = 1.50 if kind == "gpu" else 0.20
+    if price_pwm_per_hour < 0:
+        price_pwm_per_hour = 0.30 if kind == "gpu" else 0.04
     pid = provider_id or f"{kind}-{wallet[-6:].lower()}"
     ep = endpoint or str(default_registry_path().parent / "compute-inbox" / pid)
     try:
@@ -151,7 +151,7 @@ def join(
             endpoint_path=str(Path(ep).expanduser()),
             label=label or f"Community {kind.upper()} provider",
             kind=kind,
-            price_usd_per_hour=price_usd_per_hour,
+            price_pwm_per_hour=price_pwm_per_hour,
             max_concurrent=max_concurrent,
             trust_tier="open",
             status="active",
@@ -163,7 +163,7 @@ def join(
     add_provider(provider)
 
     console.print(f"[green]✓ You're registered as a compute provider![/green]")
-    console.print(f"  id:       [cyan]{pid}[/cyan]  ({kind}, ${price_usd_per_hour:g}/hr, "
+    console.print(f"  id:       [cyan]{pid}[/cyan]  ({kind}, {price_pwm_per_hour:g} PWM/hr, "
                   f"serves {max_concurrent} at once)")
     console.print(f"  earns to: [magenta]{wallet}[/magenta]")
     console.print(f"  inbox:    {provider.endpoint_path}")
@@ -181,7 +181,7 @@ def join(
 def select(
     kind: Optional[str] = typer.Option(None, "--kind", help="gpu | cpu (omit for any)."),
 ) -> None:
-    """Pick the best eligible compute provider of a kind (cheapest USD/hr)."""
+    """Pick the best eligible compute provider of a kind (cheapest PWM/hr)."""
     from ai4science.compute.pricing import select as pick, eligible_providers
     p = pick(kind)
     if p is None:
@@ -190,12 +190,12 @@ def select(
                       "[/dim][cyan]ai4science stake add[/cyan][dim]).[/dim]")
         raise typer.Exit(1)
     console.print(f"[green]✓ Selected[/green] [cyan]{p.provider_id}[/cyan] "
-                  f"({p.kind}, ${p.price_usd_per_hour:g}/hr) → wallet "
+                  f"({p.kind}, {p.pwm_per_hour():g} PWM/hr) → wallet "
                   f"[magenta]{p.wallet_address}[/magenta]")
     others = [x for x in eligible_providers(kind) if x.provider_id != p.provider_id]
     if others:
         console.print("[dim]also eligible: "
-                      + ", ".join(f"{x.provider_id} (${x.price_usd_per_hour:g}/hr)"
+                      + ", ".join(f"{x.provider_id} ({x.pwm_per_hour():g} PWM/hr)"
                                   for x in others) + "[/dim]")
 
 
@@ -211,7 +211,7 @@ def spend(
     if not totals:
         console.print("[dim]No priced compute jobs yet[/dim] "
                       "(providers earn PWM only on a verified pass, priced at "
-                      "their $/hr rate).")
+                      "their PWM/hr rate).")
         return
     table = Table(title="Compute earnings per wallet (priced, off-chain)")
     table.add_column("wallet", style="magenta")

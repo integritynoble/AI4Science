@@ -9,7 +9,8 @@ from ai4science.harness import compute_tools
 
 class _Prov:
     provider_id = "founder-1-subgpu"
-    price_usd_per_hour = 1.5
+    def pwm_per_hour(self):
+        return 0.30
 
 
 def test_non_interactive_blocks(monkeypatch):

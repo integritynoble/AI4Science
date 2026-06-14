@@ -70,13 +70,13 @@ def test_dispatch_is_lease_gated_at_one(tmp_path, monkeypatch):
     assert "full" in r2.lower()
 
 
-# ── billing math (1 PWM = $5 default) ────────────────────────────────────
+# ── billing math (native PWM/hr) ─────────────────────────────────────────
 def test_compute_pwm_math():
-    # $1.50/hr for 1 hour = $1.50 = 0.30 PWM at $5/PWM
-    assert billing.compute_pwm(1.50, 3600) == pytest.approx(0.30)
+    # 0.30 PWM/hr for 1 hour = 0.30 PWM
+    assert billing.compute_pwm(0.30, 3600) == pytest.approx(0.30)
     assert billing.compute_pwm(0.0, 3600) == 0.0          # local/free
     # gate off by default → not charged, but returns the amount it would charge
-    prov = founder_providers()[1]  # gpu @ $1.50
+    prov = founder_providers()[1]  # gpu @ 0.30 PWM/hr
     charged, msg, pwm = billing.charge_compute(
         prov, seconds=3600, purpose="t", idempotency_key="k")
     assert charged is False and pwm == pytest.approx(0.30)

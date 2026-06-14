@@ -52,7 +52,7 @@ def _providers_tool() -> Tool:
             avail = lease_mod.available_slots(p)
             lines.append(
                 f"  {p.provider_id:<12} {p.kind:<3}  "
-                f"${p.price_usd_per_hour:>5.2f}/hr  "
+                f"{p.pwm_per_hour():>6.3f} PWM/hr  "
                 f"slots {avail}/{p.max_concurrent}  "
                 f"{p.trust_tier:<8} -> {p.wallet_address}")
         lines.append("Dispatch with compute_dispatch(provider=\"<id>\", "
@@ -89,7 +89,7 @@ def _confirm_paid_dispatch(prov, est_pwm, max_runtime_s) -> tuple:
                        "AI4SCIENCE_COMPUTE_AUTOCONFIRM=1 for scripts/CI.")
     try:
         ans = input(f"[compute] PAID GPU dispatch to {prov.provider_id} "
-                    f"(up to {est_pwm} PWM at ${prov.price_usd_per_hour}/hr, "
+                    f"(up to {est_pwm} PWM at {prov.pwm_per_hour():g} PWM/hr, "
                     f"{max_runtime_s}s cap) — proceed? [y/N] ")
     except (EOFError, KeyboardInterrupt):
         return False, "[compute] dispatch cancelled."
@@ -110,7 +110,7 @@ def _dispatch_tool() -> Tool:
                     "founder-gpu / <community id> (see compute_providers).")
 
         avail = lease_mod.available_slots(prov)
-        est_pwm = billing.compute_pwm(prov.price_usd_per_hour, max_runtime_s)
+        est_pwm = billing.compute_pwm(prov.pwm_per_hour(), max_runtime_s)
         cmd = run_command or "python code/run_solver.py"
         if not confirm:
             full = "" if avail > 0 else " — FULL right now, dispatch will wait/refuse"
@@ -118,7 +118,7 @@ def _dispatch_tool() -> Tool:
                     f"({prov.kind}, {prov.endpoint_path})\n"
                     f"  command:    {cmd}\n  solver:     {solver}\n"
                     f"  slots:      {avail}/{prov.max_concurrent} free{full}\n"
-                    f"  est PWM:    up to {est_pwm} (at ${prov.price_usd_per_hour}/hr "
+                    f"  est PWM:    up to {est_pwm} (at {prov.pwm_per_hour():g} PWM/hr "
                     f"× {max_runtime_s}s cap) -> {prov.wallet_address}\n"
                     "Pass confirm=true to dispatch (charged on completion at actual runtime).")
 

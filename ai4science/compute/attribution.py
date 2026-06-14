@@ -95,13 +95,13 @@ def verify_and_attribute(*, workspace: Path, job: Dict[str, Any],
     credit = 1 if decision == "pass" else 0
 
     # Priced PWM: only a verified pass earns. Cost = wall-clock hours ×
-    # the provider's USD/hour rate → PWM (points 12/13).
+    # the provider's PWM/hour rate (points 12/13).
     from ai4science.compute.pricing import job_cost
     from ai4science.compute.registry import get_provider
     wall_s = (result_manifest or {}).get("provider", {}).get("wall_clock_s")
     prov = get_provider(job.get("provider_id") or "")
-    rate = prov.price_usd_per_hour if prov else 0.0
-    cost = job_cost(wall_s, rate) if credit else {"hours": 0.0, "usd": 0.0, "pwm": 0.0}
+    rate = prov.pwm_per_hour() if prov else 0.0
+    cost = job_cost(wall_s, rate) if credit else {"hours": 0.0, "pwm": 0.0}
 
     attribution = {
         "job_id": job.get("job_id"),
@@ -114,8 +114,7 @@ def verify_and_attribute(*, workspace: Path, job: Dict[str, Any],
         "silent_failure": report.get("silent_failure"),
         "credit": credit,
         "wall_clock_s": wall_s,
-        "price_usd_per_hour": rate,
-        "usd": cost["usd"],
+        "price_pwm_per_hour": rate,
         "pwm": cost["pwm"],
         "verified_at": _utcnow(),
         "note": ("verified-job credit + priced PWM (hours × provider rate ÷ $5). "

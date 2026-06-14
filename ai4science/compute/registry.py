@@ -34,9 +34,14 @@ class ComputeProvider(BaseModel):
     endpoint_path: str = Field(description="Shared dir the provider polls for jobs")
     label: str = Field(default="", max_length=200)
     kind: str = Field(default="gpu")               # gpu | cpu
+    # Price is native PWM/hour (users pay in PWM). `price_usd_per_hour` is kept
+    # only for backward compatibility with older registries (derived to PWM at
+    # the $5 peg when the PWM field is unset).
+    price_pwm_per_hour: Optional[float] = Field(
+        default=None, ge=0.0, description="Provider-set compute price (PWM/hour)")
     price_usd_per_hour: float = Field(default=0.0, ge=0.0,
-                                      description="Provider-set compute price (USD/hour)")
-    max_concurrent: int = Field(default=2, ge=1,
+                                      description="DEPRECATED — legacy USD/hour price")
+    max_concurrent: int = Field(default=1, ge=1,
                                 description="Max users this server serves at once "
                                             "(a counting semaphore; the rest wait)")
     gpu_capability: Dict[str, Any] = Field(default_factory=dict)
@@ -59,6 +64,14 @@ class ComputeProvider(BaseModel):
             raise ValueError(f"invalid Ethereum address: {v!r} "
                              "(expected 0x + 40 hex chars)")
         return v   # preserve checksum casing as supplied
+
+    def pwm_per_hour(self) -> float:
+        """The provider's price in PWM/hour. Uses the native PWM price when set,
+        else derives it from the legacy USD price at the $5 peg."""
+        if self.price_pwm_per_hour is not None:
+            return float(self.price_pwm_per_hour)
+        from ai4science.llm.pricing import PWM_USD
+        return round(self.price_usd_per_hour / PWM_USD, 6) if PWM_USD > 0 else 0.0
 
 
 def default_registry_path() -> Path:

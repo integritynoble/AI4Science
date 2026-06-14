@@ -7,18 +7,17 @@ from ai4science.compute import pricing
 from ai4science.compute.registry import ComputeProvider
 
 
-def test_job_cost_hours_usd_pwm(monkeypatch):
-    # 1800s = 0.5h × $2/hr = $1 → 0.2 PWM at $5/PWM
-    monkeypatch.setattr("ai4science.llm.pricing.PWM_USD", 5.0)
+def test_job_cost_hours_pwm():
+    # 1800s = 0.5h × 2 PWM/hr = 1.0 PWM
     c = pricing.job_cost(1800, 2.0)
     assert c["hours"] == 0.5
-    assert c["usd"] == 1.0
-    assert c["pwm"] == 0.2
+    assert c["pwm"] == 1.0
+    assert "usd" not in c                 # PWM-native now
 
 
 def test_job_cost_zero_when_no_time_or_rate():
-    assert pricing.job_cost(None, 2.0)["usd"] == 0.0
-    assert pricing.job_cost(3600, 0.0)["usd"] == 0.0
+    assert pricing.job_cost(None, 2.0)["pwm"] == 0.0
+    assert pricing.job_cost(3600, 0.0)["pwm"] == 0.0
 
 
 def _provs(monkeypatch, providers, eligible_ids):

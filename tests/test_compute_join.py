@@ -17,7 +17,7 @@ def _isolated_registry(tmp_path, monkeypatch):
 def test_join_registers_open_provider_with_wallet_and_concurrency(tmp_path):
     res = CliRunner().invoke(app, [
         "join", "--wallet", WALLET, "--kind", "cpu",
-        "--max-concurrent", "2", "--price-usd-per-hour", "0.20",
+        "--max-concurrent", "2", "--price-pwm-per-hour", "0.04",
         "--endpoint", str(tmp_path / "inbox"),
     ])
     assert res.exit_code == 0, res.output
@@ -27,6 +27,7 @@ def test_join_registers_open_provider_with_wallet_and_concurrency(tmp_path):
     assert p.wallet_address == WALLET
     assert p.kind == "cpu"
     assert p.trust_tier == "open"          # community tier, not founder
+    assert p.pwm_per_hour() == 0.04        # priced natively in PWM/hr
     assert p.max_concurrent == 2           # honors the explicit --max-concurrent flag
     # tells the user how to earn + how to start serving
     assert "earn PWM" in res.output or "How you earn PWM" in res.output
@@ -37,7 +38,7 @@ def test_join_defaults_price_by_kind(tmp_path):
     CliRunner().invoke(app, ["join", "--wallet", WALLET, "--kind", "gpu",
                              "--endpoint", str(tmp_path / "g")])
     p = load_registry()[0]
-    assert p.price_usd_per_hour == 1.50    # gpu default
+    assert p.pwm_per_hour() == 0.30        # gpu default (PWM/hr)
 
 
 def test_join_rejects_bad_wallet(tmp_path):
