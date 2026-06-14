@@ -75,3 +75,32 @@ def test_tool_dataclass_is_callable():
     t = Tool(name="read", description="d",
              parameters={"type": "object"}, func=fs.read, mutating=False)
     assert t.name == "read" and t.mutating is False
+
+
+def test_glob_refuses_filesystem_root(tmp_path):
+    # Globbing '/' would scan the whole machine and time out → instant redirect,
+    # not a 20s 0-hit scan (this is what made the agent loop on glob('/')).
+    out = fs.glob(tmp_path, pattern="*.py", path="/")
+    assert "[refused]" in out and "too broad" in out
+
+
+def test_grep_refuses_filesystem_root(tmp_path):
+    out = fs.grep(tmp_path, pattern="anything", path="/")
+    assert "[refused]" in out and "too broad" in out
+
+
+def test_glob_normalizes_degenerate_pattern(tmp_path):
+    # A bare '/' or '' pattern matches nothing under -ipath but still scans;
+    # treat it as 'list everything' so the model gets results, not a 0-hit note.
+    (tmp_path / "keep.py").write_text("x")
+    assert "keep.py" in fs.glob(tmp_path, pattern="/")
+    assert "keep.py" in fs.glob(tmp_path, pattern="")
+
+
+def test_glob_allows_real_absolute_subdir(tmp_path):
+    # Legit absolute paths (a real subdirectory) still work — only '/' & pseudo
+    # roots are refused.
+    sub = tmp_path / "data"; sub.mkdir()
+    (sub / "scan.py").write_text("x")
+    out = fs.glob(tmp_path, pattern="*.py", path=str(sub))
+    assert "scan.py" in out and "[refused]" not in out

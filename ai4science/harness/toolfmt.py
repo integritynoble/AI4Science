@@ -12,13 +12,22 @@ _STAR = "⏺"
 _ARM = "\x1b[2m  ⎿"      # dim result gutter
 _RST = "\x1b[0m"
 
-# Which argument best summarizes a call, per native tool.
-_KEY_ARGS = ("cmd", "path", "pattern", "file_path", "query", "url",
+# Which argument best summarizes a call, per native tool. `pattern` before
+# `path` so glob/grep read like Anthropic's `Glob(**/*.py)` (the pattern), not
+# the search root.
+_KEY_ARGS = ("cmd", "pattern", "path", "file_path", "query", "url",
              "description", "prompt", "name")
+
+# Display the native (lowercase) tool names with Anthropic's capitalization so
+# both engines look identical: `⏺ Glob(**/*.py)`, `⏺ Bash(ls -la)`.
+_DISPLAY_NAME = {
+    "read": "Read", "write": "Write", "edit": "Edit", "bash": "Bash",
+    "grep": "Grep", "glob": "Glob",
+}
 
 
 def fmt_tool_start(name: str, args: Optional[dict]) -> str:
-    """`⏺ bash(ls -la)` — one bold collapsed line per tool call."""
+    """`⏺ Bash(ls -la)` — one bold collapsed line per tool call."""
     args = args or {}
     arg = next((str(args[k]) for k in _KEY_ARGS
                 if isinstance(args.get(k), str) and args[k]), "")
@@ -28,7 +37,8 @@ def fmt_tool_start(name: str, args: Optional[dict]) -> str:
     arg = arg.replace("\n", " ")
     if len(arg) > 88:
         arg = arg[:85] + "…"
-    return f"{_STAR} \x1b[1m{name}\x1b[0m({arg})"
+    label = _DISPLAY_NAME.get(name, name)
+    return f"{_STAR} \x1b[1m{label}\x1b[0m({arg})"
 
 
 def fmt_tool_result(result) -> Optional[str]:

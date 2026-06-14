@@ -23,25 +23,24 @@ def default_registry() -> Registry:
     reg.add(Tool(
         "grep",
         "Fast regex content search (ripgrep-backed, prunes .git/node_modules/"
-        ".venv/etc). PREFER THIS over `grep`/`find` in bash. `path` sets the "
-        "root and may be ABSOLUTE to search anywhere on the machine (e.g. "
-        "'/home/user' or '/'); default is the workspace. `glob` filters files "
-        "(e.g. '*.py'). Returns 'path:line:text' rows.",
+        ".venv/etc). PREFER THIS over `grep`/`find` in bash. Searches the "
+        "project workspace by default; pass `path` to narrow to a SUBDIRECTORY. "
+        "`glob` filters files (e.g. '*.py'). Returns 'path:line:text' rows.",
         {"type": "object", "properties": {
             "pattern": {"type": "string", "description": "regex matched against file contents"},
-            "path": {"type": "string", "description": "search root; absolute path searches outside the workspace. Default: workspace."},
+            "path": {"type": "string", "description": "optional subdirectory to narrow the search. Default: the project workspace."},
             "glob": {"type": "string", "description": "optional filename filter, e.g. '*.md'"}},
          "required": ["pattern"]},
         fs.grep, mutating=False))
     reg.add(Tool(
         "glob",
         "Fast file/folder NAME search by glob pattern (e.g. '*lowdose*', "
-        "'**/*.py'). Returns matching files AND folders. PREFER THIS over "
-        "`find` in bash. `path` sets the root and may be ABSOLUTE to search "
-        "anywhere on the machine; default is the workspace.",
+        "'**/*.py'). Returns matching files AND folders, newest first. PREFER "
+        "THIS over `find` in bash. Searches the project workspace by default; "
+        "pass `path` to narrow to a SUBDIRECTORY.",
         {"type": "object", "properties": {
-            "pattern": {"type": "string", "description": "glob matched against file/folder names and paths"},
-            "path": {"type": "string", "description": "search root; absolute path searches outside the workspace. Default: workspace."}},
+            "pattern": {"type": "string", "description": "glob matched against file/folder names and paths, e.g. '**/*.py'"},
+            "path": {"type": "string", "description": "optional subdirectory to narrow the search. Default: the project workspace."}},
          "required": ["pattern"]},
         fs.glob, mutating=False))
     return reg

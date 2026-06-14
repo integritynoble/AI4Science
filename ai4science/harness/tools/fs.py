@@ -15,6 +15,19 @@ _PRUNE = {
     ".next", "dist", "build", "site-packages", ".idea", ".gradle",
 }
 
+# Roots too broad to ever search: '/' and kernel pseudo-dirs would burn the
+# whole time budget on /proc, /sys, … and return nothing useful. Anthropic's
+# Glob/Grep stay in the project — mirror that and redirect instead of hanging.
+_BROAD_ROOTS = {"/", "/proc", "/sys", "/dev", "/run", "/var/run"}
+
+
+def _too_broad(root: Path) -> str | None:
+    if str(root) in _BROAD_ROOTS:
+        return (f"[refused] '{root}' is too broad to search — it would scan the "
+                f"whole machine and time out. Search the project workspace "
+                f"(omit `path`), or pass a specific subdirectory.")
+    return None
+
 
 def _root(workspace: Path, path: str | None) -> Path:
     """Resolve a search root: absolute paths as-is (so the model can search the
@@ -60,6 +73,14 @@ def glob(workspace: Path, *, pattern: str, path: str | None = None,
 
     Returns absolute paths, one per line, directories suffixed with '/'."""
     root = _root(workspace, path)
+    broad = _too_broad(root)
+    if broad:
+        return broad
+    # A degenerate pattern ('/' or empty) matches nothing but still scans the
+    # whole root for the full budget. Treat it as 'list everything', like
+    # Anthropic's '**/*', so the model gets results instead of a 20s 0-hit note.
+    if not pattern or not pattern.strip("/ *"):
+        pattern = "*"
 
     def _match(name: str, rel: str) -> bool:
         return fnmatch.fnmatch(name, pattern) or fnmatch.fnmatch(rel, pattern)
@@ -142,6 +163,9 @@ def grep(workspace: Path, *, pattern: str, path: str | None = None,
     use an absolute path to search anywhere. `glob` optionally filters files
     (e.g. '*.py'). Returns 'path:line:text' rows."""
     root = _root(workspace, path)
+    broad = _too_broad(root)
+    if broad:
+        return broad
     rg = shutil.which("rg")
     if rg:
         cmd = [rg, "--line-number", "--no-heading", "--color", "never",

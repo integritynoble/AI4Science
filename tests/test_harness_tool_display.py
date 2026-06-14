@@ -69,7 +69,8 @@ def test_loop_callbacks_default_to_noop(tmp_path):
 
 def test_fmt_tool_start_shows_name_and_key_arg():
     line = toolfmt.fmt_tool_start("bash", {"cmd": "ls -la"})
-    assert "bash" in line and "ls -la" in line and "⏺" in line
+    # Anthropic-style capitalized display name (the callback name stays lowercase).
+    assert "Bash" in line and "ls -la" in line and "⏺" in line
 
 
 def test_fmt_tool_start_picks_path_pattern_cmd():
@@ -148,7 +149,7 @@ def test_repl_prints_tool_lines_and_footer(tmp_path, monkeypatch, capsys):
                              backend="anthropic", model="stub")
 
     out = capsys.readouterr().out
-    assert "⏺" in out and "read" in out          # collapsed tool-start line
+    assert "⏺" in out and "Read" in out          # collapsed tool-start line
     assert "⎿" in out                             # result gutter
     assert "crunched" in out and "1 tool" in out  # end-of-turn footer
 
@@ -219,3 +220,18 @@ def test_make_confirm_deny_and_eof():
 
     confirm2 = make_confirm(_eof, "chat")
     assert confirm2("bash", {"cmd": "rm x"}, "$ rm x") is False
+
+
+def test_fmt_tool_start_uses_anthropic_capitalization():
+    # Native tools are lowercase internally but DISPLAY like Anthropic's.
+    from ai4science.harness import toolfmt
+    assert "Glob" in toolfmt.fmt_tool_start("glob", {"pattern": "**/*.py"})
+    assert "Grep" in toolfmt.fmt_tool_start("grep", {"pattern": "TODO"})
+    assert "Read" in toolfmt.fmt_tool_start("read", {"path": "a.py"})
+
+
+def test_fmt_tool_start_prefers_pattern_over_path():
+    # Reads like Anthropic's `Glob(**/*.py)` — the pattern, not the search root.
+    from ai4science.harness import toolfmt
+    line = toolfmt.fmt_tool_start("glob", {"pattern": "**/*.py", "path": "/big/root"})
+    assert "**/*.py" in line and "/big/root" not in line
