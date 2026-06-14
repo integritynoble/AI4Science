@@ -120,9 +120,26 @@ class PwmGate:
                 return False, f"http {status}"
             d = data or {}
             if d.get("status") == "accepted" and d.get("reward") is not None:
-                return True, (f"accepted — earned {d['reward']:g} PWM "
-                              f"(sustains ~{d.get('covers_turns')} more turns)")
-            return True, d.get("status", "ok")
+                reward = d["reward"]
+                quality = d.get("quality")
+                covers = d.get("covers_turns")
+                if quality is not None:           # judge path: reward by quality
+                    reason = (d.get("reason") or "").strip()
+                    if len(reason) > 80:
+                        reason = reason[:77] + "…"
+                    tail = f" — {reason}" if reason else ""
+                    return True, (f"accepted — earned {reward:g} PWM "
+                                  f"(quality {float(quality):.2f}{tail})")
+                if covers is not None:            # legacy sustenance/runway path
+                    return True, (f"accepted — earned {reward:g} PWM "
+                                  f"(sustains ~{covers} more turns)")
+                return True, f"accepted — earned {reward:g} PWM"
+            # Non-accepted (low_quality, duplicate, rate_limited, …): show the
+            # reason when the judge supplied one.
+            status = d.get("status", "ok")
+            reason = (d.get("reason") or "").strip()
+            return True, (f"{status} — {reason}" if reason and status != "accepted"
+                          else status)
         except Exception as exc:
             return False, f"{type(exc).__name__}"
 

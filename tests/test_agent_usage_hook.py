@@ -161,3 +161,37 @@ def test_post_feedback_on_posts_to_active_agent(monkeypatch):
     assert cap["path"] == "/api/v1/agent-pool/research/feedback"
     assert cap["body"]["text"] == "add streaming"
     assert cap["token"] == "pwm_x"
+
+
+def test_post_feedback_judge_path_shows_quality_not_runway(monkeypatch):
+    # Judge path returns quality/reason and covers_turns=None → message must show
+    # the quality (+reason), NOT "sustains ~None more turns".
+    def fake_post(base, path, token, body):
+        return 200, {"status": "accepted", "reward": 0.9, "quality": 0.9,
+                     "reason": "specific + actionable", "covers_turns": None}
+    monkeypatch.setattr(wallet, "http_post", fake_post)
+    g = PwmGate(token="pwm_x", base="http://h", enabled=True)
+    ok, status = g.post_feedback(agent_name="claude-code", text="default glob to project")
+    assert ok is True
+    assert "earned 0.9 PWM" in status
+    assert "quality 0.90" in status and "specific + actionable" in status
+    assert "None" not in status and "sustains" not in status
+
+
+def test_post_feedback_runway_path_still_shows_turns(monkeypatch):
+    # Legacy path (covers_turns set, no quality) keeps the runway wording.
+    def fake_post(base, path, token, body):
+        return 200, {"status": "accepted", "reward": 0.5, "covers_turns": 12}
+    monkeypatch.setattr(wallet, "http_post", fake_post)
+    g = PwmGate(token="pwm_x", base="http://h", enabled=True)
+    ok, status = g.post_feedback(agent_name="research", text="nice and specific")
+    assert ok is True and "sustains ~12 more turns" in status
+
+
+def test_post_feedback_low_quality_shows_reason(monkeypatch):
+    def fake_post(base, path, token, body):
+        return 200, {"status": "low_quality", "reason": "too short — be specific"}
+    monkeypatch.setattr(wallet, "http_post", fake_post)
+    g = PwmGate(token="pwm_x", base="http://h", enabled=True)
+    ok, status = g.post_feedback(agent_name="claude-code", text="bad")
+    assert ok is True and status == "low_quality — too short — be specific"
