@@ -21,6 +21,14 @@ from typing import Optional
 # Claude coral for the frame (matches the working star / ⏺ marker).
 _CORAL = "ansibrightred"   # closest named pt color; overridden by the rgb style below
 
+# Friendly DISPLAY names for modes (the internal id is unchanged — only the
+# label shown in the info line / input header is mapped).
+_MODE_DISPLAY = {"claude-code": "Claude"}
+
+
+def _display_mode(mode: str) -> str:
+    return _MODE_DISPLAY.get(mode, mode)
+
 
 def tui_enabled() -> bool:
     """Bordered single-prompt input (box tier). Full-screen routes through the
@@ -153,7 +161,7 @@ def _bordered(prompt: str, mode: str, status: str = "") -> str:
         history=FileHistory(str(hp)) if hp else None,
         style="class:input",
     )
-    title = [("class:title", f"ai4science · {mode}")]
+    title = [("class:title", f"ai4science · {_display_mode(mode)}")]
     rows = [Frame(ta, title=title)]
     if status:
         rows.append(Window(FormattedTextControl(
@@ -229,7 +237,7 @@ def _two_line_inline(prompt: str, mode: str, status: str = "") -> str:
     def _rule():
         return Window(height=1, char="─", style="class:rule")
 
-    info = f" \x1b[38;5;173mai4science · {mode}\x1b[0m"
+    info = f" \x1b[38;5;173mai4science · {_display_mode(mode)}\x1b[0m"
     if status:
         info += f" · \x1b[38;5;245m{status}\x1b[0m"
     info += "   \x1b[38;5;240m⏎ send · ⌥⏎ newline · ↑↓ history · /exit\x1b[0m"
@@ -448,7 +456,7 @@ class FullScreen:
             self._frame_i = (self._frame_i + 1) % len(self._FRAMES)
             star = (f"\x1b[38;5;173m{self._FRAMES[self._frame_i]}\x1b[0m working…  "
                     if self._busy else "")
-            mode = f"\x1b[38;5;173mai4science · {self.mode}\x1b[0m"
+            mode = f"\x1b[38;5;173mai4science · {_display_mode(self.mode)}\x1b[0m"
             extra = (f" · \x1b[38;5;245m{self._status_extra}\x1b[0m"
                      if self._status_extra else "")
             hints = ("   \x1b[38;5;240m⏎ send · ⌥⏎ newline · PgUp/Dn scroll · "

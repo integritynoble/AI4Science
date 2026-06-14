@@ -258,7 +258,7 @@ async def _loop(workspace: Path, *, auto_yes: bool, read_only: bool,
         disallowed_tools=["AskUserQuestion"],
         can_use_tool=_ask_permission if interactive_perms else None,
     )
-    print(f"[harness] claude-code mode — REAL Claude Code engine "
+    print(f"[harness] Claude mode — REAL Claude Code engine "
           f"(claude-agent-sdk; permission_mode={permission_mode}) "
           f"+ PWM GPU tools ({', '.join(n.split('__')[-1] for n in mcp_allowed)}). "
           f"/feedback /exit are local; everything else is Claude Code.", flush=True)

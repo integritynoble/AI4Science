@@ -453,7 +453,9 @@ def run_common_repl(
     if resume_history:
         session.history.extend(resume_history)
 
-    print(f"\n[harness] {mode_label} mode  backend={active_backend}  model={active_model}", flush=True)
+    from ai4science.harness.tui import _display_mode
+    print(f"\n[harness] {_display_mode(mode_label)} mode  backend={active_backend}  "
+          f"model={active_model}", flush=True)
     print(f"[harness] session {_sid}  (resume later with --resume {_sid})", flush=True)
     print("[harness] /help for commands  /exit to quit\n", flush=True)
     if gate.enabled:
@@ -559,7 +561,8 @@ def run_common_repl(
                 _scr = getattr(_tui, "_ACTIVE", {}).get("screen")
                 if _scr is not None:
                     _scr.mode = target.name
-                print(f"[harness] switched mode: {target.name}", flush=True)
+                print(f"[harness] switched mode: {_tui._display_mode(target.name)}",
+                      flush=True)
                 continue
 
             # /cost needs the live session's ledger — handle inline.
