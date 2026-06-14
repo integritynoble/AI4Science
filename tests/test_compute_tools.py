@@ -67,7 +67,7 @@ def test_dispatch_is_lease_gated_at_one(tmp_path, monkeypatch):
     assert "Dispatched job" in r1
     # the single slot is now taken → a 2nd concurrent dispatch waits/refuses
     r2 = disp(tmp_path, provider="founder-cpu", run_command="b", confirm=True)
-    assert "full" in r2.lower()
+    assert "busy" in r2.lower() and "wait" in r2.lower()
 
 
 # ── billing math (native PWM/hr) ─────────────────────────────────────────

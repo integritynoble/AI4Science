@@ -68,25 +68,40 @@ def _providers_tool() -> Tool:
         func=_list, mutating=False)
 
 
-def _confirm_paid_dispatch(prov, est_pwm, max_runtime_s) -> tuple:
-    """Autonomy guard (directive 2026-06-10): a PAID dispatch must be approved
-    by the HUMAN, not the model — even in --yes / acceptEdits mode. (During the
-    2026-06-10 live test the Claude Code engine auto-dispatched a paid GPU job
-    unprompted under --yes.)
+def _auto_max_pwm() -> float:
+    import os
+    try:
+        return float(os.environ.get("AI4SCIENCE_COMPUTE_AUTO_MAX_PWM", "1.0") or 1.0)
+    except ValueError:
+        return 1.0
 
-    Interactive TTY → ask on the terminal. Non-interactive (piped/CI) → refuse
-    unless AI4SCIENCE_COMPUTE_AUTOCONFIRM=1 explicitly opts in.
+
+def _confirm_paid_dispatch(prov, est_pwm, max_runtime_s) -> tuple:
+    """Decide whether a PAID dispatch may proceed.
+
+    By default users can use the GPU AUTOMATICALLY: a dispatch whose worst-case
+    cost is within the auto-approve ceiling (AI4SCIENCE_COMPUTE_AUTO_MAX_PWM,
+    default 1.0 PWM — bounded by max_runtime_s) runs WITHOUT asking. Larger jobs,
+    or AI4SCIENCE_COMPUTE_AUTO=0, fall back to a human y/N (the 2026-06-10 guard;
+    non-interactive → refused unless AI4SCIENCE_COMPUTE_AUTOCONFIRM=1).
     Returns (ok, refusal_message)."""
     import os
     import sys
-    if str(os.environ.get("AI4SCIENCE_COMPUTE_AUTOCONFIRM", "")).strip().lower() in (
-            "1", "true", "yes", "on"):
+
+    def _on(name, default="0"):
+        return str(os.environ.get(name, default)).strip().lower() in (
+            "1", "true", "yes", "on")
+
+    if _on("AI4SCIENCE_COMPUTE_AUTOCONFIRM"):
         return True, ""
+    if _on("AI4SCIENCE_COMPUTE_AUTO", "1") and est_pwm <= _auto_max_pwm():
+        return True, ""                       # auto-use the GPU for normal jobs
     if not sys.stdin.isatty():
-        return False, ("[compute] PAID dispatch blocked: requires a human "
-                       "confirmation and this session is non-interactive. "
-                       "Re-run interactively, or set "
-                       "AI4SCIENCE_COMPUTE_AUTOCONFIRM=1 for scripts/CI.")
+        return False, (f"[compute] PAID dispatch blocked: worst-case cost "
+                       f"{est_pwm} PWM exceeds the auto-approve ceiling "
+                       f"({_auto_max_pwm():g} PWM) and this session is "
+                       "non-interactive. Lower max_runtime_s, re-run "
+                       "interactively, or set AI4SCIENCE_COMPUTE_AUTOCONFIRM=1.")
     try:
         ans = input(f"[compute] PAID GPU dispatch to {prov.provider_id} "
                     f"(up to {est_pwm} PWM at {prov.pwm_per_hour():g} PWM/hr, "
@@ -129,9 +144,12 @@ def _dispatch_tool() -> Tool:
         holder = uuid.uuid4().hex
         lease = lease_mod.acquire_lease(prov, holder=holder, ttl_s=max_runtime_s)
         if lease is None:
-            return (f"[compute] {prov.provider_id} is full "
-                    f"({prov.max_concurrent}/{prov.max_concurrent} users). "
-                    "Wait for a slot or pick another provider (compute_providers).")
+            return (f"[compute] The {prov.kind.upper()} on {prov.provider_id} is "
+                    f"busy right now — all {prov.max_concurrent} slot"
+                    f"{'s' if prov.max_concurrent != 1 else ''} in use (it serves "
+                    "one job at a time). Please tell the user to wait a few "
+                    "minutes; then retry compute_dispatch, run locally, or pick "
+                    "another provider (compute_providers).")
         try:
             job = dispatch_job(provider=prov, workspace=Path(workspace).resolve(),
                                benchmark_id=benchmark, solver_code_path=solver,
@@ -151,10 +169,14 @@ def _dispatch_tool() -> Tool:
 
     return Tool(
         name="compute_dispatch",
-        description=("Dispatch a command to a compute provider. Without confirm=true "
-                     "returns a PREVIEW (free slots + estimated PWM + recipient); "
-                     "confirm=true acquires a slot (refused if the server is full) "
-                     "and dispatches. provider=local (or omitted) means run locally."),
+        description=("Use a GPU/CPU compute provider. Pass confirm=true to run it: "
+                     "if a slot is FREE the job dispatches AUTOMATICALLY (normal "
+                     "jobs auto-approve; PWM is charged on completion, bounded by "
+                     "max_runtime_s); if the server is BUSY it returns a 'please "
+                     "wait' message — relay that to the user and retry shortly. "
+                     "Without confirm=true you get a preview (free slots + est PWM). "
+                     "provider=local (or omitted) runs locally (free). For GPU work "
+                     "use provider=founder-gpu / founder-1-subgpu when available."),
         parameters={"type": "object", "properties": {
             "provider": {"type": "string"},
             "run_command": {"type": "string"},
