@@ -64,6 +64,40 @@ def _grow_height(get_text, max_rows: int = 10):
     return _h
 
 
+# Big pastes collapse to a placeholder (Claude Code parity); tunable via env.
+_PASTE_MIN_LINES = int(os.environ.get("AI4SCIENCE_PASTE_MIN_LINES", "4"))
+_PASTE_MIN_CHARS = int(os.environ.get("AI4SCIENCE_PASTE_MIN_CHARS", "400"))
+
+
+def _attach_paste_collapse(ta, kb):
+    """Claude-Code-style paste collapsing for an input TextArea.
+
+    A large bracketed paste is shown as `[Pasted text #N +M lines]` in the input
+    (so the box stays readable) while the FULL content is restored on submit.
+    Small pastes insert normally. Returns expand(displayed_text) -> full_text."""
+    from prompt_toolkit.keys import Keys
+    store: dict = {}
+
+    @kb.add(Keys.BracketedPaste)
+    def _(event):
+        data = event.data or ""
+        nlines = data.count("\n") + 1
+        if nlines >= _PASTE_MIN_LINES or len(data) >= _PASTE_MIN_CHARS:
+            idx = len(store) + 1
+            placeholder = f"[Pasted text #{idx} +{nlines} lines]"
+            store[placeholder] = data
+            ta.buffer.insert_text(placeholder)
+        else:
+            ta.buffer.insert_text(data)
+
+    def expand(text: str) -> str:
+        for placeholder, data in store.items():
+            text = text.replace(placeholder, data)
+        return text
+
+    return expand
+
+
 def _history_path(mode: str) -> Optional[Path]:
     try:
         base = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "ai4science"
@@ -131,6 +165,7 @@ def _bordered(prompt: str, mode: str, status: str = "") -> str:
 
     kb = KeyBindings()
     out = {"text": None}
+    _expand = _attach_paste_collapse(ta, kb)
 
     @kb.add("enter")
     def _(event):
@@ -165,7 +200,7 @@ def _bordered(prompt: str, mode: str, status: str = "") -> str:
     txt = out["text"]
     if txt is None:
         raise KeyboardInterrupt
-    return txt
+    return _expand(txt)
 
 
 def _two_line_inline(prompt: str, mode: str, status: str = "") -> str:
@@ -208,6 +243,7 @@ def _two_line_inline(prompt: str, mode: str, status: str = "") -> str:
 
     kb = KeyBindings()
     out = {"text": None}
+    _expand = _attach_paste_collapse(ta, kb)
 
     @kb.add("enter")
     def _(event):
@@ -241,9 +277,11 @@ def _two_line_inline(prompt: str, mode: str, status: str = "") -> str:
     if txt is None:
         raise KeyboardInterrupt
     # widget erased → echo the submitted line so it stays in the scrollback.
+    # Echo the COLLAPSED text (placeholders) to keep the transcript clean; the
+    # FULL pasted content is what we return to the agent.
     sys.stdout.write(f"\x1b[38;5;173m❯\x1b[0m {txt}\n")
     sys.stdout.flush()
-    return txt
+    return _expand(txt)
 
 
 # ════════════════════════════════════════════════════════════════════════════
