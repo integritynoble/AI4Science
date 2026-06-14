@@ -223,17 +223,17 @@ async def _loop(workspace: Path, *, auto_yes: bool, read_only: bool,
         # (the stream loop skips re-printing it).
         line = _fmt_tool(tool_name, tool_input or {})
         try:
-            from ai4science.harness import tui
+            from ai4science.harness import tui, toolfmt
+            prompt = toolfmt.fmt_permission_prompt(tool_name, line)
             ans = await asyncio.get_event_loop().run_in_executor(
-                None, lambda: tui.read_input(f"{line}\n  allow? [y/N/a(lways)] ",
-                                             "claude-code"))
+                None, lambda: tui.read_input(prompt, "claude-code"))
         except (EOFError, KeyboardInterrupt):
             return PermissionResultDeny(message="denied by user")
-        ans = (ans or "").strip().lower()
-        if ans in ("a", "always"):
+        decision = toolfmt.parse_permission_answer(ans)
+        if decision == "always":
             _always.add(tool_name)
             return PermissionResultAllow()
-        if ans in ("y", "yes"):
+        if decision == "yes":
             return PermissionResultAllow()
         return PermissionResultDeny(message="denied by user")
 
@@ -258,9 +258,10 @@ async def _loop(workspace: Path, *, auto_yes: bool, read_only: bool,
         disallowed_tools=["AskUserQuestion"],
         can_use_tool=_ask_permission if interactive_perms else None,
     )
+    from ai4science import __version__ as _ver
     print(f"[harness] Claude mode — REAL Claude Code engine "
           f"(claude-agent-sdk; permission_mode={permission_mode}) "
-          f"+ PWM GPU tools ({', '.join(n.split('__')[-1] for n in mcp_allowed)}). "
+          f"+ PWM GPU tools ({', '.join(n.split('__')[-1] for n in mcp_allowed)})  v{_ver}. "
           f"/feedback /exit are local; everything else is Claude Code.", flush=True)
 
     sid = secrets.token_hex(4)

@@ -278,6 +278,16 @@ def _two_line_inline(prompt: str, mode: str, status: str = "") -> str:
     def _(event):
         ta.buffer.insert_text("\n")
 
+    # ↑/↓ navigate a multi-line draft, then step through history at the edges
+    # (Claude Code parity — ↑ on an empty prompt recalls your last message).
+    @kb.add("up")
+    def _(event):
+        ta.buffer.auto_up(count=event.arg)
+
+    @kb.add("down")
+    def _(event):
+        ta.buffer.auto_down(count=event.arg)
+
     @kb.add("c-c")
     def _(event):
         event.app.exit(exception=KeyboardInterrupt)
@@ -410,7 +420,7 @@ class FullScreen:
             mode = f"\x1b[38;5;173mai4science · {_display_mode(self.mode)}\x1b[0m"
             extra = (f" · \x1b[38;5;245m{self._status_extra}\x1b[0m"
                      if self._status_extra else "")
-            hints = ("   \x1b[38;5;240m⏎ send · ⌥⏎ newline · esc stop · /exit\x1b[0m")
+            hints = ("   \x1b[38;5;240m⏎ send · ⌥⏎ newline · ↑ edit · esc stop · /exit\x1b[0m")
             return ANSI(f" {star}{mode}{extra}{hints}")
 
         # Claude-Code-style composer: ONLY a top + bottom horizontal rule (no
@@ -442,6 +452,18 @@ class FullScreen:
         @kb.add("escape", "enter")
         def _(event):
             ta.buffer.insert_text("\n")
+
+        # ↑/↓ edit prior messages like Claude Code: move WITHIN a multi-line
+        # draft, and once at the top/bottom edge step through input history
+        # (auto_up/auto_down do exactly this). Press ↑ on an empty prompt to pull
+        # back your last message and edit it.
+        @kb.add("up")
+        def _(event):
+            ta.buffer.auto_up(count=event.arg)
+
+        @kb.add("down")
+        def _(event):
+            ta.buffer.auto_down(count=event.arg)
 
         @kb.add("escape")
         def _(event):
@@ -483,14 +505,24 @@ class FullScreen:
         def _work():
             try:
                 worker()
+            except (EOFError, KeyboardInterrupt):
+                pass                       # normal exit (/exit, Ctrl-C/D)
             except Exception as e:
                 self.append(f"\n[tui] worker error: {type(e).__name__}: {e}\n")
             finally:
                 done["v"] = True
                 app = self._app
                 if app is not None:
+                    def _safe_exit():
+                        # The /exit key handler may have already exited; calling
+                        # exit twice raises "Return value already set".
+                        try:
+                            if app.is_running:
+                                app.exit()
+                        except Exception:
+                            pass
                     try:
-                        app.loop.call_soon_threadsafe(app.exit)
+                        app.loop.call_soon_threadsafe(_safe_exit)
                     except Exception:
                         pass
 

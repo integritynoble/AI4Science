@@ -40,7 +40,7 @@ print("WORKER-DONE")
 '''
 
 
-def _spawn_and_drive(inputs, settle=0.6, total_timeout=12.0):
+def _spawn_and_drive(inputs, settle=0.6, total_timeout=12.0, driver=_DRIVER):
     """Fork a PTY child running the driver, feed `inputs` (list of bytes) with a
     pause between each, and return (raw_bytes, pyte_screen_lines)."""
     repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -48,7 +48,7 @@ def _spawn_and_drive(inputs, settle=0.6, total_timeout=12.0):
     if pid == 0:  # child
         os.environ["TERM"] = "xterm-256color"
         os.environ["PYTHONPATH"] = repo + os.pathsep + os.environ.get("PYTHONPATH", "")
-        os.execvp("python3", ["python3", "-c", _DRIVER])
+        os.execvp("python3", ["python3", "-c", driver])
         os._exit(127)  # unreachable
 
     raw = bytearray()
@@ -115,3 +115,44 @@ def test_no_alt_screen_and_clean_exit():
     assert b"WORKER-DONE" in raw, "FullScreen.run did not return cleanly on /exit"
     # Alt-screen leave sequence should also be absent (never entered).
     assert b"\x1b[?1049l" not in raw
+
+
+# Up-arrow recalls the last message for editing (Claude Code parity).
+_DRIVER_UPARROW = r'''
+import os, sys
+os.environ["AI4SCIENCE_TUI"] = "full"
+os.environ["PROMPT_TOOLKIT_NO_CPR"] = "1"
+os.environ["XDG_CONFIG_HOME"] = "/tmp/ai4s_uptest_cfg"
+import shutil
+shutil.rmtree("/tmp/ai4s_uptest_cfg", ignore_errors=True)
+from ai4science.harness import tui
+fs = tui.FullScreen("claude-code")
+def worker():
+    a = tui.read_input("X ", "claude-code", "demo")
+    print("GOT1:" + a)
+    b = tui.read_input("X ", "claude-code", "demo")   # we press Up then Enter here
+    print("GOT2:" + b)
+    tui.read_input("X ", "claude-code", "demo")
+fs.run(worker)
+'''
+
+
+def test_up_arrow_recalls_last_message():
+    # Send "first msg"; on the next empty prompt press Up (recall) then Enter.
+    # Generous settle so the worker reaches the 2nd read + history persists
+    # before Up is pressed (PTY timing).
+    raw, lines = _spawn_and_drive(
+        [b"first msg\r", b"\x1b[A", b"\r", b"/exit\r"],
+        driver=_DRIVER_UPARROW, settle=1.2, total_timeout=16.0)
+    text = "\n".join(lines)
+    assert "GOT1:first msg" in text
+    # The second send equals the recalled first message — Up pulled it back.
+    assert "GOT2:first msg" in text, f"up-arrow did not recall the message:\n{text}"
+
+
+def test_sent_message_stays_visible():
+    # The echoed `❯ <msg>` must remain in the transcript after sending (the bug
+    # was the old per-prompt input erasing itself).
+    raw, lines = _spawn_and_drive([b"keep me visible\n", b"/exit\n"])
+    assert any("keep me visible" in ln for ln in lines), \
+        "sent message vanished from the transcript"

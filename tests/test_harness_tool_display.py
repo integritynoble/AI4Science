@@ -206,7 +206,8 @@ def test_make_confirm_always_remembers_tool():
     assert len(asked) == 1                                          # no 2nd ask
     assert confirm("write", {"path": "a"}, "diff") is True          # new tool → asks
     assert len(asked) == 2
-    assert "a(lways)" in asked[0]                                   # prompt offers it
+    # Claude-Code-style menu offers the don't-ask-again option.
+    assert "don't ask again" in asked[0] and "Do you want to proceed?" in asked[0]
 
 
 def test_make_confirm_deny_and_eof():
@@ -235,3 +236,20 @@ def test_fmt_tool_start_prefers_pattern_over_path():
     from ai4science.harness import toolfmt
     line = toolfmt.fmt_tool_start("glob", {"pattern": "**/*.py", "path": "/big/root"})
     assert "**/*.py" in line and "/big/root" not in line
+
+
+def test_permission_prompt_is_claude_menu():
+    from ai4science.harness import toolfmt
+    p = toolfmt.fmt_permission_prompt("bash", "⏺ Bash(rm x)")
+    assert "Do you want to proceed?" in p
+    assert "1." in p and "Yes" in p
+    assert "2." in p and "don't ask again" in p
+    assert "3." in p and "No" in p
+
+
+def test_parse_permission_answer():
+    from ai4science.harness import toolfmt
+    p = toolfmt.parse_permission_answer
+    assert p("1") == "yes" and p("y") == "yes" and p("yes") == "yes"
+    assert p("2") == "always" and p("a") == "always" and p("always") == "always"
+    assert p("3") == "no" and p("n") == "no" and p("") == "no" and p("garbage") == "no"

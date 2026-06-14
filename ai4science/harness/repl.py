@@ -85,15 +85,17 @@ def make_confirm(read_input, mode_label: str):
     def _confirm(name: str, args: dict, preview: str) -> bool:
         if name in always:
             return True
+        from ai4science.harness import toolfmt
+        prompt = toolfmt.fmt_permission_prompt(name, f"⏺ {name}\n  {preview}")
         try:
-            ans = read_input(f"\n[harness] allow {name}?  {preview}\n  [y/N/a(lways)] ",
-                             mode_label or "chat").strip().lower()
+            ans = toolfmt.parse_permission_answer(
+                read_input(prompt, mode_label or "chat"))
         except EOFError:
             return False
-        if ans in ("a", "always"):
+        if ans == "always":
             always.add(name)
             return True
-        return ans in ("y", "yes")
+        return ans == "yes"
 
     return _confirm
 
@@ -454,8 +456,9 @@ def run_common_repl(
         session.history.extend(resume_history)
 
     from ai4science.harness.tui import _display_mode
+    from ai4science import __version__ as _ver
     print(f"\n[harness] {_display_mode(mode_label)} mode  backend={active_backend}  "
-          f"model={active_model}", flush=True)
+          f"model={active_model}  v{_ver}", flush=True)
     print(f"[harness] session {_sid}  (resume later with --resume {_sid})", flush=True)
     print("[harness] /help for commands  /exit to quit\n", flush=True)
     if gate.enabled:
