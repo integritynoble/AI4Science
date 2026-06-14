@@ -76,12 +76,46 @@ ok "Linked $BIN_DIR/ai4science"
 VER="$("$VENV/bin/ai4science" version 2>/dev/null || echo "ai4science")"
 ok "Installed: $VER"
 
-# 5. PATH guidance.
+# 5. Put BIN_DIR on PATH — auto-add to the user's shell rc (idempotent).
+#    Opt out with AI4SCIENCE_NO_MODIFY_PATH=1 (then we only print guidance).
+NO_MODIFY_PATH="${AI4SCIENCE_NO_MODIFY_PATH:-0}"
+PATH_LINE="export PATH=\"$BIN_DIR:\$PATH\""
+
+add_path_to() {  # append PATH_LINE to a shell rc unless it's already there
+  local rc="$1"
+  [ -e "$rc" ] || return 1                       # only touch files that exist…
+  grep -qF "$BIN_DIR" "$rc" 2>/dev/null && return 0   # …already references it → done
+  printf '\n# Added by AI4Science installer\n%s\n' "$PATH_LINE" >> "$rc" \
+    && echo "$rc"                                 # echo which file we changed
+}
+
 case ":$PATH:" in
-  *":$BIN_DIR:"*) ;;
+  *":$BIN_DIR:"*)
+    ok "$BIN_DIR already on PATH"
+    ;;
   *)
-    printf '\n\033[33m%s is not on your PATH.\033[0m Add this (and put it in ~/.bashrc):\n' "$BIN_DIR"
-    printf '    export PATH="%s:$PATH"\n' "$BIN_DIR"
+    if [ "$NO_MODIFY_PATH" = "1" ]; then
+      printf '\n\033[33m%s is not on your PATH.\033[0m Add this (and put it in ~/.bashrc):\n' "$BIN_DIR"
+      printf '    %s\n' "$PATH_LINE"
+    else
+      # Cover login + interactive shells; ~/.profile created only if NO rc exists.
+      changed=""; rc_seen=0
+      for rc in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile"; do
+        [ -e "$rc" ] && rc_seen=1
+        out="$(add_path_to "$rc")" && [ -n "$out" ] && changed="$changed $out"
+      done
+      if [ "$rc_seen" = "0" ]; then
+        # No shell rc at all — create ~/.profile so login shells pick it up.
+        printf '\n# Added by AI4Science installer\n%s\n' "$PATH_LINE" >> "$HOME/.profile"
+        changed=" $HOME/.profile"
+      fi
+      if [ -n "$changed" ]; then
+        ok "Added $BIN_DIR to PATH in:$changed"
+      else
+        ok "$BIN_DIR already configured in your shell startup files"
+      fi
+      printf '\033[33mOpen a new terminal, or run:\033[0m  export PATH="%s:$PATH"\n' "$BIN_DIR"
+    fi
     ;;
 esac
 
