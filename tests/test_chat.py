@@ -213,7 +213,7 @@ def test_slash_validate_runs_in_repl(tmp_path):
 def test_bare_ai4science_launches_chat_when_available(tmp_path, monkeypatch):
     """Bare `ai4science` (no args) should start the chat session, like `claude`."""
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("ai4science.agents.ClaudeAgent.is_available", lambda self: True)
+    monkeypatch.setattr("ai4science.cli._agent_powered", lambda: True)
     captured = {}
 
     def _fake_chat(**kwargs):
@@ -227,23 +227,24 @@ def test_bare_ai4science_launches_chat_when_available(tmp_path, monkeypatch):
 
 
 def test_bare_ai4science_shows_panel_when_agent_unavailable(tmp_path, monkeypatch, capsys):
-    """Bare `ai4science` with no chat agent → friendly getting-started panel, exit 0."""
+    """Bare `ai4science` with NO LLM credential → getting-started panel, exit 0.
+    The panel leads with the Node-free `ai4science login` path."""
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("ai4science.agents.ClaudeAgent.is_available", lambda self: False)
+    monkeypatch.setattr("ai4science.cli._agent_powered", lambda: False)
     monkeypatch.setattr("sys.argv", ["ai4science"])
     from ai4science import cli
     with pytest.raises(SystemExit) as e:
         cli.main()
     assert e.value.code == 0
     out = capsys.readouterr().out
-    assert "isn't enabled" in out or "Interactive agent" in out
+    assert "ai4science login" in out         # leads with the Node-free path
     assert "ai4science init" in out          # points at the offline commands
 
 
 def test_bare_flags_carry_into_chat(tmp_path, monkeypatch):
     """`ai4science --plan` (bare + flag) launches chat in plan mode."""
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("ai4science.agents.ClaudeAgent.is_available", lambda self: True)
+    monkeypatch.setattr("ai4science.cli._agent_powered", lambda: True)
     captured = {}
     monkeypatch.setattr("ai4science.commands.chat.chat", lambda **kw: captured.update(kw))
     monkeypatch.setattr("sys.argv", ["ai4science", "--plan", "--yes"])

@@ -536,6 +536,38 @@ def _suggest_subcommand(argv: List[str]) -> Optional[str]:
     return " ".join(["ai4science", parent, *argv])
 
 
+def _agent_powered() -> bool:
+    """Can the chat agent run? True if ANY LLM credential is available — a PWM
+    login (founder-served models), a configured own-provider, an API key in env,
+    or the `claude` CLI (subscription auth). None of these except the last needs
+    Node, so this is what gates the Node-free native-harness default."""
+    import os
+    # 1. PWM account login → founder LLM proxy.
+    try:
+        from ai4science import pwm_account
+        if (pwm_account.load() or {}).get("token"):
+            return True
+    except Exception:
+        pass
+    # 2. Own provider configured via `ai4science login --provider …` / --wallet.
+    try:
+        from ai4science import user as user_cfg
+        cfg = user_cfg.load() or {}
+        if cfg.get("power") in ("own", "wallet"):
+            return True
+    except Exception:
+        pass
+    # 3. Raw provider API keys in the environment.
+    if any(os.environ.get(k) for k in
+           ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY")):
+        return True
+    # 4. The genuine Claude Code engine (claude login subscription auth).
+    import shutil
+    if shutil.which("claude"):
+        return True
+    return False
+
+
 def _bare_launch(read_only: bool, auto_yes: bool, plan_mode: bool,
                  model: Optional[str] = None, continue_session: bool = False,
                  resume: Optional[str] = None, mode: Optional[str] = None) -> None:
@@ -544,9 +576,13 @@ def _bare_launch(read_only: bool, auto_yes: bool, plan_mode: bool,
     If the chat agent isn't installed/authed yet, show a short getting-started
     panel instead of a raw error, so a first run is welcoming.
     """
-    from ai4science.agents import ClaudeAgent
-    probe = ClaudeAgent()
-    if probe.is_available():
+    # The default chat mode is unified-LLM = the native Python harness, which
+    # needs NO Node / `claude` CLI — only an LLM credential (a PWM login using
+    # founder-served models, your own provider, or an API key). So we gate the
+    # bare launch on "is any credential available?", NOT on the `claude` CLI.
+    # (The genuine Claude Code engine is opt-in via `--mode claude`; when its CLI
+    # is missing, chat() already falls back to the native harness.)
+    if _agent_powered():
         import typer
         try:
             # NOTE: chat() is a Typer command; calling it directly means every
@@ -565,17 +601,20 @@ def _bare_launch(read_only: bool, auto_yes: bool, plan_mode: bool,
             sys.exit(e.exit_code or 0)
         return
 
-    # Chat agent not ready — welcome + how to enable it + what works now.
+    # Not powered yet — welcome + the Node-free way to start, then options.
     console.print(f"\n[bold purple]AI4Science[/bold purple]  {__version__}\n")
-    console.print("[bold]Interactive agent (like Claude Code) isn't enabled yet.[/bold]")
-    console.print(f"  reason: [dim]{probe.unavailable_reason()}[/dim]\n")
-    console.print("Enable it (one-time):")
-    console.print("  1. [cyan]pip install 'pwm-ai4science\\[claude]'[/cyan]   "
-                  "[dim](or re-run the installer with AI4SCIENCE_WITH_CLAUDE=1)[/dim]")
-    console.print("  2. [cyan]npm install -g @anthropic-ai/claude-code[/cyan]  "
-                  "[dim]then[/dim] [cyan]claude login[/cyan]  [dim](or set ANTHROPIC_API_KEY)[/dim]")
-    console.print("  3. run [cyan]ai4science[/cyan] again — it drops you into a chat session.\n")
-    console.print("Works right now without the agent (deterministic, offline):")
+    console.print("[bold]Start chatting — no Node, no API key required:[/bold]")
+    console.print("  1. [cyan]ai4science login[/cyan]   "
+                  "[dim]browser approval → founder-served models[/dim]")
+    console.print("     [dim]or your own LLM:[/dim] "
+                  "[cyan]ai4science login --provider anthropic|openai|gemini[/cyan]")
+    console.print("  2. [cyan]ai4science[/cyan]         "
+                  "[dim]drops you into a chat session (native engine)[/dim]\n")
+    console.print("[dim]Optional — the exact Claude Code engine ([cyan]ai4science --mode claude[/cyan]):[/dim]")
+    console.print("  [cyan]npm install -g @anthropic-ai/claude-code[/cyan] "
+                  "[dim]then[/dim] [cyan]claude login[/cyan]  "
+                  "[dim](without it, --mode claude uses the native engine)[/dim]\n")
+    console.print("Works right now without a login (deterministic, offline):")
     console.print("  [cyan]ai4science init <name>[/cyan]   start a contribution workspace")
     console.print("  [cyan]ai4science validate[/cyan]      check artifacts")
     console.print("  [cyan]ai4science judge cassi[/cyan]   run the Physics Judge")
