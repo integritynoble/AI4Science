@@ -27,7 +27,7 @@ def test_join_registers_open_provider_with_wallet_and_concurrency(tmp_path):
     assert p.wallet_address == WALLET
     assert p.kind == "cpu"
     assert p.trust_tier == "open"          # community tier, not founder
-    assert p.max_concurrent == 2
+    assert p.max_concurrent == 2           # honors the explicit --max-concurrent flag
     # tells the user how to earn + how to start serving
     assert "earn PWM" in res.output or "How you earn PWM" in res.output
     assert "compute serve" in res.output

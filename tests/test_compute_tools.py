@@ -25,8 +25,9 @@ def _tool(name):
 def test_two_founder_servers_cpu_and_gpu_x2():
     provs = {p.provider_id: p for p in founder_providers()}
     assert set(provs) == {"founder-cpu", "founder-gpu"}
-    assert provs["founder-cpu"].kind == "cpu" and provs["founder-cpu"].max_concurrent == 2
-    assert provs["founder-gpu"].kind == "gpu" and provs["founder-gpu"].max_concurrent == 2
+    # one job at a time on each founder box (single CPU slot / single GPU)
+    assert provs["founder-cpu"].kind == "cpu" and provs["founder-cpu"].max_concurrent == 1
+    assert provs["founder-gpu"].kind == "gpu" and provs["founder-gpu"].max_concurrent == 1
     # both pay the third-founder wallet
     assert provs["founder-cpu"].wallet_address == THIRD_FOUNDER_WALLET
     assert provs["founder-gpu"].wallet_address == THIRD_FOUNDER_WALLET
@@ -56,17 +57,17 @@ def test_dispatch_preview_shows_pwm_and_recipient(tmp_path):
     assert "est PWM" in out
 
 
-# ── lease gating: 2 concurrent, 3rd refused ──────────────────────────────
-def test_dispatch_is_lease_gated_at_two(tmp_path, monkeypatch):
+# ── lease gating: 1 concurrent (one job at a time), 2nd refused ───────────
+def test_dispatch_is_lease_gated_at_one(tmp_path, monkeypatch):
     # pytest is non-interactive: opt in the way scripts/CI do, so the paid-
     # dispatch autonomy guard lets the lease logic under test run
     monkeypatch.setenv("AI4SCIENCE_COMPUTE_AUTOCONFIRM", "1")
     disp = _tool("compute_dispatch").func
     r1 = disp(tmp_path, provider="founder-cpu", run_command="a", confirm=True)
+    assert "Dispatched job" in r1
+    # the single slot is now taken → a 2nd concurrent dispatch waits/refuses
     r2 = disp(tmp_path, provider="founder-cpu", run_command="b", confirm=True)
-    assert "Dispatched job" in r1 and "Dispatched job" in r2
-    r3 = disp(tmp_path, provider="founder-cpu", run_command="c", confirm=True)
-    assert "full" in r3.lower()
+    assert "full" in r2.lower()
 
 
 # ── billing math (1 PWM = $5 default) ────────────────────────────────────

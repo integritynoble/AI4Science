@@ -1,7 +1,10 @@
 """The two founder-operated compute servers, available to every mode.
 
-- main CPU server  — serves two users at once (CPU compute)
-- sub-GPU server   — serves two users at once (GPU compute)
+- main CPU server  — serves ONE user at a time (a single CPU compute slot)
+- sub-GPU server   — serves ONE user at a time (a single GPU; one job at once)
+
+The hardware is one GPU and one CPU compute slot, so each provider exposes a
+single concurrent slot (max_concurrent=1); a second user waits for the lease.
 
 Both pay the third-founder wallet. They are seeded as defaults so a fresh
 install has compute available without editing the registry; a user's own
@@ -40,7 +43,7 @@ def founder_providers() -> List[ComputeProvider]:
             label="Main CPU server (founder)",
             kind="cpu",
             price_usd_per_hour=0.20,
-            max_concurrent=2,
+            max_concurrent=1,
             trust_tier="founder",
         ),
         ComputeProvider(
@@ -50,7 +53,7 @@ def founder_providers() -> List[ComputeProvider]:
             label="Sub-GPU server (founder)",
             kind="gpu",
             price_usd_per_hour=1.50,
-            max_concurrent=2,
+            max_concurrent=1,
             trust_tier="founder",
         ),
     ]

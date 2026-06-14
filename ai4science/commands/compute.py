@@ -74,7 +74,9 @@ def providers_add(
     price_usd_per_hour: float = typer.Option(
         0.0, "--price-usd-per-hour", help="Provider-set compute price (USD/hour)."),
     max_concurrent: int = typer.Option(
-        2, "--max-concurrent", help="Max users served at once (counting semaphore)."),
+        1, "--max-concurrent",
+        help="Max users served at once (counting semaphore). Default 1 — one "
+             "job at a time per machine; raise it if your box can run more."),
 ) -> None:
     """Register (or replace) a compute provider bound to a wallet."""
     if not is_valid_eth_address(wallet):
@@ -116,7 +118,9 @@ def join(
         -1.0, "--price-usd-per-hour",
         help="Your compute price (USD/hour). Default: 1.50 gpu / 0.20 cpu."),
     max_concurrent: int = typer.Option(
-        2, "--max-concurrent", help="How many users you serve at once."),
+        1, "--max-concurrent",
+        help="How many users you serve at once. Default 1 (one job at a time); "
+             "raise it only if your machine can truly run jobs in parallel."),
     label: str = typer.Option("", "--label", help="Human label."),
 ) -> None:
     """Become an open compute provider and earn PWM.
