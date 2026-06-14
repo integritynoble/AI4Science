@@ -162,7 +162,7 @@ def _pick_brand(backend: Optional[str], model: Optional[str]):
             if b == backend:
                 return backend, m
         # Backend not in orchestration chain — use a default model.
-        return backend, "claude-fable-5"
+        return backend, "claude-opus-4-8"
 
     if model:
         # Only a model id given — infer its backend so `--model gemini-…` works.
@@ -670,7 +670,7 @@ def run_common_repl(
             _do_turn()
         except Exception as exc:
             # Directive 2026-06-11: NEVER stop the user — walk the whole
-            # orchestration chain (Fable 5 → Opus 4.8 → GPT-5.5 → safety net),
+            # orchestration chain (Opus 4.8 → GPT-5.5 → safety net),
             # switching automatically until one model serves the turn.
             from ai4science.harness.adapters.factory import harness_available
             last = exc

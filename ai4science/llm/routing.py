@@ -19,17 +19,17 @@ from typing import Dict, List, NamedTuple, Optional, Tuple
 
 # Agent → ordered fallback chain of (backend, model).
 AGENT_CHAINS: Dict[str, List[Tuple[str, str]]] = {
-    # Directive 2026-06-11: Fable 5 is the DEFAULT for every agent; on failure
-    # auto-fail-over Fable 5 → Opus 4.8 → GPT-5.5 with NO stop for the user.
+    # Directive 2026-06-14: Fable 5 / Mythos 5 access SUSPENDED (US gov
+    # directive); Opus 4.8 is the DEFAULT for every agent. On failure
+    # auto-fail-over Opus 4.8 → GPT-5.5 → Gemini with NO stop for the user.
     "orchestration": [
-        ("anthropic", "claude-fable-5"),      # ← default for every agent
-        ("anthropic", "claude-opus-4-8"),     # auto-failover #1 (Fable 5 down)
-        ("openai", "gpt-5.5"),                # auto-failover #2 (Opus 4.8 down)
+        ("anthropic", "claude-opus-4-8"),     # ← default for every agent
+        ("openai", "gpt-5.5"),                # auto-failover #1 (Opus 4.8 down)
         ("gemini", "gemini-3.1-pro-preview"), # final safety net (never stop)
     ],
     "checking": [
         ("openai", "gpt-5.5"),
-        ("anthropic", "claude-fable-5"),        # Fable 5 (directive 2026-06-10: replaces Opus 4.8)
+        ("anthropic", "claude-opus-4-8"),       # Opus 4.8 (Fable 5 suspended 2026-06-14)
         ("gemini", "gemini-3.1-pro-preview"),   # 'gemini-3.1-pro' (plain) 404s
         ("deepseek", "deepseek-ai/deepseek-r1-0528-maas"),   # reasoning, via Vertex
     ],
