@@ -5,7 +5,7 @@ from ai4science.harness.tools import shell
 
 
 def test_bash_times_out_on_hang(tmp_path, monkeypatch):
-    monkeypatch.setattr(shell, "BASH_TIMEOUT_SECONDS", 1)
+    monkeypatch.setenv("AI4SCIENCE_BASH_TIMEOUT", "1")
     start = time.monotonic()
     out = shell.bash(tmp_path, cmd="sleep 30")
     elapsed = time.monotonic() - start
@@ -17,7 +17,7 @@ def test_bash_times_out_on_hang(tmp_path, monkeypatch):
 
 def test_bash_times_out_kills_child_process(tmp_path, monkeypatch):
     """The actual command (a child of the shell) is killed, not orphaned."""
-    monkeypatch.setattr(shell, "BASH_TIMEOUT_SECONDS", 1)
+    monkeypatch.setenv("AI4SCIENCE_BASH_TIMEOUT", "1")
     marker = tmp_path / "alive.txt"
     # write a marker after a delay; if the tree is truly killed, it never appears
     shell.bash(tmp_path, cmd=f"sleep 3 && echo done > {marker}")

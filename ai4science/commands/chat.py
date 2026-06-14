@@ -34,6 +34,41 @@ from ai4science.harness.repl import run_common_repl
 
 console = Console()
 
+_PROJECT_MARKERS = (".git", "pyproject.toml", "package.json", "setup.py",
+                    "Cargo.toml", "go.mod", "CLAUDE.md", "AGENTS.md")
+
+
+def _nearest_project_root(start: Path) -> Optional[Path]:
+    """Walk up from `start` to the nearest dir containing a project marker
+    (.git, pyproject.toml, …). Stops at the filesystem root or $HOME."""
+    home = Path.home().resolve()
+    cur = start.resolve()
+    for _ in range(40):
+        if any((cur / m).exists() for m in _PROJECT_MARKERS):
+            return cur
+        if cur == cur.parent or cur == home:
+            break
+        cur = cur.parent
+    return None
+
+
+def _resolve_workspace(ws: Path, *, was_default: bool) -> Path:
+    """Pick the agent's workspace. With the default (cwd), prefer the nearest
+    PROJECT root so searches are scoped to the project, not a huge tree; if
+    there's no project and we're in $HOME, warn (broad/slow searches)."""
+    ws = ws.resolve()
+    home = Path.home().resolve()
+    proj = _nearest_project_root(ws)
+    if was_default and proj is not None and proj != ws:
+        console.print(f"[dim]Workspace → project root {proj}[/dim]")
+        return proj
+    if proj is None and ws == home:
+        console.print(
+            "[yellow]⚠ Running in your home directory[/yellow] — file searches "
+            "(grep/glob) will be broad and slow. Start the agent from a project "
+            "directory, or pass [cyan]--workspace <dir>[/cyan].")
+    return ws
+
 
 def chat(
     agent: str = typer.Option(
@@ -116,7 +151,7 @@ def chat(
         )
         raise typer.Exit(2)
 
-    workspace = workspace.resolve()
+    workspace = _resolve_workspace(workspace, was_default=(str(workspace) == "."))
 
     # Resolve --mode against the agent registry. The active AgentSpec drives the
     # session (registry + system prompt) inside run_common_repl; here we only pass

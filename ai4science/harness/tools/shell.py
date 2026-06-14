@@ -8,7 +8,17 @@ import time
 from pathlib import Path
 from typing import Callable, List, Optional
 
-BASH_TIMEOUT_SECONDS = 300
+def _bash_timeout() -> int:
+    """Default wall-clock cap for a bash command (so a hung command can't freeze
+    the session). Output streams live and Esc interrupts before then. Override
+    for long builds/training with AI4SCIENCE_BASH_TIMEOUT (seconds)."""
+    try:
+        return max(1, int(os.environ.get("AI4SCIENCE_BASH_TIMEOUT", "120")))
+    except (TypeError, ValueError):
+        return 120
+
+
+BASH_TIMEOUT_SECONDS = 120   # legacy constant; runtime uses _bash_timeout()
 
 
 def _kill_tree(proc: "subprocess.Popen") -> None:
@@ -58,7 +68,8 @@ def bash(workspace: Path, *, cmd: str, _sink: Optional[Callable[[str], None]] = 
     # Wait in short slices so a user interrupt (Esc in the TUI) kills the
     # command within ~200ms instead of blocking until the wall timeout.
     from ai4science.harness import interrupt
-    deadline = time.monotonic() + BASH_TIMEOUT_SECONDS
+    timeout_s = _bash_timeout()
+    deadline = time.monotonic() + timeout_s
     while True:
         try:
             proc.wait(timeout=0.2)
@@ -70,7 +81,9 @@ def bash(workspace: Path, *, cmd: str, _sink: Optional[Callable[[str], None]] = 
                 break
             if time.monotonic() >= deadline:
                 _kill_tree(proc)
-                buf.append(f"\n(timed out after {BASH_TIMEOUT_SECONDS}s)")
+                buf.append(f"\n(timed out after {timeout_s}s — still running? raise "
+                           "AI4SCIENCE_BASH_TIMEOUT or run it in the background "
+                           "with `nohup … &`)")
                 break
     reader.join(timeout=5)
 
