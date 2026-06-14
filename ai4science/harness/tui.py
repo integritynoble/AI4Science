@@ -79,13 +79,18 @@ def read_input(prompt: str = "› ", mode: str = "chat", status: str = "") -> st
     `status` is a one-line status bar (e.g. 'model · 7056 PWM · ~/proj') shown
     under the box, like Claude Code's bottom line.
     """
-    scr = _ACTIVE.get("screen") if "_ACTIVE" in globals() else None
-    if scr is not None:
-        return scr.read_input(prompt, status)
-    if not tui_enabled():
+    m = tui_mode()
+    if m == "off":
         return input(prompt)
     try:
-        return _bordered(prompt, mode, status)
+        import prompt_toolkit  # noqa: F401
+    except Exception:
+        return input(prompt)
+    try:
+        # 'full' (default) → inline two-line input (native wheel-scroll + copy);
+        # 'box' → the bordered single-line input box.
+        return _bordered(prompt, mode, status) if m == "box" \
+            else _two_line_inline(prompt, mode, status)
     except (EOFError, KeyboardInterrupt):
         raise
     except Exception:
@@ -160,6 +165,84 @@ def _bordered(prompt: str, mode: str, status: str = "") -> str:
     txt = out["text"]
     if txt is None:
         raise KeyboardInterrupt
+    return txt
+
+
+def _two_line_inline(prompt: str, mode: str, status: str = "") -> str:
+    """Claude-Code-style INLINE two-line input: a coral ❯ prompt framed by a top
+    and bottom rule (no box), with one info line, rendered full_screen=False so
+    it does NOT take over the terminal. The conversation prints normally above
+    it, so the terminal's own scrollback (mouse wheel) and text selection (copy)
+    both work — exactly like Claude Code. On submit the widget is erased and the
+    line is echoed as `❯ <text>` so the transcript stays clean."""
+    from prompt_toolkit import Application
+    from prompt_toolkit.formatted_text import ANSI
+    from prompt_toolkit.key_binding import KeyBindings
+    from prompt_toolkit.layout import Layout
+    from prompt_toolkit.layout.containers import HSplit, Window
+    from prompt_toolkit.layout.controls import FormattedTextControl
+    from prompt_toolkit.widgets import TextArea
+    from prompt_toolkit.styles import Style
+    from prompt_toolkit.history import FileHistory
+
+    hp = _history_path(mode)
+    ta = TextArea(multiline=True, wrap_lines=True,
+                  prompt=[("class:prompt", "❯ ")],
+                  history=FileHistory(str(hp)) if hp else None, style="class:input")
+    ta.window.height = _grow_height(lambda: ta.text)
+
+    def _rule():
+        return Window(height=1, char="─", style="class:rule")
+
+    info = f" \x1b[38;5;173mai4science · {mode}\x1b[0m"
+    if status:
+        info += f" · \x1b[38;5;245m{status}\x1b[0m"
+    info += "   \x1b[38;5;240m⏎ send · ⌥⏎ newline · ↑↓ history · /exit\x1b[0m"
+
+    body = HSplit([
+        _rule(),
+        ta,
+        _rule(),
+        Window(FormattedTextControl(ANSI(info)), height=1),
+    ])
+
+    kb = KeyBindings()
+    out = {"text": None}
+
+    @kb.add("enter")
+    def _(event):
+        out["text"] = ta.text
+        ta.buffer.reset(append_to_history=True)
+        event.app.exit()
+
+    @kb.add("escape", "enter")
+    def _(event):
+        ta.buffer.insert_text("\n")
+
+    @kb.add("c-c")
+    def _(event):
+        event.app.exit(exception=KeyboardInterrupt)
+
+    @kb.add("c-d")
+    def _(event):
+        if not ta.text:
+            event.app.exit(exception=EOFError)
+
+    style = Style.from_dict({
+        "prompt": "fg:#d7875f bold",
+        "rule": "fg:#d7875f",
+        "input": "",
+    })
+    app = Application(layout=Layout(body, focused_element=ta), key_bindings=kb,
+                      style=style, full_screen=False, mouse_support=False,
+                      erase_when_done=True)
+    app.run()
+    txt = out["text"]
+    if txt is None:
+        raise KeyboardInterrupt
+    # widget erased → echo the submitted line so it stays in the scrollback.
+    sys.stdout.write(f"\x1b[38;5;173m❯\x1b[0m {txt}\n")
+    sys.stdout.flush()
     return txt
 
 
@@ -444,15 +527,8 @@ class FullScreen:
 
 
 def run_full(mode: str, runner) -> bool:
-    """If the full-screen TUI is active (the default on a TTY), run `runner()`
-    inside the app and return True; else return False (caller proceeds
-    normally)."""
-    if tui_mode() != "full":
-        return False
-    try:
-        import prompt_toolkit  # noqa: F401
-    except Exception:
-        return False           # no TUI dep -> plain REPL, never crash
-    screen = FullScreen(mode)
-    screen.run(lambda _s: runner())
-    return True
+    """Deprecated alt-screen wrapper. We now render INLINE (the REPL prints to the
+    terminal normally and `read_input` shows the two-line inline prompt) so the
+    terminal's native scrollback (mouse wheel) and text selection (copy) work,
+    like Claude Code. Always return False → the caller runs the REPL directly."""
+    return False
