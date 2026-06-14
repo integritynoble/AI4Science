@@ -194,3 +194,56 @@ def test_token_streaming_keeps_box_intact_and_content():
             dashes = ln.count("─")
             if dashes >= 10:
                 raise AssertionError(f"box rule corrupted by stream: {ln!r}")
+
+
+# A message typed WHILE the agent is busy must echo IMMEDIATELY (not vanish until
+# the turn ends). This is the real "my sentence disappears after I send it" bug.
+_DRIVER_BUSY = r'''
+import os, sys, time
+os.environ["AI4SCIENCE_TUI"] = "full"
+os.environ["PROMPT_TOOLKIT_NO_CPR"] = "1"
+from ai4science.harness import tui
+fs = tui.FullScreen("claude-code")
+def worker():
+    tui.read_input("X ", "claude-code", "demo")
+    for i in range(20):                       # ~4s of busy streaming
+        sys.stdout.write("tok%d " % i); sys.stdout.flush(); time.sleep(0.2)
+    sys.stdout.write("\n")
+    tui.read_input("X ", "claude-code", "demo")
+    tui.read_input("X ", "claude-code", "demo")
+fs.run(worker)
+'''
+
+
+def test_message_sent_while_busy_echoes_immediately():
+    # Send msg1 (starts the 4s stream), then ~1s in send msg2 while busy.
+    # Snapshot must show msg2 BEFORE the stream finishes.
+    import os as _os, pty, select, time as _t, pyte
+    repo = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+    pid, fd = pty.fork()
+    if pid == 0:
+        _os.environ["TERM"] = "xterm-256color"
+        _os.environ["PYTHONPATH"] = repo + _os.pathsep + _os.environ.get("PYTHONPATH", "")
+        _os.execvp("python3", ["python3", "-c", _DRIVER_BUSY])
+        _os._exit(127)
+    screen = pyte.Screen(80, 24); stream = pyte.ByteStream(screen)
+    def pump(dl):
+        while _t.monotonic() < dl:
+            r, _, _ = select.select([fd], [], [], 0.1)
+            if fd in r:
+                try: c = _os.read(fd, 65536)
+                except OSError: return
+                if not c: return
+                stream.feed(c)
+    t0 = _t.monotonic(); pump(t0 + 1.5)
+    _os.write(fd, b"start\r"); pump(_t.monotonic() + 1.0)
+    _os.write(fd, b"busy message\r"); pump(_t.monotonic() + 0.8)
+    mid = "\n".join(ln.rstrip() for ln in screen.display)
+    # the stream is NOT done yet (token 19 not reached), yet the message shows:
+    assert "busy message" in mid, f"message sent while busy vanished:\n{mid}"
+    assert "tok19" not in mid, "stream finished too early; test inconclusive"
+    _os.write(fd, b"/exit\r"); pump(_t.monotonic() + 5.0)
+    try: _os.close(fd)
+    except OSError: pass
+    try: _os.waitpid(pid, 0)
+    except OSError: pass

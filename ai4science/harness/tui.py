@@ -350,35 +350,44 @@ class _StreamCommit:
     box's top border. This is what stops token-by-token streaming (no trailing
     newline) from corrupting the box and then vanishing on the next repaint."""
     def __init__(self, inner, screen):
+        import threading
         self._inner = inner            # patch_stdout's StdoutProxy
         self._screen = screen
         self._buf = ""
+        # The worker thread (streaming) AND the main/app thread (the immediate
+        # echo of a just-sent message) both write here — guard the buffer.
+        self._lock = threading.Lock()
 
     def write(self, text):
         if not text:
             return 0
-        self._buf += text
-        if "\n" in self._buf:
-            cut = self._buf.rfind("\n") + 1
-            whole, self._buf = self._buf[:cut], self._buf[cut:]
-            self._inner.write(whole)
-            try:
-                self._inner.flush()
-            except Exception:
-                pass
-        self._screen._set_partial(self._buf)
+        with self._lock:
+            self._buf += text
+            partial = self._buf
+            if "\n" in self._buf:
+                cut = self._buf.rfind("\n") + 1
+                whole, self._buf = self._buf[:cut], self._buf[cut:]
+                partial = self._buf
+                self._inner.write(whole)
+                try:
+                    self._inner.flush()
+                except Exception:
+                    pass
+        self._screen._set_partial(partial)
         return len(text)
 
     def commit_partial(self):
         """Flush any dangling partial line to the scrollback (turn boundary)."""
-        if self._buf:
+        with self._lock:
+            if not self._buf:
+                return
             self._inner.write(self._buf + "\n")
             try:
                 self._inner.flush()
             except Exception:
                 pass
             self._buf = ""
-            self._screen._set_partial("")
+        self._screen._set_partial("")
 
     def flush(self):
         pass                            # deliberately DON'T flush partials
@@ -443,7 +452,9 @@ class FullScreen:
         self._busy = True
         if line is None:
             raise EOFError
-        self.append(f"\n\x1b[38;5;173m❯\x1b[0m {line}\n")
+        # NOTE: the `❯ <line>` echo happens in the Enter handler at SEND time —
+        # not here — so a message typed WHILE the agent is busy shows instantly
+        # instead of vanishing until the turn ends.
         return line
 
     # ── the app ─────────────────────────────────────────────────────────────
@@ -517,13 +528,18 @@ class FullScreen:
 
         @kb.add("enter")
         def _(event):
-            text = self._expand(ta.text)
+            shown = ta.text                      # collapsed (paste placeholders)
+            full = self._expand(shown)
             ta.buffer.reset(append_to_history=True)
-            if text.strip().lower() in ("/exit", "/quit", "exit", "quit", "q"):
+            if full.strip().lower() in ("/exit", "/quit", "exit", "quit", "q"):
                 self._inq.put(None)
                 event.app.exit()
                 return
-            self._inq.put(text)
+            # Echo at SEND time (not when the worker dequeues) so a message typed
+            # while the agent is busy appears immediately instead of vanishing.
+            if shown.strip():
+                self.append(f"\n\x1b[38;5;173m❯\x1b[0m {shown}\n")
+            self._inq.put(full)
 
         @kb.add("escape", "enter")
         def _(event):
