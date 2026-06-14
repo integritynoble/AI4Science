@@ -301,21 +301,25 @@ class FullScreen:
 
         out_ctrl = FormattedTextControl(_pane_text, get_cursor_position=_pane_cursor)
 
-        def _pane_mouse(mouse_event):
-            if mouse_event.event_type not in (
-                    MouseEventType.SCROLL_UP, MouseEventType.SCROLL_DOWN):
-                return NotImplemented          # let other handlers have it
+        def _scroll_pane(up_lines: int) -> None:
+            # up_lines > 0 → move the view UP into history; reaching the bottom
+            # resumes following the latest output. Used by the wheel AND PageUp/Dn.
             last = _line_count() - 1
             cur = last if self._cursor_line is None else min(self._cursor_line, last)
-            if mouse_event.event_type == MouseEventType.SCROLL_UP:
-                self._cursor_line = max(0, cur - 3)
-            else:
-                nv = cur + 3
-                self._cursor_line = None if nv >= last else nv   # bottom → follow
+            nv = cur - up_lines
+            self._cursor_line = None if nv >= last else max(0, nv)
             try:
                 get_app().invalidate()
             except Exception:
                 pass
+
+        def _pane_mouse(mouse_event):
+            if mouse_event.event_type == MouseEventType.SCROLL_UP:
+                _scroll_pane(3)
+            elif mouse_event.event_type == MouseEventType.SCROLL_DOWN:
+                _scroll_pane(-3)
+            else:
+                return NotImplemented          # let other handlers have it
             return None
         out_ctrl.mouse_handler = _pane_mouse
 
@@ -326,8 +330,8 @@ class FullScreen:
             mode = f"\x1b[38;5;173mai4science · {self.mode}\x1b[0m"
             extra = (f" · \x1b[38;5;245m{self._status_extra}\x1b[0m"
                      if self._status_extra else "")
-            hints = ("   \x1b[38;5;240m⏎ send · ⌥⏎ newline · esc stop · ↑↓ history "
-                     "· /exit\x1b[0m")
+            hints = ("   \x1b[38;5;240m⏎ send · ⌥⏎ newline · PgUp/Dn scroll · "
+                     "esc stop · /exit\x1b[0m")
             return ANSI(f" {star}{mode}{extra}{hints}")
 
         out_win = Window(out_ctrl, wrap_lines=True, always_hide_cursor=True,
@@ -381,6 +385,14 @@ class FullScreen:
                 self._inq.put(None)
                 event.app.exit()
 
+        @kb.add("pageup")          # scroll the transcript without the mouse
+        def _(event):
+            _scroll_pane(10)
+
+        @kb.add("pagedown")
+        def _(event):
+            _scroll_pane(-10)
+
         style = Style.from_dict({
             "prompt": "fg:#d7875f bold",   # coral ❯ like Claude Code
             "rule": "fg:#d7875f",          # coral top/bottom horizontal lines
@@ -389,9 +401,15 @@ class FullScreen:
             "pane": "fg:#ffffff",
             "input": "fg:#ffffff",         # what you type is bright too
         })
+        # Mouse capture trade-off. DEFAULT OFF so native click-drag text
+        # selection / copy works like Claude Code; scroll the transcript with
+        # PageUp/PageDown. Set `AI4SCIENCE_TUI_MOUSE=on` to make the WHEEL scroll
+        # instead — but that captures the mouse, so copy then needs Shift+drag.
+        _mouse = os.environ.get("AI4SCIENCE_TUI_MOUSE", "off").strip().lower() \
+            in ("1", "on", "yes", "true")
         self._app = Application(layout=Layout(body, focused_element=ta),
                                 key_bindings=kb, style=style, full_screen=True,
-                                refresh_interval=0.15, mouse_support=True)
+                                refresh_interval=0.15, mouse_support=_mouse)
 
         _ACTIVE["screen"] = self
         old_out, old_err = sys.stdout, sys.stderr
