@@ -125,6 +125,20 @@ def _history_path(mode: str) -> Optional[Path]:
         return None
 
 
+def _jump_to_bottom(app) -> None:
+    """Snap the terminal viewport to the bottom (live composer + newest output).
+
+    With native scrollback (full_screen=False) the terminal owns the scroll
+    position, and terminals follow output written at the cursor (the bottom). We
+    repaint the composer in place (no `renderer.reset()` — that re-draws WITHOUT
+    erasing the old frame and duplicates the box); the emitted redraw bytes land
+    at the bottom and pull the viewport down. Safe no-op on any hiccup."""
+    try:
+        app.invalidate()
+    except Exception:
+        pass
+
+
 def read_input(prompt: str = "› ", mode: str = "chat", status: str = "") -> str:
     """Bordered TUI input when enabled, else plain input(prompt).
 
@@ -240,6 +254,10 @@ def _bordered(prompt: str, mode: str, status: str = "") -> str:
         if not ta.text:
             event.app.exit(exception=EOFError)
 
+    @kb.add("c-g")                      # jump to bottom (snap to live composer)
+    def _(event):
+        _jump_to_bottom(event.app)
+
     style = Style.from_dict({
         "frame.border": "fg:#d7875f",     # Claude coral box
         "frame.title": "fg:#d7875f bold",
@@ -328,6 +346,10 @@ def _two_line_inline(prompt: str, mode: str, status: str = "") -> str:
     def _(event):
         if not ta.text:
             event.app.exit(exception=EOFError)
+
+    @kb.add("c-g")                      # jump to bottom (snap to live composer)
+    def _(event):
+        _jump_to_bottom(event.app)
 
     style = Style.from_dict({
         "prompt": "fg:#d7875f bold",
@@ -572,7 +594,8 @@ class FullScreen:
             mode = f"\x1b[38;5;173mai4science · {_display_mode(self.mode)}\x1b[0m"
             extra = (f" · \x1b[38;5;245m{self._status_extra}\x1b[0m"
                      if self._status_extra else "")
-            hints = ("   \x1b[38;5;240m⏎ send · ⌥⏎ newline · ↑ edit · esc stop · /exit\x1b[0m")
+            hints = ("   \x1b[38;5;240m⏎ send · ⌥⏎ newline · ↑ edit · ^G bottom · "
+                     "esc stop · /exit\x1b[0m")
             return ANSI(f" {star}{mode}{extra}{hints}")
 
         # Live region: the in-progress streaming line (no trailing newline yet).
@@ -740,6 +763,13 @@ class FullScreen:
             if not ta.text:
                 self._inq.put(None)
                 event.app.exit()
+
+        # Ctrl-G — jump to bottom: force a FULL repaint so the terminal snaps its
+        # viewport back to the live composer + newest output after you've wheeled
+        # up into the scrollback history.
+        @kb.add("c-g")
+        def _(event):
+            _jump_to_bottom(event.app)
 
         style = Style.from_dict({
             "prompt": "fg:#d7875f bold",   # coral ❯ like Claude Code
