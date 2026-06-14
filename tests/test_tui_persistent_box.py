@@ -283,3 +283,64 @@ def test_permission_picker_number_jump():
         [b"go\r", b"3", b"/exit\r"],
         driver=_DRIVER_PICK, settle=0.8, total_timeout=14.0)
     assert "CHOSE-IDX:2" in "\n".join(lines)
+
+
+# The box must NOT bounce row-by-row while a line streams token-by-token (the
+# "moves up so fast" complaint): the live region is a single fixed row showing
+# the tail, so the box position is stable until a line actually commits.
+_DRIVER_NOBOUNCE = r'''
+import os, sys, time
+os.environ["AI4SCIENCE_TUI"] = "full"
+os.environ["PROMPT_TOOLKIT_NO_CPR"] = "1"
+from ai4science.harness import tui
+fs = tui.FullScreen("claude-code")
+def worker():
+    tui.read_input("X ", "claude-code", "demo")
+    # one long line (NO newline) that wraps several times as it streams
+    for w in (("alpha beta gamma delta epsilon zeta eta theta iota kappa lambda "
+               "mu nu xi omicron pi rho sigma tau upsilon phi chi psi omega ") * 2
+              ).split(" "):
+        if w:
+            sys.stdout.write(w + " "); sys.stdout.flush(); time.sleep(0.05)
+    sys.stdout.write("\n")
+    tui.read_input("X ", "claude-code", "demo")
+fs.run(worker)
+'''
+
+
+def test_box_does_not_bounce_during_token_stream():
+    import os as _os, pty, select, time as _t, pyte
+    repo = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+    pid, fd = pty.fork()
+    if pid == 0:
+        _os.environ["TERM"] = "xterm-256color"
+        _os.environ["PYTHONPATH"] = repo + _os.pathsep + _os.environ.get("PYTHONPATH", "")
+        _os.execvp("python3", ["python3", "-c", _DRIVER_NOBOUNCE])
+        _os._exit(127)
+    screen = pyte.Screen(80, 24); stream = pyte.ByteStream(screen)
+    def pump(dl):
+        while _t.monotonic() < dl:
+            r, _, _ = select.select([fd], [], [], 0.05)
+            if fd in r:
+                try: c = _os.read(fd, 65536)
+                except OSError: return
+                if not c: return
+                stream.feed(c)
+    def first_rule():
+        for i, ln in enumerate(screen.display):
+            if ln.rstrip().startswith("──"):
+                return i
+        return -1
+    t0 = _t.monotonic(); pump(t0 + 1.5)
+    _os.write(fd, b"go\r"); pump(_t.monotonic() + 0.6)
+    rows = []
+    for _ in range(4):                      # sample mid-stream (within one line)
+        pump(_t.monotonic() + 0.35)
+        rows.append(first_rule())
+    _os.write(fd, b"/exit\r"); pump(_t.monotonic() + 4.0)
+    try: _os.close(fd)
+    except OSError: pass
+    try: _os.waitpid(pid, 0)
+    except OSError: pass
+    # All samples are mid-line (no newline committed yet) → the box must not move.
+    assert len(set(rows)) == 1, f"box bounced while streaming one line: rows={rows}"

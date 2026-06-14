@@ -555,15 +555,26 @@ class FullScreen:
             return ANSI(f" {star}{mode}{extra}{hints}")
 
         # Live region: the in-progress streaming line (no trailing newline yet).
-        # It renders here, just above the box, until a newline commits it to the
-        # scrollback — so it never lands on the box's top rule.
+        # It renders on a SINGLE, FIXED row just above the box — showing the
+        # tail (most-recent tokens) so the box NEVER moves as the line grows /
+        # wraps. A complete line commits to the scrollback (one smooth scroll).
+        # The row is reserved only while a turn is in progress (busy), so the
+        # idle composer has no gap.
         def _partial_text():
+            p = self._partial.rstrip("\n")
+            if not p:
+                return ANSI("")
+            if len(p) > 200:                 # keep it to one row: show the tail
+                p = "…" + p[-200:]
             try:
-                return ANSI(self._partial)
+                return ANSI(p)
             except Exception:
-                return self._partial
+                return p
+
+        def _partial_height():
+            return 1 if (self._busy or self._partial) else 0
         partial_win = Window(FormattedTextControl(_partial_text),
-                             wrap_lines=True, dont_extend_height=True,
+                             height=_partial_height, wrap_lines=False,
                              style="class:input")
 
         # Permission picker (Claude Code's arrow-key menu). When self._choice is
