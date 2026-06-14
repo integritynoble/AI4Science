@@ -549,7 +549,8 @@ def run_common_repl(
                     print(_format_specific_list(parts[1] if len(parts) > 1 else ""),
                           flush=True)
                     continue
-                target = agent_registry.get(parts[0])
+                from ai4science.harness import tui as _tui
+                target = agent_registry.get(_tui.resolve_mode(parts[0]))
                 if target is None:
                     print(f"[modes] unknown agent {parts[0]!r}; /mode to list",
                           flush=True)

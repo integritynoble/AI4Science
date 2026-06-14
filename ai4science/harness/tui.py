@@ -30,6 +30,16 @@ def _display_mode(mode: str) -> str:
     return _MODE_DISPLAY.get(mode, mode)
 
 
+# Reverse: a display name (or its lowercase) the user types resolves to the id.
+_DISPLAY_TO_ID = {v.lower(): k for k, v in _MODE_DISPLAY.items()}   # {"claude": "claude-code"}
+
+
+def resolve_mode(name: str) -> str:
+    """Map a user-typed mode name to its internal id, so `/mode Claude` (the
+    display name) resolves to `claude-code`. Unknown names pass through."""
+    return _DISPLAY_TO_ID.get((name or "").strip().lower(), name)
+
+
 def tui_enabled() -> bool:
     """Bordered single-prompt input (box tier). Full-screen routes through the
     active screen in read_input, so this only gates the box."""

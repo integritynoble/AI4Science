@@ -123,6 +123,8 @@ def chat(
     # mode_label and the spec's prompt as a harmless fallback.
     mode = (mode or os.environ.get("AI4SCIENCE_MODE") or "unified-LLM").lower()
     backend = backend or os.environ.get("AI4SCIENCE_BACKEND")
+    from ai4science.harness.tui import resolve_mode
+    mode = resolve_mode(mode)          # display name (e.g. 'claude') → id 'claude-code'
     spec = agent_registry.get(mode)
     if spec is None:
         names = ", ".join(sorted(agent_registry.AGENT_REGISTRY))
