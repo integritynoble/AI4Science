@@ -142,12 +142,21 @@ class PermissionGate:
 
     def _sandbox_ok(self, name: str, args: Dict) -> Tuple[bool, str]:
         path = args.get("path")
-        if path:
+        if not path:
+            return True, ""
+        # MUTATING tools stay sandboxed inside the workspace. Read-only tools
+        # (glob/grep/read) may target anywhere — the `path` arg exists precisely
+        # to search the machine (e.g. glob path='/home/...'), like Claude Code's
+        # Glob/Grep; reading/searching can't damage anything.
+        if name in self._mutating:
             target = (self.workspace / path).resolve()
             try:
                 target.relative_to(self.workspace)
             except ValueError:
                 return False, "sandbox: path escapes the workspace"
+        # Protected subdirs (judge/hidden_tests/…) are blocked only for
+        # workspace-relative paths, never for an explicit absolute search root.
+        if not Path(path).is_absolute():
             parts = Path(path).parts
             if parts and parts[0] in PROTECTED_DIRS:
                 return False, f"sandbox: '{parts[0]}/' is protected"

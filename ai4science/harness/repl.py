@@ -466,7 +466,9 @@ def run_common_repl(
         try:
             from ai4science.harness import tui
             _st = f"{active_model} · {_shortcwd(workspace)}"
-            line = tui.read_input("> ", mode_label or "chat", _st).strip()
+            # use the CURRENT spec name so the info-line label tracks /mode switches
+            line = tui.read_input("> ", active_spec.name or mode_label or "chat",
+                                  _st).strip()
             _interrupts["n"] = 0
         except EOFError:
             print("\n[harness] EOF — exiting", flush=True)
