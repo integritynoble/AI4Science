@@ -155,6 +155,38 @@ def read_input(prompt: str = "› ", mode: str = "chat", status: str = "") -> st
         return input(prompt)
 
 
+def ask_choice(question: str, options, *, read_input=read_input,
+               mode: str = "chat") -> int:
+    """Ask the user to pick one of `options`, returning the 0-based index.
+
+    When the persistent composer owns the screen, this is Claude Code's
+    arrow-key picker (↑/↓/⏎, or 1/2/3). Otherwise it falls back to a typed
+    numeric menu (also accepting the legacy y/n/a aliases). Default / unknown
+    answers resolve to the LAST option (the safe 'No')."""
+    scr = _ACTIVE.get("screen")
+    if scr is not None and getattr(scr, "request_choice", None):
+        return scr.request_choice(question, options)
+    # Text fallback (box / off mode, or no active screen).
+    lines = [question, ""] if question else [""]
+    for i, opt in enumerate(options):
+        lines.append(f"  {i + 1}. {opt}")
+    ans = read_input("\n".join(lines) + "\n❯ ", mode)
+    a = (ans or "").strip().lower()
+    if a in ("1", "y", "yes"):
+        return 0
+    if a in ("2", "a", "always"):
+        return 1
+    if a in ("3", "n", "no", ""):
+        return min(2, len(options) - 1)
+    try:
+        k = int(a) - 1
+        if 0 <= k < len(options):
+            return k
+    except ValueError:
+        pass
+    return len(options) - 1            # unknown → last (No)
+
+
 def _bordered(prompt: str, mode: str, status: str = "") -> str:
     from prompt_toolkit import Application
     from prompt_toolkit.key_binding import KeyBindings
@@ -415,15 +447,39 @@ class FullScreen:
         self._expand = lambda t: t      # paste-collapse expander (set in run)
         self._partial = ""              # in-progress streaming line (live region)
         self._stream = None             # the _StreamCommit proxy (set in run)
+        self._choice = None             # active permission picker, or None
 
-    def _set_partial(self, s: str) -> None:
-        self._partial = s
+    def _invalidate(self) -> None:
         app = self._app
         if app is not None:
             try:
                 app.loop.call_soon_threadsafe(app.invalidate)
             except Exception:
                 pass
+
+    def _set_partial(self, s: str) -> None:
+        self._partial = s
+        self._invalidate()
+
+    def request_choice(self, question: str, options) -> int:
+        """Block the worker while the user picks an option with ↑/↓/⏎ (or 1/2/3)
+        in the box's picker panel. Returns the selected index (0-based)."""
+        import queue
+        if self._stream is not None:
+            self._stream.commit_partial()       # flush any dangling partial line
+        q: "queue.Queue" = queue.Queue()
+        self._choice = {"q": question, "options": list(options), "sel": 0,
+                        "result": q}
+        self._busy = False
+        self._invalidate()
+        idx = q.get()                            # blocks the WORKER only
+        self._busy = True
+        opts = self._choice["options"] if self._choice else list(options)
+        self._choice = None
+        self._invalidate()
+        if 0 <= idx < len(opts):                 # echo the decision to scrollback
+            self.append(f"\n\x1b[38;5;173m❯\x1b[0m {opts[idx]}\n")
+        return idx
 
     # ── worker-side API ────────────────────────────────────────────────────
     def append(self, text: str) -> None:
@@ -472,8 +528,9 @@ class FullScreen:
         from prompt_toolkit.formatted_text import ANSI
         from prompt_toolkit.key_binding import KeyBindings
         from prompt_toolkit.layout import Layout
-        from prompt_toolkit.layout.containers import HSplit, Window
+        from prompt_toolkit.layout.containers import HSplit, Window, ConditionalContainer
         from prompt_toolkit.layout.controls import FormattedTextControl
+        from prompt_toolkit.filters import Condition
         from prompt_toolkit.widgets import TextArea
         from prompt_toolkit.styles import Style
         from prompt_toolkit.history import FileHistory
@@ -509,18 +566,47 @@ class FullScreen:
                              wrap_lines=True, dont_extend_height=True,
                              style="class:input")
 
+        # Permission picker (Claude Code's arrow-key menu). When self._choice is
+        # set, this panel REPLACES the input box: ↑/↓ move the highlight, ⏎
+        # selects, 1/2/3 jump, esc = the last option.
+        def _choice_text():
+            c = self._choice
+            if not c:
+                return ANSI("")
+            out = [c["q"], ""] if c.get("q") else [""]
+            for i, opt in enumerate(c["options"]):
+                if i == c["sel"]:
+                    out.append(f"\x1b[38;5;173m❯ {i + 1}. {opt}\x1b[0m")   # highlighted
+                else:
+                    out.append(f"\x1b[38;5;245m  {i + 1}. {opt}\x1b[0m")
+            return ANSI("\n".join(out))
+
+        def _choice_hint():
+            return ANSI(" \x1b[38;5;240m↑↓ choose · ⏎ select · 1/2/3 jump · "
+                        "esc = last\x1b[0m")
+
+        in_choice = Condition(lambda: self._choice is not None)
+
         # Claude-Code-style composer: ONLY a top + bottom horizontal rule (no
         # left/right verticals). Completed output streams ABOVE this box (native
         # scrollback); the current partial line sits in `partial_win`.
         def _rule():
             return Window(height=1, char="─", style="class:rule")
-        body = HSplit([
+        choice_panel = ConditionalContainer(HSplit([
+            _rule(),
+            Window(FormattedTextControl(_choice_text), dont_extend_height=True,
+                   style="class:input"),
+            _rule(),
+            Window(FormattedTextControl(_choice_hint), height=1),
+        ]), filter=in_choice)
+        input_panel = ConditionalContainer(HSplit([
             partial_win,                                 # live streaming line
             _rule(),                                     # upper horizontal line
             ta,                                          # input (grows; no side borders)
             _rule(),                                     # bottom horizontal line
             Window(FormattedTextControl(_info), height=1),   # info/status line
-        ])
+        ]), filter=~in_choice)
+        body = HSplit([choice_panel, input_panel])
 
         kb = KeyBindings()
         # Paste-collapse (Claude-Code's `[Pasted text #N +M lines]`); expand on send.
@@ -528,6 +614,9 @@ class FullScreen:
 
         @kb.add("enter")
         def _(event):
+            if self._choice is not None:         # picker mode → confirm selection
+                self._choice["result"].put(self._choice["sel"])
+                return
             shown = ta.text                      # collapsed (paste placeholders)
             full = self._expand(shown)
             ta.buffer.reset(append_to_history=True)
@@ -543,22 +632,43 @@ class FullScreen:
 
         @kb.add("escape", "enter")
         def _(event):
-            ta.buffer.insert_text("\n")
+            if self._choice is None:
+                ta.buffer.insert_text("\n")
 
-        # ↑/↓ edit prior messages like Claude Code: move WITHIN a multi-line
-        # draft, and once at the top/bottom edge step through input history
-        # (auto_up/auto_down do exactly this). Press ↑ on an empty prompt to pull
-        # back your last message and edit it.
+        # ↑/↓ move the picker highlight in choice mode; otherwise edit prior
+        # messages (auto_up/auto_down move within a multi-line draft, then step
+        # through history at the edges — ↑ on an empty prompt recalls the last).
         @kb.add("up")
         def _(event):
+            if self._choice is not None:
+                self._choice["sel"] = max(0, self._choice["sel"] - 1)
+                event.app.invalidate()
+                return
             ta.buffer.auto_up(count=event.arg)
 
         @kb.add("down")
         def _(event):
+            if self._choice is not None:
+                n = len(self._choice["options"])
+                self._choice["sel"] = min(n - 1, self._choice["sel"] + 1)
+                event.app.invalidate()
+                return
             ta.buffer.auto_down(count=event.arg)
+
+        # 1/2/3 … jump straight to (and confirm) an option while picking.
+        for _d in "123456789":
+            @kb.add(_d, filter=in_choice)
+            def _(event, _d=_d):
+                i = int(_d) - 1
+                if 0 <= i < len(self._choice["options"]):
+                    self._choice["sel"] = i
+                    self._choice["result"].put(i)
 
         @kb.add("escape")
         def _(event):
+            if self._choice is not None:         # esc = the last option (No)
+                self._choice["result"].put(len(self._choice["options"]) - 1)
+                return
             # Esc while the agent is busy → interrupt the running turn (kills
             # a running bash, ends the turn). Non-eager so the Alt+Enter
             # (escape,enter) chord above still matches.

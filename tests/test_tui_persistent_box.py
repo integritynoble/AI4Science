@@ -247,3 +247,39 @@ def test_message_sent_while_busy_echoes_immediately():
     except OSError: pass
     try: _os.waitpid(pid, 0)
     except OSError: pass
+
+
+# Permission picker: ↑/↓ move the highlight, ⏎ selects (Claude Code parity).
+_DRIVER_PICK = r'''
+import os, sys
+os.environ["AI4SCIENCE_TUI"] = "full"
+os.environ["PROMPT_TOOLKIT_NO_CPR"] = "1"
+from ai4science.harness import tui
+fs = tui.FullScreen("claude-code")
+def worker():
+    tui.read_input("X ", "claude-code", "demo")
+    opts = ["Yes", "Yes, and don't ask again for bash this session",
+            "No, and tell the agent what to do differently (esc)"]
+    idx = tui.ask_choice("DECIDE NOW", opts, mode="claude-code")
+    print("CHOSE-IDX:%d" % idx)
+    tui.read_input("X ", "claude-code", "demo")
+fs.run(worker)
+'''
+
+
+def test_permission_picker_arrow_keys():
+    # open the picker, Down twice (→ No), Up once (→ "don't ask again"), Enter.
+    raw, lines = _spawn_and_drive(
+        [b"go\r", b"\x1b[B", b"\x1b[B", b"\x1b[A", b"\r", b"/exit\r"],
+        driver=_DRIVER_PICK, settle=0.8, total_timeout=14.0)
+    text = "\n".join(lines)
+    assert b"DECIDE NOW" in raw                        # the picker rendered
+    assert "CHOSE-IDX:1" in text, f"arrow selection wrong:\n{text}"
+
+
+def test_permission_picker_number_jump():
+    # press '3' to jump straight to (and confirm) option 3 (index 2 = No).
+    raw, lines = _spawn_and_drive(
+        [b"go\r", b"3", b"/exit\r"],
+        driver=_DRIVER_PICK, settle=0.8, total_timeout=14.0)
+    assert "CHOSE-IDX:2" in "\n".join(lines)

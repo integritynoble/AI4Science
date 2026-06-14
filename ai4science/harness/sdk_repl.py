@@ -222,18 +222,21 @@ async def _loop(workspace: Path, *, auto_yes: bool, read_only: bool,
         # The permission prompt OWNS the tool-line display in interactive mode
         # (the stream loop skips re-printing it).
         line = _fmt_tool(tool_name, tool_input or {})
+        options = ["Yes",
+                   f"Yes, and don't ask again for {tool_name} this session",
+                   "No, and tell the agent what to do differently (esc)"]
+        question = f"{line}\n\nDo you want to proceed?"
         try:
-            from ai4science.harness import tui, toolfmt
-            prompt = toolfmt.fmt_permission_prompt(tool_name, line)
-            ans = await asyncio.get_event_loop().run_in_executor(
-                None, lambda: tui.read_input(prompt, "claude-code"))
+            from ai4science.harness import tui
+            idx = await asyncio.get_event_loop().run_in_executor(
+                None, lambda: tui.ask_choice(question, options,
+                                             mode="claude-code"))
         except (EOFError, KeyboardInterrupt):
             return PermissionResultDeny(message="denied by user")
-        decision = toolfmt.parse_permission_answer(ans)
-        if decision == "always":
+        if idx == 1:                 # Yes, and don't ask again
             _always.add(tool_name)
             return PermissionResultAllow()
-        if decision == "yes":
+        if idx == 0:                 # Yes
             return PermissionResultAllow()
         return PermissionResultDeny(message="denied by user")
 

@@ -85,17 +85,20 @@ def make_confirm(read_input, mode_label: str):
     def _confirm(name: str, args: dict, preview: str) -> bool:
         if name in always:
             return True
-        from ai4science.harness import toolfmt
-        prompt = toolfmt.fmt_permission_prompt(name, f"⏺ {name}\n  {preview}")
+        from ai4science.harness import tui
+        options = ["Yes",
+                   f"Yes, and don't ask again for {name} this session",
+                   "No, and tell the agent what to do differently (esc)"]
+        question = f"⏺ {name}\n  {preview}\n\nDo you want to proceed?"
         try:
-            ans = toolfmt.parse_permission_answer(
-                read_input(prompt, mode_label or "chat"))
+            idx = tui.ask_choice(question, options,
+                                 read_input=read_input, mode=mode_label or "chat")
         except EOFError:
             return False
-        if ans == "always":
+        if idx == 1:                 # Yes, and don't ask again
             always.add(name)
             return True
-        return ans == "yes"
+        return idx == 0              # Yes (else No)
 
     return _confirm
 
