@@ -385,3 +385,53 @@ def test_busy_message_is_queued_not_interleaved():
     except OSError: pass
     try: _os.waitpid(pid, 0)
     except OSError: pass
+
+
+# Live "shining" status: gerund + elapsed + ↓ tokens + activity (Claude-Code feel).
+_DRIVER_STATUS = r'''
+import os, time
+os.environ["AI4SCIENCE_TUI"] = "full"
+os.environ["PROMPT_TOOLKIT_NO_CPR"] = "1"
+from ai4science.harness import tui
+fs = tui.FullScreen("unified-LLM")
+def worker():
+    tui.read_input("X ", "unified-LLM", "")
+    tui.begin_turn()
+    tui.set_activity("running grep")
+    for i in range(1, 6):
+        tui.set_tokens(i * 400); time.sleep(0.3)
+    time.sleep(0.4)
+    tui.end_turn()
+    tui.read_input("X ", "unified-LLM", "")
+fs.run(worker)
+'''
+
+
+def test_shining_status_shows_tokens_and_activity():
+    import os as _os, pty, select, time as _t, pyte
+    repo = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+    pid, fd = pty.fork()
+    if pid == 0:
+        _os.environ["TERM"] = "xterm-256color"
+        _os.environ["PYTHONPATH"] = repo + _os.pathsep + _os.environ.get("PYTHONPATH", "")
+        _os.execvp("python3", ["python3", "-c", _DRIVER_STATUS])
+        _os._exit(127)
+    sc = pyte.Screen(110, 16); st = pyte.ByteStream(sc)
+    def pump(dl):
+        while _t.monotonic() < dl:
+            r, _, _ = select.select([fd], [], [], 0.1)
+            if fd in r:
+                try: c = _os.read(fd, 65536)
+                except OSError: return
+                if not c: return
+                st.feed(c)
+    t0 = _t.monotonic(); pump(t0 + 1.2)
+    _os.write(fd, b"go\r"); pump(_t.monotonic() + 1.4)
+    mid = "\n".join(ln.rstrip() for ln in sc.display)
+    _os.write(fd, b"/exit\r"); pump(_t.monotonic() + 3.0)
+    try: _os.close(fd)
+    except OSError: pass
+    try: _os.waitpid(pid, 0)
+    except OSError: pass
+    assert "tokens" in mid and "running grep" in mid, f"status missing:\n{mid}"
+    assert "esc to stop" in mid

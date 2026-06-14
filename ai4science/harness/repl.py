@@ -325,15 +325,25 @@ def run_common_repl(
             _spin["s"].stop()
             _spin["s"] = None
 
+    # Live output-token estimate for the box's "↓ N tokens" status.
+    _live_tok = {"n": 0}
+
+    def _tick_tokens(t: str) -> None:
+        _live_tok["n"] += max(1, len(t) // 4)   # ~4 chars/token
+        from ai4science.harness import tui as _tui
+        _tui.set_tokens(_live_tok["n"])
+
     if on_text is None:
         def on_text(t: str) -> None:
             _stop_spin()                  # first token → clear the spinner
+            _tick_tokens(t)
             sys.stdout.write(t)
             sys.stdout.flush()
     else:
         _user_on_text = on_text
         def on_text(t: str) -> None:      # noqa: F811 — wrap caller's on_text
             _stop_spin()
+            _tick_tokens(t)
             _user_on_text(t)
 
     # Per-edit confirmation with a(lways) (Claude-Code style). Skipped by the
@@ -377,9 +387,13 @@ def run_common_repl(
     def _show_tool_start(name: str, args: dict) -> None:
         _stop_spin()
         turn_calls["n"] += 1
+        from ai4science.harness import tui as _tui
+        _tui.set_activity(f"running {toolfmt._DISPLAY_NAME.get(name, name)}")
         print(f"\n{toolfmt.fmt_tool_start(name, args)}", flush=True)
 
     def _show_tool_end(name: str, result: str) -> None:
+        from ai4science.harness import tui as _tui
+        _tui.set_activity("thinking")
         line = toolfmt.fmt_tool_result(result)
         if line:
             print(line, flush=True)
@@ -647,15 +661,19 @@ def run_common_repl(
         def _do_turn():
             import time
             from ai4science.harness import interrupt
+            from ai4science.harness import tui as _tui
             interrupt.clear()                   # stale Esc must not kill this turn
             turn_tokens["total"] = 0
             turn_calls["n"] = 0
+            _live_tok["n"] = 0
             t0 = time.monotonic()
+            _tui.begin_turn()                   # start the live "shining" status
             _spin["s"] = Spinner("thinking").start()   # shine until first token
             try:
                 result = session.run_turn(text, images=images)
             finally:
                 _stop_spin()
+                _tui.end_turn()
             # Ensure there's a trailing newline after streamed output.
             if result and not result.endswith("\n"):
                 print(flush=True)

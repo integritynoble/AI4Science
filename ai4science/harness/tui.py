@@ -383,6 +383,41 @@ def _two_line_inline(prompt: str, mode: str, status: str = "") -> str:
 
 _ACTIVE = {"screen": None}
 
+# Playful gerunds for the live status (Claude-Code feel) — one per turn.
+_GERUNDS = [
+    "Honking", "Simmering", "Noodling", "Percolating", "Pondering", "Brewing",
+    "Conjuring", "Churning", "Cooking", "Crunching", "Musing", "Marinating",
+    "Vibing", "Wrangling", "Finagling", "Computing", "Spelunking", "Tinkering",
+    "Whirring", "Galloping", "Sizzling", "Bubbling", "Concocting", "Schlepping",
+]
+
+
+def begin_turn() -> None:
+    """Start the live 'shining' status for a turn (resets elapsed + tokens)."""
+    scr = _ACTIVE.get("screen")
+    if scr is not None and hasattr(scr, "begin_turn"):
+        scr.begin_turn()
+
+
+def set_tokens(n) -> None:
+    """Update the live output-token count shown in the status."""
+    scr = _ACTIVE.get("screen")
+    if scr is not None and hasattr(scr, "set_tokens"):
+        scr.set_tokens(n)
+
+
+def set_activity(label) -> None:
+    """Set what the agent is doing (e.g. 'running grep', 'thinking')."""
+    scr = _ACTIVE.get("screen")
+    if scr is not None and hasattr(scr, "set_activity"):
+        scr.set_activity(label)
+
+
+def end_turn() -> None:
+    scr = _ACTIVE.get("screen")
+    if scr is not None and hasattr(scr, "end_turn"):
+        scr.end_turn()
+
 
 def tui_mode() -> str:
     # The full-screen app owns the terminal, so require a real TTY on BOTH
@@ -472,6 +507,39 @@ class FullScreen:
         self._choice = None             # active permission picker, or None
         self._queued = []               # sent-but-not-yet-processed messages
         self._qlock = threading.Lock()
+        # Live "shining" status (Claude-Code style): gerund + elapsed + tokens +
+        # what it's doing. Updated by the harness via tui.begin_turn/set_*/end_turn.
+        self._turn_t0 = 0.0
+        self._tokens = 0
+        self._gerund = "Working"
+        self._activity = ""
+
+    def begin_turn(self) -> None:
+        import time
+        try:
+            import random
+            self._gerund = random.choice(_GERUNDS)
+        except Exception:
+            self._gerund = "Working"
+        self._turn_t0 = time.monotonic()
+        self._tokens = 0
+        self._activity = "thinking"
+        self._invalidate()
+
+    def set_tokens(self, n) -> None:
+        try:
+            self._tokens = int(n)
+        except (TypeError, ValueError):
+            return
+        self._invalidate()
+
+    def set_activity(self, label) -> None:
+        self._activity = label or ""
+        self._invalidate()
+
+    def end_turn(self) -> None:
+        self._activity = ""
+        self._invalidate()
 
     def _invalidate(self) -> None:
         app = self._app
@@ -589,13 +657,23 @@ class FullScreen:
 
         def _info():
             self._frame_i = (self._frame_i + 1) % len(self._FRAMES)
-            star = (f"\x1b[38;5;173m{self._FRAMES[self._frame_i]}\x1b[0m working…  "
-                    if self._busy else "")
+            star = ""
+            if self._busy:
+                import time
+                frame = self._FRAMES[self._frame_i]
+                secs = int(time.monotonic() - self._turn_t0) if self._turn_t0 else 0
+                toks = self._tokens
+                tok_s = f"{toks / 1000:.1f}k" if toks >= 1000 else str(int(toks))
+                act = f" · {self._activity}" if self._activity else ""
+                # Honking… (29s · ↓ 1.8k tokens · running grep)   — Claude-Code feel
+                star = (f"\x1b[38;5;173m{frame} {self._gerund}…\x1b[0m "
+                        f"\x1b[38;5;245m({secs}s · ↓ {tok_s} tokens{act} · "
+                        f"esc to stop)\x1b[0m  ")
             mode = f"\x1b[38;5;173mai4science · {_display_mode(self.mode)}\x1b[0m"
             extra = (f" · \x1b[38;5;245m{self._status_extra}\x1b[0m"
                      if self._status_extra else "")
             hints = ("   \x1b[38;5;240m⏎ send · ⌥⏎ newline · ↑ edit · ^G bottom · "
-                     "esc stop · /exit\x1b[0m")
+                     "/exit\x1b[0m")
             return ANSI(f" {star}{mode}{extra}{hints}")
 
         # Live region: the in-progress streaming line (no trailing newline yet).

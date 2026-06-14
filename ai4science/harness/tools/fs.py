@@ -157,11 +157,13 @@ def glob(workspace: Path, *, pattern: str, path: str | None = None,
 
 
 def grep(workspace: Path, *, pattern: str, path: str | None = None,
-         glob: str | None = None, limit: int = 500) -> str:
+         glob: str | None = None, limit: int = 500,
+         time_budget: float = 20.0) -> str:
     """Regex content search, ripgrep-backed when available (fast; prunes heavy
     dirs; searches hidden files). `path` sets the root (default: workspace);
     use an absolute path to search anywhere. `glob` optionally filters files
-    (e.g. '*.py'). Returns 'path:line:text' rows."""
+    (e.g. '*.py'). STREAMED under a wall-clock budget so a huge tree returns
+    partial results + a note instead of hanging. Returns 'path:line:text' rows."""
     root = _root(workspace, path)
     broad = _too_broad(root)
     if broad:
@@ -176,19 +178,51 @@ def grep(workspace: Path, *, pattern: str, path: str | None = None,
             cmd += ["--glob", glob]
         cmd += ["--", pattern, str(root)]
         try:
-            res = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-            if res.returncode in (0, 1):           # 0 = matches, 1 = none
-                out = res.stdout.splitlines()
-                if len(out) > limit:
-                    out = out[:limit] + [f"… (truncated at {limit} lines; narrow the pattern or path)"]
-                return "\n".join(out)
-            # returncode ≥ 2 → real error; fall through to the Python scan
+            import select
+            import time as _time
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                                    stderr=subprocess.DEVNULL)
+            out: list[str] = []
+            truncated = False
+            deadline = _time.monotonic() + time_budget
+            buf = b""
+            while True:
+                if _time.monotonic() > deadline:
+                    truncated = True; proc.kill(); break
+                r, _w, _e = select.select([proc.stdout], [], [], 0.5)
+                if r:
+                    chunk = os.read(proc.stdout.fileno(), 65536)
+                    if not chunk:
+                        break
+                    buf += chunk
+                    while b"\n" in buf:
+                        line, buf = buf.split(b"\n", 1)
+                        out.append(line.decode("utf-8", "replace"))
+                    if len(out) >= limit:
+                        truncated = True; proc.kill(); break
+                elif proc.poll() is not None:
+                    break
+            for line in buf.split(b"\n"):
+                if line:
+                    out.append(line.decode("utf-8", "replace"))
+            try: proc.stdout.close()
+            except Exception: pass
+            out = out[:limit]
+            if truncated:
+                out.append(f"… (stopped at {len(out)} after {time_budget:.0f}s/"
+                           f"{limit} cap; narrow with a `path` or `glob` filter)")
+            return "\n".join(out)
         except Exception:
             pass
-    # Pure-Python fallback (also pruned).
+    # Pure-Python fallback (also pruned + time-bounded).
+    import time as _time
+    deadline = _time.monotonic() + time_budget
     rx = re.compile(pattern)
     out: list[str] = []
     for dirpath, dirs, files in os.walk(root):
+        if _time.monotonic() > deadline:
+            out.append(f"… (stopped after {time_budget:.0f}s; narrow with a `path`)")
+            break
         dirs[:] = [d for d in dirs if d not in _PRUNE]
         for f in files:
             if glob and not fnmatch.fnmatch(f, glob):
