@@ -26,11 +26,39 @@ GCS_PREFIX = "gcs:"
 
 
 # ── tar helpers ─────────────────────────────────────────────────────────────
+# A job workspace is the solver code + its inputs — NOT a home/project root. Skip
+# environments, caches, and VCS so dispatching from a big cwd never tars hundreds
+# of MB (e.g. the .ai4science venv). Cap the packed size with a clear error.
+_TAR_EXCLUDE_DIRS = {
+    ".git", ".hg", ".svn", ".ai4science", ".venv", "venv", "env", ".env",
+    "node_modules", "__pycache__", ".cache", ".local", ".config", ".npm",
+    ".mozilla", ".pytest_cache", ".mypy_cache", ".ruff_cache", "site-packages",
+}
+MAX_WORKSPACE_BYTES = 100_000_000   # 100 MB packed
+
+
+def _tar_filter(ti: "tarfile.TarInfo"):
+    parts = set(Path(ti.name).parts)
+    if parts & _TAR_EXCLUDE_DIRS:
+        return None
+    if ti.name.endswith((".pyc", ".pyo")):
+        return None
+    return ti
+
+
 def tar_workspace(workspace: Path) -> bytes:
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w:gz") as tar:
-        tar.add(str(workspace), arcname=".")
-    return buf.getvalue()
+        tar.add(str(workspace), arcname=".", filter=_tar_filter)
+    raw = buf.getvalue()
+    if len(raw) > MAX_WORKSPACE_BYTES:
+        raise ValueError(
+            f"workspace packs to ~{len(raw) // 1_000_000} MB (> "
+            f"{MAX_WORKSPACE_BYTES // 1_000_000} MB cap) even after excluding "
+            "venvs/caches. Dispatch from a focused job dir (the solver code + its "
+            "inputs), e.g. `cd` into the workspace `ai4science init` created — not "
+            "a home or large project root.")
+    return raw
 
 
 def untar_to(raw: bytes, dest: Path) -> None:

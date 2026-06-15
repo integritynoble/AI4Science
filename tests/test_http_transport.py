@@ -158,3 +158,34 @@ def test_transport_select_http_even_when_git_forced(monkeypatch):
     monkeypatch.setenv("PWM_TOKEN", "tok")
     mode, t = transport_mod.select(type("P", (), {"endpoint_path": "/tmp/none"})())
     assert mode == "http" and t is not None
+
+
+def test_tar_workspace_excludes_heavy_dirs(tmp_path):
+    """The workspace tar must skip venvs/caches/git so dispatching from a big
+    cwd doesn't sweep in hundreds of MB (the /home/.ai4science venv incident)."""
+    import io, tarfile
+    from ai4science.compute.http_transport import tar_workspace
+    ws = tmp_path / "job"
+    (ws / "code").mkdir(parents=True)
+    (ws / "code" / "run_solver.py").write_text("print('hi')\n")
+    # bloat that must NOT be packed
+    for d in (".ai4science", ".venv", "node_modules", "__pycache__", ".git"):
+        (ws / d).mkdir()
+        (ws / d / "big.bin").write_bytes(b"x" * 50_000)
+    (ws / "code" / "junk.pyc").write_bytes(b"y" * 10_000)
+
+    raw = tar_workspace(ws)
+    names = tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz").getnames()
+    assert any("run_solver.py" in n for n in names)            # real code kept
+    assert not any(d in n for n in names
+                   for d in (".ai4science", ".venv", "node_modules", "__pycache__", ".git"))
+    assert not any(n.endswith(".pyc") for n in names)
+
+
+def test_tar_workspace_caps_size(tmp_path, monkeypatch):
+    import ai4science.compute.http_transport as ht
+    monkeypatch.setattr(ht, "MAX_WORKSPACE_BYTES", 1000)       # tiny cap for the test
+    ws = tmp_path / "big"; ws.mkdir()
+    (ws / "data.bin").write_bytes(b"z" * 5_000_000)            # incompressible-ish, > cap
+    with pytest.raises(ValueError, match="focused job dir"):
+        ht.tar_workspace(ws)
