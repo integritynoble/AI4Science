@@ -224,6 +224,58 @@ def process_job(req_path: Path, provider: Dict[str, Any],
     return manifest
 
 
+HEARTBEAT_PREFIX = "heartbeat."
+# A provider is considered offline if its last heartbeat is older than this.
+DEFAULT_STALE_AFTER_S = 180
+
+
+def heartbeat_path(inbox: Path, provider_id: str) -> Path:
+    """Per-provider heartbeat file (distinct name so providers sharing a synced
+    inbox never collide — same scheme as request/ack/result files)."""
+    return Path(inbox).expanduser() / f"{HEARTBEAT_PREFIX}{provider_id}.json"
+
+
+def write_heartbeat(inbox: Path, provider_id: str, *, kind: str = "gpu",
+                    note: str = "") -> Path:
+    """Stamp 'this provider's serve loop is alive now' into the inbox."""
+    p = heartbeat_path(inbox, provider_id)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps({
+        "provider_id": provider_id,
+        "kind": kind,
+        "ts": dt.datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
+        "pid": os.getpid(),
+        "note": note,
+    }, indent=2) + "\n", encoding="utf-8")
+    return p
+
+
+def read_heartbeat(inbox: Path, provider_id: str) -> Optional[Dict[str, Any]]:
+    p = heartbeat_path(inbox, provider_id)
+    if not p.exists():
+        return None
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+def liveness(provider: Dict[str, Any], *, stale_after_s: int = DEFAULT_STALE_AFTER_S):
+    """(state, age_s) for a provider: state is 'online' | 'offline'; age_s is the
+    heartbeat age in seconds (None = never seen). Lets the dispatcher tell a user
+    'GPU online' vs 'GPU offline — queued' instead of a silent `requested`."""
+    inbox = Path(provider["endpoint_path"]).expanduser()
+    hb = read_heartbeat(inbox, provider.get("provider_id", ""))
+    if not hb or not hb.get("ts"):
+        return ("offline", None)
+    try:
+        ts = dt.datetime.fromisoformat(str(hb["ts"]).rstrip("Z"))
+    except Exception:
+        return ("offline", None)
+    age = max(0.0, (dt.datetime.utcnow() - ts).total_seconds())
+    return ("online" if age <= stale_after_s else "offline", age)
+
+
 def poll_once(provider: Dict[str, Any], allow_exec: bool) -> List[str]:
     """Process all currently-pending jobs once. Returns processed job ids."""
     inbox = Path(provider["endpoint_path"]).expanduser()
@@ -259,11 +311,33 @@ def serve(provider: Dict[str, Any], *, interval_s: int = 5, once: bool = False,
 
     emit("start", {"inbox": str(inbox), "allow_exec": allow_exec,
                    "git_sync": repo is not None})
+
+    pid = provider.get("provider_id", "")
+    pkind = provider.get("kind", "gpu")
+    last_hb_push = 0.0
+    HB_PUSH_EVERY_S = 60          # publish liveness at most once a minute (no commit spam)
+
     while True:
         if repo is not None:
             from ai4science.compute import gitsync
             ok, msg = gitsync.pull(repo)
             emit("sync_pull", {"ok": ok, "msg": msg})
+
+        # Liveness: stamp a heartbeat every pass (cheap, local); when git-synced,
+        # publish it on a throttle so the dispatcher can see the GPU is online
+        # even while idle (no silent `requested`).
+        try:
+            write_heartbeat(inbox, pid, kind=pkind)
+            emit("heartbeat", {"provider_id": pid})
+            if repo is not None and (time.time() - last_hb_push) >= HB_PUSH_EVERY_S:
+                from ai4science.compute import gitsync
+                ok_h, msg_h = gitsync.commit_push(
+                    repo, [heartbeat_path(inbox, pid)],
+                    f"compute(heartbeat): {pid} alive")
+                last_hb_push = time.time()
+                emit("heartbeat_push", {"ok": ok_h, "msg": msg_h})
+        except Exception as e:
+            emit("heartbeat_error", {"error": f"{type(e).__name__}: {e}"})
         for req in pending_jobs(inbox):
             job_id = req.name[len("job_"):-len(".request.json")]
             emit("job_start", {"job_id": job_id})

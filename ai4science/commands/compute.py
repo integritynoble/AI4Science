@@ -35,6 +35,25 @@ app = typer.Typer(help="Wallet-bound GPU compute providers (Phase 0).")
 console = Console()
 
 
+def _fmt_age(age_s) -> str:
+    if age_s is None:
+        return "never"
+    age_s = int(age_s)
+    if age_s < 90:
+        return f"{age_s}s ago"
+    if age_s < 5400:
+        return f"{age_s // 60}m ago"
+    if age_s < 172800:
+        return f"{age_s // 3600}h ago"
+    return f"{age_s // 86400}d ago"
+
+
+def _liveness_label(state_age) -> str:
+    state, _age = state_age
+    # Compact for the table (age detail is shown on `dispatch`).
+    return "[green]● online[/green]" if state == "online" else "[red]○ offline[/red]"
+
+
 @app.command("providers")
 def providers_list() -> None:
     """List registered compute providers."""
@@ -46,11 +65,13 @@ def providers_list() -> None:
                       "--id <id> --wallet 0x… --endpoint <dir>[/cyan]")
         return
     from ai4science import staking
+    from ai4science.compute.provider import liveness
     table = Table(title="Compute providers", show_lines=True)
-    table.add_column("provider_id", style="cyan")
+    table.add_column("provider_id", style="cyan", no_wrap=True)
     table.add_column("kind")
+    table.add_column("status")
     table.add_column("PWM/hr", justify="right")
-    table.add_column("wallet", style="magenta")
+    table.add_column("wallet", style="magenta", no_wrap=True)
     table.add_column("tier")
     table.add_column("eligible")
     for p in provs:
@@ -58,9 +79,12 @@ def providers_list() -> None:
         disabled = "" if p.status == "active" else " [red](disabled)[/red]"
         w = p.wallet_address
         short = f"{w[:12]}…{w[-4:]}" if len(w) > 18 else w   # 0xf1Fa5803daA…7DEE
-        table.add_row(p.provider_id, p.kind, f"{p.pwm_per_hour():g}",
+        table.add_row(p.provider_id, p.kind, _liveness_label(liveness(p.model_dump())),
+                      f"{p.pwm_per_hour():g}",
                       short, p.trust_tier + disabled, elig)
-    console.print(table)
+    # Wide console so the 7-column table never wraps the wallet/provider id.
+    from rich.console import Console as _Console
+    _Console(width=120).print(table)
 
 
 @app.command("providers-add")
@@ -283,6 +307,20 @@ def dispatch(
                   f"to [magenta]{provider_id}[/magenta]")
     console.print(f"  inbox:   {provider.endpoint_path}/job_{job.job_id}.request.json")
     console.print(f"  wallet:  {provider.wallet_address}")
+
+    # Liveness: tell the user up-front if the provider isn't currently serving,
+    # so a job that will sit in `requested` isn't mistaken for a working dispatch.
+    from ai4science.compute.provider import liveness
+    state, age = liveness(provider.model_dump())
+    if state == "online":
+        console.print(f"  provider: [green]● online[/green] "
+                      f"[dim](heartbeat {_fmt_age(age)})[/dim] — should run shortly.")
+    else:
+        console.print(f"  provider: [red]○ offline[/red] "
+                      f"[dim](last heartbeat {_fmt_age(age)})[/dim] — "
+                      "job is [yellow]queued[/yellow]; it runs when the server's "
+                      "serve loop is back up. Check with "
+                      f"[cyan]ai4science compute status {job.job_id}[/cyan].")
 
     if repo is not None:
         req = Path(provider.endpoint_path).expanduser() / f"job_{job.job_id}.request.json"

@@ -115,8 +115,25 @@ def add_provider(provider: ComputeProvider, path: Optional[Path] = None) -> List
     return providers
 
 
+# The founder GPU has two historical ids: the advertised default `founder-gpu`
+# (founders.py) and the registered served entry `founder-1-subgpu` (the git-synced
+# inbox the box actually polls). They are the SAME machine, so resolve either id
+# to whichever is registered — dispatching to `founder-gpu` then reaches the
+# inbox the serve loop watches, instead of a local dir nobody serves.
+PROVIDER_ALIASES = {
+    "founder-gpu": "founder-1-subgpu",
+    "founder-1-subgpu": "founder-gpu",
+}
+
+
 def get_provider(provider_id: str, path: Optional[Path] = None) -> Optional[ComputeProvider]:
-    for p in load_registry(path):
+    regs = load_registry(path)
+    for p in regs:
         if p.provider_id == provider_id:
             return p
+    alias = PROVIDER_ALIASES.get(provider_id)
+    if alias:
+        for p in regs:
+            if p.provider_id == alias:
+                return p
     return None
