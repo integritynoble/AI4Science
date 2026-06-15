@@ -1,7 +1,8 @@
 # AI4Science User Manual
 
 *How to get your first PWM, run the six agents, and earn while you use them.*
-*(2026-06-10 · updated 2026-06-12: `ai4science update` one-word upgrade, full
+*(2026-06-10 · updated 2026-06-15: git-free + auto-PATH install, `ai4science login`
+drops straight into chat with no Node/key; `ai4science update` one-word upgrade, full
 TUI for all agents, read-only bash auto-allow + turn footer v0.5.6, shell-aware classifier + a(lways) + recap v0.5.7, Esc-interrupt v0.5.8, borderless two-line growing input v0.5.9)*
 
 AI4Science is a Claude-Code-style agent for science. You pay for usage in
@@ -27,6 +28,51 @@ out-earn website mining by orders of magnitude (full math:
 Your wallet **private key is never needed and never asked for** — anywhere.
 If anything ever asks you for it, it is not us. (Why this is safe:
 `PWM_LEDGER_SAFETY_AND_ONCHAIN_SETTLEMENT_QA_2026-06-10.md` in the pwm repo.)
+
+---
+
+## Quick start (5 steps)
+
+The fast path; each step is detailed in the sections below.
+
+**1. Install** — Linux/macOS (Windows: see [`docs/INSTALL.md`](INSTALL.md)). Needs only **Python ≥ 3.10** — no `git`, no Node.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/integritynoble/AI4Science/main/install.sh | bash
+```
+
+Open a **new terminal** afterward (the installer adds `ai4science` to your PATH). If a command still isn't found: `export PATH="$HOME/.local/bin:$PATH"`.
+
+**2. Log in — and you're chatting.** On success it drops you straight into a session (see Step 2 below).
+
+```bash
+ai4science login        # browser approval → founder-served models (no key, no Node)
+```
+
+Prefer your own LLM? `ai4science login --provider anthropic|openai|gemini`.
+
+**3. Use it** (see Step 3 below).
+
+```bash
+ai4science                       # interactive chat session (like `claude`)
+ai4science "summarize spec.md"   # one-shot question
+```
+
+Inside a session: ask questions, let it edit files (you confirm each change), `/help` for slash commands, `/exit` to leave.
+
+**4. Update** to the latest build whenever you like.
+
+```bash
+ai4science update
+```
+
+**5. Earn PWM by improving the agents** (see Steps 4–5 below). Using the agent costs PWM; the easiest way to earn it back is **feedback** — inside any chat session:
+
+```
+/feedback the CASSI judge should accept .h5 inputs too
+```
+
+Useful feedback is rewarded **instantly** (an LLM scores its quality). Contributed tools/solutions that agents use on paid turns earn **weekly** for as long as they're used. Bootstrap a first balance by mining on [physicsworldmodel.org](https://physicsworldmodel.org) (Step 1 below).
 
 ---
 
