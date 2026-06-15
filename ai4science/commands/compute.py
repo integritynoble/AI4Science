@@ -442,6 +442,14 @@ def serve(
         False, "--git-sync",
         help="Inbox is a git-shared dir: pull new requests each pass, push "
              "results back. Use this when the dispatcher is on another machine."),
+    http: bool = typer.Option(
+        False, "--http",
+        help="Serve over the HTTP relay (no pwm repo needed) instead of the git "
+             "inbox — claim/run/return via physicsworldmodel.org."),
+    base: Optional[str] = typer.Option(
+        None, "--base", help="Relay base URL for --http (default https://physicsworldmodel.org)."),
+    provider_key: Optional[str] = typer.Option(
+        None, "--provider-key", help="Provider auth key for --http (COMPUTE_PROVIDER_KEY)."),
 ) -> None:
     """Run the provider-side poller on this GPU box.
 
@@ -461,6 +469,35 @@ def serve(
         console.print("[yellow]⚠ Running WITHOUT --allow-exec:[/yellow] jobs will be "
                       "acked but their solver commands will NOT run. Re-run with "
                       "[cyan]--allow-exec[/cyan] on a trusted host to execute them.")
+
+    # HTTP relay mode (Phase 3): no git repo required.
+    if http:
+        import os
+        from ai4science.compute.http_provider import serve_http
+        relay_base = base or os.environ.get("PWM_BASE") or "https://physicsworldmodel.org"
+        key = provider_key or os.environ.get("COMPUTE_PROVIDER_KEY", "")
+        console.print(f"[bold purple]ai4science compute serve --http[/bold purple] — "
+                      f"provider [cyan]{provider_id}[/cyan] via [green]{relay_base}[/green]")
+        console.print(f"  exec: {'[green]enabled[/green]' if allow_exec else '[yellow]disabled[/yellow]'}"
+                      f"   mode: {'once' if once else f'polling every {interval}s'}\n")
+
+        def _ev(kind, payload):
+            if kind == "job_start":
+                console.print(f"[cyan]▶ job {payload['job_id']}[/cyan] claimed")
+            elif kind == "job_done":
+                tag = "[green]ran[/green]" if payload.get("solver_ran") else "[yellow]not run[/yellow]"
+                console.print(f"  [green]✓ job {payload['job_id']}[/green] {tag}")
+            elif kind in ("loop_error", "heartbeat_error"):
+                console.print(f"  [yellow]⚠ {payload.get('error')}[/yellow]")
+
+        try:
+            serve_http(provider.model_dump(), relay_base, provider_key=key,
+                       allow_exec=allow_exec, interval_s=interval, once=once, on_event=_ev)
+        except KeyboardInterrupt:
+            console.print("\n[dim](stopped)[/dim]")
+        if once:
+            console.print("[dim]Done (--once).[/dim]")
+        return
 
     provider_dict = provider.model_dump()
     sync_label = "[green]git-synced[/green]" if git_sync else "local-only"
