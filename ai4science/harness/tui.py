@@ -568,6 +568,32 @@ class FullScreen:
         self._invalidate()
         return shown
 
+    def _pull_last_queued(self):
+        """Take the most-recently queued (not-yet-processed) message back off BOTH
+        the display and the worker input queue, so ↑ can edit it before it runs.
+        Returns its shown text, or None if nothing is editably queued."""
+        import queue
+        with self._qlock:
+            if not self._queued:
+                return None
+            shown = self._queued.pop()               # most recent
+            # Drain the worker queue and drop its last real (non-None) item — the
+            # message we just pulled, queued in lockstep with the display.
+            items = []
+            try:
+                while True:
+                    items.append(self._inq.get_nowait())
+            except queue.Empty:
+                pass
+            for i in range(len(items) - 1, -1, -1):
+                if items[i] is not None:
+                    del items[i]
+                    break
+            for it in items:
+                self._inq.put(it)
+        self._invalidate()
+        return shown
+
     def request_choice(self, question: str, options) -> int:
         """Block the worker while the user picks an option with ↑/↓/⏎ (or 1/2/3)
         in the box's picker panel. Returns the selected index (0-based)."""
@@ -798,6 +824,15 @@ class FullScreen:
                 self._choice["sel"] = max(0, self._choice["sel"] - 1)
                 event.app.invalidate()
                 return
+            # ↑ on an empty composer with a pending (queued) message → pull it
+            # back into the box to edit before the agent processes it.
+            if not ta.text.strip() and self._queued:
+                shown = self._pull_last_queued()
+                if shown is not None:
+                    ta.text = shown
+                    ta.buffer.cursor_position = len(shown)
+                    event.app.invalidate()
+                    return
             ta.buffer.auto_up(count=event.arg)
 
         @kb.add("down")
