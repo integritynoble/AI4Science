@@ -63,27 +63,37 @@ say "Creating venv at $VENV"
 "$PY" -m venv "$VENV" || die "could not create venv (is python3-venv available?)"
 "$VENV/bin/pip" install --quiet --upgrade pip >/dev/null
 
-# 3. Install from the chosen channel's branch ZIP (PyPI is phase 2).
+# 3. Install the chosen channel: PyPI first for stable/rc (phase 2), then the
+#    branch ZIP from GitHub (no git needed), then dev (main) as a last resort.
 extra=""; [ "$WITH_CLAUDE" = "1" ] && extra="[claude]"
 _src() { local url="$1"; if [ -n "$extra" ]; then echo "${PKG}${extra} @ ${url}"; else echo "$url"; fi; }
 if [ -n "${AI4SCIENCE_REF:-}" ]; then
   say "Installing from AI4SCIENCE_REF=$AI4SCIENCE_REF"
   "$VENV/bin/pip" install --quiet "$AI4SCIENCE_REF" || die "install failed"
 else
-  say "Installing the [$CHANNEL] channel (branch $BRANCH) from GitHub…"
-  if ! "$VENV/bin/pip" install --quiet "$(_src "$ZIP_URL")" 2>/dev/null; then
-    # The stable/rc branch may not exist yet (before the first release is cut) →
-    # fall back to dev (main) so a fresh box still installs.
-    if [ "$BRANCH" != "main" ]; then
+  pre=""; [ "$CHANNEL" = rc ] && pre="--pre"
+  ok_install=0
+  # 3a. PyPI (stable/rc only; dev is never published to PyPI).
+  if [ "$CHANNEL" != dev ]; then
+    say "Installing the [$CHANNEL] channel from PyPI…"
+    if "$VENV/bin/pip" install --quiet $pre "${PKG}${extra}" 2>/dev/null; then
+      ok "Installed $PKG ([$CHANNEL] channel) from PyPI"; ok_install=1
+    fi
+  fi
+  # 3b. GitHub branch ZIP fallback (before PyPI is published / for dev).
+  if [ "$ok_install" = 0 ]; then
+    say "Installing [$CHANNEL] from the $BRANCH branch zip…"
+    if "$VENV/bin/pip" install --quiet "$(_src "$ZIP_URL")" 2>/dev/null; then
+      ok "Installed $PKG ([$CHANNEL] channel) from GitHub"; ok_install=1
+    elif [ "$BRANCH" != main ]; then
+      # stable/rc branch absent (before first cut) → fall back to dev (main).
       say "[$CHANNEL] not published yet — falling back to dev (main)."
       CHANNEL=dev
       "$VENV/bin/pip" install --quiet "$(_src "$GH/main.zip")" \
-        || die "install failed — check network access to github.com"
-    else
-      die "install from GitHub failed — check network access to github.com"
+        && ok_install=1 || die "install failed — check network access to github.com"
     fi
   fi
-  ok "Installed $PKG ([$CHANNEL] channel)"
+  [ "$ok_install" = 1 ] || die "install failed — check network access"
 fi
 
 # Record the channel so `ai4science update` keeps the user on this line.

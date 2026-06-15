@@ -80,15 +80,25 @@ def _externally_managed() -> bool:
         return False
 
 
-def _pip_cmd(spec: str) -> list:
+def _pip_cmd(*specs: str) -> list:
     cmd = [sys.executable, "-m", "pip", "install",
            "--force-reinstall", "--no-cache-dir"]
     if not _in_venv():
         cmd.append("--user")
         if _externally_managed():
             cmd.append("--break-system-packages")
-    cmd.append(spec)
+    cmd.extend(specs)
     return cmd
+
+
+def _candidates(channel: str) -> list:
+    """Ordered (trailing-arg) lists to try: PyPI first for stable/rc (phase 2),
+    then the GitHub branch zip. dev is GitHub-only."""
+    if channel == "stable":
+        return [(PKG,), (_spec("stable"),)]
+    if channel == "rc":
+        return [("--pre", PKG), (_spec("rc"),)]
+    return [(_spec("dev"),)]
 
 
 def update(
@@ -103,19 +113,23 @@ def update(
     if switch:
         write_channel(switch)
         typer.echo(f"[update] switched to the [{switch}] channel")
-    spec = _spec(channel)
 
     typer.echo(f"[update] current: {__version__}  ·  channel: {channel}")
-    if _via_pipx():
-        cmd = ["pipx", "install", "--force", spec]
-    else:
-        cmd = _pip_cmd(spec)
-    typer.echo(f"[update] running: {' '.join(cmd)}")
-    rc_code = subprocess.call(cmd)
+    rc_code = 1
+    cands = _candidates(channel)
+    for i, tail in enumerate(cands):
+        cmd = (["pipx", "install", "--force", *tail] if _via_pipx()
+               else _pip_cmd(*tail))
+        typer.echo(f"[update] running: {' '.join(cmd)}")
+        rc_code = subprocess.call(cmd)
+        if rc_code == 0:
+            break
+        if i + 1 < len(cands):
+            typer.echo("[update] that source failed; trying the next…")
     if rc_code != 0:
         typer.echo("[update] failed — see pip output above. Manual fallback:\n"
                    f"  pip install --user --break-system-packages "
-                   f"--force-reinstall --no-cache-dir '{spec}'")
+                   f"--force-reinstall --no-cache-dir '{_spec(channel)}'")
         raise typer.Exit(rc_code)
     # report the NEW version from a fresh interpreter (this process still has the
     # old module loaded; importlib.metadata can hit a stale dist-info)

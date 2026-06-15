@@ -25,6 +25,15 @@ jobs:
           git config user.email "release@users.noreply.github.com"
       - name: Promote rc → stable
         run: bash scripts/promote-stable.sh "${{ inputs.version }}"
+      - name: Build + publish to PyPI
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          git checkout "v${{ inputs.version }}"   # build the exact released tree
+          pip install build twine
+          python -m build
+          twine upload --non-interactive --skip-existing dist/*
       - name: GitHub Release
         uses: softprops/action-gh-release@v2
         with: { tag_name: "v${{ inputs.version }}", generate_release_notes: true }
