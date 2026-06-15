@@ -4,7 +4,16 @@
 verifies it, and accounts the PWM. Grounded in `ai4science/compute/` and verified
 against live jobs (`3c8991c5653d`, `62825f38a368`) on 2026-06-15.*
 
-Companion docs: `COMPUTE_PROVIDERS_DESIGN.md` (design rationale),
+> **TRANSPORT IS NOW HTTP (P4, 2026-06-15).** The git-synced inbox transport
+> described in §3A below has been **removed**. Dispatch/claim/result and the
+> workspace/reconstruction now flow through the **HTTP relay** on
+> physicsworldmodel.org (`COMPUTE_HTTP_RELAY_DESIGN.md`) — any PWM-logged-in user,
+> no pwm repo. The provider runs `ai4science compute serve --http`. §3A is kept
+> for historical context only; `gitsync.py`/`dispatch.py` and `--git-sync` no
+> longer exist.
+
+Companion docs: `COMPUTE_HTTP_RELAY_DESIGN.md` (the live transport),
+`COMPUTE_PROVIDERS_DESIGN.md` (design rationale),
 `COMPUTE_PROVIDER_GUIDE.md` (how to run a provider).
 
 ---
