@@ -16,13 +16,26 @@
 set -euo pipefail
 
 PKG="pwm-ai4science"
-# GitHub source = the branch ZIP archive, NOT git+https — pip downloads it over
-# plain HTTP, so `git` need not be installed (locked-down boxes often lack it).
-ZIP_URL="https://github.com/integritynoble/AI4Science/archive/refs/heads/main.zip"
+GH="https://github.com/integritynoble/AI4Science/archive/refs/heads"
 INSTALL_DIR="${AI4SCIENCE_HOME:-$HOME/.ai4science}"
 VENV="$INSTALL_DIR/venv"
 BIN_DIR="${AI4SCIENCE_BIN:-$HOME/.local/bin}"
 WITH_CLAUDE="${AI4SCIENCE_WITH_CLAUDE:-1}"
+
+# Release channel (Part A): stable (default) | rc | dev. Select with --rc/--dev/
+# --stable or AI4SCIENCE_CHANNEL; each maps to a GitHub branch ZIP (no git needed,
+# pip downloads over HTTP). PyPI is phase 2. AI4SCIENCE_REF still overrides all.
+CHANNEL="${AI4SCIENCE_CHANNEL:-stable}"
+for _a in "$@"; do
+  case "$_a" in
+    --dev) CHANNEL=dev ;; --rc) CHANNEL=rc ;; --stable) CHANNEL=stable ;;
+  esac
+done
+case "$CHANNEL" in
+  stable) BRANCH=stable ;; rc) BRANCH=rc ;; dev) BRANCH=main ;;
+  *) printf '\033[31m✗ unknown channel %s (use stable|rc|dev)\033[0m\n' "$CHANNEL" >&2; exit 1 ;;
+esac
+ZIP_URL="$GH/${BRANCH}.zip"
 
 say()  { printf '\033[36m▸\033[0m %s\n' "$*"; }
 ok()   { printf '\033[32m✓\033[0m %s\n' "$*"; }
@@ -50,23 +63,31 @@ say "Creating venv at $VENV"
 "$PY" -m venv "$VENV" || die "could not create venv (is python3-venv available?)"
 "$VENV/bin/pip" install --quiet --upgrade pip >/dev/null
 
-# 3. Install — PyPI first, fall back to GitHub (works before the PyPI release).
+# 3. Install from the chosen channel's branch ZIP (PyPI is phase 2).
 extra=""; [ "$WITH_CLAUDE" = "1" ] && extra="[claude]"
+_src() { local url="$1"; if [ -n "$extra" ]; then echo "${PKG}${extra} @ ${url}"; else echo "$url"; fi; }
 if [ -n "${AI4SCIENCE_REF:-}" ]; then
   say "Installing from AI4SCIENCE_REF=$AI4SCIENCE_REF"
   "$VENV/bin/pip" install --quiet "$AI4SCIENCE_REF" || die "install failed"
-elif "$VENV/bin/pip" install --quiet "${PKG}${extra}" 2>/dev/null; then
-  ok "Installed $PKG from PyPI"
 else
-  say "PyPI unavailable; installing from GitHub (zip archive — no git needed)…"
-  # PEP 508 direct reference for extras (the old '#egg=name[extra]' fragment is
-  # rejected by modern pip as an invalid egg fragment). The ZIP archive means
-  # pip never shells out to `git`.
-  src="$ZIP_URL"; [ -n "$extra" ] && src="${PKG}${extra} @ ${ZIP_URL}"
-  "$VENV/bin/pip" install --quiet "$src" \
-    || die "install from GitHub failed — check network access to github.com"
-  ok "Installed $PKG from GitHub"
+  say "Installing the [$CHANNEL] channel (branch $BRANCH) from GitHub…"
+  if ! "$VENV/bin/pip" install --quiet "$(_src "$ZIP_URL")" 2>/dev/null; then
+    # The stable/rc branch may not exist yet (before the first release is cut) →
+    # fall back to dev (main) so a fresh box still installs.
+    if [ "$BRANCH" != "main" ]; then
+      say "[$CHANNEL] not published yet — falling back to dev (main)."
+      CHANNEL=dev
+      "$VENV/bin/pip" install --quiet "$(_src "$GH/main.zip")" \
+        || die "install failed — check network access to github.com"
+    else
+      die "install from GitHub failed — check network access to github.com"
+    fi
+  fi
+  ok "Installed $PKG ([$CHANNEL] channel)"
 fi
+
+# Record the channel so `ai4science update` keeps the user on this line.
+mkdir -p "$INSTALL_DIR"; printf '%s\n' "$CHANNEL" > "$INSTALL_DIR/channel"
 
 # 4. Expose the command on PATH.
 mkdir -p "$BIN_DIR"

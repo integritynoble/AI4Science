@@ -1,0 +1,15 @@
+# Part A §A.7 — a release candidate was cut (vX.Y.Z-rcN tag pushed by cut-rc.sh).
+# v1: sanity-build the candidate. Phase 2: publish a PyPI pre-release here.
+name: rc
+on:
+  push:
+    tags: ["v*-rc*"]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install build && python -m build
+      - run: echo "RC ${GITHUB_REF_NAME} built — install with AI4SCIENCE_CHANNEL=rc"

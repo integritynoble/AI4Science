@@ -133,9 +133,14 @@ from ai4science.commands import update as update_cmd
 app.command("update", help="Upgrade ai4science to the latest build (like `claude update`).")(update_cmd.update)
 
 
-@app.command("version", help="Print the AI4Science CLI version.")
+@app.command("version", help="Print the AI4Science CLI version + release channel.")
 def version_cmd() -> None:
-    console.print(f"ai4science {__version__}")
+    try:
+        from ai4science.commands.update import read_channel
+        chan = read_channel()
+    except Exception:
+        chan = "stable"
+    console.print(f"ai4science {__version__} ({chan})")
 
 
 @app.command("agents", help="List configured agent providers and their availability.")

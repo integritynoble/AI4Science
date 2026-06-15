@@ -1,0 +1,30 @@
+# Part A §A.5/§A.7 — promote an approved RC to stable. The publish job targets the
+# protected `production` environment (named required reviewers): the run PAUSES
+# until a manager approves, THEN fast-forwards `stable` + tags vX.Y.Z. No stable
+# release is possible without a recorded approval.
+name: release
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version to promote (X.Y.Z), rc already cut"
+        required: true
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    environment: production          # ← required-reviewer gate
+    permissions: { contents: write }
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0, ref: rc }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Configure git
+        run: |
+          git config user.name "release-bot"
+          git config user.email "release@users.noreply.github.com"
+      - name: Promote rc → stable
+        run: bash scripts/promote-stable.sh "${{ inputs.version }}"
+      - name: GitHub Release
+        uses: softprops/action-gh-release@v2
+        with: { tag_name: "v${{ inputs.version }}", generate_release_notes: true }
