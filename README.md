@@ -24,7 +24,50 @@ irm https://raw.githubusercontent.com/integritynoble/AI4Science/main/install.ps1
 powershell -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/integritynoble/AI4Science/main/install.ps1 | iex"
 ```
 
-Then just run `ai4science` to start a chat session (like Claude Code) — the installer includes the chat agent by default. You'll also need the `claude` CLI for it: `npm install -g @anthropic-ai/claude-code` then `claude login` (or set `ANTHROPIC_API_KEY`). The installer sets up an isolated environment under `~/.ai4science` and puts the `ai4science` command on your PATH — works on locked-down HPC login nodes too. For a lean install without the agent: `AI4SCIENCE_WITH_CLAUDE=0 curl … | bash`. (Once published, `pipx install "pwm-ai4science[claude]"` also works.)
+Then run `ai4science login` — browser approval signs you in with PWM founder-served models (no API key, no Node) and drops you straight into a chat session (like Claude Code). The installer sets up an isolated environment under `~/.ai4science`, puts the `ai4science` command on your PATH (works on locked-down HPC login nodes too), and needs only **Python ≥ 3.10** — no `git`, no Node. Lean install without the agent: `AI4SCIENCE_WITH_CLAUDE=0 curl … | bash`. (Once published, `pipx install "pwm-ai4science[claude]"` also works.)
+
+---
+
+## Getting started in 5 steps
+
+**1. Install** — Linux/macOS below (Windows: see the one-liner above). Needs only Python ≥ 3.10; **no `git`, no Node**.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/integritynoble/AI4Science/main/install.sh | bash
+```
+
+Open a **new terminal** afterward (the installer adds `ai4science` to your PATH). If a command still isn't found, run `export PATH="$HOME/.local/bin:$PATH"`.
+
+**2. Log in — and you're chatting.** One step: on success it drops you straight into a session.
+
+```bash
+ai4science login        # browser approval → PWM founder-served models (no key, no Node)
+```
+
+Prefer your own LLM instead? `ai4science login --provider anthropic|openai|gemini`.
+
+**3. Use it.** Start a session any time, or run a one-shot prompt:
+
+```bash
+ai4science                       # interactive chat session (like `claude`)
+ai4science "summarize spec.md"   # one-shot question
+```
+
+Inside a session: ask questions, let it edit files (you confirm each change), `/help` for slash commands, `/exit` to leave.
+
+**4. Update** to the latest build whenever you like:
+
+```bash
+ai4science update
+```
+
+**5. Earn PWM by improving the agents.** Using the agent costs PWM; the easiest way to earn it back is **feedback**. Inside any chat session:
+
+```
+/feedback the CASSI judge should accept .h5 inputs too
+```
+
+Useful feedback is rewarded **instantly** (an LLM scores its quality). You can also contribute tools/solutions that agents use on paid turns — those earn **weekly** for as long as they're used. Bootstrap a first balance by mining on [physicsworldmodel.org](https://physicsworldmodel.org). Full details in [Earning PWM](#earning-pwm--improve-the-agents) below.
 
 ---
 
@@ -97,7 +140,7 @@ pipx install "pwm-ai4science[claude]"   # chat agent + deterministic CLI
 ai4science                              # → start a chat session
 ```
 
-The chat agent also needs the `claude` CLI: `npm install -g @anthropic-ai/claude-code` then `claude login` (or set `ANTHROPIC_API_KEY`).
+Power the agent with `ai4science login` (PWM founder-served models — **no key, no Node**). Optional: the *exact* Claude Code engine (`ai4science --mode claude`) uses the `claude` CLI — `npm install -g @anthropic-ai/claude-code` then `claude login` (or set `ANTHROPIC_API_KEY`); without it, `--mode claude` falls back to the built-in engine.
 
 The PyPI package is `pwm-ai4science`; the command is `ai4science` (same package-vs-command split as `@anthropic-ai/claude-code` → `claude`). Plain pip works too: `pip install "pwm-ai4science[claude]"`.
 
@@ -118,7 +161,7 @@ From source (to modify / run tests): `git clone … && pip install -e ".[dev]" &
 ai4science          # no arguments → drops you into a chat session (like `claude`)
 ```
 
-(That needs the chat agent — `pwm-ai4science[claude]` + the `claude` CLI. Without it, `ai4science` prints a short getting-started panel. The deterministic commands below always work, offline.)
+(Run `ai4science login` first to power the agent — no key or Node required. If you're not logged in yet, `ai4science` prints a short getting-started panel. The deterministic commands below always work, offline.)
 
 ```bash
 ai4science init cassi-demo          # creates a workspace seeded with the CASSI example
