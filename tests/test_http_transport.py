@@ -146,14 +146,15 @@ def test_provider_without_allow_exec_does_not_run(tmp_path):
     assert ht.poll(jid)["result"]["solver_ran"] is False
 
 
-def test_transport_select_prefers_http_with_token(monkeypatch):
-    monkeypatch.delenv("AI4SCIENCE_COMPUTE_TRANSPORT", raising=False)
+def test_transport_select_is_http_only(monkeypatch):
+    # P4: git transport removed — select always returns http.
     monkeypatch.setenv("PWM_TOKEN", "tok")
     mode, t = transport_mod.select(type("P", (), {"endpoint_path": "/tmp/none"})())
     assert mode == "http" and t is not None
 
 
-def test_transport_select_git_when_forced(monkeypatch):
-    monkeypatch.setenv("AI4SCIENCE_COMPUTE_TRANSPORT", "git")
+def test_transport_select_http_even_when_git_forced(monkeypatch):
+    monkeypatch.setenv("AI4SCIENCE_COMPUTE_TRANSPORT", "git")   # legacy flag is now a no-op
+    monkeypatch.setenv("PWM_TOKEN", "tok")
     mode, t = transport_mod.select(type("P", (), {"endpoint_path": "/tmp/none"})())
-    assert mode == "git" and t is None
+    assert mode == "http" and t is not None

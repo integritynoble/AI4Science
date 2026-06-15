@@ -29,33 +29,12 @@ def _base_and_token(base_url: Optional[str], token: Optional[str]) -> Tuple[str,
     return base, tok
 
 
-def select(provider, *, base_url: Optional[str] = None, token: Optional[str] = None
+def select(provider=None, *, base_url: Optional[str] = None, token: Optional[str] = None
            ) -> Tuple[str, Optional[Any]]:
-    """Return (mode, transport). mode is 'http' or 'git'.
+    """Return ('http', HttpTransport) ready to dispatch/poll.
 
-    'http' → an HttpTransport ready to dispatch/poll. 'git' → (None) caller uses
-    the legacy git path (provider.serve / gitsync)."""
-    forced = (os.environ.get("AI4SCIENCE_COMPUTE_TRANSPORT") or "").strip().lower()
-    base, tok = _base_and_token(base_url, token)
-
-    if forced == "git":
-        return ("git", None)
-    if forced == "http":
-        from ai4science.compute.http_transport import HttpTransport
-        return ("http", HttpTransport(base, tok or ""))
-
-    # Default: prefer HTTP when we have a token; otherwise fall back to git if the
-    # provider inbox is a local/git repo (founder same-machine), else HTTP (which
-    # will surface a clear auth error rather than silently writing nowhere).
-    if tok:
-        from ai4science.compute.http_transport import HttpTransport
-        return ("http", HttpTransport(base, tok))
-    try:
-        from ai4science.compute import gitsync
-        from pathlib import Path
-        if gitsync.find_repo_root(Path(provider.endpoint_path).expanduser()) is not None:
-            return ("git", None)
-    except Exception:
-        pass
+    The git inbox transport was removed in Phase 4 — HTTP is the only transport.
+    The signature is kept stable for callers."""
     from ai4science.compute.http_transport import HttpTransport
+    base, tok = _base_and_token(base_url, token)
     return ("http", HttpTransport(base, tok or ""))
