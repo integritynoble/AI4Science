@@ -88,3 +88,56 @@ def test_compute_capability_in_all_modes():
     for mode in ("unified-LLM", "research", "paper", "computational-imaging"):
         spec = registry.get(mode)
         assert "compute-providers" in spec.capabilities, mode
+
+
+# ── cross-machine git-sync: the request is pushed so the remote box gets it ──
+def _git(repo, *args):
+    import subprocess
+    return subprocess.run(["git", "-C", str(repo), *args],
+                          capture_output=True, text=True)
+
+
+def test_repo_of_detects_git_inbox(tmp_path, monkeypatch):
+    from ai4science.harness import compute_tools as ct
+    from ai4science.compute.founders import founder_providers
+    # non-git inbox → None
+    monkeypatch.setenv("AI4SCIENCE_FOUNDER_INBOX", str(tmp_path / "plain"))
+    gpu = {p.provider_id: p for p in founder_providers()}["founder-gpu"]
+    assert ct._repo_of(gpu) is None
+    # git inbox → the repo root
+    repo = tmp_path / "repo"; repo.mkdir()
+    assert _git(repo, "init").returncode == 0
+    monkeypatch.setenv("AI4SCIENCE_FOUNDER_INBOX", str(repo / "compute-inbox"))
+    gpu2 = {p.provider_id: p for p in founder_providers()}["founder-gpu"]
+    from pathlib import Path
+    Path(gpu2.endpoint_path).mkdir(parents=True, exist_ok=True)  # dispatch_job mkdirs it IRL
+    assert ct._repo_of(gpu2) == repo.resolve()
+
+
+def test_dispatch_pushes_request_to_git_remote(tmp_path, monkeypatch):
+    """A confirmed dispatch to a git-backed inbox commits+pushes the request —
+    the fix for 'dispatch succeeded but the sub-GPU never gets the request'."""
+    monkeypatch.setenv("AI4SCIENCE_COMPUTE_AUTOCONFIRM", "1")
+    monkeypatch.setenv("AI4SCIENCE_COMPUTE_REGISTRY", str(tmp_path / "providers.json"))
+    # bare origin + a working clone whose inbox is inside the repo
+    bare = tmp_path / "origin.git"; bare.mkdir()
+    assert _git(bare, "init", "--bare").returncode == 0
+    clone = tmp_path / "clone"; clone.mkdir()
+    _git(clone, "init")
+    _git(clone, "config", "user.email", "t@t.t"); _git(clone, "config", "user.name", "t")
+    _git(clone, "config", "commit.gpgsign", "false")
+    _git(clone, "remote", "add", "origin", str(bare))
+    (clone / "seed").write_text("x")
+    _git(clone, "add", "-A"); _git(clone, "commit", "-m", "seed")
+    _git(clone, "branch", "-M", "main"); _git(clone, "push", "-u", "origin", "main")
+
+    monkeypatch.setenv("AI4SCIENCE_FOUNDER_INBOX", str(clone / "compute-inbox"))
+    out = _tool("compute_dispatch").func(
+        clone, provider="founder-gpu", run_command="python run.py", confirm=True)
+    assert "Dispatched job" in out
+    assert "pushed to the remote provider" in out.lower()
+    # the request is committed locally and present on the bare origin
+    log = _git(clone, "log", "--oneline").stdout
+    assert "compute: dispatch job" in log
+    files = _git(bare, "ls-tree", "-r", "--name-only", "main").stdout
+    assert ".request.json" in files

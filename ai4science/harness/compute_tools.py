@@ -30,6 +30,20 @@ _LOCAL_IDS = ("", "local", "none")
 _RUNTIME_KEYS = ("wall_clock_s", "runtime_s", "elapsed_s", "seconds")
 
 
+def _repo_of(prov):
+    """The git repo the provider's inbox lives in, or None for a local inbox.
+
+    Cross-machine founder providers (e.g. founder-gpu) keep their inbox in a
+    git-synced dir, so the agent tools must push the request / pull the result —
+    exactly what the CLI's --git-sync does. Same-machine inboxes return None and
+    skip git entirely."""
+    try:
+        from ai4science.compute import gitsync
+        return gitsync.find_repo_root(Path(prov.endpoint_path).expanduser())
+    except Exception:
+        return None
+
+
 def _resolve(provider_id: str):
     pid = (provider_id or "").strip()
     if pid.lower() in _LOCAL_IDS:
@@ -141,6 +155,12 @@ def _dispatch_tool() -> Tool:
         if not ok:
             return why
 
+        # Cross-machine provider: pull first so lease/result state is current.
+        repo = _repo_of(prov)
+        if repo is not None:
+            from ai4science.compute import gitsync
+            gitsync.pull(repo)
+
         holder = uuid.uuid4().hex
         lease = lease_mod.acquire_lease(prov, holder=holder, ttl_s=max_runtime_s)
         if lease is None:
@@ -160,9 +180,22 @@ def _dispatch_tool() -> Tool:
         # Remember which slot this job holds so compute_result can release it.
         _lease_sidecar(prov, job.job_id).write_text(
             lease.model_dump_json(indent=2) + "\n", encoding="utf-8")
+
+        # Cross-machine: publish the request so the remote box's serve loop pulls
+        # it. Without this the request only exists locally and the GPU never sees
+        # it ("dispatch succeeded" but the sub-GPU can't get the request).
+        sync_note = ""
+        if repo is not None:
+            from ai4science.compute import gitsync
+            req = Path(prov.endpoint_path).expanduser() / f"job_{job.job_id}.request.json"
+            ok_p, msg_p = gitsync.commit_push(
+                repo, [req], f"compute: dispatch job {job.job_id} ({prov.provider_id})")
+            sync_note = (" Request pushed to the remote provider."
+                         if ok_p else
+                         f" [WARN: git push failed — the remote box won't receive it: {msg_p}]")
         return (f"Dispatched job {job.job_id} to {prov.provider_id} "
                 f"(slot {lease.slot}, {lease_mod.available_slots(prov)}/"
-                f"{prov.max_concurrent} free now). PWM is charged to "
+                f"{prov.max_concurrent} free now).{sync_note} PWM is charged to "
                 f"{prov.wallet_address} on completion. "
                 f"Poll with compute_result(job_id=\"{job.job_id}\", "
                 f"provider=\"{prov.provider_id}\").")
@@ -202,6 +235,12 @@ def _result_tool() -> Tool:
             return ("[compute] no server provider given — local jobs have no result "
                     "to poll. Pass the provider you dispatched to.")
         ep = Path(prov.endpoint_path).expanduser()
+        # Cross-machine: pull so the box's pushed ack/result/reconstruction arrive
+        # (otherwise the job looks stuck even after the GPU finished it).
+        repo = _repo_of(prov)
+        if repo is not None:
+            from ai4science.compute import gitsync
+            gitsync.pull(repo)
         state = job_state(ep, job_id)
         if state.get("state") != "completed":
             return f"[compute] job {job_id} state={state.get('state')} (not done yet)."
