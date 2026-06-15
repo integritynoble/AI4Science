@@ -75,6 +75,23 @@ def _finish_own(provider: str, auth: str, api_key: Optional[str]) -> None:
                       "(stored as your preference).[/yellow]")
 
 
+def _enter_chat_if_interactive(no_chat: bool) -> None:
+    """After a successful login, drop the user straight into a chat session —
+    so `ai4science login` is a one-step start, not "login then type ai4science".
+
+    Skipped when --no-chat, or when stdin/stdout isn't a TTY (scripted/piped/CI
+    runs shouldn't be ambushed by an interactive REPL)."""
+    if no_chat:
+        return
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        console.print("\n[dim]Run [/dim][cyan]ai4science[/cyan]"
+                      "[dim] to start chatting.[/dim]")
+        return
+    console.print("\n[dim]Starting your AI4Science session…  (/exit to quit)[/dim]")
+    from ai4science import cli              # deferred: avoids an import cycle
+    cli._bare_launch(read_only=False, auto_yes=False, plan_mode=False)
+
+
 def login(
     provider: Optional[str] = typer.Option(
         None, "--provider", help="anthropic | openai | gemini | kimi | qwen"),
@@ -89,38 +106,42 @@ def login(
                              "(browser approval; token only, never a private key)."),
     base: Optional[str] = typer.Option(
         None, "--base", help="Backend URL for --pwm (default https://physicsworldmodel.org)."),
+    no_chat: bool = typer.Option(
+        False, "--no-chat", help="Just log in; don't drop into a chat session "
+                                 "afterwards (for scripts)."),
 ) -> None:
-    """Choose how to power AI4Science: your own LLM, or the PWM wallet."""
-    # --- physicsworldmodel.org account (device flow) ---
-    if pwm:
-        _login_pwm(base)
-        return
+    """Choose how to power AI4Science: your own LLM, or the PWM wallet.
 
-    # --- Wallet mode ---
-    if wallet:
+    On success in an interactive terminal this drops you straight into a chat
+    session (pass --no-chat to only log in). A failed login raises before that."""
+    if pwm:
+        # --- physicsworldmodel.org account (device flow) ---
+        _login_pwm(base)
+    elif wallet:
+        # --- Wallet mode ---
         user_cfg.login_wallet()
         w = local_wallet.ensure()
         console.print(f"[green]✓ Using the local hot-key PWM wallet.[/green]")
         console.print(f"  address: [magenta]{w['address']}[/magenta]")
         console.print(f"  balance: [bold]{local_wallet.balance():g} PWM[/bold]  "
                       "[dim](earn by mining / contributing; spent per use)[/dim]")
-        return
-
-    # --- Own-LLM mode, scriptable (flags) ---
-    if provider:
+    elif provider:
+        # --- Own-LLM mode, scriptable (flags) ---
         auth = (auth or "subscription").replace("-", "_")
         _finish_own(provider.lower(), auth, api_key)
-        return
+    else:
+        # --- Default: the Claude Code pattern (directive 2026-06-10) ---
+        # Bare `ai4science login` = browser-approval device flow against
+        # physicsworldmodel.org — exactly like `claude login`. The other power
+        # modes stay reachable via flags:
+        #   --provider <p> [--auth subscription|api-key]   your own LLM
+        #   --wallet                                        local hot-key wallet
+        console.print("[dim]Logging in to physicsworldmodel.org (browser approval — "
+                      "like `claude login`). Other modes: --provider / --wallet.[/dim]")
+        _login_pwm(base)
 
-    # --- Default: the Claude Code pattern (directive 2026-06-10) ---
-    # Bare `ai4science login` = browser-approval device flow against
-    # physicsworldmodel.org — exactly like `claude login`. The other power
-    # modes stay reachable via flags:
-    #   --provider <p> [--auth subscription|api-key]   your own LLM
-    #   --wallet                                        local hot-key wallet
-    console.print("[dim]Logging in to physicsworldmodel.org (browser approval — "
-                  "like `claude login`). Other modes: --provider / --wallet.[/dim]")
-    _login_pwm(base)
+    # Reached only on success (failures raise typer.Exit above) → start chatting.
+    _enter_chat_if_interactive(no_chat)
 
 
 def whoami() -> None:
