@@ -26,9 +26,7 @@ from rich.table import Table
 from ai4science.compute import (
     ComputeProvider, add_provider, load_registry, is_valid_eth_address,
 )
-from ai4science.compute import gitsync
 from ai4science.compute.registry import get_provider, default_registry_path
-from ai4science.compute.dispatch import dispatch_job, job_state, read_result
 from ai4science.compute.attribution import verify_and_attribute, credit_summary
 
 app = typer.Typer(help="Wallet-bound GPU compute providers (Phase 0).")
@@ -247,120 +245,61 @@ def spend(
                   "[dim](unit credits via [/dim][cyan]ai4science compute credits[/cyan][dim])[/dim]")
 
 
+def _http_or_exit():
+    """An HttpTransport for the relay, or exit with a login hint."""
+    from ai4science.compute.transport import select
+    _m, tx = select(None)
+    if not getattr(tx, "token", ""):
+        console.print("[red]Not logged in.[/red] Run [cyan]ai4science login[/cyan] "
+                      "to use a remote provider.")
+        raise typer.Exit(2)
+    return tx
+
+
 @app.command("dispatch")
 def dispatch(
     provider_id: str = typer.Option(..., "--provider", "-p", help="Provider to dispatch to."),
     benchmark: str = typer.Option("", "--benchmark", "-b", help="Benchmark id (e.g. L3-003-001-001-T1)."),
     workspace: Path = typer.Option(Path("."), "--workspace", "-w"),
-    solver_code: str = typer.Option("code/", "--solver", help="Solver code path."),
     run_command: str = typer.Option("python code/run_solver.py", "--run-command"),
     dataset_ref: str = typer.Option("", "--dataset", help="Dataset reference (gs:// or local)."),
-    git_sync: bool = typer.Option(
-        False, "--git-sync",
-        help="Inbox is a git-shared dir: pull before writing, commit+push the "
-             "request so a provider on another machine receives it."),
-    allow_detached_workspace: bool = typer.Option(
-        False, "--allow-detached-workspace",
-        help="Permit --git-sync with a workspace outside the synced repo. "
-             "Same-machine only; cross-machine solves lose the reconstruction "
-             "return path."),
+    max_runtime_s: int = typer.Option(3600, "--max-runtime-s", help="Runtime cap (PWM is bounded by this)."),
 ) -> None:
-    """Write a job request into the provider's inbox."""
-    provider = get_provider(provider_id)
-    if provider is None:
-        console.print(f"[red]No such provider:[/red] {provider_id}. "
-                      "List with [cyan]ai4science compute providers[/cyan].")
-        raise typer.Exit(2)
-
-    repo = None
-    if git_sync:
-        repo = gitsync.find_repo_root(Path(provider.endpoint_path))
-        if repo is None:
-            console.print(f"[yellow]⚠ --git-sync:[/yellow] {provider.endpoint_path} "
-                          "is not in a git repo; writing locally only.")
-        else:
-            ws_abs = workspace.resolve()
-            try:
-                ws_abs.relative_to(repo.resolve())
-            except ValueError:
-                detail = (f"workspace {ws_abs} is outside the synced repo {repo}. "
-                          "Cross-machine solves need it inside the repo so the "
-                          "result + reconstruction return over git "
-                          f"(e.g. {Path(provider.endpoint_path).expanduser()}/ws/<job>/).")
-                if allow_detached_workspace:
-                    console.print(f"[yellow]⚠ {detail}[/yellow]")
-                    console.print("[yellow]  Proceeding (same-machine only).[/yellow]")
-                else:
-                    console.print(f"[red]✗ {detail}[/red]")
-                    console.print("Pass [cyan]--allow-detached-workspace[/cyan] "
-                                  "to override (same-machine only).")
-                    raise typer.Exit(2)
-            ok, msg = gitsync.pull(repo)
-            console.print(f"[dim]git pull: {'ok' if ok else 'FAILED — ' + msg}[/dim]")
-
-    job = dispatch_job(
-        provider=provider, workspace=workspace.resolve(),
-        benchmark_id=benchmark, solver_code_path=solver_code,
-        run_command=run_command, dataset_ref=dataset_ref,
-    )
-    console.print(f"[green]✓[/green] Dispatched job [cyan]{job.job_id}[/cyan] "
-                  f"to [magenta]{provider_id}[/magenta]")
-    console.print(f"  inbox:   {provider.endpoint_path}/job_{job.job_id}.request.json")
-    console.print(f"  wallet:  {provider.wallet_address}")
-
-    # Liveness: tell the user up-front if the provider isn't currently serving,
-    # so a job that will sit in `requested` isn't mistaken for a working dispatch.
-    from ai4science.compute.provider import liveness
-    state, age = liveness(provider.model_dump())
-    if state == "online":
-        console.print(f"  provider: [green]● online[/green] "
-                      f"[dim](heartbeat {_fmt_age(age)})[/dim] — should run shortly.")
-    else:
-        console.print(f"  provider: [red]○ offline[/red] "
-                      f"[dim](last heartbeat {_fmt_age(age)})[/dim] — "
-                      "job is [yellow]queued[/yellow]; it runs when the server's "
-                      "serve loop is back up. Check with "
-                      f"[cyan]ai4science compute status {job.job_id}[/cyan].")
-
-    if repo is not None:
-        req = Path(provider.endpoint_path).expanduser() / f"job_{job.job_id}.request.json"
-        ok, msg = gitsync.commit_push(repo, [req],
-                                      f"compute: dispatch job {job.job_id} → {provider_id}")
-        if ok:
-            console.print("[green]✓[/green] Pushed request to git "
-                          "(provider will pull it on next poll).")
-        else:
-            console.print(f"[yellow]⚠ git push failed:[/yellow] {msg}")
-
-    console.print(f"\n[dim]Poll with:[/dim] ai4science compute status {job.job_id} "
-                  f"--provider {provider_id}" + (" --git-sync" if git_sync else ""))
+    """Dispatch a job to a provider over the HTTPS relay (needs `ai4science login`)."""
+    tx = _http_or_exit()
+    try:
+        job = tx.dispatch(provider_id=provider_id, run_command=run_command,
+                          workspace=workspace.resolve(), dataset_ref=dataset_ref,
+                          max_runtime_s=max_runtime_s)
+    except Exception as e:
+        console.print(f"[red]dispatch failed:[/red] {e}")
+        raise typer.Exit(1)
+    console.print(f"[green]✓[/green] Dispatched job [cyan]{job['job_id']}[/cyan] "
+                  f"to [magenta]{provider_id}[/magenta] (state {job.get('state')})")
+    console.print(f"\n[dim]Poll with:[/dim] ai4science compute status "
+                  f"{job['job_id']} --provider {provider_id}")
 
 
 @app.command("status")
 def status(
     job_id: str = typer.Argument(..., help="Job id from dispatch."),
-    provider_id: str = typer.Option(..., "--provider", "-p"),
-    git_sync: bool = typer.Option(
-        False, "--git-sync", help="git pull first to see a remote provider's progress."),
+    provider_id: str = typer.Option("", "--provider", "-p"),
 ) -> None:
-    """Show the file-inbox handshake state for a job."""
-    provider = get_provider(provider_id)
-    if provider is None:
-        console.print(f"[red]No such provider:[/red] {provider_id}")
-        raise typer.Exit(2)
-    if git_sync:
-        repo = gitsync.find_repo_root(Path(provider.endpoint_path))
-        if repo is not None:
-            ok, msg = gitsync.pull(repo)
-            console.print(f"[dim]git pull: {'ok' if ok else 'FAILED — ' + msg}[/dim]")
-    st = job_state(Path(provider.endpoint_path), job_id)
+    """Show a job's state (via the relay)."""
+    tx = _http_or_exit()
+    try:
+        job = tx.poll(job_id)
+    except Exception as e:
+        console.print(f"[red]status failed:[/red] {e}")
+        raise typer.Exit(1)
+    state = job.get("state", "unknown")
     color = {"requested": "yellow", "acked": "cyan",
-             "completed": "green", "missing": "red"}.get(st["state"], "white")
-    console.print(f"Job [cyan]{job_id}[/cyan] — state: [{color}]{st['state']}[/{color}]")
-    if "result" in st:
-        r = st["result"]
+             "completed": "green"}.get(state, "white")
+    console.print(f"Job [cyan]{job_id}[/cyan] — state: [{color}]{state}[/{color}]")
+    r = job.get("result") or {}
+    if r:
         console.print(f"  certificate_hash: {r.get('certificate_hash', '—')}")
-        console.print(f"  claimed metrics:  {r.get('metrics', '—')}")
+        console.print(f"  metrics:          {r.get('metrics', '—')}")
 
 
 @app.command("verify")
@@ -369,59 +308,39 @@ def verify(
     provider_id: str = typer.Option(..., "--provider", "-p"),
     workspace: Optional[Path] = typer.Option(
         None, "--workspace", "-w",
-        help="Workspace to judge. Default: the job request's stored workspace."),
+        help="Workspace to judge. Default: a temp dir with the downloaded reconstruction."),
     benchmark: str = typer.Option(None, "--benchmark", "-b",
                                    help="Benchmark tier file to judge (default benchmark.md)."),
-    git_sync: bool = typer.Option(
-        False, "--git-sync", help="git pull first to fetch the provider's result."),
 ) -> None:
-    """Re-verify a returned result with the Physics Judge + record attribution."""
-    provider = get_provider(provider_id)
-    if provider is None:
-        console.print(f"[red]No such provider:[/red] {provider_id}")
-        raise typer.Exit(2)
-    if git_sync:
-        repo = gitsync.find_repo_root(Path(provider.endpoint_path))
-        if repo is not None:
-            ok, msg = gitsync.pull(repo)
-            console.print(f"[dim]git pull: {'ok' if ok else 'FAILED — ' + msg}[/dim]")
-    st = job_state(Path(provider.endpoint_path), job_id)
-    result_manifest = st.get("result")
-    request = st.get("request")
-    job_meta = request or {
-        "job_id": job_id, "provider_id": provider_id,
-        "wallet_address": provider.wallet_address, "benchmark_id": benchmark or "",
-    }
+    """Re-verify a returned result with the Physics Judge + record attribution.
 
-    # Default the workspace to the one recorded in the job request, so the judge
-    # runs against the actual solve dir rather than the caller's cwd. Uses the
-    # same repo-relative resolution as the poller, so a job dispatched from
-    # another machine (foreign absolute path) still resolves against THIS
-    # machine's checkout of the shared repo — no -w needed.
-    if workspace is None:
-        if request:
-            from ai4science.compute.provider import _resolve_workspace
-            workspace = _resolve_workspace(request, Path(provider.endpoint_path))
-            how = ("from job request" if Path(request.get("workspace", "")).expanduser().is_dir()
-                   else "via repo-relative" if request.get("workspace_repo_relative")
-                   else "from job request")
-        else:
-            workspace = Path(".")
-            how = "cwd fallback"
-        console.print(f"[dim]workspace: {workspace} ({how})[/dim]")
+    Polls the relay, downloads the reconstruction, and runs the deterministic
+    judge locally (no LLM in the verdict path)."""
+    import tempfile
+    tx = _http_or_exit()
+    try:
+        job = tx.poll(job_id)
+    except Exception as e:
+        console.print(f"[red]verify failed:[/red] {e}")
+        raise typer.Exit(1)
+    if job.get("state") != "completed":
+        console.print(f"[yellow]Job {job_id} not complete (state {job.get('state')}).[/yellow]")
+        raise typer.Exit(1)
 
+    ws = workspace.resolve() if workspace else Path(tempfile.mkdtemp(prefix=f"a4s-verify-{job_id}-"))
+    tx.download_reconstruction(job, ws)
+    console.print(f"[dim]workspace: {ws} (downloaded reconstruction)[/dim]")
+    job_meta = {"job_id": job_id, "provider_id": provider_id,
+                "wallet_address": "", "benchmark_id": benchmark or ""}
     attribution = verify_and_attribute(
-        workspace=workspace.resolve(), job=job_meta,
-        result_manifest=result_manifest, benchmark=benchmark,
-    )
+        workspace=ws, job=job_meta, result_manifest=job.get("result"),
+        benchmark=benchmark)
 
     decision = attribution["judge_decision"]
     color = {"pass": "green", "fail": "red",
              "needs_review": "yellow"}.get(decision, "white")
     console.print(f"Judge decision: [{color}]{decision}[/{color}]")
     console.print(f"Silent failure: {attribution['silent_failure']}")
-    console.print(f"Credit to [magenta]{attribution['wallet_address']}[/magenta]: "
-                  f"[bold]{attribution['credit']}[/bold] verified-job credit(s)")
     console.print(f"[dim]Logged to reports/compute_attributions.jsonl[/dim]")
     if decision != "pass":
         console.print("[yellow]No credit awarded — judge did not return pass.[/yellow]")
@@ -438,26 +357,18 @@ def serve(
         False, "--allow-exec",
         help="REQUIRED to actually run dispatched solver commands. Without it "
              "the poller acks jobs but refuses to execute code (safety gate)."),
-    git_sync: bool = typer.Option(
-        False, "--git-sync",
-        help="Inbox is a git-shared dir: pull new requests each pass, push "
-             "results back. Use this when the dispatcher is on another machine."),
-    http: bool = typer.Option(
-        False, "--http",
-        help="Serve over the HTTP relay (no pwm repo needed) instead of the git "
-             "inbox — claim/run/return via physicsworldmodel.org."),
     base: Optional[str] = typer.Option(
-        None, "--base", help="Relay base URL for --http (default https://physicsworldmodel.org)."),
+        None, "--base", help="Relay base URL (default https://physicsworldmodel.org)."),
     provider_key: Optional[str] = typer.Option(
-        None, "--provider-key", help="Provider auth key for --http (COMPUTE_PROVIDER_KEY)."),
+        None, "--provider-key", help="Provider auth key (COMPUTE_PROVIDER_KEY)."),
 ) -> None:
-    """Run the provider-side poller on this GPU box.
+    """Run the provider-side poller on this GPU box, over the HTTP relay.
 
-    Watches the provider's inbox for job requests, runs the dispatched
-    solver, and writes results back. This executes dispatched code —
-    only pass --allow-exec on a host where you trust the dispatcher
-    (Phase 0: the founder dispatching to their own GPU)."""
-    from ai4science.compute.provider import serve as serve_loop
+    Claims jobs from physicsworldmodel.org, runs the dispatched solver, and
+    returns results — no pwm repo / git needed. This executes dispatched code,
+    so only pass --allow-exec on a host where you trust the dispatcher."""
+    import os
+    from ai4science.compute.http_provider import serve_http
 
     provider = get_provider(provider_id)
     if provider is None:
@@ -467,79 +378,30 @@ def serve(
 
     if not allow_exec:
         console.print("[yellow]⚠ Running WITHOUT --allow-exec:[/yellow] jobs will be "
-                      "acked but their solver commands will NOT run. Re-run with "
+                      "claimed but their solver commands will NOT run. Re-run with "
                       "[cyan]--allow-exec[/cyan] on a trusted host to execute them.")
 
-    # HTTP relay mode (Phase 3): no git repo required.
-    if http:
-        import os
-        from ai4science.compute.http_provider import serve_http
-        relay_base = base or os.environ.get("PWM_BASE") or "https://physicsworldmodel.org"
-        key = provider_key or os.environ.get("COMPUTE_PROVIDER_KEY", "")
-        console.print(f"[bold purple]ai4science compute serve --http[/bold purple] — "
-                      f"provider [cyan]{provider_id}[/cyan] via [green]{relay_base}[/green]")
-        console.print(f"  exec: {'[green]enabled[/green]' if allow_exec else '[yellow]disabled[/yellow]'}"
-                      f"   mode: {'once' if once else f'polling every {interval}s'}\n")
+    relay_base = base or os.environ.get("PWM_BASE") or "https://physicsworldmodel.org"
+    key = provider_key or os.environ.get("COMPUTE_PROVIDER_KEY", "")
+    console.print(f"[bold purple]ai4science compute serve[/bold purple] (HTTP relay) — "
+                  f"provider [cyan]{provider_id}[/cyan] via [green]{relay_base}[/green]")
+    console.print(f"  exec: {'[green]enabled[/green]' if allow_exec else '[yellow]disabled[/yellow]'}"
+                  f"   mode: {'once' if once else f'polling every {interval}s'}\n")
 
-        def _ev(kind, payload):
-            if kind == "job_start":
-                console.print(f"[cyan]▶ job {payload['job_id']}[/cyan] claimed")
-            elif kind == "job_done":
-                tag = "[green]ran[/green]" if payload.get("solver_ran") else "[yellow]not run[/yellow]"
-                console.print(f"  [green]✓ job {payload['job_id']}[/green] {tag}")
-            elif kind in ("loop_error", "heartbeat_error"):
-                console.print(f"  [yellow]⚠ {payload.get('error')}[/yellow]")
-
-        try:
-            serve_http(provider.model_dump(), relay_base, provider_key=key,
-                       allow_exec=allow_exec, interval_s=interval, once=once, on_event=_ev)
-        except KeyboardInterrupt:
-            console.print("\n[dim](stopped)[/dim]")
-        if once:
-            console.print("[dim]Done (--once).[/dim]")
-        return
-
-    provider_dict = provider.model_dump()
-    sync_label = "[green]git-synced[/green]" if git_sync else "local-only"
-    console.print(f"[bold purple]ai4science compute serve[/bold purple] — "
-                  f"provider [cyan]{provider_id}[/cyan]")
-    console.print(f"  wallet:  [magenta]{provider.wallet_address}[/magenta]")
-    console.print(f"  inbox:   {provider.endpoint_path}  ({sync_label})")
-    console.print(f"  exec:    "
-                  f"{'[green]enabled[/green]' if allow_exec else '[yellow]disabled[/yellow]'}")
-    console.print(f"  mode:    "
-                  f"{'once' if once else f'polling every {interval}s (Ctrl-C to stop)'}\n")
-
-    def _log(kind: str, payload: dict):
-        if kind == "start" and payload.get("git_sync") is False and git_sync:
-            console.print("[yellow]⚠ --git-sync requested but inbox is not in a git "
-                          "repo — running local-only.[/yellow]")
-        elif kind == "sync_warn":
-            console.print(f"[yellow]⚠ {payload['error']}[/yellow]")
-        elif kind == "sync_pull" and not payload.get("ok"):
-            console.print(f"[yellow]⚠ git pull failed: {payload.get('msg', '')}[/yellow]")
-        elif kind == "sync_push":
-            if payload.get("ok"):
-                console.print(f"  [green]↥ pushed result for {payload['job_id']}[/green]")
-            else:
-                console.print(f"  [yellow]⚠ push failed for {payload['job_id']}: "
-                              f"{payload.get('msg', '')}[/yellow]")
-        elif kind == "job_start":
-            console.print(f"[cyan]▶ job {payload['job_id']}[/cyan] picked up")
+    def _ev(kind, payload):
+        if kind == "job_start":
+            console.print(f"[cyan]▶ job {payload['job_id']}[/cyan] claimed")
         elif kind == "job_done":
-            ran = payload.get("solver_ran")
-            tag = "[green]ran[/green]" if ran else "[yellow]not run[/yellow]"
-            console.print(f"  [green]✓ job {payload['job_id']}[/green] {tag} → "
-                          f"cert {str(payload.get('certificate_hash', '—'))[:14]}…")
-        elif kind == "job_error":
-            console.print(f"  [red]✗ job {payload['job_id']}: {payload['error']}[/red]")
+            tag = "[green]ran[/green]" if payload.get("solver_ran") else "[yellow]not run[/yellow]"
+            console.print(f"  [green]✓ job {payload['job_id']}[/green] {tag}")
+        elif kind in ("loop_error", "heartbeat_error"):
+            console.print(f"  [yellow]⚠ {payload.get('error')}[/yellow]")
 
     try:
-        serve_loop(provider_dict, interval_s=interval, once=once,
-                   allow_exec=allow_exec, git_sync=git_sync, on_event=_log)
+        serve_http(provider.model_dump(), relay_base, provider_key=key,
+                   allow_exec=allow_exec, interval_s=interval, once=once, on_event=_ev)
     except KeyboardInterrupt:
         console.print("\n[dim](stopped)[/dim]")
-
     if once:
         console.print("[dim]Done (--once).[/dim]")
 

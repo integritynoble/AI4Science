@@ -6,7 +6,6 @@ from typing import List
 
 from ai4science.harness import transport
 from ai4science.harness.tools.base import Tool
-from ai4science.compute.dispatch import dispatch_job, job_state, read_result
 from ai4science.judge.cassi.judge_cassi import judge_cassi
 
 # Genesis CASSI solutions are authored by the third founder; users' PWM for using
@@ -190,8 +189,15 @@ def _dispatch_tool() -> Tool:
                         f"  PWM cost:  {cost} - pay to {recipient} "
                         f"(solution provider {sol_provider})\n"
                         "Pass confirm=true to dispatch.")
-            job = dispatch_job(provider=prov, workspace=Path(workspace).resolve(),
-                               benchmark_id=benchmark, solver_code_path=solver)
+            from ai4science.compute.transport import select
+            _m, tx = select(prov)
+            if not getattr(tx, "token", ""):
+                return ("[cassi error] not logged in — run `ai4science login` to "
+                        "dispatch to the sub-GPU.")
+            job = tx.dispatch(provider_id=prov.provider_id,
+                              run_command="python code/run_solver.py",
+                              workspace=Path(workspace).resolve(), max_runtime_s=3600)
+            jid = job["job_id"]
             # Agent-mining usage logging: record that this paid run used the
             # solution contribution → its author earns a share of the agent pool.
             # Off by default (PwmGate disabled); fire-and-forget; idempotent per
@@ -202,13 +208,13 @@ def _dispatch_tool() -> Tool:
                     PwmGate.from_env().post_usage(
                         contribution_id=solution_ref,
                         agent_name="computational-imaging",
-                        turn_id=job.job_id,
+                        turn_id=jid,
                     )
                 except Exception:
                     pass
-            return (f"Dispatched job {job.job_id} to sub-GPU provider {prov.provider_id}. "
+            return (f"Dispatched job {jid} to sub-GPU provider {prov.provider_id}. "
                     f"PWM cost {cost} -> {recipient}. "
-                    f"Poll with cassi_result(job_id=\"{job.job_id}\").")
+                    f"Poll with cassi_result(job_id=\"{jid}\").")
         except CassiError as exc:
             return f"[cassi error] {exc}"
         except Exception as exc:
@@ -243,17 +249,18 @@ def _result_tool() -> Tool:
             prov = _resolve_provider(provider)
             if prov is None:
                 return "[cassi error] no compute provider configured"
-            ep = Path(prov.endpoint_path)
-            st = job_state(ep, job_id)
-            state = st.get("state", "unknown")
+            from ai4science.compute.transport import select
+            _m, tx = select(prov)
+            if not getattr(tx, "token", ""):
+                return "[cassi error] not logged in — run `ai4science login`."
+            job = tx.poll(job_id)
+            state = job.get("state", "unknown")
             if state != "completed":
                 return f"job {job_id}: state={state} (not finished yet)"
-            res = read_result(ep, job_id)
-            if not res:
-                return f"[cassi error] job {job_id} completed but no result file found"
-            ws = res.get("workspace") or str(workspace)
-            bench = res.get("benchmark_id") or None
-            report = judge_cassi(Path(ws), benchmark=bench)
+            # Pull the reconstruction back from the relay, then judge locally.
+            ws = Path(workspace).resolve()
+            tx.download_reconstruction(job, ws)
+            report = judge_cassi(ws, benchmark=None)
             return f"job {job_id}: completed. judge: {_judge_summary(report)}"
         except Exception as exc:
             return f"[cassi error] {exc}"

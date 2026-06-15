@@ -42,11 +42,14 @@ def test_cassi_dispatch_logs_usage(monkeypatch, tmp_path):
         endpoint_path = str(tmp_path)
         wallet_address = "0x" + "a" * 40
 
-    class _Job:
-        job_id = "job-xyz"
+    class _Tx:
+        token = "tok"
+        def dispatch(self, **k):
+            return {"job_id": "job-xyz", "state": "requested"}
 
     monkeypatch.setattr(cassi_tools, "_resolve_provider", lambda p: _Prov())
-    monkeypatch.setattr(cassi_tools, "dispatch_job", lambda **k: _Job())
+    monkeypatch.setattr("ai4science.compute.transport.select",
+                        lambda prov=None, **kw: ("http", _Tx()))
     monkeypatch.setattr(cassi_tools, "_contained", lambda ws, s: None)
 
     captured = {}
@@ -75,11 +78,14 @@ def test_cassi_dispatch_no_solution_no_usage(monkeypatch, tmp_path):
         endpoint_path = str(tmp_path)
         wallet_address = "0x" + "a" * 40
 
-    class _Job:
-        job_id = "job-2"
+    class _Tx:
+        token = "tok"
+        def dispatch(self, **k):
+            return {"job_id": "job-2", "state": "requested"}
 
     monkeypatch.setattr(cassi_tools, "_resolve_provider", lambda p: _Prov())
-    monkeypatch.setattr(cassi_tools, "dispatch_job", lambda **k: _Job())
+    monkeypatch.setattr("ai4science.compute.transport.select",
+                        lambda prov=None, **kw: ("http", _Tx()))
     monkeypatch.setattr(cassi_tools, "_contained", lambda ws, s: None)
 
     called = {"n": 0}

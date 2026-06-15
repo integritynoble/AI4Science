@@ -20,11 +20,23 @@ def test_solution_cost_own_vs_registered():
     assert recipient == GENESIS_SOLUTION_PROVIDER and "L3-003-sol-1" in prov
 
 
+class _FakeTx:
+    token = "tok"
+    def dispatch(self, **k):
+        return {"job_id": "abc123", "state": "requested"}
+
+
+def _mock_relay(monkeypatch):
+    monkeypatch.setattr("ai4science.compute.transport.select",
+                        lambda prov=None, **kw: ("http", _FakeTx()))
+
+
 def test_dispatch_preview_no_spend(tmp_path, monkeypatch):
     (tmp_path / "code").mkdir()
     monkeypatch.setattr(cassi_tools, "_resolve_provider", lambda pid: _Prov())
-    monkeypatch.setattr(cassi_tools, "dispatch_job",
-                        lambda **k: (_ for _ in ()).throw(AssertionError("should not dispatch")))
+    # preview must return BEFORE any transport call (make select blow up if hit)
+    monkeypatch.setattr("ai4science.compute.transport.select",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("no dispatch in preview")))
     out = _tools()["cassi_dispatch"].func(
         tmp_path, benchmark="L3-003-T1", solver="code/", solution_ref="L3-003-sol-1")
     assert "preview" in out.lower()
@@ -35,8 +47,7 @@ def test_dispatch_preview_no_spend(tmp_path, monkeypatch):
 def test_dispatch_confirm_dispatches(tmp_path, monkeypatch):
     (tmp_path / "code").mkdir()
     monkeypatch.setattr(cassi_tools, "_resolve_provider", lambda pid: _Prov())
-    class _Job: job_id = "abc123"
-    monkeypatch.setattr(cassi_tools, "dispatch_job", lambda **k: _Job())
+    _mock_relay(monkeypatch)
     out = _tools()["cassi_dispatch"].func(
         tmp_path, benchmark="L3-003-T1", solver="code/", confirm=True)
     assert "abc123" in out and "cassi_result" in out
@@ -55,8 +66,8 @@ def test_dispatch_non_mutating():
 def test_dispatch_string_false_does_not_spend(tmp_path, monkeypatch):
     (tmp_path / "code").mkdir()
     monkeypatch.setattr(cassi_tools, "_resolve_provider", lambda pid: _Prov())
-    monkeypatch.setattr(cassi_tools, "dispatch_job",
-                        lambda **k: (_ for _ in ()).throw(AssertionError("must not dispatch")))
+    monkeypatch.setattr("ai4science.compute.transport.select",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not dispatch")))
     # An LLM passing the STRING "false" must NOT trigger a real dispatch.
     out = _tools()["cassi_dispatch"].func(
         tmp_path, benchmark="L3-003-T1", solver="code/", confirm="false")
@@ -66,8 +77,8 @@ def test_dispatch_string_false_does_not_spend(tmp_path, monkeypatch):
 def test_dispatch_string_true_does_not_spend(tmp_path, monkeypatch):
     (tmp_path / "code").mkdir()
     monkeypatch.setattr(cassi_tools, "_resolve_provider", lambda pid: _Prov())
-    monkeypatch.setattr(cassi_tools, "dispatch_job",
-                        lambda **k: (_ for _ in ()).throw(AssertionError("must not dispatch")))
+    monkeypatch.setattr("ai4science.compute.transport.select",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not dispatch")))
     # Only a real boolean True confirms; the string "true" stays in preview (safe default).
     out = _tools()["cassi_dispatch"].func(
         tmp_path, benchmark="L3-003-T1", solver="code/", confirm="true")
