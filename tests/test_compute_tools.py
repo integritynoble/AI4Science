@@ -141,3 +141,29 @@ def test_dispatch_pushes_request_to_git_remote(tmp_path, monkeypatch):
     assert "compute: dispatch job" in log
     files = _git(bare, "ls-tree", "-r", "--name-only", "main").stdout
     assert ".request.json" in files
+
+
+def test_resolve_founder_gpu_prefers_registered_subgpu(tmp_path, monkeypatch):
+    """Dispatching to the advertised `founder-gpu` via the agent must resolve to
+    the REGISTERED founder-1-subgpu (git-synced inbox), not the built-in default's
+    local inbox — so the request actually reaches the box."""
+    from ai4science.harness import compute_tools as ct
+    from ai4science.compute.registry import ComputeProvider, save_registry
+    reg = tmp_path / "providers.json"
+    monkeypatch.setenv("AI4SCIENCE_COMPUTE_REGISTRY", str(reg))
+    git_inbox = str(tmp_path / "git-inbox")
+    save_registry([ComputeProvider(
+        provider_id="founder-1-subgpu", wallet_address=THIRD_FOUNDER_WALLET,
+        endpoint_path=git_inbox, kind="gpu")])
+    p = ct._resolve("founder-gpu")
+    assert p is not None and p.provider_id == "founder-1-subgpu"
+    assert p.endpoint_path == git_inbox     # the served inbox, not ~/.config/.../gpu
+
+
+def test_resolve_founder_gpu_falls_back_to_default_when_unregistered(tmp_path, monkeypatch):
+    """No registry → founder-gpu still resolves to the built-in default."""
+    from ai4science.harness import compute_tools as ct
+    monkeypatch.setenv("AI4SCIENCE_COMPUTE_REGISTRY", str(tmp_path / "none.json"))
+    monkeypatch.setenv("AI4SCIENCE_FOUNDER_INBOX", str(tmp_path / "inbox"))
+    p = ct._resolve("founder-gpu")
+    assert p is not None and p.provider_id == "founder-gpu"

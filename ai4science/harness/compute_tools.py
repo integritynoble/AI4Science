@@ -48,10 +48,19 @@ def _resolve(provider_id: str):
     pid = (provider_id or "").strip()
     if pid.lower() in _LOCAL_IDS:
         return None  # local
-    for p in all_providers():
-        if p.provider_id == pid:
-            return p
-    return None
+    # Prefer a REGISTERED entry (incl. founder-gpu→founder-1-subgpu alias): a user
+    # who types `founder-gpu` should reach the served git-synced inbox, not the
+    # built-in default's local inbox. get_provider() does exact + alias-to-registered.
+    from ai4science.compute.registry import get_provider, PROVIDER_ALIASES
+    p = get_provider(pid)
+    if p is not None:
+        return p
+    # Fresh machine with no registry: fall back to the founder defaults (+ alias).
+    provs = {x.provider_id: x for x in all_providers()}
+    if pid in provs:
+        return provs[pid]
+    alias = PROVIDER_ALIASES.get(pid)
+    return provs.get(alias) if alias else None
 
 
 def _lease_sidecar(prov, job_id: str) -> Path:
