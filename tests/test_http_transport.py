@@ -13,7 +13,7 @@ from pathlib import Path
 import httpx
 import pytest
 
-from ai4science.compute.http_transport import HttpTransport, INLINE_PREFIX
+from ai4science.compute.http_transport import HttpTransport, GCS_PREFIX
 from ai4science.compute.http_provider import serve_http_once
 from ai4science.compute import transport as transport_mod
 
@@ -21,10 +21,23 @@ from ai4science.compute import transport as transport_mod
 def _make_relay():
     """In-memory relay mirroring the real REST contract. Returns an httpx handler."""
     jobs: dict = {}
+    blobs: dict = {}
     n = {"i": 0}
 
     def handler(req: httpx.Request) -> httpx.Response:
         path, method = req.url.path, req.method
+        # data plane (blob proxy)
+        if method == "POST" and path == "/api/v1/compute/blobs":
+            n["i"] += 1
+            key = f"compute/blobs/b{n['i']}"
+            blobs[key] = req.content
+            return httpx.Response(200, json={"success": True, "key": key, "size": len(req.content)})
+        if method == "GET" and path.startswith("/api/v1/compute/blobs/"):
+            key = path[len("/api/v1/compute/blobs/"):]
+            if key not in blobs:
+                return httpx.Response(404, json={"detail": "nf"})
+            return httpx.Response(200, content=blobs[key],
+                                  headers={"content-type": "application/octet-stream"})
         if method == "POST" and path == "/api/v1/compute/jobs":
             b = json.loads(req.content)
             n["i"] += 1
@@ -108,7 +121,7 @@ def test_http_end_to_end_roundtrip(tmp_path):
     assert got["state"] == "completed"
     assert got["result"]["solver_ran"] is True, got["result"]
     assert got["result"]["solver_returncode"] == 0
-    assert got["reconstruction_ref"].startswith(INLINE_PREFIX)
+    assert got["reconstruction_ref"].startswith(GCS_PREFIX)
 
     # 4. reconstruction comes back to the dispatcher
     out = ht.download_reconstruction(got, tmp_path / "dl")

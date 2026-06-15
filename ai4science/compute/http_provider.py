@@ -41,6 +41,9 @@ def serve_http_once(provider: Dict[str, Any], base_url: str, *, provider_key: st
         return httpx.Client(timeout=120.0)
 
     h = _http()
+    # the provider authenticates to the blob proxy with its key
+    htx = ht.HttpTransport(base, provider_key=provider_key, client=h)
+
     # 1. heartbeat
     try:
         h.post(f"{base}/api/v1/compute/providers/{pid}/heartbeat", headers=headers)
@@ -59,7 +62,7 @@ def serve_http_once(provider: Dict[str, Any], base_url: str, *, provider_key: st
     # 3. run in an isolated temp workspace
     with tempfile.TemporaryDirectory(prefix=f"a4s-http-{job_id}-") as tmp:
         ws = Path(tmp)
-        ht.unpack_inline(job.get("workspace_ref", ""), ws)
+        ht.unpack_workspace_ref(job.get("workspace_ref", ""), ws, http=htx)
         if not allow_exec:
             outcome = {"ok": False, "error": "provider running without --allow-exec"}
             wall = 0.0
@@ -71,7 +74,8 @@ def serve_http_once(provider: Dict[str, Any], base_url: str, *, provider_key: st
         manifest = build_result_manifest(job, ws, provider, outcome, wall)
 
         recon = ws / "results" / "reconstruction_xhat.npy"
-        recon_ref = ht.pack_file(recon) if recon.exists() else ""
+        recon_ref = (ht.GCS_PREFIX + htx.upload_blob(recon.read_bytes())
+                     if recon.exists() else "")
 
     # 4. return the result
     rr = h.post(f"{base}/api/v1/compute/jobs/{job_id}/result", headers=headers,

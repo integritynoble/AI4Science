@@ -54,7 +54,19 @@ All authenticated with the user's PWM token (same bearer as the LLM proxy).
 State machine unchanged: `requested → acked(leased) → completed`. The server is
 the single source of truth (DB), so the two machines still never talk directly.
 
-### Data plane — GCS presigned URLs
+### Data plane — authenticated GCS proxy
+
+> **Pivot (2026-06-15):** signed URLs are **disabled** in this GCP project
+> (`gcs_signer.py`: IAM signing off). So the data plane is an **authenticated
+> streaming proxy** through the relay, not direct presigned URLs: artifacts are
+> uploaded/downloaded via `POST/GET /api/v1/compute/blobs` (auth = user token OR
+> provider key) and stored in GCS (in-memory fallback for dev). A blob key is an
+> unguessable random id (capability model). Bytes still never touch git, and GCS
+> stays the ephemeral store (bucket lifecycle TTL). If IAM signing is enabled
+> later, swap the proxy for presigned URLs behind the same `upload_blob/download_blob`
+> seam. The original presigned plan is kept below for reference.
+
+### (reference) Data plane — GCS presigned URLs
 
 - **Upload:** client/provider request a presigned PUT, transfer the artifact
   straight to the bucket. Server stores only the **object key** on the job row.
