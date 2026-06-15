@@ -132,3 +132,27 @@ def test_resolve_founder_gpu_falls_back_to_default_when_unregistered(tmp_path, m
     monkeypatch.setenv("AI4SCIENCE_FOUNDER_INBOX", str(tmp_path / "inbox"))
     p = ct._resolve("founder-gpu")
     assert p is not None and p.provider_id == "founder-gpu"
+
+
+def test_result_surfaces_metrics_and_stdout(tmp_path, monkeypatch):
+    """compute_result must show metrics + the solver stdout tail even when the
+    run_command (echoed as solver_id) is huge — not truncate it away (the
+    'agent can't see its own PSNR' bug)."""
+    import ai4science.harness.compute_tools as ct
+    huge_cmd = "python -c '" + "x" * 6000 + "'"
+
+    class _Tx:
+        token = "tok"
+        def poll(self, jid):
+            return {"job_id": jid, "state": "completed", "reconstruction_ref": "",
+                    "result": {"solver_id": huge_cmd, "solver_ran": True,
+                               "solver_returncode": 0, "metrics": {"PSNR": 35.51},
+                               "solver_stdout_tail": "RECON_OK shape=(256,256,28)"}}
+        def download_reconstruction(self, job, dest):
+            return None
+    monkeypatch.setattr("ai4science.compute.transport.select",
+                        lambda prov=None, **k: ("http", _Tx()))
+    out = ct._result_tool().func(tmp_path, job_id="J", provider="founder-gpu")
+    assert "35.51" in out and "PSNR" in out          # metrics visible
+    assert "RECON_OK" in out                          # stdout tail visible
+    assert "solver_ran=True" in out and "returncode=0" in out

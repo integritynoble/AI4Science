@@ -164,12 +164,15 @@ def _dispatch_tool() -> Tool:
     return Tool(
         name="compute_dispatch",
         description=("Use a GPU/CPU compute provider over the HTTPS relay (needs "
-                     "`ai4science login`). Pass confirm=true to run it: normal jobs "
-                     "auto-approve; the relay queues it, the provider runs it, and "
-                     "PWM is charged on completion (bounded by max_runtime_s), only "
-                     "on a verified pass. Without confirm=true you get a preview "
-                     "(est PWM). provider=local (or omitted) runs locally (free). "
-                     "For GPU work use provider=founder-gpu / founder-1-subgpu."),
+                     "`ai4science login`). The ENTIRE workspace dir is shipped to the "
+                     "provider, so put your solver code + small inputs in it (e.g. "
+                     "code/run.py, data/*.npy) and pass a SHORT run_command like "
+                     "'python code/run.py' — do NOT cram a whole script into "
+                     "run_command. Pass confirm=true to run: normal jobs auto-approve; "
+                     "the relay queues it, the provider runs it, PWM is charged on "
+                     "completion (bounded by max_runtime_s) only on a verified pass. "
+                     "Without confirm=true you get a preview. provider=local (or "
+                     "omitted) runs locally (free). GPU: provider=founder-gpu."),
         parameters={"type": "object", "properties": {
             "provider": {"type": "string"},
             "run_command": {"type": "string"},
@@ -204,10 +207,26 @@ def _result_tool() -> Tool:
         except Exception:
             out = None
         result = job.get("result") or {}
-        recon = f"\nreconstruction: {out}" if out else ""
-        summary = json.dumps(result)[:400] if result else "(no result manifest)"
-        return (f"[compute] job {job_id} complete on {prov.provider_id} "
-                f"(PWM charged on the relay on a verified pass).{recon}\n{summary}")
+        # Surface the USEFUL fields explicitly (metrics + the solver's stdout/stderr
+        # tail) rather than a truncated json dump — the run_command can be huge and
+        # would otherwise crowd out the actual output the user needs to see.
+        ran = result.get("solver_ran")
+        rc = result.get("solver_returncode")
+        metrics = result.get("metrics") or {}
+        stdout_tail = (result.get("solver_stdout_tail") or "").strip()
+        stderr_tail = (result.get("solver_stderr_tail") or "").strip()
+        lines = [f"[compute] job {job_id} complete on {prov.provider_id} "
+                 "(PWM charged on the relay on a verified pass)."]
+        if out:
+            lines.append(f"reconstruction: {out}")
+        lines.append(f"solver_ran={ran} returncode={rc}")
+        if metrics:
+            lines.append(f"metrics: {json.dumps(metrics)}")
+        if stdout_tail:
+            lines.append("stdout (tail):\n" + stdout_tail[-1500:])
+        if rc not in (0, None) and stderr_tail:
+            lines.append("stderr (tail):\n" + stderr_tail[-800:])
+        return "\n".join(lines)
 
     return Tool(
         name="compute_result",
