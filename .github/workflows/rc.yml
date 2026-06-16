@@ -1,5 +1,8 @@
 # Part A §A.7 — a release candidate was cut (vX.Y.Z-rcN tag pushed by cut-rc.sh).
-# v1: sanity-build the candidate. Phase 2: publish a PyPI pre-release here.
+# Build the candidate and publish it to TestPyPI for validation. Gated on the
+# TESTPYPI_API_TOKEN repo secret: the publish step skips cleanly when it's unset,
+# so the workflow never fails for lack of a token. (Real PyPI pre-releases are a
+# later step; the final stable PyPI upload is in release.yml.)
 name: rc
 on:
   push:
@@ -7,9 +10,31 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      # Mapped to env so it's usable in `if:` (secrets aren't directly available there).
+      TESTPYPI_TOKEN: ${{ secrets.TESTPYPI_API_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
-      - run: pip install build && python -m build
-      - run: echo "RC ${GITHUB_REF_NAME} built — install with AI4SCIENCE_CHANNEL=rc"
+      - name: Build + check
+        run: |
+          pip install build twine
+          python -m build
+          twine check dist/*
+      - name: Publish to TestPyPI
+        if: ${{ env.TESTPYPI_TOKEN != '' }}
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ env.TESTPYPI_TOKEN }}
+        run: twine upload --repository-url https://test.pypi.org/legacy/ --skip-existing dist/*
+      - name: Summary
+        run: |
+          if [ -n "$TESTPYPI_TOKEN" ]; then
+            echo "RC ${GITHUB_REF_NAME} published to TestPyPI — validate with:"
+            echo "  pip install --index-url https://test.pypi.org/simple/ \\"
+            echo "    --extra-index-url https://pypi.org/simple/ 'pwm-ai4science[claude]'"
+          else
+            echo "RC ${GITHUB_REF_NAME} built (set the TESTPYPI_API_TOKEN secret to auto-publish to TestPyPI)."
+            echo "Test from git meanwhile: AI4SCIENCE_CHANNEL=rc curl …/install.sh | bash"
+          fi
