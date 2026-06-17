@@ -70,6 +70,50 @@ def _resolve_workspace(ws: Path, *, was_default: bool) -> Path:
     return ws
 
 
+def _maybe_offer_login() -> None:
+    """Entering chat without a remembered login: offer to sign in now so the
+    first turn isn't blocked by the PWM gate ("could not verify your PWM
+    balance"). Skips when already signed in, when the gate is explicitly off
+    (AI4SCIENCE_PWM_GATE=0), or on a non-interactive stdin (prints guidance)."""
+    import os
+    import sys
+    if str(os.environ.get("AI4SCIENCE_PWM_GATE", "")).strip().lower() in (
+            "0", "false", "no", "off"):
+        return
+    token = os.environ.get("PWM_TOKEN") or os.environ.get("PWM_ONBOARD_TOKEN")
+    if not token:
+        try:
+            from ai4science import pwm_account
+            token = (pwm_account.load() or {}).get("token")
+        except Exception:
+            token = None
+    if token:
+        return  # already signed in — the gate uses it automatically
+
+    console.print("\n[yellow]You're not signed in.[/yellow] Sign in to get founder-served "
+                  "models + PWM — otherwise each turn is gate-blocked "
+                  "([dim]\"could not verify your PWM balance\"[/dim]).")
+    if not sys.stdin.isatty():
+        console.print("[dim]Run [cyan]ai4science login[/cyan] (or set PWM_TOKEN), then start "
+                      "chat again. Continuing unauthenticated for now.[/dim]")
+        return
+    try:
+        ans = input("Log in now? [Y/n] ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        console.print("")
+        return
+    if ans in ("", "y", "yes"):
+        from ai4science.commands.login import _login_pwm
+        try:
+            _login_pwm(None)        # device flow; persists a revocable pwm_ key
+        except (SystemExit, Exception):
+            console.print("[dim]Continuing without login — run [cyan]ai4science login[/cyan] "
+                          "anytime.[/dim]")
+    else:
+        console.print("[dim]Continuing without login. Run [cyan]ai4science login[/cyan] anytime, "
+                      "or use [cyan]/feedback[/cyan] to earn PWM.[/dim]")
+
+
 def chat(
     agent: str = typer.Option(
         "claude", "--agent", "-a",
@@ -170,6 +214,10 @@ def chat(
         console.print(f"[yellow]Unknown --mode {mode!r}; using 'unified-LLM'. "
                       f"Available: {names}[/yellow]")
         spec = agent_registry.get("unified-LLM")
+
+    # Entering chat: if not signed in, offer to log in now so the first turn
+    # isn't blocked by the PWM gate (applies to every mode/engine below).
+    _maybe_offer_login()
 
     # Option A (2026-06-10): claude-code mode runs the REAL Claude Code engine
     # (claude-agent-sdk) when available — Anthropic's own system prompt, todos,

@@ -115,6 +115,14 @@ try:
 except Exception:
     plugins_cmd = None
 
+try:
+    from ai4science.commands import tools as tools_cmd
+    from ai4science.commands.tools import app as tools_app
+    app.add_typer(tools_app, name="tools",
+                  help="Install community protools (kind=tool) from physicsworldmodel.org.")
+except Exception:
+    tools_cmd = None
+
 # Single-command leaves
 app.command("init", help="Create a new contribution workspace.")(init_cmd.init)
 app.command("validate", help="Validate YAML front matter and required fields.")(validate_cmd.validate)
@@ -649,7 +657,7 @@ def main() -> None:
     _subcommands = {
         "init", "contribute", "validate", "judge", "overseer", "package",
         "submit", "status", "version", "agents", "chat", "compute", "llm",
-        "stake", "plugins", "login", "whoami", "logout", "prefer", "update",
+        "stake", "plugins", "tools", "login", "whoami", "logout", "prefer", "update",
     }
     if any(tok in _subcommands for tok in argv_raw):
         app()
@@ -669,7 +677,7 @@ def main() -> None:
         registered = {
             "init", "contribute", "validate", "judge", "overseer",
             "package", "submit", "status", "version", "agents", "chat",
-            "compute", "llm", "stake", "plugins", "login", "whoami", "logout",
+            "compute", "llm", "stake", "plugins", "tools", "login", "whoami", "logout",
             "prefer", "update",
         }
         if argv[0] not in registered:
