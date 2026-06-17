@@ -132,6 +132,9 @@ app.command("prefer", help="Set credential preference: user | wallet | <provider
 from ai4science.commands import update as update_cmd
 app.command("update", help="Upgrade ai4science to the latest build (like `claude update`).")(update_cmd.update)
 
+from ai4science.commands import register_agent as register_agent_cmd
+app.command("register-agent", help="Self-register a plug-in agent/tool you authored to physicsworldmodel.org (counts toward the Developer Winner after admin approval).")(register_agent_cmd.register_agent)
+
 
 @app.command("version", help="Print the AI4Science CLI version + release channel.")
 def version_cmd() -> None:
