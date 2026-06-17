@@ -126,7 +126,7 @@ def chat(
         None, "--mode",
         help="Session mode: 'unified-LLM' (general assistant across Claude/ChatGPT/Gemini; "
              "'common' is an alias), 'research', 'paper', 'claude code', 'codex', or a "
-             "'specific' domain agent. Defaults to AI4SCIENCE_MODE, else unified-LLM. "
+             "'specific' domain agent. Defaults to AI4SCIENCE_MODE, else research. "
              "Switch live with /mode.",
     ),
 ) -> None:
@@ -156,13 +156,17 @@ def chat(
     # Resolve --mode against the agent registry. The active AgentSpec drives the
     # session (registry + system prompt) inside run_common_repl; here we only pass
     # mode_label and the spec's prompt as a harmless fallback.
-    mode = (mode or os.environ.get("AI4SCIENCE_MODE") or "unified-LLM").lower()
+    # Default mode is RESEARCH (PWM-grounded science agent). Override per-session
+    # with --mode or AI4SCIENCE_MODE (e.g. unified-LLM / common, claude, codex).
+    mode = (mode or os.environ.get("AI4SCIENCE_MODE") or "research").lower()
     backend = backend or os.environ.get("AI4SCIENCE_BACKEND")
     from ai4science.harness.tui import resolve_mode
     mode = resolve_mode(mode)          # display name (e.g. 'claude') → id 'claude-code'
     spec = agent_registry.get(mode)
     if spec is None:
         names = ", ".join(sorted(agent_registry.AGENT_REGISTRY))
+        # An unknown/typo mode falls back to the safe generalist (not the
+        # moat-gated default), and we list the valid modes.
         console.print(f"[yellow]Unknown --mode {mode!r}; using 'unified-LLM'. "
                       f"Available: {names}[/yellow]")
         spec = agent_registry.get("unified-LLM")
@@ -609,7 +613,7 @@ def _print_welcome(workspace: Path, read_only: bool, auto_yes: bool,
                    memory_file: Optional[Path] = None,
                    continue_session: bool = False,
                    model: Optional[str] = None,
-                   session_mode: str = "unified-LLM") -> None:
+                   session_mode: str = "research") -> None:
     if plan_mode:
         toolmode = "plan"
     elif read_only:

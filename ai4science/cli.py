@@ -584,7 +584,7 @@ def _bare_launch(read_only: bool, auto_yes: bool, plan_mode: bool,
     If the chat agent isn't installed/authed yet, show a short getting-started
     panel instead of a raw error, so a first run is welcoming.
     """
-    # The default chat mode is unified-LLM = the native Python harness, which
+    # The default chat mode is research = the native Python harness, which
     # needs NO Node / `claude` CLI — only an LLM credential (a PWM login using
     # founder-served models, your own provider, or an API key). So we gate the
     # bare launch on "is any credential available?", NOT on the `claude` CLI.
