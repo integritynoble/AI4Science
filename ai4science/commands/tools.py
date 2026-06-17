@@ -26,7 +26,7 @@ from rich.table import Table
 from ai4science.harness import transport
 from ai4science.harness.agents import plugins as plugmod
 from ai4science.commands.plugins import (
-    DEFAULT_BASE, _base, _write_manifest,
+    DEFAULT_BASE, _base, _fetch_manifest, _write_manifest,
     _resolve_manifest, _embed_manifest, _verify_embedded,
     _launch_chat, _logged_in, TestPrepError,
 )
@@ -83,13 +83,20 @@ def list_cmd(
 def installed_cmd() -> None:
     """List protools installed in your local plugins dir."""
     d = plugmod.plugins_dir()
-    _, tools, errors = plugmod.load_plugins(d)
+    agents, tools, errors = plugmod.load_plugins(d)
     console.print(f"[bold]Plugins dir:[/bold] {d}")
     if not tools and not errors:
-        console.print(
-            "[yellow](no tools installed — "
-            "pull some with `ai4science tools pull`)[/yellow]"
-        )
+        agent_count = len(agents)  # agents is the first return value from load_plugins
+        if agent_count:
+            console.print(
+                f"[yellow](no tool plug-ins installed — "
+                f"{agent_count} agent plug-in(s) present)[/yellow]"
+            )
+        else:
+            console.print(
+                "[yellow](no tools installed — "
+                "pull some with `ai4science tools pull`)[/yellow]"
+            )
         return
     for t in tools:
         console.print(f"  [green]tool[/green]  {t.name}")
@@ -129,7 +136,7 @@ def pull_cmd(
     installed = 0
     for name in want:
         try:
-            manifest = transport.get_json(f"{b}/api/v1/plugins/{name}/manifest")
+            manifest = _fetch_manifest(b, name)
         except Exception as exc:
             console.print(f"[red]error[/red]  {name}: {exc}")
             continue
