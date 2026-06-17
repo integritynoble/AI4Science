@@ -613,7 +613,7 @@ def _print_welcome(workspace: Path, read_only: bool, auto_yes: bool,
                    memory_file: Optional[Path] = None,
                    continue_session: bool = False,
                    model: Optional[str] = None,
-                   session_mode: str = "research") -> None:
+                   session_mode: str = "unified-LLM") -> None:
     if plan_mode:
         toolmode = "plan"
     elif read_only:

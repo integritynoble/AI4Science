@@ -283,7 +283,7 @@ def run_common_repl(
     resume_history: Optional[List[Message]] = None,
     session_id: Optional[str] = None,
     system_prompt: Optional[str] = None,
-    mode_label: str = "research",
+    mode_label: str = "unified-LLM",
 ) -> None:
     """Run the native-harness REPL until EOF or /exit.
 
