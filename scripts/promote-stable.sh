@@ -13,7 +13,10 @@ sed -i "s/^__version__ = .*/__version__ = \"${VER}\"/" ai4science/__init__.py
 git commit -aqm "release: ${TAG}"
 git tag -a "$TAG" -m "$TAG"
 git branch -f stable HEAD
-git push origin stable && git push origin "$TAG"
+# `stable` is a maintainer-controlled release pointer: each release commit is
+# built fresh on `rc` (from main) and does NOT fast-forward from the previous
+# release, so the branch must be force-moved. (Tags preserve every release.)
+git push -f origin stable && git push origin "$TAG"
 # open the next dev cycle on main
 git checkout -q main && git pull -q --ff-only origin main
 nxt="$(python3 -c "v='${VER}'.split('.'); v[-1]=str(int(v[-1])+1); print('.'.join(v)+'.dev0')")"
