@@ -185,6 +185,10 @@ def _pick_brand(backend: Optional[str], model: Optional[str]):
     return "gemini", "gemini-3.1-pro-preview"
 
 
+# NOTE: legacy/unused at runtime — research mode's LIVE system prompt is
+# AgentSpec.system_prompt in ai4science/harness/agents/specs/research.py (resolved
+# via agent_registry.get("research")). Edit THAT to change research behavior.
+# Kept only because a test still imports this symbol.
 RESEARCH_PROMPT = (
     "You are AI4Science in RESEARCH mode. In addition to coding tools, you can query "
     "the PWM registry: pwm_principles / pwm_principle, pwm_benchmarks / pwm_benchmark, "
