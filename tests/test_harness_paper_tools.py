@@ -20,13 +20,36 @@ def _tools(brand=("gemini", "m")):
 
 
 def test_payment_gate_shallow_always_allowed():
-    assert payment_gate("shallow")[0] is True
+    assert payment_gate("shallow", None, "k")[0] is True
 
 
-def test_payment_gate_deep_can_be_disabled(monkeypatch):
-    monkeypatch.setenv("AI4SCIENCE_PAPER_DEEP", "0")
-    ok, reason = payment_gate("deep")
+def test_payment_gate_deep_free_without_gate():
+    # deep is free when there's no gate (not logged in) or the gate is disabled
+    assert payment_gate("deep", None, "k")[0] is True
+
+    class _Off:
+        enabled = False
+
+    assert payment_gate("deep", _Off(), "k")[0] is True
+
+
+def test_payment_gate_deep_denied_when_charge_fails():
+    from ai4science.harness.paper_tools import PAPER_DEEP_COST
+
+    class _Gate:
+        enabled = True
+
+        def __init__(self):
+            self.calls = []
+
+        def charge(self, amount, wallet, reason, idem):
+            self.calls.append((amount, reason))
+            return False, "insufficient PWM"
+
+    g = _Gate()
+    ok, reason = payment_gate("deep", g, "k")
     assert ok is False and "pwm" in reason.lower()
+    assert g.calls[0][0] == PAPER_DEEP_COST
 
 
 def test_paper_review_tool_runs_and_writes(tmp_path, monkeypatch):
@@ -46,14 +69,24 @@ def test_paper_review_tool_runs_and_writes(tmp_path, monkeypatch):
 
 def test_paper_review_deep_denied_falls_back_to_shallow(tmp_path, monkeypatch):
     (tmp_path / "p.md").write_text("# Paper\nbody")
-    monkeypatch.setenv("AI4SCIENCE_PAPER_DEEP", "0")
     seen = {}
     def fake_run_panel(**kw):
         seen["depth"] = kw["depth"]
         return _fake_bundle()
     monkeypatch.setattr(paper_tools, "run_panel", fake_run_panel)
     monkeypatch.setattr(paper_tools, "adapter_for", lambda b: object())
-    out = _tools()["paper_review"].func(tmp_path, path="p.md", depth="deep")
+
+    class _Gate:                       # enabled gate whose charge fails
+        enabled = True
+
+        def charge(self, *a):
+            return False, "insufficient PWM"
+
+    tools = {t.name: t for t in build_paper_tools(
+        brand_provider=lambda: ("gemini", "m"),
+        research_tools_provider=lambda: [],
+        gate_provider=lambda: _Gate())}
+    out = tools["paper_review"].func(tmp_path, path="p.md", depth="deep")
     assert seen["depth"] == "shallow"
     assert "shallow" in out.lower() or "accept" in out
 
