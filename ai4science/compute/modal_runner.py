@@ -56,7 +56,7 @@ _image = (
     .pip_install(
         "numpy>=1.24", "scipy>=1.10", "pydantic>=2.4", "pyyaml>=6.0",
         "tqdm>=4.66", "rich>=13.7", "typer>=0.12", "imageio>=2.31",
-        "einops>=0.7", "torch>=2.1",
+        "scikit-image>=0.22", "einops>=0.7", "torch>=2.1",
     )
 )
 # Bake pwm_core (package + sibling weights/) so PYTHONPATH resolves both the
