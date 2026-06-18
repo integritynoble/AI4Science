@@ -97,6 +97,10 @@ from ai4science.commands import compute as compute_cmd
 app.add_typer(compute_cmd.app, name="compute",
               help="Wallet-bound GPU compute providers (dispatch + judge-verified rewards).")
 
+from ai4science.commands import provider as provider_cmd
+app.add_typer(provider_cmd.app, name="provider",
+              help="Become a paid compute provider in one command: provider start --wallet 0x…")
+
 from ai4science.commands import llm as llm_cmd
 app.add_typer(llm_cmd.app, name="llm",
               help="Wallet-bound LLM providers (subscription / api-key / comparegpt).")

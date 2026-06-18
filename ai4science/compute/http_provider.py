@@ -27,12 +27,20 @@ def _emit(on_event, kind, payload):
 
 
 def serve_http_once(provider: Dict[str, Any], base_url: str, *, provider_key: str = "",
-                    allow_exec: bool = False, client: Optional[Any] = None,
+                    token: str = "", allow_exec: bool = False,
+                    client: Optional[Any] = None,
                     on_event: Optional[Callable] = None) -> Optional[str]:
-    """Process at most one job. Returns the job_id handled, or None if idle."""
+    """Process at most one job. Returns the job_id handled, or None if idle.
+
+    Auth: an OPEN provider passes its owner's `token` (Bearer); a founder box
+    passes the shared `provider_key`. Either authorizes claim/result/heartbeat."""
     base = base_url.rstrip("/")
     pid = provider.get("provider_id", "")
-    headers = {"X-Provider-Key": provider_key} if provider_key else {}
+    headers: Dict[str, str] = {}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    if provider_key:
+        headers["X-Provider-Key"] = provider_key
 
     def _http():
         if client is not None:
@@ -41,8 +49,8 @@ def serve_http_once(provider: Dict[str, Any], base_url: str, *, provider_key: st
         return httpx.Client(timeout=120.0)
 
     h = _http()
-    # the provider authenticates to the blob proxy with its key
-    htx = ht.HttpTransport(base, provider_key=provider_key, client=h)
+    # the provider authenticates to the blob proxy with its token or key
+    htx = ht.HttpTransport(base, token=token, provider_key=provider_key, client=h)
 
     # 1. heartbeat
     try:
@@ -89,14 +97,15 @@ def serve_http_once(provider: Dict[str, Any], base_url: str, *, provider_key: st
 
 
 def serve_http(provider: Dict[str, Any], base_url: str, *, provider_key: str = "",
-               allow_exec: bool = False, interval_s: int = 5, once: bool = False,
-               on_event: Optional[Callable] = None) -> None:
+               token: str = "", allow_exec: bool = False, interval_s: int = 5,
+               once: bool = False, on_event: Optional[Callable] = None) -> None:
     """Poll loop over HTTP. Mirrors provider.serve but needs no git repo."""
     _emit(on_event, "start", {"base": base_url, "provider": provider.get("provider_id")})
     while True:
         try:
             handled = serve_http_once(provider, base_url, provider_key=provider_key,
-                                      allow_exec=allow_exec, on_event=on_event)
+                                      token=token, allow_exec=allow_exec,
+                                      on_event=on_event)
         except Exception as e:                 # never let one bad pass kill the loop
             _emit(on_event, "loop_error", {"error": f"{type(e).__name__}: {e}"})
             handled = None
