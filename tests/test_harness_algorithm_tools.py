@@ -9,7 +9,20 @@ from ai4science.harness.agents.registry import build_registry_for, dispatchable_
 from ai4science.harness.agents import capabilities
 from ai4science.harness import algorithm_tools
 
-CI_TOOLS = {"ci_modalities", "ci_algorithms", "ci_algorithm_info", "ci_run_algorithm"}
+CI_TOOLS = {"ci_modalities", "ci_algorithms", "ci_algorithm_info", "ci_run_algorithm",
+            "run_algorithm"}
+
+
+def test_run_algorithm_preview_and_pilot_scope():
+    from pathlib import Path
+    tool = {t.name: t for t in algorithm_tools.algorithm_tools()}["run_algorithm"]
+    # preview (confirm omitted) must NOT dispatch — just describe the run + cost
+    out = tool.func(".", modality="cassi", solver="gap_tv")
+    assert "[preview]" in out and "confirm=true" in out and "founder" in out
+    # non-pilot modality is refused with guidance (no dispatch)
+    assert "modality='cassi'" in tool.func(".", modality="mri")
+    # the bundled standard scene ships with the package
+    assert (Path(algorithm_tools.__file__).parent / "data" / "cassi_ref.npz").exists()
 BASE_AGENTS = {"unified-LLM", "claude-code", "codex"}
 
 

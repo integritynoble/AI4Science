@@ -170,5 +170,136 @@ def _run_tool() -> Tool:
         func=_run, mutating=True)
 
 
+# ── run_algorithm: run a reconstruction on the sub-GPU and return metrics ────
+# Science agents (research/paper/computational-imaging/physics-reviewer) can run
+# real algorithms even though an INSTALLED user has no algorithm_base/pwm_core/
+# data locally — we ship a tiny run_solver.py + a bundled standard scene to the
+# founder-GPU (which HAS pwm_core), dispatch over the relay, and return the PSNR.
+
+_CASSI_PRESETS = {              # solver name -> (iterations, lam) for GAP-TV
+    "gap_tv": (100, 0.1), "traditional_cpu": (100, 0.1),
+    "best_quality": (200, 0.01), "small": (50, 0.1),
+}
+
+_RUN_SOLVER_TMPL = '''\
+import json, time, numpy as np
+d = np.load("data/cassi_ref.npz"); img = d["img"].astype("float32"); mask = d["mask"].astype("float32")
+H, W, L = img.shape; step = 2
+y = np.zeros((H, W + (L - 1) * step), "float32")
+for k in range(L):
+    y[:, k*step:k*step+W] += mask * img[:, :, k]
+iters, lam = {iters}, {lam}
+out = {{"modality": "cassi", "solver": "{solver}", "n_bands": L, "step": step, "iters": iters, "lam": lam}}
+t = time.time()
+try:
+    from pwm_core.recon.gap_tv import gap_tv_cassi
+    xhat = gap_tv_cassi(y, mask, n_bands=L, iterations=iters, lam=lam, step=step)
+    out["source"] = "pwm_core.recon.gap_tv"
+    mse = float(np.mean((np.clip(np.asarray(xhat), 0, 1) - img) ** 2))
+    out["psnr_db"] = round(10 * np.log10(1.0 / mse), 3)
+    out["recon_shape"] = list(np.asarray(xhat).shape)
+except Exception as e:
+    out["error"] = "{{}}:{{}}".format(type(e).__name__, str(e)[:160])
+out["seconds"] = round(time.time() - t, 1)
+print("RESULT " + json.dumps(out))
+'''
+
+
+def _run_algorithm_tool() -> Tool:
+    def _run(workspace, *, modality: str = "cassi", solver: str = "gap_tv",
+             provider: str = "founder-gpu", max_runtime_s: int = 600,
+             confirm: bool = False) -> str:
+        import json as _json
+        import shutil
+        import tempfile
+        import time as _time
+        from pathlib import Path as _P
+
+        modality = (modality or "cassi").strip().lower()
+        solver = (solver or "gap_tv").strip().lower()
+        if modality != "cassi":
+            return ("[run_algorithm] verified pilot is modality='cassi' "
+                    f"(solvers: {', '.join(sorted(_CASSI_PRESETS))}). Other modalities "
+                    "are being wired; for now run cassi here, or use compute_dispatch "
+                    "with your own code.")
+        iters, lam = _CASSI_PRESETS.get(solver, (100, 0.1))
+
+        ref = _P(__file__).resolve().parent / "data" / "cassi_ref.npz"
+        if not ref.exists():
+            return f"[run_algorithm] bundled reference scene missing at {ref}"
+
+        from ai4science.harness import compute_tools as _ct
+        prov = _ct._resolve(provider)
+        if prov is None:
+            return ("[run_algorithm] no remote provider resolved for "
+                    f"{provider!r}; pass provider=founder-gpu (see compute_providers).")
+        from ai4science.compute import billing as _billing
+        est = _billing.compute_pwm(prov.pwm_per_hour(), max_runtime_s)
+        if confirm is not True:
+            return (f"[preview] would run CASSI/{solver} (GAP-TV {iters} iters, lam={lam}) "
+                    f"on {prov.provider_id} over the relay with the bundled 128×128×28 "
+                    f"KAIST scene.\n  est PWM: up to {est} → {prov.wallet_address}\n"
+                    "Pass confirm=true to run (≈40–60s; returns PSNR).")
+
+        # Build the throwaway job workspace: run_solver.py + the bundled scene.
+        job = _P(tempfile.mkdtemp(prefix="ai4s_runalgo_"))
+        (job / "code").mkdir(); (job / "data").mkdir()
+        (job / "code" / "run_solver.py").write_text(
+            _RUN_SOLVER_TMPL.format(iters=iters, lam=lam, solver=solver))
+        shutil.copyfile(ref, job / "data" / "cassi_ref.npz")
+        try:
+            from ai4science.compute.transport import select
+            _mode, tx = select(prov)
+            if not getattr(tx, "token", ""):
+                return ("[run_algorithm] not logged in — run /login (or `ai4science "
+                        "login`) so the relay can dispatch as you.")
+            jb = tx.dispatch(provider_id=prov.provider_id,
+                             run_command="python code/run_solver.py",
+                             workspace=job, max_runtime_s=max_runtime_s)
+            jid = jb.get("job_id")
+            # inline poll up to ~3 min
+            deadline = _time.time() + min(max_runtime_s, 200)
+            while _time.time() < deadline:
+                _time.sleep(8)
+                st = tx.poll(jid)
+                state = st.get("state")
+                if state in ("done", "completed", "succeeded", "failed", "error"):
+                    res = st.get("result") or {}
+                    tail = res.get("solver_stdout_tail", "") if isinstance(res, dict) else ""
+                    line = next((l for l in tail.splitlines() if l.startswith("RESULT ")), "")
+                    if line:
+                        m = _json.loads(line[len("RESULT "):])
+                        if "psnr_db" in m:
+                            return (f"✓ ran CASSI/{solver} on {prov.provider_id}: "
+                                    f"PSNR={m['psnr_db']} dB  (recon {m.get('recon_shape')}, "
+                                    f"{m.get('iters')} iters, {m.get('seconds')}s, "
+                                    f"source {m.get('source')}). job {jid}")
+                        return f"[run_algorithm] solver error on GPU: {m.get('error')}  job {jid}"
+                    return (f"[run_algorithm] job {jid} {state} but no RESULT line; "
+                            f"poll with compute_result(job_id=\"{jid}\", "
+                            f"provider=\"{prov.provider_id}\").")
+            return (f"[run_algorithm] dispatched job {jid} (still running) — poll with "
+                    f"compute_result(job_id=\"{jid}\", provider=\"{prov.provider_id}\").")
+        finally:
+            shutil.rmtree(job, ignore_errors=True)
+
+    return Tool(
+        name="run_algorithm",
+        description=("Run a reconstruction algorithm on a compute provider (the "
+                     "sub-GPU) and return its quality metric (PSNR) — for users who "
+                     "don't have the algorithm stack/data locally. Verified pilot: "
+                     "modality='cassi' with a bundled standard KAIST scene, solver in "
+                     "{gap_tv, traditional_cpu, best_quality, small}. Pass confirm=true "
+                     "to run (it ships a tiny solver + the scene to provider=founder-gpu "
+                     "over the relay, ~40–60s, PWM charged on a verified pass). Without "
+                     "confirm you get a cost preview. Needs `ai4science login`."),
+        parameters={"type": "object", "properties": {
+            "modality": {"type": "string"}, "solver": {"type": "string"},
+            "provider": {"type": "string"}, "max_runtime_s": {"type": "integer"},
+            "confirm": {"type": "boolean"}}},
+        func=_run, mutating=True)
+
+
 def algorithm_tools() -> List[Tool]:
-    return [_modalities_tool(), _algorithms_tool(), _info_tool(), _run_tool()]
+    return [_modalities_tool(), _algorithms_tool(), _info_tool(), _run_tool(),
+            _run_algorithm_tool()]

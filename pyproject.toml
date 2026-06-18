@@ -70,7 +70,7 @@ include = ["ai4science*"]
 exclude = ["tests*", "examples*"]
 
 [tool.setuptools.package-data]
-ai4science = ["templates/*.md", "examples/**/*.md", "examples/**/*.py", "prompts/*.md"]
+ai4science = ["templates/*.md", "examples/**/*.md", "examples/**/*.py", "prompts/*.md", "harness/data/*.npz"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
