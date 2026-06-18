@@ -868,6 +868,15 @@ class FullScreen:
 
         @kb.add("c-c")
         def _(event):
+            # Ctrl+C while the agent is working → interrupt the running turn
+            # (like Esc) and return to the prompt so the user can send a new or
+            # steering message — do NOT exit. Only Ctrl+C at the idle prompt
+            # exits (Claude Code parity).
+            if self._busy:
+                from ai4science.harness import interrupt
+                interrupt.request()
+                self.append("\n\x1b[2m[ctrl-c] interrupting… (type a new message)\x1b[0m\n")
+                return
             self._inq.put(None)
             event.app.exit()
 

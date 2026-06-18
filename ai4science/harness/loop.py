@@ -75,7 +75,7 @@ def run_loop(*, adapter, model: str, reasoning: str, history: List[Message],
                 interrupted = True
         if interrupted:
             interrupt.clear()                     # consumed — don't leak
-            note = "\n[harness] turn interrupted by user (Esc)"
+            note = "\n[harness] turn interrupted by user (Esc / Ctrl+C)"
             on_text(note)
             final_text_parts.append(note)
             break

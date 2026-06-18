@@ -700,8 +700,36 @@ def run_common_repl(
                     pass
             persistence.save(_sid, workspace, session.history)
 
+        # Ctrl+C during a turn (inline/fallback mode = REPL on the main thread):
+        # route SIGINT to the cooperative interrupt (like Esc / the TUI c-c
+        # binding) so the turn ends and we return to the prompt for a NEW or
+        # steering message — instead of a KeyboardInterrupt that exits the
+        # program. Full-screen mode runs the REPL in a worker thread (signal
+        # would fail there) and is handled by the TUI c-c binding, so guard on
+        # the main thread. A 2nd Ctrl+C force-stops the turn.
+        import signal as _signal
+        import threading as _threading
+        from ai4science.harness import interrupt as _intr
+        _sigint = {"n": 0}
+
+        def _sigint_handler(_signum, _frame):
+            _intr.request()
+            _sigint["n"] += 1
+            if _sigint["n"] >= 2:
+                raise KeyboardInterrupt        # 2nd press → hard-stop this turn
+            print("\n[harness] interrupting… (Ctrl+C again to force-stop)", flush=True)
+
+        _prev_sigint = None
+        if _threading.current_thread() is _threading.main_thread():
+            try:
+                _prev_sigint = _signal.signal(_signal.SIGINT, _sigint_handler)
+            except (ValueError, OSError):
+                _prev_sigint = None
         try:
             _do_turn()
+        except KeyboardInterrupt:
+            _intr.clear()
+            print("\n[harness] turn stopped — type a new message.", flush=True)
         except Exception as exc:
             # Directive 2026-06-11: NEVER stop the user — walk the whole
             # orchestration chain (Opus 4.8 → GPT-5.5 → safety net),
@@ -726,6 +754,12 @@ def run_common_repl(
             if not served:
                 print(f"\n[harness] all models are temporarily unavailable "
                       f"({_clean_turn_error(last)}). Retry in a moment.", flush=True)
+        finally:
+            if _prev_sigint is not None:
+                try:
+                    _signal.signal(_signal.SIGINT, _prev_sigint)
+                except (ValueError, OSError):
+                    pass
 
         ok, _creason = gate.charge(turn_cost["pwm"], turn_cost["wallet"],
                                    purpose=f"ai4science:{active_spec.name}:{active_model}",
