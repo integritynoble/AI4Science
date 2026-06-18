@@ -43,7 +43,21 @@ def research_tools() -> List[Tool]:
         "properties": {"ref": _STR},
         "required": ["ref"],
     }
+    query_obj = {
+        "type": "object",
+        "properties": {"query": _STR},
+        "required": ["query"],
+    }
     return [
+        Tool(
+            "pwm_search",
+            "Keyword-search the PWM registry (principles + benchmarks) by topic or "
+            "domain — e.g. 'CASSI', 'denoising', 'MRI reconstruction'. Use this FIRST "
+            "to ground a research question, instead of listing the whole registry.",
+            query_obj,
+            _wrap("search", takes_arg="query"),
+            mutating=False,
+        ),
         Tool(
             "pwm_principles",
             "List PWM registry principles (id/title/domain).",

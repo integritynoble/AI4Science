@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from typing import Dict, List
 
@@ -55,3 +56,30 @@ def solutions(benchmark_id: str) -> List[Dict]:
 
 def overview() -> Dict:
     return transport.get_json(f"{base()}/overview")
+
+
+def search(query: str, *, limit: int = 20) -> Dict:
+    """Keyword-search the registry across principles + benchmarks (client-side —
+    the explorer API has no search endpoint). Case-insensitive substring match
+    over each item's full content. Use this to GROUND a research question before
+    listing the whole registry. Returns {query, principles[], benchmarks[]}."""
+    q = (query or "").strip().lower()
+
+    def _match(items: List[Dict]) -> List[Dict]:
+        out: List[Dict] = []
+        for it in items:
+            if not q or q in json.dumps(it, default=str).lower():
+                out.append(it)
+                if len(out) >= limit:
+                    break
+        return out
+
+    try:
+        prins = _match(principles())
+    except Exception:
+        prins = []
+    try:
+        benches = _match(benchmarks())
+    except Exception:
+        benches = []
+    return {"query": query, "principles": prins, "benchmarks": benches}
