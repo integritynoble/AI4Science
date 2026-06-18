@@ -24,8 +24,10 @@ def _onboarding(ctx: BuildContext) -> List[Tool]:
 def _paper_review(ctx: BuildContext) -> List[Tool]:
     from ai4science.harness.paper_tools import paper_tools
     from ai4science.harness.research_tools import research_tools
+    from ai4science.harness.pwm_gate import PwmGate
     return list(paper_tools(brand_provider=ctx.brand_provider,
-                            research_tools_provider=research_tools))
+                            research_tools_provider=research_tools,
+                            gate_provider=PwmGate.from_env))
 
 
 def _computational_imaging(ctx: BuildContext) -> List[Tool]:
