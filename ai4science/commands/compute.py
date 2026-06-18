@@ -361,16 +361,33 @@ def serve(
         None, "--base", help="Relay base URL (default https://physicsworldmodel.org)."),
     provider_key: Optional[str] = typer.Option(
         None, "--provider-key", help="Provider auth key (COMPUTE_PROVIDER_KEY)."),
+    modal: bool = typer.Option(
+        False, "--modal",
+        help="Run claimed jobs on Modal.com (serverless GPU) instead of locally. "
+             "Use with -p modal-gpu; needs a `modal` login on this host."),
 ) -> None:
     """Run the provider-side poller on this GPU box, over the HTTP relay.
 
     Claims jobs from physicsworldmodel.org, runs the dispatched solver, and
     returns results — no pwm repo / git needed. This executes dispatched code,
-    so only pass --allow-exec on a host where you trust the dispatcher."""
+    so only pass --allow-exec on a host where you trust the dispatcher.
+
+    With --modal, this host is a *bridge*: it claims modal-gpu jobs from the
+    relay and runs each on an on-demand Modal cloud GPU (the founder's Modal
+    account pays Modal; the user pays PWM — earn-first)."""
     import os
     from ai4science.compute.http_provider import serve_http
 
+    executor = None
+    if modal:
+        from ai4science.compute.modal_runner import run_solver_modal
+        executor = run_solver_modal
+
     provider = get_provider(provider_id)
+    if provider is None:                       # fall back to founder/Modal defaults
+        from ai4science.compute.founders import all_providers
+        provider = next((p for p in all_providers()
+                         if p.provider_id == provider_id), None)
     if provider is None:
         console.print(f"[red]No such provider:[/red] {provider_id}. "
                       "Register it first with [cyan]ai4science compute providers-add[/cyan].")
@@ -397,9 +414,13 @@ def serve(
         elif kind in ("loop_error", "heartbeat_error"):
             console.print(f"  [yellow]⚠ {payload.get('error')}[/yellow]")
 
+    if modal:
+        console.print("  [magenta]backend: Modal.com[/magenta] (serverless GPU bridge)\n")
+
     try:
         serve_http(provider.model_dump(), relay_base, provider_key=key,
-                   allow_exec=allow_exec, interval_s=interval, once=once, on_event=_ev)
+                   allow_exec=allow_exec, interval_s=interval, once=once,
+                   executor=executor, on_event=_ev)
     except KeyboardInterrupt:
         console.print("\n[dim](stopped)[/dim]")
     if once:

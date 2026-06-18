@@ -22,16 +22,30 @@ def _tool(name):
 
 
 # ── founder providers ────────────────────────────────────────────────────
-def test_two_founder_servers_cpu_and_gpu_x2():
+def test_founder_servers_cpu_gpu_gpu2_and_modal():
     provs = {p.provider_id: p for p in founder_providers()}
-    assert set(provs) == {"founder-cpu", "founder-gpu"}
-    # one job at a time on each founder box (single CPU slot / single GPU)
+    assert set(provs) == {"founder-cpu", "founder-gpu", "founder-gpu-2", "modal-gpu"}
+    # CPU box: one slot. Sub-GPU box: 2 at once. Sub-GPU2 (GCP): 3 at once.
     assert provs["founder-cpu"].kind == "cpu" and provs["founder-cpu"].max_concurrent == 1
-    assert provs["founder-gpu"].kind == "gpu" and provs["founder-gpu"].max_concurrent == 1
-    # both pay the third-founder wallet
-    assert provs["founder-cpu"].wallet_address == THIRD_FOUNDER_WALLET
-    assert provs["founder-gpu"].wallet_address == THIRD_FOUNDER_WALLET
-    assert {p.provider_id for p in all_providers()} >= {"founder-cpu", "founder-gpu"}
+    assert provs["founder-gpu"].kind == "gpu" and provs["founder-gpu"].max_concurrent == 2
+    assert provs["founder-gpu-2"].kind == "gpu" and provs["founder-gpu-2"].max_concurrent == 3
+    # modal-gpu is the elastic serverless overflow target (many slots).
+    assert provs["modal-gpu"].kind == "gpu" and provs["modal-gpu"].max_concurrent > 3
+    assert provs["modal-gpu"].endpoint_kind == "modal"
+    # all pay the third-founder wallet
+    for pid in ("founder-cpu", "founder-gpu", "founder-gpu-2", "modal-gpu"):
+        assert provs[pid].wallet_address == THIRD_FOUNDER_WALLET
+    assert {p.provider_id for p in all_providers()} >= {
+        "founder-cpu", "founder-gpu", "founder-gpu-2", "modal-gpu"}
+
+
+def test_gpu_recall_order():
+    from ai4science.compute.founders import GPU_RECALL_ORDER
+    ids = [pid for pid, _ in GPU_RECALL_ORDER]
+    assert ids == ["founder-gpu", "founder-gpu-2", "modal-gpu"]
+    caps = dict(GPU_RECALL_ORDER)
+    assert caps["founder-gpu"] == 2 and caps["founder-gpu-2"] == 3
+    assert caps["modal-gpu"] is None        # elastic / unbounded
 
 
 # ── listing ──────────────────────────────────────────────────────────────

@@ -29,11 +29,17 @@ def _emit(on_event, kind, payload):
 def serve_http_once(provider: Dict[str, Any], base_url: str, *, provider_key: str = "",
                     token: str = "", allow_exec: bool = False,
                     client: Optional[Any] = None,
+                    executor: Optional[Callable] = None,
                     on_event: Optional[Callable] = None) -> Optional[str]:
     """Process at most one job. Returns the job_id handled, or None if idle.
 
     Auth: an OPEN provider passes its owner's `token` (Bearer); a founder box
-    passes the shared `provider_key`. Either authorizes claim/result/heartbeat."""
+    passes the shared `provider_key`. Either authorizes claim/result/heartbeat.
+
+    `executor(workspace, run_command, timeout_s) -> outcome` runs the solver;
+    defaults to local subprocess (run_solver). A Modal bridge passes
+    run_solver_modal to execute on a serverless cloud GPU instead."""
+    _exec = executor or run_solver
     base = base_url.rstrip("/")
     pid = provider.get("provider_id", "")
     headers: Dict[str, str] = {}
@@ -76,8 +82,8 @@ def serve_http_once(provider: Dict[str, Any], base_url: str, *, provider_key: st
             wall = 0.0
         else:
             t0 = time.time()
-            outcome = run_solver(ws, job.get("run_command", ""),
-                                 int(job.get("max_runtime_s", 600)))
+            outcome = _exec(ws, job.get("run_command", ""),
+                            int(job.get("max_runtime_s", 600)))
             wall = round(time.time() - t0, 2)
         manifest = build_result_manifest(job, ws, provider, outcome, wall)
 
@@ -98,14 +104,15 @@ def serve_http_once(provider: Dict[str, Any], base_url: str, *, provider_key: st
 
 def serve_http(provider: Dict[str, Any], base_url: str, *, provider_key: str = "",
                token: str = "", allow_exec: bool = False, interval_s: int = 5,
-               once: bool = False, on_event: Optional[Callable] = None) -> None:
+               once: bool = False, executor: Optional[Callable] = None,
+               on_event: Optional[Callable] = None) -> None:
     """Poll loop over HTTP. Mirrors provider.serve but needs no git repo."""
     _emit(on_event, "start", {"base": base_url, "provider": provider.get("provider_id")})
     while True:
         try:
             handled = serve_http_once(provider, base_url, provider_key=provider_key,
                                       token=token, allow_exec=allow_exec,
-                                      on_event=on_event)
+                                      executor=executor, on_event=on_event)
         except Exception as e:                 # never let one bad pass kill the loop
             _emit(on_event, "loop_error", {"error": f"{type(e).__name__}: {e}"})
             handled = None
