@@ -775,6 +775,8 @@ def _print_help() -> None:
         ("/yes",               "auto-approve edits this session (accept-edits mode)"),
         ("/readonly",          "switch to read-only this session (no edits)"),
         ("/default",           "restore default mode (edits allowed, each confirmed)"),
+        ("/login",             "sign in to physicsworldmodel.org (earn/spend PWM) without restarting"),
+        ("/whoami",            "show your current sign-in / how the agent is powered"),
     ]
     width = max(len(r[0]) for r in rows)
     for cmd, descr in rows:

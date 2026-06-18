@@ -53,7 +53,8 @@ def _dispatch_slash(line: str, state: dict) -> tuple[bool, str]:
         return True, "bye"
     if cmd in ("help", "?"):
         return True, ("slash commands: /help /clear /model <backend> [id] "
-                      "/mode [name|specific <q>] /readonly /yes /default /cost /files /exit")
+                      "/mode [name|specific <q>] /login /whoami /feedback <text> "
+                      "/readonly /yes /default /cost /files /exit")
     if cmd == "readonly":
         state["read_only"] = True
         return True, "read-only: ON (mutating tools blocked)"
@@ -536,6 +537,43 @@ def run_common_repl(
                         else "program full (first-N guard)" if status == "program_full"
                         else f"failed ({status})")
                 print(f"[pwm] feedback for {active_spec.name}: {note}", flush=True)
+                continue
+
+            # /login — sign in to physicsworldmodel.org mid-session (device flow)
+            # so a logged-out or expired session can earn/spend PWM WITHOUT
+            # restarting, then refresh the gate so the next turn uses the token.
+            if cmd == "login":
+                try:
+                    from ai4science.commands.login import _login_pwm
+                    _login_pwm(arg or None)        # arg = optional base/mirror url
+                except (SystemExit, Exception):
+                    pass                           # _login_pwm prints its own reason
+                try:
+                    fresh = PwmGate.from_env()   # PwmGate imported at module level
+                    gate.token, gate.base, gate.enabled = (
+                        fresh.token, fresh.base, fresh.enabled)
+                except Exception:
+                    pass
+                continue
+
+            # /whoami — show the current login / how the agent is powered.
+            if cmd == "whoami":
+                import os as _os
+                try:
+                    from ai4science import pwm_account
+                    acct = pwm_account.load() or {}
+                except Exception:
+                    acct = {}
+                tok = (_os.environ.get("PWM_TOKEN") or _os.environ.get("PWM_ONBOARD_TOKEN")
+                       or acct.get("token"))
+                if tok:
+                    who = (acct.get("email")
+                           or (f"user #{acct.get('user_id')}" if acct.get("user_id") else "signed in"))
+                    print(f"[pwm] signed in: {who}  ({acct.get('base') or 'physicsworldmodel.org'})",
+                          flush=True)
+                else:
+                    print("[pwm] not signed in — /login to sign in (or set PWM_TOKEN).",
+                          flush=True)
                 continue
 
             # /model needs the live session — handle inline.
