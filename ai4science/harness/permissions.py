@@ -186,12 +186,25 @@ class PermissionGate:
         return bool(self.confirm(name, args, preview)), "user decision"
 
 
+def _write_preview(path: str, content: str, *, max_lines: int = 40) -> str:
+    """Claude-Code-style preview of a file WRITE: a clean numbered listing of the
+    content (not a unified diff with '+' on every line). Capped for long files."""
+    lines = content.splitlines()
+    n = len(lines)
+    body = "\n".join(f"{i:>4}│ {ln}" for i, ln in enumerate(lines[:max_lines], 1))
+    more = f"\n     … (+{n - max_lines} more lines)" if n > max_lines else ""
+    plural = "" if n == 1 else "s"
+    return f"Write {path}  ({n} line{plural})\n{body}{more}"
+
+
 def _preview(name: str, args: Dict) -> str:
     if name == "bash":
         return f"$ {args.get('cmd', '')}"
     if name == "write":
-        from ai4science.harness.diff import unified_diff
-        return unified_diff(args.get("path", "?"), "", args.get("content", ""))
+        # New/overwritten files render as a clean numbered listing — Claude Code
+        # parity. (Edits below still show a red/green diff, which is what a diff
+        # is good for.)
+        return _write_preview(args.get("path", "?"), args.get("content", ""))
     if name == "edit":
         from ai4science.harness.diff import unified_diff
         old = args.get("old", "")

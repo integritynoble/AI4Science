@@ -1,5 +1,20 @@
 from pathlib import Path
-from ai4science.harness.permissions import PermissionGate, SandboxError
+from ai4science.harness.permissions import PermissionGate, SandboxError, _preview
+
+
+def test_write_preview_is_clean_listing_not_diff():
+    """A new-file WRITE renders as a numbered listing (Claude Code parity), NOT
+    a unified diff with '+' on every line."""
+    content = "\n".join(f"line {i}" for i in range(1, 249))
+    out = _preview("write", {"path": "code/x.py", "content": content})
+    assert "--- a/" not in out and "+++ b/" not in out and "@@" not in out
+    assert out.startswith("Write code/x.py  (248 lines)")
+    assert "   1│ line 1" in out and "+208 more lines" in out
+
+
+def test_edit_preview_still_shows_diff():
+    out = _preview("edit", {"path": "x.py", "old": "alpha", "new": "beta"})
+    assert "-alpha" in out and "+beta" in out
 
 
 def test_read_only_blocks_mutating(tmp_path):
