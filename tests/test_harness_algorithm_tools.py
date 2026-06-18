@@ -13,16 +13,20 @@ CI_TOOLS = {"ci_modalities", "ci_algorithms", "ci_algorithm_info", "ci_run_algor
             "run_algorithm"}
 
 
-def test_run_algorithm_preview_and_pilot_scope():
+def test_run_algorithm_preview_and_modality_scope():
     from pathlib import Path
     tool = {t.name: t for t in algorithm_tools.algorithm_tools()}["run_algorithm"]
+    data = Path(algorithm_tools.__file__).parent / "data"
     # preview (confirm omitted) must NOT dispatch — just describe the run + cost
-    out = tool.func(".", modality="cassi", solver="gap_tv")
-    assert "[preview]" in out and "confirm=true" in out and "founder" in out
-    # non-pilot modality is refused with guidance (no dispatch)
-    assert "modality='cassi'" in tool.func(".", modality="mri")
-    # the bundled standard scene ships with the package
-    assert (Path(algorithm_tools.__file__).parent / "data" / "cassi_ref.npz").exists()
+    for m in ("cassi", "mri", "lensless"):
+        out = tool.func(".", modality=m)
+        assert "[preview]" in out and "confirm=true" in out, m
+    # an untuned/unsupported modality is refused with guidance (no dispatch)
+    assert "untuned" in tool.func(".", modality="ct")
+    # bundled inputs ship with the package
+    assert (data / "cassi_ref.npz").exists()
+    assert (data / "specs" / "mri.json").exists()
+    assert (data / "specs" / "lensless.json").exists()
 BASE_AGENTS = {"unified-LLM", "claude-code", "codex"}
 
 

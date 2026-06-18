@@ -7,6 +7,7 @@ recursive-include ai4science/prompts *.md
 recursive-include ai4science/examples *.md
 recursive-include ai4science/examples *.py
 recursive-include ai4science/harness/data *.npz
+recursive-include ai4science/harness/data *.json
 include docs/*.md
 exclude examples/**
 prune tests

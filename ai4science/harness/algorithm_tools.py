@@ -204,6 +204,34 @@ out["seconds"] = round(time.time() - t, 1)
 print("RESULT " + json.dumps(out))
 '''
 
+# Spec-driven modalities: run pwm_core's simulate→recon→analyze pipeline from a
+# tiny self-contained spec (synthetic phantom, no bundled data). Only modalities
+# VERIFIED to return a finite, positive PSNR via the generic tv_fista pipeline
+# are listed — the other shipped example specs are untuned (degenerate metrics).
+_SPEC_MODALITIES = ("mri", "lensless")
+
+_SPEC_RUN_TMPL = '''\
+import json, time
+out = {"mode": "spec"}
+t = time.time()
+try:
+    from pwm_core.api.types import ExperimentSpec
+    from pwm_core.api.endpoints import simulate
+    spec = ExperimentSpec.model_validate(json.load(open("data/spec.json")))
+    res = simulate(spec)
+    r = res.recon[0] if res.recon else None
+    out["solver"] = getattr(r, "solver_id", None)
+    m = dict(getattr(r, "metrics", {}) or {})
+    p = m.get("psnr")
+    out["psnr_db"] = round(float(p), 3) if isinstance(p, (int, float)) else None
+    out["metrics"] = {k: m.get(k) for k in ("psnr", "ssim", "mse") if k in m}
+    out["source"] = "pwm_core.api.simulate"
+except Exception as e:
+    out["error"] = "{}:{}".format(type(e).__name__, str(e)[:160])
+out["seconds"] = round(time.time() - t, 1)
+print("RESULT " + json.dumps(out, default=str))
+'''
+
 
 def _run_algorithm_tool() -> Tool:
     def _run(workspace, *, modality: str = "cassi", solver: str = "gap_tv",
@@ -216,17 +244,31 @@ def _run_algorithm_tool() -> Tool:
         from pathlib import Path as _P
 
         modality = (modality or "cassi").strip().lower()
-        solver = (solver or "gap_tv").strip().lower()
-        if modality != "cassi":
-            return ("[run_algorithm] verified pilot is modality='cassi' "
-                    f"(solvers: {', '.join(sorted(_CASSI_PRESETS))}). Other modalities "
-                    "are being wired; for now run cassi here, or use compute_dispatch "
-                    "with your own code.")
-        iters, lam = _CASSI_PRESETS.get(solver, (100, 0.1))
+        data_dir = _P(__file__).resolve().parent / "data"
 
-        ref = _P(__file__).resolve().parent / "data" / "cassi_ref.npz"
-        if not ref.exists():
-            return f"[run_algorithm] bundled reference scene missing at {ref}"
+        # Build (run_solver source, inputs to ship, label) per modality.
+        if modality == "cassi":
+            solver = (solver or "gap_tv").strip().lower()
+            iters, lam = _CASSI_PRESETS.get(solver, (100, 0.1))
+            ref = data_dir / "cassi_ref.npz"
+            if not ref.exists():
+                return f"[run_algorithm] bundled CASSI scene missing at {ref}"
+            run_src = _RUN_SOLVER_TMPL.format(iters=iters, lam=lam, solver=solver)
+            inputs = [(ref, "data/cassi_ref.npz")]
+            label = (f"CASSI/{solver} (GAP-TV {iters} iters, lam={lam}) on the bundled "
+                     "128×128×28 KAIST scene")
+        elif modality in _SPEC_MODALITIES:
+            spec = data_dir / "specs" / f"{modality}.json"
+            if not spec.exists():
+                return f"[run_algorithm] bundled spec missing at {spec}"
+            run_src = _SPEC_RUN_TMPL
+            inputs = [(spec, "data/spec.json")]
+            label = f"{modality} (pwm_core simulate→recon→analyze, synthetic phantom)"
+        else:
+            return ("[run_algorithm] supported modalities (verified to run + return a "
+                    f"finite, positive metric): cassi, {', '.join(_SPEC_MODALITIES)}. "
+                    "Other modalities' shipped example specs are untuned (degenerate "
+                    "metrics) — use compute_dispatch with your own code for those.")
 
         from ai4science.harness import compute_tools as _ct
         prov = _ct._resolve(provider)
@@ -236,17 +278,16 @@ def _run_algorithm_tool() -> Tool:
         from ai4science.compute import billing as _billing
         est = _billing.compute_pwm(prov.pwm_per_hour(), max_runtime_s)
         if confirm is not True:
-            return (f"[preview] would run CASSI/{solver} (GAP-TV {iters} iters, lam={lam}) "
-                    f"on {prov.provider_id} over the relay with the bundled 128×128×28 "
-                    f"KAIST scene.\n  est PWM: up to {est} → {prov.wallet_address}\n"
-                    "Pass confirm=true to run (≈40–60s; returns PSNR).")
+            return (f"[preview] would run {label} on {prov.provider_id} over the relay.\n"
+                    f"  est PWM: up to {est} → {prov.wallet_address}\n"
+                    "Pass confirm=true to run (~40–90s; returns the metric).")
 
-        # Build the throwaway job workspace: run_solver.py + the bundled scene.
+        # Build the throwaway job workspace: run_solver.py + the modality inputs.
         job = _P(tempfile.mkdtemp(prefix="ai4s_runalgo_"))
         (job / "code").mkdir(); (job / "data").mkdir()
-        (job / "code" / "run_solver.py").write_text(
-            _RUN_SOLVER_TMPL.format(iters=iters, lam=lam, solver=solver))
-        shutil.copyfile(ref, job / "data" / "cassi_ref.npz")
+        (job / "code" / "run_solver.py").write_text(run_src)
+        for _src, _rel in inputs:
+            shutil.copyfile(_src, job / _rel)
         try:
             from ai4science.compute.transport import select
             _mode, tx = select(prov)
@@ -269,12 +310,13 @@ def _run_algorithm_tool() -> Tool:
                     line = next((l for l in tail.splitlines() if l.startswith("RESULT ")), "")
                     if line:
                         m = _json.loads(line[len("RESULT "):])
-                        if "psnr_db" in m:
-                            return (f"✓ ran CASSI/{solver} on {prov.provider_id}: "
-                                    f"PSNR={m['psnr_db']} dB  (recon {m.get('recon_shape')}, "
-                                    f"{m.get('iters')} iters, {m.get('seconds')}s, "
-                                    f"source {m.get('source')}). job {jid}")
-                        return f"[run_algorithm] solver error on GPU: {m.get('error')}  job {jid}"
+                        if m.get("psnr_db") is not None:
+                            return (f"✓ ran {modality} on {prov.provider_id}: "
+                                    f"PSNR={m['psnr_db']} dB  ({m.get('seconds')}s, "
+                                    f"solver {m.get('solver') or m.get('source', '-')}). "
+                                    f"job {jid}")
+                        return (f"[run_algorithm] ran on GPU but no finite metric: "
+                                f"{m.get('error') or m}  job {jid}")
                     return (f"[run_algorithm] job {jid} {state} but no RESULT line; "
                             f"poll with compute_result(job_id=\"{jid}\", "
                             f"provider=\"{prov.provider_id}\").")
@@ -287,12 +329,14 @@ def _run_algorithm_tool() -> Tool:
         name="run_algorithm",
         description=("Run a reconstruction algorithm on a compute provider (the "
                      "sub-GPU) and return its quality metric (PSNR) — for users who "
-                     "don't have the algorithm stack/data locally. Verified pilot: "
-                     "modality='cassi' with a bundled standard KAIST scene, solver in "
-                     "{gap_tv, traditional_cpu, best_quality, small}. Pass confirm=true "
-                     "to run (it ships a tiny solver + the scene to provider=founder-gpu "
-                     "over the relay, ~40–60s, PWM charged on a verified pass). Without "
-                     "confirm you get a cost preview. Needs `ai4science login`."),
+                     "don't have the algorithm stack/data locally. Verified modalities: "
+                     "'cassi' (solver in {gap_tv, traditional_cpu, best_quality, small}, "
+                     "bundled KAIST scene), 'mri', 'lensless' (pwm_core simulate "
+                     "pipeline, synthetic phantom). Pass confirm=true to run (ships a "
+                     "tiny solver + inputs to provider=founder-gpu over the relay, "
+                     "~40–90s, PWM charged on a verified pass); without confirm you get "
+                     "a cost preview. Needs `ai4science login`. Other modalities' specs "
+                     "are untuned — use compute_dispatch with your own code for those."),
         parameters={"type": "object", "properties": {
             "modality": {"type": "string"}, "solver": {"type": "string"},
             "provider": {"type": "string"}, "max_runtime_s": {"type": "integer"},
