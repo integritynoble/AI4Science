@@ -278,8 +278,11 @@ def _run_algorithm_tool() -> Tool:
         from ai4science.compute import billing as _billing
         est = _billing.compute_pwm(prov.pwm_per_hour(), max_runtime_s)
         if confirm is not True:
-            return (f"[preview] would run {label} on {prov.provider_id} over the relay.\n"
-                    f"  est PWM: up to {est} → {prov.wallet_address}\n"
+            cascade = (" via the GPU recall cascade (sub-GPU1 → sub-GPU2 → Modal — "
+                       "whichever is online with a free slot)"
+                       if prov.provider_id in ("founder-gpu", "founder-1-subgpu") else "")
+            return (f"[preview] would run {label} on {prov.provider_id}{cascade} over the "
+                    f"relay.\n  est PWM: up to {est} → {prov.wallet_address}\n"
                     "Pass confirm=true to run (~40–90s; returns the metric).")
 
         # Build the throwaway job workspace: run_solver.py + the modality inputs.
@@ -298,6 +301,8 @@ def _run_algorithm_tool() -> Tool:
                              run_command="python code/run_solver.py",
                              workspace=job, max_runtime_s=max_runtime_s)
             jid = jb.get("job_id")
+            # the relay stores the job under the provider the recall cascade picked
+            routed = jb.get("provider_id") or prov.provider_id
             # inline poll up to ~3 min
             deadline = _time.time() + min(max_runtime_s, 200)
             while _time.time() < deadline:
@@ -308,35 +313,40 @@ def _run_algorithm_tool() -> Tool:
                     res = st.get("result") or {}
                     tail = res.get("solver_stdout_tail", "") if isinstance(res, dict) else ""
                     line = next((l for l in tail.splitlines() if l.startswith("RESULT ")), "")
+                    ran_on = (res.get("provider") or {}).get("provider_id") or routed
                     if line:
                         m = _json.loads(line[len("RESULT "):])
                         if m.get("psnr_db") is not None:
-                            return (f"✓ ran {modality} on {prov.provider_id}: "
+                            return (f"✓ ran {modality} on {ran_on}: "
                                     f"PSNR={m['psnr_db']} dB  ({m.get('seconds')}s, "
                                     f"solver {m.get('solver') or m.get('source', '-')}). "
                                     f"job {jid}")
-                        return (f"[run_algorithm] ran on GPU but no finite metric: "
+                        return (f"[run_algorithm] ran on {ran_on} but no finite metric: "
                                 f"{m.get('error') or m}  job {jid}")
-                    return (f"[run_algorithm] job {jid} {state} but no RESULT line; "
-                            f"poll with compute_result(job_id=\"{jid}\", "
-                            f"provider=\"{prov.provider_id}\").")
-            return (f"[run_algorithm] dispatched job {jid} (still running) — poll with "
-                    f"compute_result(job_id=\"{jid}\", provider=\"{prov.provider_id}\").")
+                    return (f"[run_algorithm] job {jid} {state} on {ran_on} but no RESULT "
+                            f"line; poll with compute_result(job_id=\"{jid}\", "
+                            f"provider=\"{ran_on}\").")
+            return (f"[run_algorithm] dispatched job {jid} (routed to {routed}, still "
+                    f"running) — poll with compute_result(job_id=\"{jid}\", "
+                    f"provider=\"{routed}\").")
         finally:
             shutil.rmtree(job, ignore_errors=True)
 
     return Tool(
         name="run_algorithm",
-        description=("Run a reconstruction algorithm on a compute provider (the "
-                     "sub-GPU) and return its quality metric (PSNR) — for users who "
-                     "don't have the algorithm stack/data locally. Verified modalities: "
-                     "'cassi' (solver in {gap_tv, traditional_cpu, best_quality, small}, "
-                     "bundled KAIST scene), 'mri', 'lensless' (pwm_core simulate "
-                     "pipeline, synthetic phantom). Pass confirm=true to run (ships a "
-                     "tiny solver + inputs to provider=founder-gpu over the relay, "
-                     "~40–90s, PWM charged on a verified pass); without confirm you get "
-                     "a cost preview. Needs `ai4science login`. Other modalities' specs "
-                     "are untuned — use compute_dispatch with your own code for those."),
+        description=("Run a reconstruction algorithm on a GPU and return its quality "
+                     "metric (PSNR) — for users who don't have the algorithm stack/data "
+                     "locally. Defaults to the GPU recall cascade (provider=founder-gpu): "
+                     "the relay routes to sub-GPU1 → sub-GPU2 → Modal, picking whichever "
+                     "is online with a free slot (same price), so you needn't choose a "
+                     "box. Verified modalities: 'cassi' (solver in {gap_tv, "
+                     "traditional_cpu, best_quality, small}, bundled KAIST scene), 'mri', "
+                     "'lensless' (pwm_core simulate pipeline, synthetic phantom). Pass "
+                     "confirm=true to run (ships a tiny solver + inputs over the relay, "
+                     "~40–90s, PWM charged on a verified pass; the result names the GPU it "
+                     "actually ran on); without confirm you get a cost preview. Needs "
+                     "`ai4science login`. Other modalities' specs are untuned — use "
+                     "compute_dispatch with your own code for those."),
         parameters={"type": "object", "properties": {
             "modality": {"type": "string"}, "solver": {"type": "string"},
             "provider": {"type": "string"}, "max_runtime_s": {"type": "integer"},
