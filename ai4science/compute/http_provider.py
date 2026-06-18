@@ -102,21 +102,74 @@ def serve_http_once(provider: Dict[str, Any], base_url: str, *, provider_key: st
     return job_id
 
 
+def _go_offline(base: str, provider_id: str, headers: Dict[str, str],
+                on_event: Optional[Callable] = None) -> None:
+    """Tell the relay to drop this provider's heartbeat so it's marked offline
+    immediately (graceful shutdown) — the recall cascade then fails over at once
+    instead of waiting for the heartbeat to go stale."""
+    try:
+        import httpx
+        with httpx.Client(timeout=10.0) as c:
+            c.post(f"{base}/api/v1/compute/providers/{provider_id}/offline",
+                   headers=headers)
+        _emit(on_event, "offline", {"provider": provider_id})
+    except Exception as e:
+        _emit(on_event, "offline_error", {"error": f"{type(e).__name__}: {e}"})
+
+
 def serve_http(provider: Dict[str, Any], base_url: str, *, provider_key: str = "",
                token: str = "", allow_exec: bool = False, interval_s: int = 5,
                once: bool = False, executor: Optional[Callable] = None,
                on_event: Optional[Callable] = None) -> None:
-    """Poll loop over HTTP. Mirrors provider.serve but needs no git repo."""
-    _emit(on_event, "start", {"base": base_url, "provider": provider.get("provider_id")})
-    while True:
-        try:
-            handled = serve_http_once(provider, base_url, provider_key=provider_key,
-                                      token=token, allow_exec=allow_exec,
-                                      executor=executor, on_event=on_event)
-        except Exception as e:                 # never let one bad pass kill the loop
-            _emit(on_event, "loop_error", {"error": f"{type(e).__name__}: {e}"})
-            handled = None
-        if once:
-            break
-        if handled is None:
-            time.sleep(interval_s)
+    """Poll loop over HTTP. Mirrors provider.serve but needs no git repo.
+
+    On a continuous (non-`once`) run, a SIGTERM (systemctl stop) or Ctrl+C
+    breaks the loop cleanly and POSTs /offline so the relay marks the provider
+    offline at once — the GPU recall cascade fails over without the ~180s
+    heartbeat-staleness wait."""
+    import signal
+
+    base = base_url.rstrip("/")
+    pid = provider.get("provider_id", "")
+    headers: Dict[str, str] = {}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    if provider_key:
+        headers["X-Provider-Key"] = provider_key
+
+    stop = {"v": False}
+
+    def _on_term(_signum, _frame):
+        stop["v"] = True
+
+    prev_term = None
+    try:                                       # signals only settable on the main thread
+        prev_term = signal.signal(signal.SIGTERM, _on_term)
+    except (ValueError, OSError):
+        prev_term = None
+
+    _emit(on_event, "start", {"base": base_url, "provider": pid})
+    try:
+        while True:
+            try:
+                handled = serve_http_once(provider, base_url, provider_key=provider_key,
+                                          token=token, allow_exec=allow_exec,
+                                          executor=executor, on_event=on_event)
+            except Exception as e:             # never let one bad pass kill the loop
+                _emit(on_event, "loop_error", {"error": f"{type(e).__name__}: {e}"})
+                handled = None
+            if once or stop["v"]:
+                break
+            if handled is None:                # interruptible idle wait
+                for _ in range(max(1, int(interval_s))):
+                    if stop["v"]:
+                        break
+                    time.sleep(1)
+    finally:
+        if not once:                           # cron --once manages its own cadence
+            _go_offline(base, pid, headers, on_event)
+        if prev_term is not None:
+            try:
+                signal.signal(signal.SIGTERM, prev_term)
+            except Exception:
+                pass
