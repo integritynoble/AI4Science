@@ -72,6 +72,46 @@ def _is_excluded(p: Path) -> bool:
     return bool(parts & _TAR_EXCLUDE_DIRS) or p.name.endswith((".pyc", ".pyo"))
 
 
+# Top-level workspace dirs that are INPUTS, not outputs — never returned: the
+# shipped solver code and any (often huge) downloaded datasets.
+_ARTIFACT_SKIP_TOP = {
+    "code", "data", "datasets", "dataset", "raw", ".data", "input", "inputs",
+}
+
+
+def pack_artifacts(workspace: Path, *, max_bytes: int = 190_000_000):
+    """Pack everything a job WROTE — runs/, results/, checkpoints, logs, *.pt,
+    anywhere in the workspace EXCEPT the shipped code/ + data/ inputs and
+    venv/caches — so trained checkpoints come back regardless of the script's
+    output layout. Returns (bytes, [relative names]) or None if nothing was
+    written. Raises ValueError over max_bytes (the blob ceiling)."""
+    workspace = Path(workspace)
+    if not workspace.is_dir():
+        return None
+    members = []
+    for top in workspace.iterdir():
+        if top.name in _ARTIFACT_SKIP_TOP or top.name in _TAR_EXCLUDE_DIRS:
+            continue
+        if top.is_dir():
+            members += [p for p in top.rglob("*") if p.is_file() and not _is_excluded(p)]
+        elif top.is_file() and not _is_excluded(top):
+            members.append(top)
+    if not members:
+        return None
+    names = sorted(str(p.relative_to(workspace)) for p in members)
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        for p in members:
+            tar.add(str(p), arcname=str(p.relative_to(workspace)))
+    raw = buf.getvalue()
+    if len(raw) > max_bytes:
+        raise ValueError(
+            f"outputs pack to ~{len(raw) // 1_000_000} MB (> "
+            f"{max_bytes // 1_000_000} MB cap) — too large to return over the "
+            "relay; write smaller/fewer artifacts, or keep datasets in data/.")
+    return raw, names
+
+
 def pack_dir(path: Path, *, max_bytes: int = 190_000_000):
     """Gzip-tar a directory's contents (arcnames relative to it) for artifact
     return. Returns (bytes, [relative file names]) or None if the directory is
