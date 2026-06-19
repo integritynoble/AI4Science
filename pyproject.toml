@@ -37,6 +37,8 @@ dependencies = [
   "httpx>=0.27",                                  # PWM login/billing + founder LLM proxy
   "prompt_toolkit>=3.0",                          # bordered/full-screen TUI (AI4SCIENCE_TUI)
   "pyreadline3>=3.4; sys_platform == 'win32'",    # arrow keys/history on Windows
+  "optiland>=0.6.0",                              # Optical design simulation (Phase 0)
+  "rayoptics>=0.9.8",                             # Optical design ray tracing (Phase 0)
 ]
 
 [project.optional-dependencies]
