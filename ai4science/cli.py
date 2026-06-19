@@ -665,6 +665,7 @@ def main() -> None:
         "init", "contribute", "validate", "judge", "overseer", "package",
         "submit", "status", "version", "agents", "chat", "compute", "llm",
         "stake", "plugins", "tools", "login", "whoami", "logout", "prefer", "update",
+        "register-agent", "feedback", "report-bug",
     }
     if any(tok in _subcommands for tok in argv_raw):
         app()
