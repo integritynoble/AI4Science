@@ -17,7 +17,7 @@ AGENT = AgentSpec(
     description="Simulated peer review of a paper file → reviews + decision.",
     keywords=("paper", "review", "peer review", "referee", "manuscript"),
     system_prompt=PAPER_PROMPT,
-    capabilities=("pwm-actions", "paper-review", "compute-providers",
+    capabilities=("pwm-actions", "pwm-data", "paper-review", "compute-providers",
                   "ci-algorithms"),
     order=3,
 )
