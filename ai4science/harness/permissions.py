@@ -186,12 +186,37 @@ class PermissionGate:
         return bool(self.confirm(name, args, preview)), "user decision"
 
 
+def _syntax_listing(content: str, path: str) -> str:
+    """Syntax-highlighted numbered listing (Claude-Code-style), via rich. Falls
+    back to a plain numbered listing if rich/lexer is unavailable."""
+    try:
+        import io
+        import shutil
+        from rich.console import Console
+        from rich.syntax import Syntax
+        try:
+            lexer = Syntax.guess_lexer(path, content)
+        except Exception:
+            lexer = "text"
+        width = max(40, min(shutil.get_terminal_size((100, 24)).columns, 120))
+        syn = Syntax(content, lexer, line_numbers=True, theme="ansi_dark",
+                     word_wrap=False, background_color="default")
+        con = Console(file=io.StringIO(), force_terminal=True,
+                      color_system="256", width=width)
+        con.print(syn)
+        return con.file.getvalue().rstrip("\n")
+    except Exception:
+        return "\n".join(f"{i:>4}│ {ln}"
+                         for i, ln in enumerate(content.splitlines(), 1))
+
+
 def _write_preview(path: str, content: str, *, max_lines: int = 40) -> str:
-    """Claude-Code-style preview of a file WRITE: a clean numbered listing of the
-    content (not a unified diff with '+' on every line). Capped for long files."""
+    """Claude-Code-style preview of a file WRITE: a syntax-highlighted numbered
+    listing of the content (not a unified diff with '+' on every line). Capped
+    for long files."""
     lines = content.splitlines()
     n = len(lines)
-    body = "\n".join(f"{i:>4}│ {ln}" for i, ln in enumerate(lines[:max_lines], 1))
+    body = _syntax_listing("\n".join(lines[:max_lines]), path)
     more = f"\n     … (+{n - max_lines} more lines)" if n > max_lines else ""
     plural = "" if n == 1 else "s"
     return f"Write {path}  ({n} line{plural})\n{body}{more}"
