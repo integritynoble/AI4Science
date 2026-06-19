@@ -26,6 +26,13 @@ TOOL_PRICES: dict = {
     "optics_to_digital_twin":    3.0,
     "optics_coded_design":       2.5,
     "optics_ground":             1.5,
+    # OPEN tools (Phase 2)
+    "optics_grating":            1.5,
+    "optics_thinfilm":           2.0,
+    "optics_stray_light":        2.5,
+    "optics_wave":               2.0,
+    "optics_monte_carlo":        3.0,
+    "optics_snr":                1.0,
 }
 
 
@@ -363,6 +370,251 @@ def optics_tools(*, gate_provider: Optional[Callable] = None,
         except Exception as exc:
             return f"[optics error] {exc}"
 
+    # ── Phase 2: optics_grating ─────────────────────────────────────────────
+    def _optics_grating(workspace_path, *,
+                        groove_density_lpmm: float = 600.0,
+                        wavelengths_nm: list = None,
+                        blaze_angle_deg: float = 0.0,
+                        order: int = 1,
+                        polarization: str = "avg",
+                        n_grooves: int = 1000,
+                        incident_angle_deg: float = 0.0,
+                        output_file: str = "grating.json") -> str:
+        gate = _gate()
+        ok, msg = _charge(gate, "optics_grating", _idem("optics_grating"))
+        if not ok:
+            return f"[optics error] {msg}"
+        try:
+            from pwm_core.optics.grating import grating_efficiency
+            wls = wavelengths_nm or list(range(400, 801, 10))
+            result = grating_efficiency(
+                groove_density_lpmm=groove_density_lpmm,
+                wavelengths_nm=wls,
+                blaze_angle_deg=blaze_angle_deg,
+                order=order,
+                polarization=polarization,
+                n_grooves=n_grooves,
+                incident_angle_deg=incident_angle_deg,
+            )
+            out_path = Path(workspace_path) / output_file
+            out_path.write_text(json.dumps(result, indent=2))
+            return json.dumps({"ok": True, "file": output_file,
+                               "peak_wavelength_nm": result["peak_wavelength_nm"],
+                               "resolving_power": result["resolving_power"],
+                               "free_spectral_range_nm": result["free_spectral_range_nm"]})
+        except Exception as exc:
+            return f"[optics error] {exc}"
+
+    # ── Phase 2: optics_thinfilm ─────────────────────────────────────────────
+    def _optics_thinfilm(workspace_path, *,
+                         layers: list = None,
+                         substrate_n: float = 1.52,
+                         incident_n: float = 1.0,
+                         wavelengths_nm: list = None,
+                         angle_deg: float = 0.0,
+                         polarization: str = "avg",
+                         design_type: str = None,
+                         center_nm: float = 550.0,
+                         bandwidth_nm: float = 50.0,
+                         cutoff_nm: float = 550.0,
+                         n_high: float = 2.35,
+                         n_low: float = 1.46,
+                         n_design_layers: int = 7,
+                         output_file: str = "thinfilm.json") -> str:
+        gate = _gate()
+        ok, msg = _charge(gate, "optics_thinfilm", _idem("optics_thinfilm"))
+        if not ok:
+            return f"[optics error] {msg}"
+        try:
+            from pwm_core.optics.thinfilm import tmm, design_bandpass, design_longpass
+            wls = wavelengths_nm or list(range(400, 801, 5))
+            # Auto-design if no layers given
+            if layers is None:
+                if design_type == "longpass":
+                    layers = design_longpass(cutoff_nm, n_high, n_low, n_design_layers)
+                else:
+                    layers = design_bandpass(center_nm, bandwidth_nm, n_high, n_low, n_design_layers)
+            result = tmm(layers=layers, substrate_n=substrate_n, incident_n=incident_n,
+                         wavelengths_nm=wls, angle_deg=angle_deg, polarization=polarization)
+            result["layers"] = layers
+            out_path = Path(workspace_path) / output_file
+            out_path.write_text(json.dumps(result, indent=2))
+            # Peak transmission
+            T = result["T"]
+            peak_T = max(T) if T else 0.0
+            return json.dumps({"ok": True, "file": output_file,
+                               "n_layers": len(layers),
+                               "peak_transmission": round(peak_T, 4)})
+        except Exception as exc:
+            return f"[optics error] {exc}"
+
+    # ── Phase 2: optics_stray_light ──────────────────────────────────────────
+    def _optics_stray_light(workspace_path, *,
+                             prescription: str = "system.json",
+                             n_rays: int = 10000,
+                             bsdf_roughness_nm: float = 2.0,
+                             baffle_transmission: float = 0.0,
+                             seed: int = 42,
+                             output_file: str = "stray_light.json") -> str:
+        gate = _gate()
+        ok, msg = _charge(gate, "optics_stray_light", _idem("optics_stray_light"))
+        if not ok:
+            return f"[optics error] {msg}"
+        try:
+            import json as _json
+            from pwm_core.optics.stray_light import stray_light_analysis
+            presc_path = Path(workspace_path) / prescription
+            presc_dict = _json.loads(presc_path.read_text()) if presc_path.exists() else {}
+            result = stray_light_analysis(
+                prescription_dict=presc_dict,
+                n_rays=n_rays,
+                bsdf_roughness_nm=bsdf_roughness_nm,
+                baffle_transmission=baffle_transmission,
+                seed=seed,
+            )
+            out_path = Path(workspace_path) / output_file
+            out_path.write_text(json.dumps(result, indent=2))
+            return json.dumps({"ok": True, "file": output_file,
+                               "ghost_fraction": result["ghost_fraction"],
+                               "veiling_glare_index": result["veiling_glare_index"],
+                               "recommendations": result["recommendations"]})
+        except Exception as exc:
+            return f"[optics error] {exc}"
+
+    # ── Phase 2: optics_wave ─────────────────────────────────────────────────
+    def _optics_wave(workspace_path, *,
+                     prescription: str = "system.json",
+                     mode: str = "psf",
+                     grid_size: int = 128,
+                     wavelength_nm: float = 550.0,
+                     dz_mm: float = 1.0,
+                     n_fdtd_layers: list = None,
+                     thickness_fdtd_nm: list = None,
+                     na: float = 0.5,
+                     output_file: str = "wave.json") -> str:
+        gate = _gate()
+        ok, msg = _charge(gate, "optics_wave", _idem("optics_wave"))
+        if not ok:
+            return f"[optics error] {msg}"
+        try:
+            import json as _json
+            if mode == "psf":
+                from pwm_core.optics.wave import coherent_psf
+                presc_path = Path(workspace_path) / prescription
+                presc_dict = _json.loads(presc_path.read_text()) if presc_path.exists() else {}
+                result = coherent_psf(presc_dict, grid_size=grid_size, wavelength_nm=wavelength_nm)
+                # Compact PSF for JSON
+                result["psf_shape"] = [len(result["psf_intensity"]),
+                                       len(result["psf_intensity"][0]) if result["psf_intensity"] else 0]
+                result["psf_intensity"] = "see psf_shape (omitted for brevity)"
+                result["psf_complex_real"] = "omitted"
+                result["psf_complex_imag"] = "omitted"
+            elif mode == "fdtd":
+                from pwm_core.optics.wave import fdtd_1d
+                n_layers = n_fdtd_layers or [1.5, 1.0]
+                t_layers = thickness_fdtd_nm or [100.0, 50.0]
+                result = fdtd_1d(n_layers=n_layers, thickness_nm=t_layers,
+                                 wavelengths_nm=[wavelength_nm])
+            elif mode == "diffraction_limit":
+                from pwm_core.optics.wave import diffraction_limit
+                result = diffraction_limit(wavelength_nm=wavelength_nm, na=na)
+            else:
+                return f"[optics error] unknown mode {mode!r}; use 'psf', 'fdtd', or 'diffraction_limit'"
+            out_path = Path(workspace_path) / output_file
+            out_path.write_text(json.dumps(result, indent=2))
+            return json.dumps({"ok": True, "file": output_file, "mode": mode, **{
+                k: v for k, v in result.items() if k not in ("psf_intensity",
+                "psf_complex_real", "psf_complex_imag", "wavelengths_nm")}})
+        except Exception as exc:
+            return f"[optics error] {exc}"
+
+    # ── Phase 2: optics_monte_carlo ──────────────────────────────────────────
+    def _optics_monte_carlo(workspace_path, *,
+                             tissue_layers: list = None,
+                             n_photons: int = 10000,
+                             source_beam_radius_mm: float = 0.5,
+                             source_type: str = "pencil",
+                             seed: int = 42,
+                             mode: str = "mcml",
+                             wavelengths_nm: list = None,
+                             so2: float = 0.98,
+                             output_file: str = "monte_carlo.json") -> str:
+        gate = _gate()
+        ok, msg = _charge(gate, "optics_monte_carlo", _idem("optics_monte_carlo"))
+        if not ok:
+            return f"[optics error] {msg}"
+        try:
+            if mode == "hb":
+                from pwm_core.optics.monte_carlo import hb_absorption
+                wls = wavelengths_nm or list(range(400, 710, 10))
+                result = hb_absorption(wavelengths_nm=wls, so2=so2)
+            else:
+                from pwm_core.optics.monte_carlo import mcml
+                layers = tissue_layers or [
+                    {"mua": 0.02, "mus": 1.0, "g": 0.9, "n": 1.37, "thickness_mm": 2.0},
+                    {"mua": 0.01, "mus": 0.5, "g": 0.9, "n": 1.37, "thickness_mm": 8.0},
+                ]
+                result = mcml(tissue_layers=layers, n_photons=n_photons,
+                              source_beam_radius_mm=source_beam_radius_mm,
+                              source_type=source_type, seed=seed)
+            out_path = Path(workspace_path) / output_file
+            out_path.write_text(json.dumps(result, indent=2))
+            summary = {k: v for k, v in result.items()
+                       if k not in ("depth_mm", "fluence", "absorption_by_layer",
+                                    "wavelengths_nm", "mua_cm_inv")}
+            return json.dumps({"ok": True, "file": output_file, **summary})
+        except Exception as exc:
+            return f"[optics error] {exc}"
+
+    # ── Phase 2: optics_snr ──────────────────────────────────────────────────
+    def _optics_snr(workspace_path, *,
+                    signal_photons_per_pixel: float = 1000.0,
+                    qe: float = 0.7,
+                    read_noise_e: float = 3.0,
+                    dark_current_e_per_s: float = 0.01,
+                    exposure_s: float = 1.0,
+                    n_accumulations: int = 1,
+                    bit_depth: int = 16,
+                    full_well_e: float = 30000.0,
+                    mode: str = "snr",
+                    source_radiance: float = 1.0,
+                    collection_solid_angle_sr: float = 0.01,
+                    transmission: float = 0.8,
+                    pixel_area_m2: float = 25e-12,
+                    wavelength_band_nm: float = 550.0,
+                    output_file: str = "snr.json") -> str:
+        gate = _gate()
+        ok, msg = _charge(gate, "optics_snr", _idem("optics_snr"))
+        if not ok:
+            return f"[optics error] {msg}"
+        try:
+            if mode == "irradiance":
+                from pwm_core.optics.radiometry import irradiance_at_sensor
+                result = irradiance_at_sensor(
+                    source_radiance_W_per_sr_m2=source_radiance,
+                    collection_solid_angle_sr=collection_solid_angle_sr,
+                    transmission=transmission,
+                    pixel_area_m2=pixel_area_m2,
+                    wavelength_band_nm=wavelength_band_nm,
+                )
+            else:
+                from pwm_core.optics.radiometry import snr_budget
+                result = snr_budget(
+                    signal_photons_per_pixel=signal_photons_per_pixel,
+                    qe=qe,
+                    read_noise_e=read_noise_e,
+                    dark_current_e_per_s=dark_current_e_per_s,
+                    exposure_s=exposure_s,
+                    n_accumulations=n_accumulations,
+                    bit_depth=bit_depth,
+                    full_well_e=full_well_e,
+                )
+            out_path = Path(workspace_path) / output_file
+            out_path.write_text(json.dumps(result, indent=2))
+            return json.dumps({"ok": True, "file": output_file, **result})
+        except Exception as exc:
+            return f"[optics error] {exc}"
+
     return [
         Tool(name="optics_define",
              description=("Define a new optical system prescription from surfaces, fields, "
@@ -513,4 +765,172 @@ def optics_tools(*, gate_provider: Optional[Callable] = None,
                  "output_file": {"type": "string", "default": "grounding.json"}},
                  "required": []},
              func=_optics_ground, mutating=True),
+
+        # ── Phase 2 tools ───────────────────────────────────────────────────
+        Tool(name="optics_grating",
+             description=(
+                 "Diffraction grating efficiency + dispersion via scalar blazed-grating "
+                 "theory (PCGrate replacement). Computes sinc² efficiency envelope, "
+                 "resolving power, FSR, and angular dispersion vs wavelength. "
+                 f"Cost: {TOOL_PRICES['optics_grating']} PWM."
+             ),
+             parameters={"type": "object", "properties": {
+                 "groove_density_lpmm": {"type": "number", "default": 600.0,
+                                         "description": "Groove density in lines/mm"},
+                 "wavelengths_nm": {"type": "array", "items": {"type": "number"},
+                                    "description": "Wavelengths to evaluate (nm). Default: 400-800 @ 10nm."},
+                 "blaze_angle_deg": {"type": "number", "default": 0.0,
+                                     "description": "Blaze angle in degrees"},
+                 "order": {"type": "integer", "default": 1,
+                           "description": "Diffraction order"},
+                 "polarization": {"type": "string", "enum": ["TE", "TM", "avg"],
+                                  "default": "avg"},
+                 "n_grooves": {"type": "integer", "default": 1000,
+                               "description": "Number of illuminated grooves (for resolving power)"},
+                 "incident_angle_deg": {"type": "number", "default": 0.0,
+                                        "description": "Angle of incidence in degrees"},
+                 "output_file": {"type": "string", "default": "grating.json"}},
+                 "required": []},
+             func=_optics_grating, mutating=True),
+
+        Tool(name="optics_thinfilm",
+             description=(
+                 "Multi-layer thin-film filter design via Transfer Matrix Method (TMM) — "
+                 "Essential Macleod replacement. Computes T, R, A vs wavelength for "
+                 "arbitrary stacks, or auto-designs bandpass / longpass filters. "
+                 f"Cost: {TOOL_PRICES['optics_thinfilm']} PWM."
+             ),
+             parameters={"type": "object", "properties": {
+                 "layers": {"type": "array", "items": {"type": "object"},
+                            "description": "List of {n, k, thickness_nm} dicts. If omitted, use design_type."},
+                 "substrate_n": {"type": "number", "default": 1.52,
+                                 "description": "Substrate refractive index"},
+                 "incident_n": {"type": "number", "default": 1.0,
+                                "description": "Incident medium refractive index (1.0 = air)"},
+                 "wavelengths_nm": {"type": "array", "items": {"type": "number"},
+                                    "description": "Wavelengths to evaluate (nm). Default: 400-800 @ 5nm."},
+                 "angle_deg": {"type": "number", "default": 0.0,
+                               "description": "Angle of incidence in degrees"},
+                 "polarization": {"type": "string", "enum": ["TE", "TM", "avg"], "default": "avg"},
+                 "design_type": {"type": "string", "enum": ["bandpass", "longpass"],
+                                 "description": "Auto-design type (used if layers is omitted)"},
+                 "center_nm": {"type": "number", "default": 550.0,
+                               "description": "Center wavelength for bandpass design (nm)"},
+                 "bandwidth_nm": {"type": "number", "default": 50.0,
+                                  "description": "Bandwidth for bandpass design (nm)"},
+                 "cutoff_nm": {"type": "number", "default": 550.0,
+                               "description": "Cutoff wavelength for longpass design (nm)"},
+                 "n_high": {"type": "number", "default": 2.35,
+                            "description": "High-index material (e.g. TiO2=2.35)"},
+                 "n_low": {"type": "number", "default": 1.46,
+                           "description": "Low-index material (e.g. SiO2=1.46)"},
+                 "n_design_layers": {"type": "integer", "default": 7,
+                                     "description": "Number of layers in auto-designed stack"},
+                 "output_file": {"type": "string", "default": "thinfilm.json"}},
+                 "required": []},
+             func=_optics_thinfilm, mutating=True),
+
+        Tool(name="optics_stray_light",
+             description=(
+                 "Monte Carlo non-sequential stray light analysis (LightTools replacement). "
+                 "Computes ghost fraction, veiling glare index (VGI), scatter map, and "
+                 "baffle recommendations via Harvey-Shack BSDF model. "
+                 f"Cost: {TOOL_PRICES['optics_stray_light']} PWM."
+             ),
+             parameters={"type": "object", "properties": {
+                 "prescription": {"type": "string", "default": "system.json",
+                                  "description": "System prescription file in workspace"},
+                 "n_rays": {"type": "integer", "default": 10000,
+                            "description": "Number of Monte Carlo rays"},
+                 "bsdf_roughness_nm": {"type": "number", "default": 2.0,
+                                       "description": "Surface roughness RMS (nm) for TIS calculation"},
+                 "baffle_transmission": {"type": "number", "default": 0.0,
+                                         "description": "Baffle transmission (0=perfect absorber)"},
+                 "seed": {"type": "integer", "default": 42},
+                 "output_file": {"type": "string", "default": "stray_light.json"}},
+                 "required": []},
+             func=_optics_stray_light, mutating=True),
+
+        Tool(name="optics_wave",
+             description=(
+                 "Wave-optics suite (Lumerical FDTD replacement): coherent PSF via pupil "
+                 "function FFT (mode='psf'), 1D FDTD for thin-film R/T (mode='fdtd'), "
+                 "or Abbe/Rayleigh diffraction limits (mode='diffraction_limit'). "
+                 f"Cost: {TOOL_PRICES['optics_wave']} PWM."
+             ),
+             parameters={"type": "object", "properties": {
+                 "prescription": {"type": "string", "default": "system.json"},
+                 "mode": {"type": "string",
+                          "enum": ["psf", "fdtd", "diffraction_limit"],
+                          "default": "psf",
+                          "description": "Wave-optics calculation mode"},
+                 "grid_size": {"type": "integer", "default": 128,
+                               "description": "PSF grid size (for mode=psf)"},
+                 "wavelength_nm": {"type": "number", "default": 550.0},
+                 "dz_mm": {"type": "number", "default": 1.0,
+                           "description": "Propagation distance for angular spectrum (mm)"},
+                 "n_fdtd_layers": {"type": "array", "items": {"type": "number"},
+                                   "description": "Refractive indices for FDTD layers (mode=fdtd)"},
+                 "thickness_fdtd_nm": {"type": "array", "items": {"type": "number"},
+                                       "description": "Layer thicknesses in nm (mode=fdtd)"},
+                 "na": {"type": "number", "default": 0.5,
+                        "description": "Numerical aperture (for mode=diffraction_limit)"},
+                 "output_file": {"type": "string", "default": "wave.json"}},
+                 "required": []},
+             func=_optics_wave, mutating=True),
+
+        Tool(name="optics_monte_carlo",
+             description=(
+                 "Tissue light transport via MCML (MCX/MCML replacement). "
+                 "Mode 'mcml': full photon Monte Carlo — fluence, reflectance, transmittance, "
+                 "absorption by layer, 1/e penetration depth. "
+                 "Mode 'hb': hemoglobin absorption spectrum (HbO2+Hb) with SO2 control. "
+                 f"Cost: {TOOL_PRICES['optics_monte_carlo']} PWM."
+             ),
+             parameters={"type": "object", "properties": {
+                 "tissue_layers": {"type": "array", "items": {"type": "object"},
+                                   "description": "List of {mua, mus, g, n, thickness_mm} dicts"},
+                 "n_photons": {"type": "integer", "default": 10000,
+                               "description": "Number of photon packets"},
+                 "source_beam_radius_mm": {"type": "number", "default": 0.5},
+                 "source_type": {"type": "string", "enum": ["pencil", "gaussian"],
+                                 "default": "pencil"},
+                 "seed": {"type": "integer", "default": 42},
+                 "mode": {"type": "string", "enum": ["mcml", "hb"], "default": "mcml"},
+                 "wavelengths_nm": {"type": "array", "items": {"type": "number"},
+                                    "description": "Wavelengths for Hb absorption (mode=hb)"},
+                 "so2": {"type": "number", "default": 0.98,
+                         "description": "Oxygen saturation 0..1 (mode=hb)"},
+                 "output_file": {"type": "string", "default": "monte_carlo.json"}},
+                 "required": []},
+             func=_optics_monte_carlo, mutating=True),
+
+        Tool(name="optics_snr",
+             description=(
+                 "Detector radiometry + SNR budget (MATLAB radiometry replacement). "
+                 "Mode 'snr': full noise budget (shot/read/dark, SNR dB, dynamic range, NEP, "
+                 "saturation). Mode 'irradiance': source → sensor photon flux chain. "
+                 f"Cost: {TOOL_PRICES['optics_snr']} PWM."
+             ),
+             parameters={"type": "object", "properties": {
+                 "signal_photons_per_pixel": {"type": "number", "default": 1000.0},
+                 "qe": {"type": "number", "default": 0.7,
+                        "description": "Quantum efficiency (0..1)"},
+                 "read_noise_e": {"type": "number", "default": 3.0,
+                                  "description": "Read noise in electrons RMS"},
+                 "dark_current_e_per_s": {"type": "number", "default": 0.01},
+                 "exposure_s": {"type": "number", "default": 1.0},
+                 "n_accumulations": {"type": "integer", "default": 1},
+                 "bit_depth": {"type": "integer", "default": 16},
+                 "full_well_e": {"type": "number", "default": 30000.0},
+                 "mode": {"type": "string", "enum": ["snr", "irradiance"], "default": "snr"},
+                 "source_radiance": {"type": "number", "default": 1.0,
+                                     "description": "Source radiance W/sr/m² (mode=irradiance)"},
+                 "collection_solid_angle_sr": {"type": "number", "default": 0.01},
+                 "transmission": {"type": "number", "default": 0.8},
+                 "pixel_area_m2": {"type": "number", "default": 25e-12},
+                 "wavelength_band_nm": {"type": "number", "default": 550.0},
+                 "output_file": {"type": "string", "default": "snr.json"}},
+                 "required": []},
+             func=_optics_snr, mutating=True),
     ]
