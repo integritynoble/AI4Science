@@ -132,7 +132,7 @@ def _run():
     try:
         from ai4science.harness.optics_tools import optics_tools, TOOL_PRICES
         tools = optics_tools()
-        tools_ok = len(tools) == 10
+        tools_ok = len(tools) >= 10  # Phase 1 adds 3 closed tools (13 total)
 
         from ai4science.harness.agents.capabilities import BUILTIN_BUNDLES
         cap_ok = "optics-design" in BUILTIN_BUNDLES
