@@ -682,7 +682,7 @@ def main() -> None:
             "init", "contribute", "validate", "judge", "overseer",
             "package", "submit", "status", "version", "agents", "chat",
             "compute", "llm", "stake", "plugins", "tools", "login", "whoami", "logout",
-            "prefer", "update",
+            "prefer", "update", "register-agent",
         }
         if argv[0] not in registered:
             # A mistyped subcommand (e.g. `ai4science dispatch --provider …`,
