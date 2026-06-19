@@ -68,17 +68,33 @@ if Path(_PWM_CORE_SRC).exists():
 _image = _image.env({"PYTHONPATH": "/opt/pwm_core_src"})
 
 
+# Top-level workspace dirs that are INPUTS (shipped code + datasets), never
+# returned — mirrors http_transport.pack_artifacts so Modal returns the same set
+# of outputs (runs/, checkpoints, *.pt, logs) as the local/gpu providers.
+_SKIP_TOP = {"code", "data", "datasets", "dataset", "raw", ".data", "input", "inputs"}
+_SKIP_DIRS = {".git", ".hg", ".svn", "__pycache__", ".cache", ".venv", "venv",
+              "node_modules", ".pytest_cache", ".mypy_cache", ".ruff_cache"}
+
+
 def _pack_outputs(ws: str) -> bytes:
-    """Tar the result artifacts a job produces (recon + metrics)."""
+    """Tar everything the job WROTE (runs/, results/, checkpoints, *.pt, logs) —
+    the whole workspace except the shipped code/ + data/ inputs and venv/caches —
+    so trained checkpoints come back regardless of the script's output layout."""
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w") as tf:
-        for root, _dirs, files in os.walk(ws):
+        for root, dirs, files in os.walk(ws):
+            rel_root = os.path.relpath(root, ws)
+            top = "" if rel_root == "." else rel_root.split(os.sep)[0]
+            if top in _SKIP_TOP:
+                dirs[:] = []
+                continue
+            dirs[:] = [d for d in dirs if d not in _SKIP_DIRS]
             for f in files:
+                if f.endswith((".pyc", ".pyo")):
+                    continue
                 full = os.path.join(root, f)
-                rel = os.path.relpath(full, ws)
-                if (rel.startswith("results/") or rel.endswith(".npy")
-                        or rel.endswith(".json")):
-                    tf.add(full, arcname=rel)
+                rel = os.path.relpath(full, ws).replace(os.sep, "/")
+                tf.add(full, arcname=rel)
     return buf.getvalue()
 
 
