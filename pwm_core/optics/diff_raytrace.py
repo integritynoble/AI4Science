@@ -66,85 +66,88 @@ def to_optiland(sys: "OpticalSystem"):
     ImportError  if optiland is not installed.
     RuntimeError on conversion failure.
     """
-    from optiland import optic as _optic
-    from optiland.aperture import EPDAperture
+    try:
+        from optiland import optic as _optic
+        from optiland.aperture import EPDAperture
 
-    o = _optic.Optic(name=sys.title or "pwm_lens")
+        o = _optic.Optic(name=sys.title or "pwm_lens")
 
-    # Object surface at index 0 (very distant object — infinity)
-    o.surfaces.add(
-        surface_type="standard",
-        index=0,
-        thickness=1e10,
-        material="air",
-    )
-
-    # Lens surfaces
-    is_stop_set = False
-    for idx, s in enumerate(sys.surfaces, 1):
-        import math
-        radius = None if (not math.isfinite(s.radius) or s.radius == 0) else s.radius
-        lo = s.material.strip().lower()
-        if lo in ("air", "", "none", "vacuum", "mirror"):
-            mat = "air"
-        else:
-            mat = _canonical_glass(s.material)
-
-        # Mark first real (glass) surface as stop if aperture_type == EPD
-        is_stop = False
-        if not is_stop_set and sys.aperture_type == "EPD" and mat != "air":
-            is_stop = True
-            is_stop_set = True
-
-        kwargs: dict = {"thickness": s.thickness}
-        if radius is not None:
-            kwargs["radius"] = radius
-        if s.conic != 0.0:
-            kwargs["conic"] = s.conic
-
+        # Object surface at index 0 (very distant object — infinity)
         o.surfaces.add(
             surface_type="standard",
-            index=idx,
-            is_stop=is_stop,
-            material=mat,
-            **kwargs,
+            index=0,
+            thickness=1e10,
+            material="air",
         )
 
-    # Image surface
-    n_surf = len(sys.surfaces)
-    o.surfaces.add(
-        surface_type="standard",
-        index=n_surf + 1,
-        thickness=0.0,
-        material="air",
-    )
+        # Lens surfaces
+        is_stop_set = False
+        for idx, s in enumerate(sys.surfaces, 1):
+            import math
+            radius = None if (not math.isfinite(s.radius) or s.radius == 0) else s.radius
+            lo = s.material.strip().lower()
+            if lo in ("air", "", "none", "vacuum", "mirror"):
+                mat = "air"
+            else:
+                mat = _canonical_glass(s.material)
 
-    # Aperture
-    if sys.aperture_type == "EPD":
-        o.aperture = EPDAperture(sys.aperture_value)
-    elif sys.aperture_type in ("FNO", "fno"):
-        from optiland.aperture import ImageFNOAperture
-        o.aperture = ImageFNOAperture(sys.aperture_value)
-    elif sys.aperture_type in ("NA", "na"):
-        from optiland.aperture import ObjectNAAperture
-        o.aperture = ObjectNAAperture(sys.aperture_value)
-    else:
-        o.aperture = EPDAperture(sys.aperture_value)
+            # Mark first real (glass) surface as stop if aperture_type == EPD
+            is_stop = False
+            if not is_stop_set and sys.aperture_type == "EPD" and mat != "air":
+                is_stop = True
+                is_stop_set = True
 
-    # Fields (angle type by default)
-    o.fields.set_type("angle")
-    for f in sys.fields:
-        o.fields.add(y=f.y, x=f.x, weight=f.weight)
+            kwargs: dict = {"thickness": s.thickness}
+            if radius is not None:
+                kwargs["radius"] = radius
+            if s.conic != 0.0:
+                kwargs["conic"] = s.conic
 
-    # Wavelengths (optiland uses microns)
-    for wl in sys.wavelengths:
-        o.wavelengths.add(
-            value=wl.value,
-            unit="um",
-            is_primary=wl.is_primary,
+            o.surfaces.add(
+                surface_type="standard",
+                index=idx,
+                is_stop=is_stop,
+                material=mat,
+                **kwargs,
+            )
+
+        # Image surface
+        n_surf = len(sys.surfaces)
+        o.surfaces.add(
+            surface_type="standard",
+            index=n_surf + 1,
+            thickness=0.0,
+            material="air",
         )
 
-    return o
+        # Aperture
+        if sys.aperture_type == "EPD":
+            o.aperture = EPDAperture(sys.aperture_value)
+        elif sys.aperture_type in ("FNO", "fno"):
+            from optiland.aperture import ImageFNOAperture
+            o.aperture = ImageFNOAperture(sys.aperture_value)
+        elif sys.aperture_type in ("NA", "na"):
+            from optiland.aperture import ObjectNAAperture
+            o.aperture = ObjectNAAperture(sys.aperture_value)
+        else:
+            o.aperture = EPDAperture(sys.aperture_value)
+
+        # Fields (angle type by default)
+        o.fields.set_type("angle")
+        for f in sys.fields:
+            o.fields.add(y=f.y, x=f.x, weight=f.weight)
+
+        # Wavelengths (optiland uses microns)
+        for wl in sys.wavelengths:
+            o.wavelengths.add(
+                value=wl.value,
+                unit="um",
+                is_primary=wl.is_primary,
+            )
+
+        return o
+    except Exception as exc:
+        raise RuntimeError(f"to_optiland conversion failed: {exc}") from exc
 
 
 # ---------------------------------------------------------------------------

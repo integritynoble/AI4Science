@@ -11,16 +11,21 @@ from ai4science.harness.tools.base import Tool
 _WALLET = os.environ.get("OPTICS_TOOL_WALLET", "0x3CeA937cd8114Efa8120C011f1035c9b428C9d05")
 
 TOOL_PRICES: dict = {
-    "optics_define":      0.5,
-    "optics_import":      1.0,
-    "optics_raytrace":    1.0,
-    "optics_layout":      0.5,
-    "optics_paraxial":    0.5,
-    "optics_spot":        1.0,
-    "optics_rayfan":      1.0,
-    "optics_zernike":     1.5,
-    "optics_psf_mtf":     2.0,
-    "optics_aberrations": 1.0,
+    # OPEN tools
+    "optics_define":             0.5,
+    "optics_import":             1.0,
+    "optics_raytrace":           1.0,
+    "optics_layout":             0.5,
+    "optics_paraxial":           0.5,
+    "optics_spot":               1.0,
+    "optics_rayfan":             1.0,
+    "optics_zernike":            1.5,
+    "optics_psf_mtf":            2.0,
+    "optics_aberrations":        1.0,
+    # CLOSED tools (Phase 1)
+    "optics_to_digital_twin":    3.0,
+    "optics_coded_design":       2.5,
+    "optics_ground":             1.5,
 }
 
 
@@ -48,7 +53,7 @@ def _load_sys(workspace: Path, prescription_file: str = "system.json"):
 
 def optics_tools(*, gate_provider: Optional[Callable] = None,
                   workspace: Optional[Path] = None) -> List[Tool]:
-    """Return all OPEN optical design tools for the computational-imaging agent."""
+    """Return all optical design tools (OPEN + CLOSED Phase 1) for the computational-imaging agent."""
     ws = Path(workspace) if workspace else Path(".")
 
     def _gate():
@@ -209,6 +214,155 @@ def optics_tools(*, gate_provider: Optional[Callable] = None,
         except Exception as exc:
             return f"[optics error] {exc}"
 
+    # ── CLOSED: optics_to_digital_twin ───────────────────────────────────────
+    def _optics_to_digital_twin(workspace_path, *,
+                                 prescription: str = "system.json",
+                                 modality: str = "psf_convolution",
+                                 H: int = 256, W: int = 256,
+                                 N_bands: int = 1,
+                                 noise_level: float = 0.01,
+                                 mask_density: float = 0.5,
+                                 disp_a1: float = 1.0,
+                                 output_file: str = "digital_twin_spec.json") -> str:
+        gate = _gate()
+        ok, msg = _charge(gate, "optics_to_digital_twin", _idem("optics_to_digital_twin"))
+        if not ok:
+            return f"[optics error] {msg}"
+        try:
+            from pwm_core.optics import load_system
+            from pwm_core.optics.pwm_bridge import optical_to_spec_fields
+            sys = load_system(str(Path(workspace_path) / prescription))
+            fields = optical_to_spec_fields(
+                sys, modality=modality, H=H, W=W, N_bands=N_bands,
+                noise_level=noise_level, mask_density=mask_density,
+                disp_a1=disp_a1, grid_size=64,
+            )
+            out_path = Path(workspace_path) / output_file
+            out_path.write_text(json.dumps(fields, indent=2))
+            note = ("Submit this spec to the PWM registry for L2 registration "
+                    "(requires founder review at physicsworldmodel.org).")
+            return json.dumps({"ok": True, "file": output_file,
+                               "d_spec": fields["d_spec"],
+                               "spec_type": fields["spec_type"],
+                               "title": fields["title"],
+                               "note": note})
+        except Exception as exc:
+            return f"[optics error] {exc}"
+
+    # ── CLOSED: optics_coded_design ──────────────────────────────────────────
+    def _optics_coded_design(workspace_path, *,
+                              prescription: str = "system.json",
+                              modality: str = "cassi",
+                              H: int = 256, W: int = 256,
+                              N_bands: int = 28,
+                              mask_density: float = 0.5,
+                              disp_a1: float = 1.0,
+                              optimize: bool = False,
+                              seed: int = 42,
+                              output_file: str = "coded_design.json") -> str:
+        gate = _gate()
+        ok, msg = _charge(gate, "optics_coded_design", _idem("optics_coded_design"))
+        if not ok:
+            return f"[optics error] {msg}"
+        try:
+            import numpy as np
+            from pwm_core.optics.coded import (binary_mask, optimized_mask,
+                                                cassi_forward, lensless_forward,
+                                                doe_phase_fresnel_lens)
+            if modality == "cassi":
+                if optimize:
+                    mask = optimized_mask(H, W, N_bands=N_bands, disp_a1=disp_a1, seed=seed)
+                else:
+                    mask = binary_mask(H, W, density=mask_density, seed=seed)
+                # Save mask
+                mask_path = Path(workspace_path) / "mask.npy"
+                np.save(str(mask_path), mask)
+                density_actual = float(mask.mean())
+                design = {
+                    "modality": "cassi",
+                    "H": H, "W": W, "N_bands": N_bands,
+                    "disp_a1": disp_a1,
+                    "mask_density_target": mask_density,
+                    "mask_density_actual": round(density_actual, 4),
+                    "optimized": optimize,
+                    "mask_file": "mask.npy",
+                    "seed": seed,
+                }
+            elif modality == "lensless":
+                phase = doe_phase_fresnel_lens(H, W,
+                    focal_length_m=0.05, wavelength_m=550e-9,
+                    pixel_pitch_m=5.5e-6)
+                mask_path = Path(workspace_path) / "phase_mask.npy"
+                import numpy as _np
+                _np.save(str(mask_path), phase)
+                design = {
+                    "modality": "lensless",
+                    "H": H, "W": W,
+                    "focal_length_m": 0.05,
+                    "wavelength_m": 550e-9,
+                    "phase_mask_file": "phase_mask.npy",
+                }
+            else:
+                return f"[optics error] unknown modality {modality!r}; use 'cassi' or 'lensless'"
+            out_path = Path(workspace_path) / output_file
+            out_path.write_text(json.dumps(design, indent=2))
+            return json.dumps({"ok": True, "file": output_file, **design})
+        except Exception as exc:
+            return f"[optics error] {exc}"
+
+    # ── CLOSED: optics_ground ────────────────────────────────────────────────
+    def _optics_ground(workspace_path, *,
+                        prescription: str = "system.json",
+                        query: str = "",
+                        output_file: str = "grounding.json") -> str:
+        gate = _gate()
+        ok, msg = _charge(gate, "optics_ground", _idem("optics_ground"))
+        if not ok:
+            return f"[optics error] {msg}"
+        try:
+            from pwm_core.optics import load_system
+            from pwm_core.optics.pwm_bridge import optical_to_spec_fields
+            from ai4science.harness.pwm_data import search as pwm_search, specs as pwm_specs
+            sys = load_system(str(Path(workspace_path) / prescription))
+            # Auto-derive search terms from system title + query
+            title = sys.title or ""
+            q = f"{title} {query}".strip() or "cassi imaging"
+            results = pwm_search(q, limit=5)
+            spec_list = results.get("specs", [])
+            # Also include matching principles
+            matched_principles = results.get("principles", [])
+            grounding = {
+                "query": q,
+                "matched_specs": [
+                    {
+                        "artifact_id": s.get("artifact_id"),
+                        "title": s.get("title"),
+                        "spec_type": s.get("spec_type"),
+                        "d_spec": s.get("d_spec"),
+                        "parent_l1": s.get("parent_l1"),
+                    }
+                    for s in spec_list
+                ],
+                "matched_principles": [
+                    {
+                        "artifact_id": p.get("artifact_id"),
+                        "title": p.get("title"),
+                    }
+                    for p in matched_principles
+                ],
+                "system_title": title,
+                "recommendation": (
+                    f"Design targets {spec_list[0]['artifact_id']} ({spec_list[0]['title']}) "
+                    f"if you want to register a benchmark under {spec_list[0].get('parent_l1','?')}. "
+                    "Use optics_to_digital_twin to generate the spec fields."
+                ) if spec_list else "No matching PWM specs found. Consider defining a new principle.",
+            }
+            out_path = Path(workspace_path) / output_file
+            out_path.write_text(json.dumps(grounding, indent=2))
+            return json.dumps({"ok": True, "file": output_file, **grounding})
+        except Exception as exc:
+            return f"[optics error] {exc}"
+
     return [
         Tool(name="optics_define",
              description=("Define a new optical system prescription from surfaces, fields, "
@@ -297,4 +451,66 @@ def optics_tools(*, gate_provider: Optional[Callable] = None,
                  "prescription": {"type": "string", "default": "system.json"}},
                  "required": []},
              func=_optics_aberrations, mutating=False),
+
+        # ── CLOSED Phase 1 tools ─────────────────────────────────────────────
+        Tool(name="optics_to_digital_twin",
+             description=(
+                 "[CLOSED] Convert the optical system prescription to a PWM L2 digital-twin "
+                 "spec (six_tuple / protocol_fields / d_spec). Saves digital_twin_spec.json. "
+                 f"Cost: {TOOL_PRICES['optics_to_digital_twin']} PWM."
+             ),
+             parameters={"type": "object", "properties": {
+                 "prescription": {"type": "string", "default": "system.json"},
+                 "modality": {"type": "string",
+                              "enum": ["psf_convolution", "cassi", "lensless"],
+                              "description": "Forward-model type"},
+                 "H": {"type": "integer", "default": 256,
+                       "description": "Spatial height of the benchmark scene"},
+                 "W": {"type": "integer", "default": 256},
+                 "N_bands": {"type": "integer", "default": 1,
+                             "description": "Spectral bands (>1 for CASSI/multispectral)"},
+                 "noise_level": {"type": "number", "default": 0.01},
+                 "mask_density": {"type": "number", "default": 0.5},
+                 "disp_a1": {"type": "number", "default": 1.0,
+                             "description": "CASSI dispersion (pixels/band)"},
+                 "output_file": {"type": "string", "default": "digital_twin_spec.json"}},
+                 "required": []},
+             func=_optics_to_digital_twin, mutating=True),
+
+        Tool(name="optics_coded_design",
+             description=(
+                 "[CLOSED] Design a coded aperture or DOE for CI modalities. "
+                 "Generates mask.npy (CASSI binary mask) or phase_mask.npy (lensless Fresnel). "
+                 f"Cost: {TOOL_PRICES['optics_coded_design']} PWM."
+             ),
+             parameters={"type": "object", "properties": {
+                 "prescription": {"type": "string", "default": "system.json"},
+                 "modality": {"type": "string",
+                              "enum": ["cassi", "lensless"],
+                              "description": "Imaging modality"},
+                 "H": {"type": "integer", "default": 256},
+                 "W": {"type": "integer", "default": 256},
+                 "N_bands": {"type": "integer", "default": 28},
+                 "mask_density": {"type": "number", "default": 0.5},
+                 "disp_a1": {"type": "number", "default": 1.0},
+                 "optimize": {"type": "boolean", "default": False,
+                              "description": "Use rank-optimized mask (vs random)"},
+                 "seed": {"type": "integer", "default": 42},
+                 "output_file": {"type": "string", "default": "coded_design.json"}},
+                 "required": []},
+             func=_optics_coded_design, mutating=True),
+
+        Tool(name="optics_ground",
+             description=(
+                 "[CLOSED] Ground the optical design against the PWM registry: search for "
+                 "matching L2 specs and L1 principles, and recommend a benchmark target. "
+                 f"Cost: {TOOL_PRICES['optics_ground']} PWM."
+             ),
+             parameters={"type": "object", "properties": {
+                 "prescription": {"type": "string", "default": "system.json"},
+                 "query": {"type": "string", "default": "",
+                           "description": "Optional extra search terms"},
+                 "output_file": {"type": "string", "default": "grounding.json"}},
+                 "required": []},
+             func=_optics_ground, mutating=True),
     ]
