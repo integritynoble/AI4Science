@@ -9,7 +9,8 @@ def test_write_preview_is_clean_listing_not_diff():
     out = _preview("write", {"path": "code/x.py", "content": content})
     assert "--- a/" not in out and "+++ b/" not in out and "@@" not in out
     assert out.startswith("Write code/x.py  (248 lines)")
-    assert "+208 more lines" in out
+    assert "more lines)" in out                  # capped so the menu stays visible
+    assert len(out.splitlines()) <= 16           # compact: header + ≤12 body + note
     assert "\x1b[" in out  # syntax-highlighted listing (Claude-Code-style), not plain
 
 

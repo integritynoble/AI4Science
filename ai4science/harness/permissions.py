@@ -210,14 +210,35 @@ def _syntax_listing(content: str, path: str) -> str:
                          for i, ln in enumerate(content.splitlines(), 1))
 
 
-def _write_preview(path: str, content: str, *, max_lines: int = 40) -> str:
+# Keep previews short so the permission question + ALL THREE options (incl. "No")
+# stay on screen — a long preview would scroll the menu off. Adapt to the window:
+# leave ~11 rows for the header + "Do you want to proceed?" + the 3 options + the
+# input line, capped at 12 and never below 4.
+def _preview_cap() -> int:
+    import shutil
+    rows = shutil.get_terminal_size((80, 24)).lines
+    return max(4, min(12, rows - 11))
+
+
+def _cap(text: str, max_lines: int = 0) -> str:
+    """Truncate a preview to fit the window, with a dim '+N more lines' note."""
+    max_lines = max_lines or _preview_cap()
+    lines = text.split("\n")
+    if len(lines) <= max_lines:
+        return text
+    hidden = len(lines) - max_lines
+    return "\n".join(lines[:max_lines]) + f"\n\x1b[2m     … (+{hidden} more lines)\x1b[0m"
+
+
+def _write_preview(path: str, content: str, *, max_lines: int = 0) -> str:
     """Claude-Code-style preview of a file WRITE: a syntax-highlighted numbered
     listing of the content (not a unified diff with '+' on every line). Capped
-    for long files."""
+    short (window-aware) so the permission menu stays visible on small windows."""
+    max_lines = max_lines or _preview_cap()
     lines = content.splitlines()
     n = len(lines)
     body = _syntax_listing("\n".join(lines[:max_lines]), path)
-    more = f"\n     … (+{n - max_lines} more lines)" if n > max_lines else ""
+    more = f"\n\x1b[2m     … (+{n - max_lines} more lines)\x1b[0m" if n > max_lines else ""
     plural = "" if n == 1 else "s"
     return f"Write {path}  ({n} line{plural})\n{body}{more}"
 
@@ -234,7 +255,8 @@ def _preview(name: str, args: Dict) -> str:
         from ai4science.harness.diff import unified_diff
         old = args.get("old", "")
         new = args.get("new", "")
-        return unified_diff(args.get("path", "?"),
-                            old if old.endswith("\n") else old + "\n",
-                            new if new.endswith("\n") else new + "\n")
+        # Cap the diff too, so a large edit never pushes the menu off screen.
+        return _cap(unified_diff(args.get("path", "?"),
+                                 old if old.endswith("\n") else old + "\n",
+                                 new if new.endswith("\n") else new + "\n"))
     return f"{name} {args}"
