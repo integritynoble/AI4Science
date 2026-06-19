@@ -146,6 +146,9 @@ app.command("update", help="Upgrade ai4science to the latest build (like `claude
 
 from ai4science.commands import register_agent as register_agent_cmd
 app.command("register-agent", help="Self-register a plug-in agent/tool you authored to physicsworldmodel.org (counts toward the Developer Winner after admin approval).")(register_agent_cmd.register_agent)
+from ai4science.commands import feedback as feedback_cmd
+app.command("feedback", help="Give feedback on an ai4science agent and earn PWM for useful, novel signal (Track 2).")(feedback_cmd.feedback)
+app.command("report-bug", help="Report a bug in an ai4science agent and earn PWM if it's real + reproducible. Attach the error via --log or by piping it in.")(feedback_cmd.report_bug)
 
 
 @app.command("version", help="Print the AI4Science CLI version + release channel.")
