@@ -90,6 +90,19 @@ def serve_http_once(provider: Dict[str, Any], base_url: str, *, provider_key: st
         recon = ws / "results" / "reconstruction_xhat.npy"
         recon_ref = (ht.GCS_PREFIX + htx.upload_blob(recon.read_bytes())
                      if recon.exists() else "")
+        # Return ALL outputs the job wrote to results/ (trained checkpoints, logs,
+        # extra files) — not just the reconstruction — so training jobs get their
+        # artifacts back. Packed into one blob; recorded in the manifest.
+        try:
+            packed = ht.pack_dir(ws / "results")
+            if packed:
+                blob, names = packed
+                manifest["artifacts_ref"] = ht.GCS_PREFIX + htx.upload_blob(blob)
+                manifest["artifacts"] = names
+        except ValueError as e:               # over the blob ceiling
+            manifest["artifacts_note"] = str(e)
+        except Exception as e:                # never let artifact packing kill a job
+            manifest["artifacts_note"] = f"{type(e).__name__}: {e}"
 
     # 4. return the result
     rr = h.post(f"{base}/api/v1/compute/jobs/{job_id}/result", headers=headers,

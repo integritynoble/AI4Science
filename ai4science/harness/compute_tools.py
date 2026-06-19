@@ -206,6 +206,13 @@ def _result_tool() -> Tool:
             out = tx.download_reconstruction(job, Path(workspace).resolve())
         except Exception:
             out = None
+        # Pull ALL output artifacts (results/: trained checkpoints, logs, …) back.
+        arts = []
+        try:
+            adest = Path(workspace).resolve() / "compute_artifacts" / job_id
+            arts = tx.fetch_artifacts(job, adest)
+        except Exception:
+            arts = []
         result = job.get("result") or {}
         # Surface the USEFUL fields explicitly (metrics + the solver's stdout/stderr
         # tail) rather than a truncated json dump — the run_command can be huge and
@@ -219,6 +226,11 @@ def _result_tool() -> Tool:
                  "(PWM charged on the relay on a verified pass)."]
         if out:
             lines.append(f"reconstruction: {out}")
+        if arts:
+            shown = ", ".join(arts[:12]) + (f" (+{len(arts) - 12} more)" if len(arts) > 12 else "")
+            lines.append(f"artifacts ({len(arts)}) → compute_artifacts/{job_id}/: {shown}")
+        elif result.get("artifacts_note"):
+            lines.append(f"artifacts: {result['artifacts_note']}")
         lines.append(f"solver_ran={ran} returncode={rc}")
         if metrics:
             lines.append(f"metrics: {json.dumps(metrics)}")

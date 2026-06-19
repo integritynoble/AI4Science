@@ -67,6 +67,34 @@ def untar_to(raw: bytes, dest: Path) -> None:
         tar.extractall(str(dest))
 
 
+def _is_excluded(p: Path) -> bool:
+    parts = set(p.parts)
+    return bool(parts & _TAR_EXCLUDE_DIRS) or p.name.endswith((".pyc", ".pyo"))
+
+
+def pack_dir(path: Path, *, max_bytes: int = 190_000_000):
+    """Gzip-tar a directory's contents (arcnames relative to it) for artifact
+    return. Returns (bytes, [relative file names]) or None if the directory is
+    missing/empty. Raises ValueError if it exceeds max_bytes (the blob ceiling)."""
+    path = Path(path)
+    if not path.is_dir():
+        return None
+    files = sorted(str(p.relative_to(path)) for p in path.rglob("*")
+                   if p.is_file() and not _is_excluded(p))
+    if not files:
+        return None
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        tar.add(str(path), arcname=".", filter=_tar_filter)
+    raw = buf.getvalue()
+    if len(raw) > max_bytes:
+        raise ValueError(
+            f"outputs pack to ~{len(raw) // 1_000_000} MB (> "
+            f"{max_bytes // 1_000_000} MB cap) — too large to return over the "
+            "relay; write smaller/fewer artifacts to results/.")
+    return raw, files
+
+
 def unpack_workspace_ref(ref: str, dest: Path, *, http=None) -> bool:
     """Materialize a workspace from a gcs:/inline: ref into dest. False if neither."""
     if ref.startswith(GCS_PREFIX):
@@ -149,3 +177,19 @@ class HttpTransport:
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_bytes(raw)
         return out
+
+    def fetch_artifacts(self, job: Dict[str, Any], dest_dir: Path) -> list:
+        """Download + extract ALL output artifacts (everything the job wrote to
+        results/ — trained checkpoints, logs, recon) into dest_dir. Returns the
+        list of extracted relative file paths; empty if the job returned none."""
+        result = job.get("result") or {}
+        ref = result.get("artifacts_ref") or ""
+        if ref.startswith(GCS_PREFIX):
+            raw = self.download_blob(ref[len(GCS_PREFIX):])
+        elif ref.startswith(INLINE_PREFIX):
+            raw = base64.b64decode(ref[len(INLINE_PREFIX):])
+        else:
+            return []
+        dest = Path(dest_dir)
+        untar_to(raw, dest)
+        return sorted(str(p.relative_to(dest)) for p in dest.rglob("*") if p.is_file())
