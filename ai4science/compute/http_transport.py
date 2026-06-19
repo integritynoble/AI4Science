@@ -98,11 +98,13 @@ def pack_artifacts(workspace: Path, *, max_bytes: int = 190_000_000):
             members.append(top)
     if not members:
         return None
-    names = sorted(str(p.relative_to(workspace)) for p in members)
+    # POSIX arcnames so Windows providers produce clean cross-platform tar paths
+    # (runs/exp/best.pt, not runs\exp\best.pt) in both the tar and the manifest.
+    names = sorted(p.relative_to(workspace).as_posix() for p in members)
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w:gz") as tar:
         for p in members:
-            tar.add(str(p), arcname=str(p.relative_to(workspace)))
+            tar.add(str(p), arcname=p.relative_to(workspace).as_posix())
     raw = buf.getvalue()
     if len(raw) > max_bytes:
         raise ValueError(
