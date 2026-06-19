@@ -68,7 +68,7 @@ Issues = "https://github.com/integritynoble/AI4Science/issues"
 version = { attr = "ai4science.__version__" }
 
 [tool.setuptools.packages.find]
-include = ["ai4science*"]
+include = ["ai4science*", "pwm_core*"]
 exclude = ["tests*", "examples*"]
 
 [tool.setuptools.package-data]
