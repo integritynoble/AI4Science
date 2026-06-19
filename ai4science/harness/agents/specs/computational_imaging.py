@@ -36,5 +36,5 @@ AGENT = AgentSpec(
               "snapshot", "imaging", "inverse problem"),
     system_prompt=PROMPT,
     capabilities=("pwm-actions", "pwm-data", "computational-imaging", "compute-providers",
-                  "ci-algorithms"),
+                  "ci-algorithms", "optics-design"),
 )

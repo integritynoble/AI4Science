@@ -45,6 +45,13 @@ def _ci_algorithms(ctx: BuildContext) -> List[Tool]:
     return list(algorithm_tools())
 
 
+def _optics_design(ctx: BuildContext) -> List[Tool]:
+    from ai4science.harness.optics_tools import optics_tools
+    from ai4science.harness.pwm_gate import PwmGate
+    return list(optics_tools(gate_provider=PwmGate.from_env,
+                             workspace=ctx.workspace))
+
+
 # name -> provider(ctx) -> list[Tool]. Built-in bundles.
 BUILTIN_BUNDLES: Dict[str, Callable[[BuildContext], List[Tool]]] = {
     "pwm-actions": _pwm_actions,
@@ -54,6 +61,7 @@ BUILTIN_BUNDLES: Dict[str, Callable[[BuildContext], List[Tool]]] = {
     "computational-imaging": _computational_imaging,
     "compute-providers": _compute_providers,
     "ci-algorithms": _ci_algorithms,
+    "optics-design": _optics_design,
 }
 
 # Dynamic bundles registered by tool plug-ins (manifest kind="tool"). Kept apart
