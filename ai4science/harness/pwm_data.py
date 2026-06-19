@@ -27,9 +27,18 @@ def principles() -> List[Dict]:
     return _items(transport.get_json(f"{base()}/principles"), "genesis", "principles")
 
 
+def _unwrap(d):
+    """The detail endpoints wrap stubs as {'detail': …}; unwrap that single key
+    but keep rich responses ({principle, specs, registered_benchmarks, …}) whole
+    so the caller sees a principle's digital twins (specs) + benchmarks inline."""
+    if isinstance(d, dict) and list(d.keys()) == ["detail"]:
+        return d["detail"]
+    return d
+
+
 def principle(artifact_id: str) -> Dict:
-    d = transport.get_json(f"{base()}/principles/{artifact_id}")
-    return d.get("principle", d) if isinstance(d, dict) else d
+    # full detail: principle metadata + its specs (digital twins) + benchmarks
+    return _unwrap(transport.get_json(f"{base()}/principles/{artifact_id}"))
 
 
 def benchmarks() -> List[Dict]:
@@ -37,8 +46,18 @@ def benchmarks() -> List[Dict]:
 
 
 def benchmark(ref: str) -> Dict:
-    d = transport.get_json(f"{base()}/benchmarks/{ref}")
-    return d.get("benchmark", d) if isinstance(d, dict) else d
+    return _unwrap(transport.get_json(f"{base()}/benchmarks/{ref}"))
+
+
+def specs() -> List[Dict]:
+    """Active digital-twin specs (L2) — the forward-model setups under principles."""
+    return _items(transport.get_json(f"{base()}/specs"), "genesis", "specs", "chain")
+
+
+def spec(artifact_id: str) -> Dict:
+    """A digital-twin spec's full detail (six_tuple, protocol_fields, d_spec, …)."""
+    d = _unwrap(transport.get_json(f"{base()}/specs/{artifact_id}"))
+    return d.get("spec", d) if isinstance(d, dict) and "spec" in d else d
 
 
 def solutions(benchmark_id: str) -> List[Dict]:
@@ -79,7 +98,11 @@ def search(query: str, *, limit: int = 20) -> Dict:
     except Exception:
         prins = []
     try:
+        twins = _match(specs())
+    except Exception:
+        twins = []
+    try:
         benches = _match(benchmarks())
     except Exception:
         benches = []
-    return {"query": query, "principles": prins, "benchmarks": benches}
+    return {"query": query, "principles": prins, "specs": twins, "benchmarks": benches}

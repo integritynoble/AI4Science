@@ -51,25 +51,43 @@ def research_tools() -> List[Tool]:
     return [
         Tool(
             "pwm_search",
-            "Keyword-search the PWM registry (principles + benchmarks) by topic or "
-            "domain — e.g. 'CASSI', 'denoising', 'MRI reconstruction'. Use this FIRST "
-            "to ground a research question, instead of listing the whole registry.",
+            "Keyword-search the PWM registry (principles + digital-twin specs + "
+            "benchmarks) by topic or domain — e.g. 'CASSI', 'denoising', 'MRI "
+            "reconstruction'. Use this FIRST to ground a research question, instead "
+            "of listing the whole registry.",
             query_obj,
             _wrap("search", takes_arg="query"),
             mutating=False,
         ),
         Tool(
             "pwm_principles",
-            "List PWM registry principles (id/title/domain).",
+            "List PWM registry principles (L1: id/title/domain).",
             obj,
             _wrap("principles"),
             mutating=False,
         ),
         Tool(
             "pwm_principle",
-            "Fetch a PWM principle's full detail by artifact_id.",
+            "Fetch a PWM principle's full detail by artifact_id — includes its "
+            "digital-twin specs and registered benchmarks.",
             id_obj,
             _wrap("principle", takes_arg="artifact_id"),
+            mutating=False,
+        ),
+        Tool(
+            "pwm_specs",
+            "List PWM digital-twin specs (L2: the forward-model setups under "
+            "principles — id/title/spec_type/parent principle).",
+            obj,
+            _wrap("specs"),
+            mutating=False,
+        ),
+        Tool(
+            "pwm_spec",
+            "Fetch a digital-twin spec's full detail by artifact_id "
+            "(six_tuple, protocol_fields, d_spec — the forward model).",
+            id_obj,
+            _wrap("spec", takes_arg="artifact_id"),
             mutating=False,
         ),
         Tool(
