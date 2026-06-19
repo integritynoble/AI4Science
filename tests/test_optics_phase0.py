@@ -144,8 +144,17 @@ def _run():
         check("tools_and_capabilities", False, str(exc))
 
 
-_run()
-ok = all(r[1] for r in results)
-passed = sum(r[1] for r in results)
-print(f"\n{passed}/{len(results)} checks passed")
-sys.exit(0 if ok else 1)
+def test_optics_phase0():
+    """Pytest entry: run the Phase 0 optics checks and assert all pass."""
+    results.clear()
+    _run()
+    failed = [(n, info) for n, ok, info in results if not ok]
+    assert not failed, f"phase0 optics checks failed: {failed}"
+
+
+if __name__ == "__main__":
+    _run()
+    ok = all(r[1] for r in results)
+    passed = sum(r[1] for r in results)
+    print(f"\n{passed}/{len(results)} checks passed")
+    sys.exit(0 if ok else 1)

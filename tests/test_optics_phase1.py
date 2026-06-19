@@ -195,7 +195,11 @@ try:
 except Exception as exc:
     check("optics_tools closed tools", False, str(exc))
 
-if _run():
-    sys.exit(0)
-else:
-    sys.exit(1)
+def test_optics_phase1():
+    """Pytest entry: assert the Phase 1 optics checks (run above) all passed."""
+    failed = [r for r in results if r[0] != "PASS"]
+    assert _run(), f"phase1 optics checks failed: {failed}"
+
+
+if __name__ == "__main__":
+    sys.exit(0 if _run() else 1)

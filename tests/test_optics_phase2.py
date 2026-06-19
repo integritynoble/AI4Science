@@ -298,6 +298,14 @@ check("irradiance_at_sensor photon_flux > 0", irr["photon_flux_per_s"] > 0)
 check("irradiance_at_sensor irradiance = L*Omega*T",
       abs(irr["irradiance_W_m2"] - 100.0 * 0.01 * 0.8) < 1e-6)
 
+def test_optics_phase2():
+    """Pytest entry: run the Phase 2 optics script in a subprocess (its _run()
+    sys.exit()s on failure, so isolate it) and assert it passes."""
+    import subprocess
+    r = subprocess.run([sys.executable, __file__], capture_output=True, text=True)
+    assert r.returncode == 0, (r.stdout + r.stderr)[-2000:]
+
+
 if __name__ == "__main__":
     ok = _run()
     sys.exit(0 if ok else 1)
