@@ -1,0 +1,80 @@
+# AI4Science/tests/test_registry_router_tools.py
+"""science-router agent tools: wrap registry_router, return JSON (network-free)."""
+from __future__ import annotations
+
+import json
+
+from ai4science.harness import registry_router_tools as RRT
+
+
+def _tools(tmp_path):
+    return {t.name: t for t in RRT.science_router_tools(gate_provider=None, workspace=tmp_path)}
+
+
+def test_tools_present_and_readonly(tmp_path):
+    tools = _tools(tmp_path)
+    assert {"pwm_solve", "pwm_standard_check", "pwm_lineage"} <= set(tools)
+    for t in tools.values():
+        assert t.mutating is False        # read-only registry lookups
+
+
+def test_pwm_solve_existing_answer(tmp_path, monkeypatch):
+    monkeypatch.setattr(RRT.registry_router, "find_problem", lambda q: {
+        "query": q, "matched": True, "exists": True,
+        "artifact_id": "L3-003", "url": "https://explorer.physicsworldmodel.org/benchmark/L3-003",
+        "answer": {"label": "MST-L", "psnr_db": 35.5},
+        "lineage": [{"layer": "L1", "artifact_id": "L1-003"}],
+        "contribute": False})
+    tools = _tools(tmp_path)
+    out = json.loads(tools["pwm_solve"].func(str(tmp_path), query="cassi"))
+    assert out["exists"] is True
+    assert out["answer"]["label"] == "MST-L"
+    assert "physicsworldmodel.org" in out["url"]
+    assert out["contribute"] is False
+
+
+def test_pwm_solve_unknown_offers_contribution(tmp_path, monkeypatch):
+    monkeypatch.setattr(RRT.registry_router, "find_problem", lambda q: {
+        "query": q, "matched": False, "exists": False, "answer": None,
+        "lineage": [], "contribute": True,
+        "contribute_hint": "No matching artifact. Contribute to earn PWM."})
+    tools = _tools(tmp_path)
+    out = json.loads(tools["pwm_solve"].func(str(tmp_path), query="quantum gravity"))
+    assert out["exists"] is False
+    assert out["contribute"] is True
+    assert "earn" in out["contribute_hint"].lower()
+
+
+def test_pwm_standard_check(tmp_path, monkeypatch):
+    monkeypatch.setattr(RRT.registry_router, "standard_check",
+                        lambda bid, value, **kw: {
+                            "benchmark_id": bid, "value": value,
+                            "leaderboard_best": 35.5, "meets_or_beats": value >= 35.5,
+                            "reward_eligible": value >= 35.5,
+                            "note": "ok" if value >= 35.5 else "BELOW the registry standard"})
+    tools = _tools(tmp_path)
+    hi = json.loads(tools["pwm_standard_check"].func(str(tmp_path), benchmark_id="L3-003", value=36.0))
+    assert hi["meets_or_beats"] is True and hi["reward_eligible"] is True
+    lo = json.loads(tools["pwm_standard_check"].func(str(tmp_path), benchmark_id="L3-003", value=30.0))
+    assert lo["meets_or_beats"] is False
+    assert "below" in lo["note"].lower()
+
+
+def test_pwm_lineage(tmp_path, monkeypatch):
+    monkeypatch.setattr(RRT.registry_router, "resolve_lineage", lambda i: [
+        {"layer": "L1", "artifact_id": "L1-003", "url": "u1"},
+        {"layer": "L2", "artifact_id": "L2-003", "url": "u2"},
+        {"layer": "L3", "artifact_id": "L3-003", "url": "u3"}])
+    tools = _tools(tmp_path)
+    out = json.loads(tools["pwm_lineage"].func(str(tmp_path), artifact_id="L3-003"))
+    assert [n["layer"] for n in out["lineage"]] == ["L1", "L2", "L3"]
+
+
+def test_tool_returns_error_json_on_exception(tmp_path, monkeypatch):
+    def _boom(q):
+        raise RuntimeError("registry down")
+    monkeypatch.setattr(RRT.registry_router, "find_problem", _boom)
+    tools = _tools(tmp_path)
+    out = json.loads(tools["pwm_solve"].func(str(tmp_path), query="x"))
+    assert out["ok"] is False
+    assert "registry down" in out["error"]
