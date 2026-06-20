@@ -55,7 +55,23 @@ PYEOF
   done
   return 1
 }
-PY="$(find_python)" || die "Python >= 3.10 not found on PATH. On an HPC cluster try: module load python/3.11"
+if ! PY="$(find_python)"; then
+  case "$(uname -s)" in
+    Darwin)
+      _hint="Install Python 3.12 with Homebrew:  brew install python@3.12
+   (no Homebrew? get it at https://brew.sh, or download Python from
+    https://www.python.org/downloads/macos/), then re-run this installer.
+   Note: the Command Line Tools python3 is often 3.9 and too old." ;;
+    Linux)
+      _hint="Debian/Ubuntu:  sudo apt install python3 python3-venv
+   Fedora/RHEL:    sudo dnf install python3
+   HPC cluster:    module load python/3.11" ;;
+    *)
+      _hint="Install Python 3.10+ and ensure it's on your PATH, then re-run." ;;
+  esac
+  die "Python >= 3.10 not found on PATH.
+   $_hint"
+fi
 ok "Using $("$PY" --version 2>&1) ($(command -v "$PY"))"
 
 # 2. Isolated venv.
