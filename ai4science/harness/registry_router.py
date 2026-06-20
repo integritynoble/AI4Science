@@ -127,7 +127,8 @@ def find_problem(query: str) -> Dict[str, Any]:
             "lineage": [], "contribute": True,
             "contribute_hint": "No matching artifact in physicsworldmodel.org. "
             "Contribute a new principle -> digital twin -> benchmark -> solution; "
-            "PWM reward scales with the highest new layer you add."}
+            "PWM reward scales with the highest new layer you add."
+            " Use the pwm_contribute tool (after confirming with the user) to submit it."}
 
 
 def standard_check(benchmark_id: str, value: float, metric_field: str = "psnr_db",

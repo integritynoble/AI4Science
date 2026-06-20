@@ -14,8 +14,8 @@ def _tools(tmp_path):
 def test_tools_present_and_readonly(tmp_path):
     tools = _tools(tmp_path)
     assert {"pwm_solve", "pwm_standard_check", "pwm_lineage"} <= set(tools)
-    for t in tools.values():
-        assert t.mutating is False        # read-only registry lookups
+    for name in ("pwm_solve", "pwm_standard_check", "pwm_lineage"):
+        assert tools[name].mutating is False   # read-only registry lookups
 
 
 def test_pwm_solve_existing_answer(tmp_path, monkeypatch):
@@ -95,3 +95,63 @@ def test_ci_and_research_specs_have_science_router():
     from ai4science.harness.agents.specs.research import AGENT as RESEARCH
     assert "science-router" in CI.capabilities
     assert "science-router" in RESEARCH.capabilities
+
+
+def test_pwm_contribute_present_and_mutating(tmp_path):
+    tools = {t.name: t for t in RRT.science_router_tools(gate_provider=None, workspace=tmp_path)}
+    assert "pwm_contribute" in tools
+    assert tools["pwm_contribute"].mutating is True   # economic write -> permission gate
+
+
+def test_pwm_contribute_requires_login(tmp_path, monkeypatch):
+    monkeypatch.setattr(RRT.wallet, "platform_token", lambda: None)
+    tools = {t.name: t for t in RRT.science_router_tools(gate_provider=None, workspace=tmp_path)}
+    out = json.loads(tools["pwm_contribute"].func(
+        str(tmp_path), submission_type="principle", form_data='{"name":"X"}'))
+    assert out["ok"] is False
+    assert "log in" in out["error"].lower() or "token" in out["error"].lower()
+
+
+def test_pwm_contribute_submits_and_returns_server_json(tmp_path, monkeypatch):
+    monkeypatch.setattr(RRT.wallet, "platform_token", lambda: "pwm_testtoken")
+    monkeypatch.setattr(RRT.wallet, "platform_base", lambda: "https://physicsworldmodel.org")
+    captured = {}
+    def _post(base, path, token, body):
+        captured.update(base=base, path=path, token=token, body=body)
+        return 200, {"success": True, "submission_id": "pwm-pri-abc123",
+                     "submission_type": "principle", "status": "testnet",
+                     "est_reward": 2.0, "note": "bootstrap"}
+    monkeypatch.setattr(RRT.wallet, "http_post", _post)
+    tools = {t.name: t for t in RRT.science_router_tools(gate_provider=None, workspace=tmp_path)}
+    out = json.loads(tools["pwm_contribute"].func(
+        str(tmp_path), submission_type="principle",
+        form_data='{"name":"My Principle","domain":"Imaging"}'))
+    assert out["ok"] is True
+    assert out["submission_id"] == "pwm-pri-abc123"
+    assert out["est_reward"] == 2.0
+    # posted to the right endpoint with parsed form_data
+    assert captured["path"] == "/api/v1/pwm-submit/self"
+    assert captured["token"] == "pwm_testtoken"
+    assert captured["body"]["submission_type"] == "principle"
+    assert captured["body"]["form_data"]["name"] == "My Principle"
+
+
+def test_pwm_contribute_bad_form_data_json(tmp_path, monkeypatch):
+    monkeypatch.setattr(RRT.wallet, "platform_token", lambda: "pwm_testtoken")
+    tools = {t.name: t for t in RRT.science_router_tools(gate_provider=None, workspace=tmp_path)}
+    out = json.loads(tools["pwm_contribute"].func(
+        str(tmp_path), submission_type="principle", form_data="{not json"))
+    assert out["ok"] is False
+    assert "form_data" in out["error"].lower()
+
+
+def test_pwm_contribute_server_error_surfaced(tmp_path, monkeypatch):
+    monkeypatch.setattr(RRT.wallet, "platform_token", lambda: "pwm_testtoken")
+    monkeypatch.setattr(RRT.wallet, "platform_base", lambda: "https://physicsworldmodel.org")
+    monkeypatch.setattr(RRT.wallet, "http_post",
+                        lambda *a, **k: (422, {"detail": "submission_type must be one of [...]"}))
+    tools = {t.name: t for t in RRT.science_router_tools(gate_provider=None, workspace=tmp_path)}
+    out = json.loads(tools["pwm_contribute"].func(
+        str(tmp_path), submission_type="bogus", form_data="{}"))
+    assert out["ok"] is False
+    assert "422" in out["error"] or "submission_type" in out["error"]

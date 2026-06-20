@@ -9,9 +9,12 @@ from typing import Any, Callable, List, Optional
 
 from ai4science.harness.tools.base import Tool
 from ai4science.harness import registry_router
+from ai4science import wallet
 
 # Read-only discovery tools — free under the earn-first model.
-TOOL_PRICES: dict = {"pwm_solve": 0.0, "pwm_standard_check": 0.0, "pwm_lineage": 0.0}
+# pwm_contribute is an economic write that earns (doesn't cost).
+TOOL_PRICES: dict = {"pwm_solve": 0.0, "pwm_standard_check": 0.0,
+                     "pwm_lineage": 0.0, "pwm_contribute": 0.0}
 
 
 def _solve(workspace: str, query: str = "") -> str:
@@ -38,6 +41,33 @@ def _lineage(workspace: str, artifact_id: str = "") -> str:
                            "lineage": registry_router.resolve_lineage(artifact_id)})
     except Exception as exc:  # noqa: BLE001
         return json.dumps({"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+
+
+def _contribute(workspace: str, submission_type: str = "", form_data: str = "{}",
+                parent_id: str = "", parent_type: str = "") -> str:
+    token = wallet.platform_token()
+    if not token:
+        return json.dumps({"ok": False, "error":
+            "Not logged in — run `ai4science login` (or set PWM_TOKEN to your "
+            "physicsworldmodel.org token) to contribute and earn PWM."})
+    try:
+        fd = json.loads(form_data) if isinstance(form_data, str) else dict(form_data or {})
+        if not isinstance(fd, dict):
+            raise ValueError("form_data must be a JSON object")
+    except (ValueError, TypeError) as exc:
+        return json.dumps({"ok": False, "error": f"invalid form_data JSON: {exc}"})
+    body = {"submission_type": submission_type, "form_data": fd}
+    if parent_id:
+        body["parent_id"] = parent_id
+    if parent_type:
+        body["parent_type"] = parent_type
+    try:
+        status, resp = wallet.http_post(wallet.platform_base(), "/api/v1/pwm-submit/self", token, body)
+    except Exception as exc:  # noqa: BLE001
+        return json.dumps({"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+    if status != 200:
+        return json.dumps({"ok": False, "error": f"server returned {status}: {resp}"})
+    return json.dumps({"ok": True, **resp})
 
 
 def science_router_tools(gate_provider: Optional[Callable] = None,
@@ -77,4 +107,20 @@ def science_router_tools(gate_provider: Optional[Callable] = None,
                  "artifact_id": {"type": "string"}},
                  "required": ["artifact_id"]},
              func=_lineage, mutating=False),
+        Tool(name="pwm_contribute",
+             description="Submit a contribution to physicsworldmodel.org and earn PWM. "
+                         "Use when pwm_solve returned exists=false and the user agreed to "
+                         "contribute. submission_type is principle|spec|benchmark|solution; "
+                         "form_data is a JSON object of the artifact fields (e.g. principle: "
+                         "{name,domain,rule,formula,reference}); parent_id links it into the "
+                         "L1->L2->L3 lineage. A bootstrap reward is credited on acceptance "
+                         "(capped); full emission at human promotion. Requires login.",
+             parameters={"type": "object", "properties": {
+                 "submission_type": {"type": "string",
+                     "enum": ["principle", "spec", "benchmark", "solution"]},
+                 "form_data": {"type": "string", "description": "JSON object of artifact fields"},
+                 "parent_id": {"type": "string", "description": "parent artifact id (lineage)"},
+                 "parent_type": {"type": "string"}},
+                 "required": ["submission_type", "form_data"]},
+             func=_contribute, mutating=True),
     ]
