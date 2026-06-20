@@ -52,6 +52,13 @@ def _optics_design(ctx: BuildContext) -> List[Tool]:
                              workspace=ctx.workspace))
 
 
+def _forward_model(ctx: BuildContext) -> List[Tool]:
+    from ai4science.harness.forward_model_tools import forward_model_tools
+    from ai4science.harness.pwm_gate import PwmGate
+    return list(forward_model_tools(gate_provider=PwmGate.from_env,
+                                    workspace=ctx.workspace))
+
+
 # name -> provider(ctx) -> list[Tool]. Built-in bundles.
 BUILTIN_BUNDLES: Dict[str, Callable[[BuildContext], List[Tool]]] = {
     "pwm-actions": _pwm_actions,
@@ -62,6 +69,7 @@ BUILTIN_BUNDLES: Dict[str, Callable[[BuildContext], List[Tool]]] = {
     "compute-providers": _compute_providers,
     "ci-algorithms": _ci_algorithms,
     "optics-design": _optics_design,
+    "forward-model": _forward_model,
 }
 
 # Dynamic bundles registered by tool plug-ins (manifest kind="tool"). Kept apart

@@ -102,3 +102,21 @@ def test_fm_compile_inline_model_json(tmp_path):
     # nonlinear: compiles & validates, but flagged non-linear (adjoint skipped)
     assert "non-linear" in json.loads(
         (tmp_path / "forward_model_report.json").read_text())["warnings"][0]
+
+
+def test_forward_model_capability_bundle_resolves():
+    from ai4science.harness.agents.capabilities import resolve_capability, CAPABILITY_BUNDLES
+    from ai4science.harness.agents.context import BuildContext
+
+    assert "forward-model" in CAPABILITY_BUNDLES
+    ctx = BuildContext(workspace=None, brand_provider=None, session_factory=None)
+    tools = resolve_capability("forward-model", ctx)
+    names = {t.name for t in tools}
+    assert {"fm_primitives", "fm_compile", "fm_validate", "fm_simulate"} <= names
+
+
+def test_ci_and_research_specs_have_forward_model_capability():
+    from ai4science.harness.agents.specs.computational_imaging import AGENT as CI_SPEC
+    from ai4science.harness.agents.specs.research import AGENT as RESEARCH_SPEC
+    assert "forward-model" in CI_SPEC.capabilities
+    assert "forward-model" in RESEARCH_SPEC.capabilities
