@@ -80,15 +80,38 @@ def _externally_managed() -> bool:
         return False
 
 
-def _pip_cmd(*specs: str) -> list:
-    cmd = [sys.executable, "-m", "pip", "install",
-           "--force-reinstall", "--no-cache-dir"]
+def _pip_cmd(*specs: str, force: bool = True, no_deps: bool = False) -> list:
+    cmd = [sys.executable, "-m", "pip", "install", "--no-cache-dir"]
+    if force:
+        cmd.append("--force-reinstall")
+    if no_deps:
+        cmd.append("--no-deps")
     if not _in_venv():
         cmd.append("--user")
         if _externally_managed():
             cmd.append("--break-system-packages")
     cmd.extend(specs)
     return cmd
+
+
+def _install_one(tail: tuple) -> int:
+    """Install one candidate in two phases to avoid the Windows [WinError 5]
+    file-lock that --force-reinstall triggers on compiled deps (PyYAML/pyzmq
+    .pyd files locked by the running interpreter):
+
+      1. deps WITHOUT --force — pip skips already-satisfied compiled deps, so
+         their locked .pyd files are never touched.
+      2. our package WITH --force-reinstall --no-deps — pure-Python, overwrites
+         only ai4science/pwm_core .py files (never locked), refreshing the code
+         even when the version string is unchanged.
+
+    Success is judged on phase 2 (the code refresh); phase 1 failures are
+    non-fatal — if deps are already present, the code update still lands.
+    """
+    if _via_pipx():
+        return subprocess.call(["pipx", "install", "--force", *tail])
+    subprocess.call(_pip_cmd(*tail, force=False, no_deps=False))   # phase 1: deps
+    return subprocess.call(_pip_cmd(*tail, force=True, no_deps=True))  # phase 2: code
 
 
 def _candidates(channel: str) -> list:
@@ -118,18 +141,18 @@ def update(
     rc_code = 1
     cands = _candidates(channel)
     for i, tail in enumerate(cands):
-        cmd = (["pipx", "install", "--force", *tail] if _via_pipx()
-               else _pip_cmd(*tail))
-        typer.echo(f"[update] running: {' '.join(cmd)}")
-        rc_code = subprocess.call(cmd)
+        typer.echo(f"[update] installing {' '.join(tail)} …")
+        rc_code = _install_one(tail)
         if rc_code == 0:
             break
         if i + 1 < len(cands):
             typer.echo("[update] that source failed; trying the next…")
     if rc_code != 0:
-        typer.echo("[update] failed — see pip output above. Manual fallback:\n"
-                   f"  pip install --user --break-system-packages "
-                   f"--force-reinstall --no-cache-dir '{_spec(channel)}'")
+        # --no-deps avoids relocking compiled deps (the Windows [WinError 5] cause)
+        typer.echo("[update] failed — see pip output above. Manual fallback "
+                   "(skips deps, avoids the Windows file-lock):\n"
+                   f"  pip install --user --force-reinstall --no-deps "
+                   f"--no-cache-dir '{_spec(channel)}'")
         raise typer.Exit(rc_code)
     # report the NEW version from a fresh interpreter (this process still has the
     # old module loaded; importlib.metadata can hit a stale dist-info)
