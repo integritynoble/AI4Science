@@ -66,3 +66,39 @@ def test_dump_model_json_sanitizes_name(tmp_path):
     assert (tmp_path / ref).exists()
     m2 = load_model_json(tmp_path, "fm.json")  # round-trips
     assert m2.name == "weird/name with spaces"
+
+
+def test_fm_compile_validate_simulate_end_to_end(tmp_path):
+    import numpy as np
+    tools = {t.name: t for t in forward_model_tools(gate_provider=None, workspace=tmp_path)}
+
+    mask = np.random.default_rng(0).integers(0, 2, (8, 8)).astype(np.float64)
+    model = from_modality("cassi", H=8, W=8, N_bands=4, mask=mask)
+    dump_model_json(model, tmp_path, "forward_model_in.json")
+
+    out = json.loads(tools["fm_compile"].func(str(tmp_path)))
+    assert out["ok"] is True
+    assert (tmp_path / "forward_model.json").exists()
+    assert (tmp_path / "forward_model_report.json").exists()
+
+    val = json.loads(tools["fm_validate"].func(str(tmp_path)))
+    assert val["ok"] is True
+    assert val["report"]["is_linear"] is True
+    assert val["report"]["adjoint"]["passed"] is True
+
+    sim = json.loads(tools["fm_simulate"].func(str(tmp_path)))
+    assert sim["ok"] is True
+    assert sim["y_shape"] == [8, 8]
+    assert (tmp_path / "y.npy").exists()
+
+
+def test_fm_compile_inline_model_json(tmp_path):
+    tools = {t.name: t for t in forward_model_tools(gate_provider=None, workspace=tmp_path)}
+    model_json = json.dumps({
+        "name": "intensity", "x_shape": [4, 4],
+        "stages": [{"op": "square_magnitude", "params": {}}],
+    })
+    out = json.loads(tools["fm_compile"].func(str(tmp_path), model=model_json))
+    # nonlinear: compiles & validates, but flagged non-linear (adjoint skipped)
+    assert "non-linear" in json.loads(
+        (tmp_path / "forward_model_report.json").read_text())["warnings"][0]
