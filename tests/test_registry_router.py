@@ -62,6 +62,31 @@ def test_resolve_lineage_principle(fake_registry):
     assert [n["layer"] for n in chain] == ["L1"]
 
 
+def test_resolve_lineage_benchmark_live_genesis_shape(monkeypatch):
+    # Live pwm_data.benchmark() nests the record under "genesis" — the actual
+    # production path. resolve_lineage must still yield L1->L2->L3.
+    live = {"genesis": {"artifact_id": "L3-003", "parent_l1": "L1-003",
+                        "parent_l2": "L2-003", "title": "CASSI benchmark"},
+            "chain": {}, "leaderboard": []}
+    monkeypatch.setattr(RR.pwm_data, "benchmark",
+                        lambda i: dict(live) if i == "L3-003" else {})
+    chain = RR.resolve_lineage("L3-003")
+    assert [n["layer"] for n in chain] == ["L1", "L2", "L3"]
+    assert [n["artifact_id"] for n in chain] == ["L1-003", "L2-003", "L3-003"]
+
+
+def test_resolve_lineage_spec_live_genesis_shape(monkeypatch):
+    # Live spec record may arrive nested under "genesis"/"spec"; lineage must
+    # still resolve L1->L2.
+    live = {"genesis": {"artifact_id": "L2-003", "parent_l1": "L1-003",
+                        "title": "CASSI twin", "spec_type": "cassi"}}
+    monkeypatch.setattr(RR.pwm_data, "spec",
+                        lambda i: dict(live) if i == "L2-003" else {})
+    chain = RR.resolve_lineage("L2-003")
+    assert [n["layer"] for n in chain] == ["L1", "L2"]
+    assert [n["artifact_id"] for n in chain] == ["L1-003", "L2-003"]
+
+
 # ---- best_solution ----------------------------------------------------------
 def test_best_solution_picks_max_psnr(fake_registry):
     best = RR.best_solution("L3-003")
