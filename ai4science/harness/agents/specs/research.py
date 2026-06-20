@@ -35,7 +35,17 @@ RESEARCH_PROMPT = (
     "with the pwm_* tools; then onboard_submit (it PREVIEWS first — pass confirm=true "
     "to submit to the live platform, which runs the S1-S4 quality gate and awards PWM "
     "on accept). Track the reward with onboard_status / onboard_balance. ALWAYS "
-    "preview before submitting."
+    "preview before submitting.\n\n"
+    "REGISTRY STANDARD (mandatory): physicsworldmodel.org's registered "
+    "principles, digital twins, benchmarks, and solutions are the standard your "
+    "work is held to. For ANY task that targets a registered benchmark, you MUST "
+    "call pwm_standard_check with your result's metric BEFORE reporting success, "
+    "and tell the user the delta vs the leaderboard best. Only call a result a "
+    "success if it meets-or-beats the registered best (within tolerance); if it "
+    "is below, say so explicitly (\"below the registry standard\") and report it "
+    "as not yet reward-eligible. Use pwm_solve first to find whether an answer "
+    "already exists (return its answer + physicsworldmodel.org link); if none "
+    "exists, offer pwm_contribute so the user can contribute and earn PWM."
 )
 
 AGENT = AgentSpec(

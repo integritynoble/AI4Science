@@ -23,7 +23,17 @@ PROMPT = (
     "for one (GAP-TV, MST-L, HDNet, DAUHST, FBP, SART, ...), `ci_algorithm_info` "
     "gives the implementation + hyperparameters, and `ci_run_algorithm` runs a "
     "CPU algorithm locally on workspace data (GPU algorithms must go through "
-    "cassi_dispatch / compute_dispatch)."
+    "cassi_dispatch / compute_dispatch).\n\n"
+    "REGISTRY STANDARD (mandatory): physicsworldmodel.org's registered "
+    "principles, digital twins, benchmarks, and solutions are the standard your "
+    "work is held to. For ANY task that targets a registered benchmark, you MUST "
+    "call pwm_standard_check with your result's metric BEFORE reporting success, "
+    "and tell the user the delta vs the leaderboard best. Only call a result a "
+    "success if it meets-or-beats the registered best (within tolerance); if it "
+    "is below, say so explicitly (\"below the registry standard\") and report it "
+    "as not yet reward-eligible. Use pwm_solve first to find whether an answer "
+    "already exists (return its answer + physicsworldmodel.org link); if none "
+    "exists, offer pwm_contribute so the user can contribute and earn PWM."
 )
 
 AGENT = AgentSpec(
