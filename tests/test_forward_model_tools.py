@@ -42,3 +42,27 @@ def test_model_json_ref_roundtrip(tmp_path):
 def test_tool_prices_present():
     for name in ("fm_compile", "fm_validate", "fm_simulate"):
         assert name in TOOL_PRICES
+
+
+def test_fm_compile_bad_json_returns_error(tmp_path):
+    from ai4science.harness.forward_model_tools import forward_model_tools
+    tools = {t.name: t for t in forward_model_tools(gate_provider=None, workspace=tmp_path)}
+    out = json.loads(tools["fm_compile"].func(str(tmp_path), model="{not valid json"))
+    assert out["ok"] is False
+    assert "error" in out
+
+
+def test_dump_model_json_sanitizes_name(tmp_path):
+    import numpy as np
+    from ai4science.harness.forward_model_tools import dump_model_json, load_model_json
+    from pwm_core.forward_compiler.bridge import from_modality
+    m = from_modality("cassi", H=4, W=4, N_bands=2,
+                      mask=np.ones((4, 4), dtype=np.float64))
+    m.name = "weird/name with spaces"   # must not crash or escape the workspace
+    dump_model_json(m, tmp_path, "fm.json")
+    raw = json.loads((tmp_path / "fm.json").read_text())
+    ref = [s for s in raw["stages"] if s["op"] == "mask_multiply"][0]["params"]["mask"]["$ref"]
+    assert "/" not in ref                      # sanitized
+    assert (tmp_path / ref).exists()
+    m2 = load_model_json(tmp_path, "fm.json")  # round-trips
+    assert m2.name == "weird/name with spaces"
