@@ -59,6 +59,11 @@ def _forward_model(ctx: BuildContext) -> List[Tool]:
                                     workspace=ctx.workspace))
 
 
+def _science_router(ctx: BuildContext) -> List[Tool]:
+    from ai4science.harness.registry_router_tools import science_router_tools
+    return list(science_router_tools(gate_provider=None, workspace=ctx.workspace))
+
+
 # name -> provider(ctx) -> list[Tool]. Built-in bundles.
 BUILTIN_BUNDLES: Dict[str, Callable[[BuildContext], List[Tool]]] = {
     "pwm-actions": _pwm_actions,
@@ -70,6 +75,7 @@ BUILTIN_BUNDLES: Dict[str, Callable[[BuildContext], List[Tool]]] = {
     "ci-algorithms": _ci_algorithms,
     "optics-design": _optics_design,
     "forward-model": _forward_model,
+    "science-router": _science_router,
 }
 
 # Dynamic bundles registered by tool plug-ins (manifest kind="tool"). Kept apart

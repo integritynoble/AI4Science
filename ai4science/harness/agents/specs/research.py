@@ -47,6 +47,6 @@ AGENT = AgentSpec(
     keywords=("science", "pwm", "benchmark", "solution", "principle"),
     system_prompt=RESEARCH_PROMPT,
     capabilities=("pwm-actions", "pwm-data", "onboarding", "compute-providers",
-                  "ci-algorithms", "forward-model"),
+                  "ci-algorithms", "forward-model", "science-router"),
     order=2,
 )

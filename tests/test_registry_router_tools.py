@@ -78,3 +78,20 @@ def test_tool_returns_error_json_on_exception(tmp_path, monkeypatch):
     out = json.loads(tools["pwm_solve"].func(str(tmp_path), query="x"))
     assert out["ok"] is False
     assert "registry down" in out["error"]
+
+
+def test_science_router_capability_bundle_resolves():
+    from ai4science.harness.agents.capabilities import resolve_capability, CAPABILITY_BUNDLES
+    from ai4science.harness.agents.context import BuildContext
+    assert "science-router" in CAPABILITY_BUNDLES
+    ctx = BuildContext(workspace=None, brand_provider=None, session_factory=None)
+    tools = resolve_capability("science-router", ctx)
+    names = {t.name for t in tools}
+    assert {"pwm_solve", "pwm_standard_check", "pwm_lineage"} <= names
+
+
+def test_ci_and_research_specs_have_science_router():
+    from ai4science.harness.agents.specs.computational_imaging import AGENT as CI
+    from ai4science.harness.agents.specs.research import AGENT as RESEARCH
+    assert "science-router" in CI.capabilities
+    assert "science-router" in RESEARCH.capabilities
