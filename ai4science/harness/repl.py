@@ -526,12 +526,22 @@ def run_common_repl(
 
     from ai4science.harness.tui import _display_mode
     from ai4science import __version__ as _ver
-    print(f"\n[harness] {_display_mode(mode_label)} mode  backend={active_backend}  "
-          f"model={active_model}  v{_ver}", flush=True)
-    print(f"[harness] session {_sid}  (resume later with --resume {_sid})", flush=True)
-    print("[harness] /help for commands  /exit to quit\n", flush=True)
-    if gate.enabled:
-        print("[harness] PWM gate ON — each turn is charged to the provider in PWM", flush=True)
+    # Clean Claude-Code-style welcome header (coral accent), instead of noisy
+    # [harness] log lines.
+    _coral, _dim, _rst = "\x1b[38;5;173m", "\x1b[2m", "\x1b[0m"
+    _friendly = {"claude-opus-4-8": "Opus 4.8", "claude-sonnet-4-6": "Sonnet 4.6",
+                 "claude-haiku-4-5": "Haiku 4.5", "gpt-5.5": "ChatGPT 5.5",
+                 "gpt-5.5-codex": "ChatGPT 5.5 Codex",
+                 "gemini-3.1-pro-preview": "Gemini 3.1 Pro"}
+    _m = _friendly.get(active_model, active_model)
+    _gate = ("gate on — turns charged in PWM" if gate.enabled else "gate off")
+    print(f"\n{_coral}✷ ai4science{_rst} {_dim}v{_ver}{_rst}", flush=True)
+    print(f"  {_dim}agent{_rst}  {_display_mode(mode_label)}  {_dim}·{_rst}  "
+          f"{_m} {_dim}({active_backend}){_rst}", flush=True)
+    print(f"  {_dim}cwd{_rst}    {workspace}", flush=True)
+    print(f"  {_dim}tips{_rst}   /help · /agent · /model · /exit · Ctrl-C interrupts", flush=True)
+    print(f"  {_dim}pwm{_rst}    {_dim}{_gate} · session {_sid} (resume: --resume {_sid}){_rst}\n",
+          flush=True)
 
     from ai4science.harness import lineedit
     lineedit.enable(mode_label or "chat")     # ↑/↓ history, ←/→ cursor
