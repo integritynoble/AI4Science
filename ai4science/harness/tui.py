@@ -187,18 +187,24 @@ def _inline_select(question: str, options):
     from prompt_toolkit.layout.controls import FormattedTextControl
     from prompt_toolkit.styles import Style
 
+    from prompt_toolkit.formatted_text import ANSI, to_formatted_text
+
     n = len(options)
     sel = {"i": 0}
 
     def _frags():
         out = []
         if question:
-            out.append(("class:q", f"{question}\n"))
+            # Render the question through ANSI() so embedded colour codes (the
+            # syntax-highlighted write/edit preview) show as COLOUR, not raw
+            # `^[[…` escape bytes.
+            out += list(to_formatted_text(ANSI(question)))
+            out.append(("", "\n"))
         for idx, opt in enumerate(options):
             cur = idx == sel["i"]
             out.append(("class:cur" if cur else "",
                         f" {'❯' if cur else ' '} {opt}\n"))
-        out.append(("class:hint", " ↑/↓ move · ⏎ select · 1-9 pick · Esc cancel"))
+        out.append(("class:hint", " ↑/↓ move · ⏎/Tab select · 1-9 pick · Esc cancel"))
         return out
 
     kb = KeyBindings()
@@ -212,6 +218,7 @@ def _inline_select(question: str, options):
     def _(e): sel["i"] = (sel["i"] + 1) % n
 
     @kb.add("enter")
+    @kb.add("tab")
     def _(e): e.app.exit(result=sel["i"])
 
     @kb.add("escape")
