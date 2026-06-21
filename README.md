@@ -151,6 +151,25 @@ The PyPI package is `pwm-ai4science`; the command is `ai4science` (same package-
 pipx install "git+https://github.com/integritynoble/AI4Science.git"
 ```
 
+### Install a specific version or channel
+
+The one-line installer takes flags (and matching env vars). It also **downloads its own standalone Python** if none ≥ 3.10 is present, so nothing else is needed on a fresh machine.
+
+```bash
+# Pin an exact release — Linux/macOS (accepts "0.6.21" or "v0.6.21")
+curl -fsSL https://raw.githubusercontent.com/integritynoble/AI4Science/main/install.sh | bash -s -- --version 0.6.21
+
+# Pick a channel:  --stable (default) | --rc | --dev (latest main)
+curl -fsSL https://raw.githubusercontent.com/integritynoble/AI4Science/main/install.sh | bash -s -- --rc
+```
+
+```powershell
+# Windows — flags can't pass through `irm | iex`, so use the env var:
+$env:AI4SCIENCE_VERSION="0.6.21"; irm https://raw.githubusercontent.com/integritynoble/AI4Science/main/install.ps1 | iex
+```
+
+Already installed? Switch lines without reinstalling: `ai4science update --rc` (or `--stable` / `--dev`). The same installer is mirrored at `https://physicsworldmodel.org/install.sh` and `/install.ps1`, and the website documents it at [physicsworldmodel.org/start#install-version](https://physicsworldmodel.org/start#install-version). Released tags: see [Releases](https://github.com/integritynoble/AI4Science/releases) (latest stable **v0.6.21**).
+
 From source (to modify / run tests): `git clone … && pip install -e ".[dev]" && pytest`. Full step-by-step for any OS incl. Windows: [`docs/INSTALL.md`](docs/INSTALL.md). Maintainers: [`docs/RELEASING.md`](docs/RELEASING.md).
 
 ## 5. Quickstart
