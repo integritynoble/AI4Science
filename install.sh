@@ -55,22 +55,56 @@ PYEOF
   done
   return 1
 }
-if ! PY="$(find_python)"; then
-  case "$(uname -s)" in
-    Darwin)
-      _hint="Install Python 3.12 with Homebrew:  brew install python@3.12
-   (no Homebrew? get it at https://brew.sh, or download Python from
-    https://www.python.org/downloads/macos/), then re-run this installer.
-   Note: the Command Line Tools python3 is often 3.9 and too old." ;;
-    Linux)
-      _hint="Debian/Ubuntu:  sudo apt install python3 python3-venv
-   Fedora/RHEL:    sudo dnf install python3
-   HPC cluster:    module load python/3.11" ;;
-    *)
-      _hint="Install Python 3.10+ and ensure it's on your PATH, then re-run." ;;
+# 1b. If no suitable Python exists, download a self-contained one (no system
+# Python, compiler, or admin rights needed) from Astral's python-build-standalone
+# into $INSTALL_DIR/python. This is what makes the installer work on a bare macOS
+# or Windows box. Pinned to a minor series for wheel compatibility.
+PBS_API="https://api.github.com/repos/astral-sh/python-build-standalone/releases/latest"
+PBS_PYVER="${AI4SCIENCE_PYVER:-3.12}"
+
+pbs_url() {  # $1 = target triple → echoes the install_only.tar.gz download URL
+  curl -fsSL "$PBS_API" 2>/dev/null \
+    | grep -o '"browser_download_url": *"[^"]*cpython-'"${PBS_PYVER}"'\.[0-9]*%2B[0-9]*-'"$1"'-install_only\.tar\.gz"' \
+    | head -n1 | sed 's/.*"browser_download_url": *"//; s/"$//'
+}
+
+bootstrap_python() {  # echoes the path to a freshly downloaded standalone python3
+  local os arch triple url tgz
+  os="$(uname -s)"; arch="$(uname -m)"
+  case "$os" in
+    Darwin) case "$arch" in arm64|aarch64) triple=aarch64-apple-darwin ;; *) triple=x86_64-apple-darwin ;; esac ;;
+    Linux)  case "$arch" in aarch64|arm64) triple=aarch64-unknown-linux-gnu ;; *) triple=x86_64-unknown-linux-gnu ;; esac ;;
+    *) return 1 ;;
   esac
-  die "Python >= 3.10 not found on PATH.
+  url="$(pbs_url "$triple")"; [ -n "$url" ] || return 1
+  say "No suitable Python found — downloading a standalone Python ${PBS_PYVER} ($triple)…" >&2
+  mkdir -p "$INSTALL_DIR"
+  tgz="$INSTALL_DIR/.python-dl.tar.gz"
+  curl -fsSL "$url" -o "$tgz" || return 1
+  rm -rf "$INSTALL_DIR/python"
+  tar -xzf "$tgz" -C "$INSTALL_DIR" >/dev/null 2>&1 || return 1   # extracts a 'python/' dir
+  rm -f "$tgz"
+  [ -x "$INSTALL_DIR/python/bin/python3" ] || return 1
+  echo "$INSTALL_DIR/python/bin/python3"
+}
+
+if ! PY="$(find_python)"; then
+  if ! PY="$(bootstrap_python)"; then
+    case "$(uname -s)" in
+      Darwin)
+        _hint="Auto-download failed (no network?). Install Python yourself:
+   brew install python@3.12   (or https://www.python.org/downloads/macos/)
+   Note: the Command Line Tools python3 is often 3.9 and too old." ;;
+      Linux)
+        _hint="Auto-download failed (no network?). Install Python yourself:
+   Debian/Ubuntu:  sudo apt install python3 python3-venv
+   Fedora/RHEL:    sudo dnf install python3 ;  HPC: module load python/3.11" ;;
+      *)
+        _hint="Install Python 3.10+ and ensure it's on your PATH, then re-run." ;;
+    esac
+    die "Python >= 3.10 not found on PATH.
    $_hint"
+  fi
 fi
 ok "Using $("$PY" --version 2>&1) ($(command -v "$PY"))"
 
