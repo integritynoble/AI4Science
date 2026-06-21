@@ -4,8 +4,11 @@ Every session can offload heavy work (training, solvers, GPU jobs) to a chosen
 compute provider instead of the local machine:
 
   - local            — your own machine (free; just use your bash tool)
+  - auto-gpu         — local GPU if available, else founder cascade (gpu1→gpu2→modal)
   - founder-cpu      — main CPU server, 2 users at once, pays the founder
-  - founder-gpu      — sub-GPU server, 2 users at once, pays the founder
+  - founder-gpu/gpu1 — sub-GPU server (recall cascade: gpu1→gpu2→modal)
+  - gpu2             — sub-GPU2 server
+  - modal            — Modal GPU
   - <community>      — anyone who registered as a provider (pays that provider)
 
 Dispatch is lease-gated: a provider serves at most max_concurrent users at
@@ -13,15 +16,15 @@ once; a third request is refused until a slot frees. Running on a wallet-bound
 provider costs PWM (USD/hour ÷ PWM_USD), paid to that provider's wallet on
 completion; local compute is free.
 
-POLICY — local-first for CPU work:
-  * A CPU job (pure NumPy/SciPy/Python, no GPU) runs on the LOCAL machine by
-    default — use your bash tool, it's free and immediate. Do NOT reach for
-    founder-cpu just because a package is missing: install it locally first
-    (`pip install numpy scipy ...`). Only fall back to founder-cpu when the
-    local machine genuinely cannot run it (no Python, install blocked, etc.).
-  * Use founder-gpu ONLY when the work actually needs a GPU (CUDA/torch.cuda).
-  * founder-cpu / founder-gpu cost the user PWM; local does not — so prefer
-    local whenever it can do the job.
+POLICY:
+  * CPU jobs (pure NumPy/SciPy/Python, no GPU) → run LOCAL (free, instant).
+    Install missing deps with pip. Only use founder-cpu when local truly can't.
+  * GPU jobs (CUDA/torch.cuda/training) → use provider="auto-gpu":
+    - if torch.cuda.is_available() locally → run locally (free).
+    - if no local GPU → automatically routes to gpu1 (the founder GPU cascade:
+      gpu1 → gpu2 → modal, whichever has a free slot), costs PWM.
+  * Never use founder-cpu/gpu "just in case" — prefer free local unless there
+    is a real reason it can't run there.
 """
 from __future__ import annotations
 
@@ -34,6 +37,16 @@ from ai4science.compute import billing
 from ai4science.compute.founders import all_providers
 
 _LOCAL_IDS = ("", "local", "none")
+_AUTO_GPU_ID = "auto-gpu"
+
+
+def _has_local_gpu() -> bool:
+    """True when torch reports a CUDA device on this machine."""
+    try:
+        import torch
+        return bool(torch.cuda.is_available())
+    except Exception:
+        return False
 
 
 def _resolve(provider_id: str):
@@ -57,9 +70,12 @@ def _resolve(provider_id: str):
 
 def _providers_tool() -> Tool:
     def _list(workspace) -> str:
+        gpu_here = "(GPU available here)" if _has_local_gpu() else "(no local GPU)"
         lines = ["[compute providers]",
                  "  local        your machine        free   (use your bash tool) "
-                 "<- DEFAULT for CPU work"]
+                 "<- DEFAULT for CPU work",
+                 f"  auto-gpu     auto-detect         free/PWM  local GPU if present "
+                 f"{gpu_here}, else gpu1→gpu2→modal cascade <- USE FOR GPU WORK"]
         # friendly alias hints (gpu1/gpu2/modal) shown next to their real id
         from ai4science.compute.registry import PROVIDER_ALIASES
         _friendly = {}
@@ -143,11 +159,22 @@ def _dispatch_tool() -> Tool:
                   solver: str = "code/", benchmark: str = "",
                   max_runtime_s: int = 3600, confirm: bool = False) -> str:
         confirm = confirm is True
-        prov = _resolve(provider)
+        pid = (provider or "").strip().lower()
+
+        # auto-gpu: check local CUDA first; fall back to the founder GPU cascade
+        # (gpu1 → gpu2 → modal, handled relay-side) when there is no local GPU.
+        if pid == _AUTO_GPU_ID:
+            if _has_local_gpu():
+                return ("[compute] local GPU detected (torch.cuda.is_available()) — "
+                        "run it locally with your bash tool (free, no PWM cost).")
+            pid = "gpu1"  # relay cascade: gpu1 → gpu2 → modal
+
+        prov = _resolve(pid)
         if prov is None:
             return ("[compute] local compute selected — run it with your bash tool "
-                    "(no PWM cost). To use a server, pass provider=founder-cpu / "
-                    "founder-gpu / <community id> (see compute_providers).")
+                    "(no PWM cost). To use a server, pass provider=auto-gpu (for GPU "
+                    "work — auto-detects local GPU then falls back to gpu1→gpu2→modal) "
+                    "or provider=founder-cpu / gpu1 / gpu2 / modal (see compute_providers).")
 
         est_pwm = billing.compute_pwm(prov.pwm_per_hour(), max_runtime_s)
         cmd = run_command or "python code/run_solver.py"
@@ -196,12 +223,15 @@ def _dispatch_tool() -> Tool:
                      "the relay queues it, the provider runs it, PWM is charged on "
                      "completion (bounded by max_runtime_s) only on a verified pass. "
                      "Without confirm=true you get a preview. "
-                     "DEFAULT TO LOCAL for CPU work: provider=local (or omitted) "
-                     "runs on this machine for free — pure NumPy/SciPy/Python jobs "
-                     "should run local (install any missing deps with pip first), "
-                     "NOT on founder-cpu. Use provider=founder-cpu only when local "
-                     "genuinely can't run it, and provider=founder-gpu only when the "
-                     "job actually needs a GPU (both cost the user PWM)."),
+                     "PROVIDER RULES: "
+                     "(1) CPU jobs (pure NumPy/SciPy) → provider=local (or omit) — "
+                     "free, runs here; install missing deps with pip. "
+                     "(2) GPU jobs (CUDA/torch.cuda/training) → provider=auto-gpu: "
+                     "automatically uses local GPU if torch.cuda.is_available(), "
+                     "otherwise routes to the founder GPU cascade (gpu1→gpu2→modal — "
+                     "whichever has a free slot). Costs PWM only if a remote is used. "
+                     "(3) Use founder-cpu ONLY when local truly can't run a CPU job. "
+                     "Never default to remote just because a dep is missing."),
         parameters={"type": "object", "properties": {
             "provider": {"type": "string"},
             "run_command": {"type": "string"},
