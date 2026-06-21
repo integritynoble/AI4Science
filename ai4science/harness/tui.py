@@ -598,6 +598,7 @@ class FullScreen:
         self._fs = False
         self._buf = ""
         self._follow = True
+        self._cursor_line = 0           # transcript scroll anchor (when not following)
         self._twin = None               # transcript Window (set in run)
         self._buflock = threading.Lock()
         # Live "shining" status (Claude-Code style): gerund + elapsed + tokens +
@@ -718,15 +719,14 @@ class FullScreen:
             return
         if self._fs:
             # Full-screen: append to the in-app transcript buffer (alt-screen has
-            # no native scrollback). Follow the newest line unless the user has
-            # scrolled up. Cap the buffer so a very long session can't grow
-            # unboundedly (keep the last ~6000 lines).
+            # no native scrollback). The transcript Window scrolls to keep its
+            # CURSOR visible; while `_follow` is set the cursor tracks the last
+            # line, so the newest output is always shown. Cap the buffer so a very
+            # long session can't grow unboundedly (keep the last ~6000 lines).
             with self._buflock:
                 self._buf += text
                 if self._buf.count("\n") > 6000:
                     self._buf = "\n".join(self._buf.split("\n")[-6000:])
-            if self._follow and self._twin is not None:
-                self._twin.vertical_scroll = 10 ** 9   # clamped to bottom on render
             self._invalidate()
             return
         # Inline: write ABOVE the pinned box. Under patch_stdout this lands in the
@@ -766,19 +766,25 @@ class FullScreen:
         runs the REPL loop in a background thread, reading input through the
         module-level `read_input` (routed here) and printing output ABOVE the
         box via patch_stdout."""
-        # CPR (cursor-position report, ESC[6n) lets prompt_toolkit track the
-        # cursor ROW so it can redraw the pinned composer IN PLACE. Forcing it OFF
-        # broke that on terminals that DO support CPR: every edit/backspace
-        # appended a NEW line instead of overwriting (the corruption + raw ^R/^C
-        # echo users hit). Default to leaving CPR ON (prompt_toolkit times out
-        # gracefully if the terminal doesn't answer). Terminals that genuinely
-        # hang on CPR can still opt out with AI4SCIENCE_NO_CPR=1.
-        if os.environ.get("AI4SCIENCE_NO_CPR") == "1":
-            os.environ["PROMPT_TOOLKIT_NO_CPR"] = "1"
         # Full-screen (alt-screen) is the default: it owns the screen so resize is
         # always clean. Opt back into the inline (native-scrollback) composer with
         # AI4SCIENCE_TUI_INLINE=1.
         self._fs = os.environ.get("AI4SCIENCE_TUI_INLINE") != "1"
+        # CPR (cursor-position report, ESC[6n): prompt_toolkit probes it at startup
+        # and uses it to track the cursor ROW for IN-PLACE redraw.
+        #  • inline mode NEEDS CPR (without it, every backspace spills a new line);
+        #    so keep it ON unless the user forces AI4SCIENCE_NO_CPR=1.
+        #  • full-screen mode NEVER needs CPR — prompt_toolkit uses the total
+        #    alt-screen height, not the cursor row (see Renderer.request_absolute_
+        #    cursor_position: `if self.full_screen: ... return`). On some terminals
+        #    (macOS Terminal.app) the startup CPR probe/answer corrupts the screen
+        #    with ^R + a new line per keystroke. So DISABLE CPR in full-screen by
+        #    default; re-enable with AI4SCIENCE_FORCE_CPR=1 if ever needed.
+        if self._fs:
+            if os.environ.get("AI4SCIENCE_FORCE_CPR") != "1":
+                os.environ["PROMPT_TOOLKIT_NO_CPR"] = "1"
+        elif os.environ.get("AI4SCIENCE_NO_CPR") == "1":
+            os.environ["PROMPT_TOOLKIT_NO_CPR"] = "1"
         import threading
         from prompt_toolkit import Application
         from prompt_toolkit.formatted_text import ANSI
@@ -912,15 +918,26 @@ class FullScreen:
 
         if self._fs:
             # Full-screen: a scrollable transcript on top, the composer pinned
-            # below. The transcript renders the ANSI output buffer; `_follow`
-            # keeps it at the newest line (append() sets vertical_scroll huge,
-            # which prompt_toolkit clamps to the bottom). PageUp/Down scroll it.
+            # below. The transcript renders the ANSI output buffer and exposes a
+            # CURSOR position; the Window scrolls to keep that cursor visible. When
+            # `_follow` is set the cursor sits on the LAST line, so new output is
+            # always shown (this is what fixes "can't see new content / can't
+            # scroll"). PageUp/Down/Home/End move the cursor (and toggle follow).
+            from prompt_toolkit.data_structures import Point
+
             def _transcript():
                 with self._buflock:
                     return ANSI(self._buf)
-            self._twin = Window(FormattedTextControl(_transcript),
-                                wrap_lines=True, always_hide_cursor=True,
-                                style="class:input")
+
+            def _transcript_cursor():
+                with self._buflock:
+                    last = self._buf.count("\n")
+                y = last if self._follow else max(0, min(self._cursor_line, last))
+                return Point(x=0, y=y)
+
+            self._twin = Window(
+                FormattedTextControl(_transcript, get_cursor_position=_transcript_cursor),
+                wrap_lines=True, style="class:input")
             body = HSplit([self._twin, composer])
         else:
             body = composer
@@ -1042,8 +1059,9 @@ class FullScreen:
             event.app.invalidate()
 
         # ── transcript scrolling (full-screen only) ──────────────────────────
-        # Alt-screen has no native scrollback, so we scroll the in-app transcript:
-        # PageUp/PageDown by a screen, Home=top, End=back to following the newest.
+        # Alt-screen has no native scrollback, so we scroll the in-app transcript
+        # by moving its cursor line: PageUp/PageDown by ~a screen, Home=top,
+        # End=back to following the newest line. The Window scrolls to the cursor.
         def _page() -> int:
             try:
                 h = self._twin.render_info.window_height
@@ -1051,31 +1069,41 @@ class FullScreen:
             except Exception:
                 return 10
 
+        def _nlines() -> int:
+            with self._buflock:
+                return self._buf.count("\n")
+
         @kb.add("pageup")
         def _(event):
             if not self._fs or self._twin is None:
                 return
+            if self._follow:                       # leaving the bottom: anchor here
+                self._cursor_line = _nlines()
             self._follow = False
-            self._twin.vertical_scroll = max(0, self._twin.vertical_scroll - _page())
+            self._cursor_line = max(0, self._cursor_line - _page())
+            event.app.invalidate()
 
         @kb.add("pagedown")
         def _(event):
             if not self._fs or self._twin is None:
                 return
-            self._twin.vertical_scroll += _page()
-            self._follow = True       # re-follow; render clamps to the true bottom
+            self._cursor_line = min(_nlines(), self._cursor_line + _page())
+            if self._cursor_line >= _nlines():
+                self._follow = True                # reached the bottom → re-follow
+            event.app.invalidate()
 
         @kb.add("end")
         def _(event):
             if self._fs and self._twin is not None:
                 self._follow = True
-                self._twin.vertical_scroll = 10 ** 9
+                event.app.invalidate()
 
         @kb.add("home")
         def _(event):
             if self._fs and self._twin is not None:
                 self._follow = False
-                self._twin.vertical_scroll = 0
+                self._cursor_line = 0
+                event.app.invalidate()
 
         style = Style.from_dict({
             "prompt": "fg:#d7875f bold",   # coral ❯ like Claude Code
