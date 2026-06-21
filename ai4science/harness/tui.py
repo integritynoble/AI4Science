@@ -1,11 +1,12 @@
 """Claude-Code-style input for every agent — a borderless two-line prompt.
 
-The full-screen TUI is the DEFAULT on a real terminal (like the product): a
-managed transcript pane above a borderless input that grows 1→N as you type,
-with one info line (mode · status · shortcuts) beneath it — no box frame.
-`AI4SCIENCE_TUI` tunes it: `full` (default), `1`/`box` for the bordered single
-input line (no pane), `0`/`off`/`plain` for the classic line-REPL. Uses
-prompt_toolkit for a real multiline, history-aware input; falls back to plain
+The DEFAULT on a real terminal is the `box` input: a bordered bottom prompt with
+one info line (mode · status · shortcuts), and the terminal's NATIVE scrollback
+preserved — so you can scroll up to see history, like Claude Code. The `full`
+pane (managed transcript pane above a borderless growing input) owns the screen
+and cannot scroll, so it's opt-in. `AI4SCIENCE_TUI` tunes it: `box` (default),
+`full`/`pane` for the managed pane, `0`/`off`/`plain` for the classic line-REPL.
+Uses prompt_toolkit for a real multiline, history-aware input; falls back to plain
 input() when opted out, stdin/stdout isn't a TTY, or prompt_toolkit is absent.
 
   read_input(prompt, mode) -> str        # one bordered prompt; raises EOFError/
@@ -434,9 +435,12 @@ def tui_mode() -> str:
     v = str(os.environ.get("AI4SCIENCE_TUI", "")).strip().lower()
     if v in ("0", "false", "no", "off", "plain"):
         return "off"
-    if v in ("1", "true", "yes", "on", "box"):
-        return "box"
-    return "full"  # default (unset or `full`)
+    if v in ("full", "pane", "screen"):
+        return "full"
+    # Default: `box` — a bordered bottom input with the terminal's NATIVE
+    # scrollback (scroll up to see history, like Claude Code). The `full` pane
+    # owns the screen and can't scroll; opt into it with AI4SCIENCE_TUI=full.
+    return "box"
 
 
 class _StreamCommit:
