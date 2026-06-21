@@ -170,14 +170,20 @@ def run_codex_repl(workspace: Path, *, auto_yes: bool = False,
             continue
         if low.startswith("/model"):
             arg = line[len("/model"):].strip()
+            # Codex is OpenAI/ChatGPT-locked.
+            _MENU = [("ChatGPT 5.5", "gpt-5.5"), ("ChatGPT 5.5 Codex", "gpt-5.5-codex")]
+            _ALIASES = {"gpt": "gpt-5.5", "chatgpt": "gpt-5.5", "codex": "gpt-5.5-codex"}
+            cur = model or BILLING_MODEL
             if not arg:
-                print(f"[harness] model: {model or '(codex default)'} — "
-                      f"switch with /model <id> (e.g. gpt-5.5, gpt-5.5-codex)",
-                      flush=True)
+                # interactive ↑/↓/⏎ picker (like the main harness).
+                from ai4science.harness import tui
+                labels = [f"{lbl} ({mid})" + ("  ← current" if mid == cur else "")
+                          for lbl, mid in _MENU]
+                idx = tui.ask_choice("Select a model · Codex", labels)
+                model = _MENU[idx][1]
             else:
-                model = arg
-                print(f"[harness] model → {model} (next turns use -m {model})",
-                      flush=True)
+                model = _ALIASES.get(arg.lower(), arg)
+            print(f"[harness] model → {model} (next turns use -m {model})", flush=True)
             continue
         if low.startswith("/feedback"):
             arg = line[len("/feedback"):].strip()

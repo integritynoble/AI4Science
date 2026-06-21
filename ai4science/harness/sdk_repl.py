@@ -309,13 +309,22 @@ async def _loop(workspace: Path, *, auto_yes: bool, read_only: bool,
                 continue
             if low.startswith("/model"):
                 arg = line[len("/model"):].strip().lower()
+                # Claude is Anthropic-locked.
+                _MENU = [("Opus 4.8", "claude-opus-4-8"),
+                         ("Sonnet 4.6", "claude-sonnet-4-6"),
+                         ("Haiku 4.5", "claude-haiku-4-5")]
                 if not arg:
-                    cur = model or "(Claude Code default)"
-                    print(f"[harness] model: {cur}\n  switch: /model "
-                          f"opus | sonnet | haiku  (or any full model id)",
-                          flush=True)
+                    # interactive ↑/↓/⏎ picker (like the main harness).
+                    from ai4science.harness import tui
+                    labels = [f"{lbl} ({mid})" + ("  ← current" if mid == model else "")
+                              for lbl, mid in _MENU]
+                    idx = tui.ask_choice("Select a model · Claude", labels)
+                    new_model = _MENU[idx][1]
+                else:
+                    new_model = _MODEL_ALIASES.get(arg, arg)
+                if new_model == model:
+                    print(f"[harness] model unchanged: {model}", flush=True)
                     continue
-                new_model = _MODEL_ALIASES.get(arg, arg)
                 try:
                     await client.set_model(new_model)
                     model = new_model
