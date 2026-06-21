@@ -891,7 +891,7 @@ class FullScreen:
             return ANSI("\n".join(out))
 
         def _choice_hint():
-            return ANSI(" \x1b[38;5;240m↑↓ choose · ⏎ select · 1/2/3 jump · "
+            return ANSI(" \x1b[38;5;240m↑↓/jk choose · ⏎ select · 1-9 jump · "
                         "esc = last\x1b[0m")
 
         in_choice = Condition(lambda: self._choice is not None)
@@ -1049,9 +1049,35 @@ class FullScreen:
                 return
             ta.buffer.auto_down(count=event.arg)
 
-        # 1/2/3 … jump straight to (and confirm) an option while picking.
+        # ── picker navigation (choice mode) — ROBUST ─────────────────────────
+        # The plain ↑/↓ handlers above also move the picker, but while a choice
+        # is active the (hidden) input box still holds focus, so on some
+        # terminals — notably the legacy Windows console (conhost) — its buffer
+        # cursor-bindings swallow ↑/↓ before the global handler runs and the
+        # highlight appears stuck on option 1. Bind the picker moves eager +
+        # choice-filtered so they ALWAYS win in choice mode, and accept vi
+        # (j/k), emacs (c-n/c-p) and Tab/Shift-Tab as alternates so a terminal
+        # that eats the arrow escape sequence still has a working key.
+        def _pick_move(event, delta):
+            if self._choice is None:
+                return
+            n = len(self._choice["options"])
+            self._choice["sel"] = max(0, min(n - 1, self._choice["sel"] + delta))
+            event.app.invalidate()
+
+        for _k in ("up", "k", "c-p", "s-tab"):
+            @kb.add(_k, filter=in_choice, eager=True)
+            def _(event, _delta=-1):
+                _pick_move(event, _delta)
+        for _k in ("down", "j", "c-n", "tab"):
+            @kb.add(_k, filter=in_choice, eager=True)
+            def _(event, _delta=1):
+                _pick_move(event, _delta)
+
+        # 1/2/3 … jump straight to (and confirm) an option while picking. Eager so
+        # the digit reaches the picker even when the hidden input box has focus.
         for _d in "123456789":
-            @kb.add(_d, filter=in_choice)
+            @kb.add(_d, filter=in_choice, eager=True)
             def _(event, _d=_d):
                 i = int(_d) - 1
                 if 0 <= i < len(self._choice["options"]):
