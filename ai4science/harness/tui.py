@@ -518,14 +518,26 @@ class _StreamCommit:
     screen so it renders in the app's live region — NOT printed onto the pinned
     box's top border. This is what stops token-by-token streaming (no trailing
     newline) from corrupting the box and then vanishing on the next repaint."""
-    def __init__(self, inner, screen):
+    def __init__(self, inner, screen, fs=False):
         import threading
-        self._inner = inner            # patch_stdout's StdoutProxy
+        self._inner = inner            # patch_stdout's StdoutProxy (inline mode)
         self._screen = screen
-        self._buf = ""
+        self._fs = fs                  # full-screen: commit lines to the in-app
+        self._buf = ""                 # transcript buffer instead of the terminal
         # The worker thread (streaming) AND the main/app thread (the immediate
         # echo of a just-sent message) both write here — guard the buffer.
         self._lock = threading.Lock()
+
+    def _commit(self, whole):
+        # full-screen: into the scrollable transcript; inline: above the box.
+        if self._fs:
+            self._screen.append(whole)
+        else:
+            self._inner.write(whole)
+            try:
+                self._inner.flush()
+            except Exception:
+                pass
 
     def write(self, text):
         if not text:
@@ -537,24 +549,16 @@ class _StreamCommit:
                 cut = self._buf.rfind("\n") + 1
                 whole, self._buf = self._buf[:cut], self._buf[cut:]
                 partial = self._buf
-                self._inner.write(whole)
-                try:
-                    self._inner.flush()
-                except Exception:
-                    pass
+                self._commit(whole)
         self._screen._set_partial(partial)
         return len(text)
 
     def commit_partial(self):
-        """Flush any dangling partial line to the scrollback (turn boundary)."""
+        """Flush any dangling partial line to the transcript (turn boundary)."""
         with self._lock:
             if not self._buf:
                 return
-            self._inner.write(self._buf + "\n")
-            try:
-                self._inner.flush()
-            except Exception:
-                pass
+            self._commit(self._buf + "\n")
             self._buf = ""
         self._screen._set_partial("")
 
@@ -587,6 +591,15 @@ class FullScreen:
         self._choice = None             # active permission picker, or None
         self._queued = []               # sent-but-not-yet-processed messages
         self._qlock = threading.Lock()
+        # Full-screen (alt-screen) mode: the app owns the whole screen, so resize
+        # is always clean. There's no native scrollback, so output accumulates in
+        # an in-app transcript (`_buf`) shown in a scrollable window. `_follow`
+        # keeps it pinned to the newest line until the user scrolls up.
+        self._fs = False
+        self._buf = ""
+        self._follow = True
+        self._twin = None               # transcript Window (set in run)
+        self._buflock = threading.Lock()
         # Live "shining" status (Claude-Code style): gerund + elapsed + tokens +
         # what it's doing. Updated by the harness via tui.begin_turn/set_*/end_turn.
         self._turn_t0 = 0.0
@@ -701,11 +714,23 @@ class FullScreen:
 
     # ── worker-side API ────────────────────────────────────────────────────
     def append(self, text: str) -> None:
-        # Worker thread → write ABOVE the pinned box. Under patch_stdout this
-        # lands in the terminal's native scrollback, so the mouse wheel and
-        # click-drag copy keep working (no alt-screen pane to trap them).
         if not text:
             return
+        if self._fs:
+            # Full-screen: append to the in-app transcript buffer (alt-screen has
+            # no native scrollback). Follow the newest line unless the user has
+            # scrolled up. Cap the buffer so a very long session can't grow
+            # unboundedly (keep the last ~6000 lines).
+            with self._buflock:
+                self._buf += text
+                if self._buf.count("\n") > 6000:
+                    self._buf = "\n".join(self._buf.split("\n")[-6000:])
+            if self._follow and self._twin is not None:
+                self._twin.vertical_scroll = 10 ** 9   # clamped to bottom on render
+            self._invalidate()
+            return
+        # Inline: write ABOVE the pinned box. Under patch_stdout this lands in the
+        # terminal's native scrollback, so the mouse wheel + click-drag copy work.
         try:
             sys.stdout.write(text)
             sys.stdout.flush()
@@ -750,6 +775,10 @@ class FullScreen:
         # hang on CPR can still opt out with AI4SCIENCE_NO_CPR=1.
         if os.environ.get("AI4SCIENCE_NO_CPR") == "1":
             os.environ["PROMPT_TOOLKIT_NO_CPR"] = "1"
+        # Full-screen (alt-screen) is the default: it owns the screen so resize is
+        # always clean. Opt back into the inline (native-scrollback) composer with
+        # AI4SCIENCE_TUI_INLINE=1.
+        self._fs = os.environ.get("AI4SCIENCE_TUI_INLINE") != "1"
         import threading
         from prompt_toolkit import Application
         from prompt_toolkit.formatted_text import ANSI
@@ -879,7 +908,22 @@ class FullScreen:
             _rule(),                                     # bottom horizontal line
             Window(FormattedTextControl(_info), height=1),   # info/status line
         ]), filter=~in_choice)
-        body = HSplit([choice_panel, input_panel])
+        composer = HSplit([choice_panel, input_panel])
+
+        if self._fs:
+            # Full-screen: a scrollable transcript on top, the composer pinned
+            # below. The transcript renders the ANSI output buffer; `_follow`
+            # keeps it at the newest line (append() sets vertical_scroll huge,
+            # which prompt_toolkit clamps to the bottom). PageUp/Down scroll it.
+            def _transcript():
+                with self._buflock:
+                    return ANSI(self._buf)
+            self._twin = Window(FormattedTextControl(_transcript),
+                                wrap_lines=True, always_hide_cursor=True,
+                                style="class:input")
+            body = HSplit([self._twin, composer])
+        else:
+            body = composer
 
         kb = KeyBindings()
         # Paste-collapse (Claude-Code's `[Pasted text #N +M lines]`); expand on send.
@@ -987,10 +1031,8 @@ class FullScreen:
         def _(event):
             _jump_to_bottom(event.app)
 
-        # Ctrl-L — clear the screen + scrollback and repaint a clean composer.
-        # Fixes leftover rule lines after a window RESIZE (prompt_toolkit's inline
-        # composer re-wraps the scrollback on resize and can't erase the old
-        # frame). Like Claude Code's Ctrl-L.
+        # Ctrl-L — clear + repaint. In inline mode this fixes leftover rule lines
+        # after a resize; in full-screen it just forces a clean redraw.
         @kb.add("c-l")
         def _(event):
             try:
@@ -999,20 +1041,55 @@ class FullScreen:
                 pass
             event.app.invalidate()
 
+        # ── transcript scrolling (full-screen only) ──────────────────────────
+        # Alt-screen has no native scrollback, so we scroll the in-app transcript:
+        # PageUp/PageDown by a screen, Home=top, End=back to following the newest.
+        def _page() -> int:
+            try:
+                h = self._twin.render_info.window_height
+                return max(1, h - 2)
+            except Exception:
+                return 10
+
+        @kb.add("pageup")
+        def _(event):
+            if not self._fs or self._twin is None:
+                return
+            self._follow = False
+            self._twin.vertical_scroll = max(0, self._twin.vertical_scroll - _page())
+
+        @kb.add("pagedown")
+        def _(event):
+            if not self._fs or self._twin is None:
+                return
+            self._twin.vertical_scroll += _page()
+            self._follow = True       # re-follow; render clamps to the true bottom
+
+        @kb.add("end")
+        def _(event):
+            if self._fs and self._twin is not None:
+                self._follow = True
+                self._twin.vertical_scroll = 10 ** 9
+
+        @kb.add("home")
+        def _(event):
+            if self._fs and self._twin is not None:
+                self._follow = False
+                self._twin.vertical_scroll = 0
+
         style = Style.from_dict({
             "prompt": "fg:#d7875f bold",   # coral ❯ like Claude Code
             "rule": "fg:#d7875f",          # coral top/bottom horizontal lines
             "input": "fg:#ffffff",         # what you type is bright too
         })
-        # full_screen=False + patch_stdout = the composer stays PINNED at the
-        # bottom while the worker's output scrolls above it in the terminal's
-        # native scrollback. mouse_support stays OFF so the terminal (not
-        # prompt_toolkit) owns the wheel + click-drag copy, like Claude Code.
-        # refresh_interval drives the spinner animation + commits streamed output.
-        # (Kept at 0.2 — the known-good value; the refresh_interval=None scroll
-        # experiment regressed input, so it was reverted.)
+        # full_screen=True (default): the app owns the whole screen, so window
+        # RESIZE is always clean (no stray rule lines, no history wipe). Output
+        # lives in the in-app transcript above (PageUp/Down to scroll). Inline mode
+        # (AI4SCIENCE_TUI_INLINE=1) keeps native terminal scrollback + the box
+        # pinned at the bottom. mouse_support OFF either way so the terminal owns
+        # click-drag copy.
         self._app = Application(layout=Layout(body, focused_element=ta),
-                                key_bindings=kb, style=style, full_screen=False,
+                                key_bindings=kb, style=style, full_screen=self._fs,
                                 refresh_interval=0.2, mouse_support=False)
 
         _ACTIVE["screen"] = self
@@ -1091,23 +1168,43 @@ class FullScreen:
                     pass
 
         resize_t = threading.Thread(target=_resize_watch, daemon=True)
-        try:
-            # patch_stdout reroutes the worker thread's prints to render ABOVE the
-            # live input box instead of corrupting it.
-            with patch_stdout(raw=True):
-                # Wrap patch_stdout's proxy: only COMPLETE lines reach the
-                # scrollback; the in-progress partial line renders in the live
-                # region (see _StreamCommit), so token streaming never lands on
-                # the box's top rule. Start the worker only after this is set.
-                self._stream = _StreamCommit(sys.stdout, self)
+        import contextlib
+
+        @contextlib.contextmanager
+        def _stdout_ctx():
+            if self._fs:
+                # Full-screen: the terminal is in alt-screen, so we must NOT use
+                # patch_stdout (it would print onto the real terminal). Route
+                # worker prints through _StreamCommit(fs=True), which commits
+                # complete lines into the in-app transcript and hands the partial
+                # line to the live region.
+                real = sys.stdout
+                self._stream = _StreamCommit(real, self, fs=True)
                 sys.stdout = self._stream
+                try:
+                    yield
+                finally:
+                    sys.stdout = real
+                    self._stream = None
+            else:
+                # Inline: patch_stdout renders worker prints ABOVE the live box.
+                with patch_stdout(raw=True):
+                    self._stream = _StreamCommit(sys.stdout, self)
+                    sys.stdout = self._stream
+                    try:
+                        yield
+                    finally:
+                        sys.stdout = self._stream._inner
+                        self._stream = None
+
+        try:
+            with _stdout_ctx():
                 try:
                     t.start()
                     resize_t.start()
                     self._app.run()
                 finally:
-                    sys.stdout = self._stream._inner
-                    self._stream = None
+                    pass
         finally:
             _ACTIVE["screen"] = None
             if not done["v"]:
