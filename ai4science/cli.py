@@ -54,13 +54,19 @@ if os.name == "nt":
         except (AttributeError, ValueError):
             pass
 
-# Terminals that don't answer ESC[6n (some SSH/web/CI shells — e.g. agent-prod)
-# would otherwise trap prompt_toolkit in a repeating "Press ENTER to continue…
-# (CPR not supported)" loop. The full-screen TUI paints from (0,0) and never
-# needs cursor-position reports, so disable CPR process-wide BEFORE any
-# prompt_toolkit Application is created. setdefault → an explicit
-# PROMPT_TOOLKIT_NO_CPR in the environment still wins.
-os.environ.setdefault("PROMPT_TOOLKIT_NO_CPR", "1")
+# CPR (cursor-position report, ESC[6n) handling — platform-aware:
+#   • macOS Terminal.app SUPPORTS CPR and BREAKS when it's force-disabled (the
+#     reported ^R-on-delete + raw ^C echo). So on Darwin leave prompt_toolkit's
+#     DEFAULT auto-detect (CPR on) in place.
+#   • On Linux some SSH/web/CI/tmux shells don't answer ESC[6n; CPR-off is the
+#     verified-working config there (full-screen paints from (0,0) and never needs
+#     it). Keep disabling CPR on non-Darwin.
+# Manual override always wins: AI4SCIENCE_NO_CPR=1 forces it off anywhere; an
+# explicit PROMPT_TOOLKIT_NO_CPR in the env is respected (setdefault).
+if sys.platform != "darwin":
+    os.environ.setdefault("PROMPT_TOOLKIT_NO_CPR", "1")
+if os.environ.get("AI4SCIENCE_NO_CPR") == "1":
+    os.environ["PROMPT_TOOLKIT_NO_CPR"] = "1"
 
 console = Console()
 
