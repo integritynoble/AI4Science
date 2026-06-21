@@ -631,7 +631,12 @@ class FullScreen:
 
     def _set_partial(self, s: str) -> None:
         self._partial = s
-        self._invalidate()
+        # During a turn the busy-ticker already repaints ~7×/s. Invalidating on
+        # EVERY streamed token floods the event loop and starves keyboard input
+        # (you couldn't type in the box while the agent streamed). So only force a
+        # repaint when idle; while busy, let the ticker paint the live region.
+        if not self._busy:
+            self._invalidate()
 
     def _queue_msg(self, shown: str) -> None:
         # A message sent while the agent is busy: show it as PENDING just above
