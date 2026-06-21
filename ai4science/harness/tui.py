@@ -1,13 +1,14 @@
 """Claude-Code-style input for every agent — a borderless two-line prompt.
 
-The DEFAULT on a real terminal is the `box` input: a bordered bottom prompt with
-one info line (mode · status · shortcuts), and the terminal's NATIVE scrollback
-preserved — so you can scroll up to see history, like Claude Code. The `full`
-pane (managed transcript pane above a borderless growing input) owns the screen
-and cannot scroll, so it's opt-in. `AI4SCIENCE_TUI` tunes it: `box` (default),
-`full`/`pane` for the managed pane, `0`/`off`/`plain` for the classic line-REPL.
-Uses prompt_toolkit for a real multiline, history-aware input; falls back to plain
-input() when opted out, stdin/stdout isn't a TTY, or prompt_toolkit is absent.
+The DEFAULT on a real terminal is `full`: a PERSISTENT borderless two-line input
+box pinned at the bottom (always visible — type/insert a new message at any time,
+Ctrl+C to interrupt the running turn), a live dynamic status (spinner · elapsed ·
+tokens · activity), and the agent's output streaming ABOVE it in the terminal's
+NATIVE scrollback. Repaint happens only WHILE a turn is busy, so when idle you can
+scroll up and it sticks (^G jumps back to the bottom) — like Claude Code.
+`AI4SCIENCE_TUI` tunes it: `full` (default), `box`/`1` for a transient per-turn
+input (no persistent box), `0`/`off`/`plain` for the classic line-REPL. Uses
+prompt_toolkit; falls back to plain input() when off, not a TTY, or pt is absent.
 
   read_input(prompt, mode) -> str        # one bordered prompt; raises EOFError/
                                          # KeyboardInterrupt like input()
@@ -502,12 +503,13 @@ def tui_mode() -> str:
     v = str(os.environ.get("AI4SCIENCE_TUI", "")).strip().lower()
     if v in ("0", "false", "no", "off", "plain"):
         return "off"
-    if v in ("full", "pane", "screen"):
-        return "full"
-    # Default: `box` — a bordered bottom input with the terminal's NATIVE
-    # scrollback (scroll up to see history, like Claude Code). The `full` pane
-    # owns the screen and can't scroll; opt into it with AI4SCIENCE_TUI=full.
-    return "box"
+    if v in ("1", "true", "yes", "box"):
+        return "box"
+    # Default: `full` — the persistent two-line input box (always visible; type /
+    # insert a new message at any time, Ctrl+C to interrupt the running turn),
+    # with the terminal's native scrollback when idle (no constant repaint). Like
+    # Claude Code. `box` is the transient-input fallback (AI4SCIENCE_TUI=box).
+    return "full"
 
 
 class _StreamCommit:
@@ -980,9 +982,14 @@ class FullScreen:
         # bottom while the worker's output scrolls above it in the terminal's
         # native scrollback. mouse_support stays OFF so the terminal (not
         # prompt_toolkit) owns the wheel + click-drag copy, like Claude Code.
+        # refresh_interval=None: do NOT repaint on a timer. A constant repaint
+        # keeps yanking the terminal viewport back to the bottom, which is why
+        # scroll-up wouldn't "stick". Instead a busy-only ticker (see run())
+        # animates the spinner ONLY while a turn is running; when idle there are
+        # no repaints, so the terminal keeps your scroll position (like Claude Code).
         self._app = Application(layout=Layout(body, focused_element=ta),
                                 key_bindings=kb, style=style, full_screen=False,
-                                refresh_interval=0.2, mouse_support=False)
+                                refresh_interval=None, mouse_support=False)
 
         _ACTIVE["screen"] = self
         done = {"v": False}
@@ -1012,6 +1019,18 @@ class FullScreen:
                         pass
 
         t = threading.Thread(target=_work, daemon=True)
+
+        def _animate():
+            # Repaint ONLY while a turn is busy → the spinner / token counter
+            # animate live (the dynamic process, like Claude Code), but when idle
+            # there are no repaints, so the terminal keeps your scroll position.
+            import time as _t
+            while not done["v"]:
+                if self._busy:
+                    self._invalidate()
+                _t.sleep(0.15)
+
+        anim = threading.Thread(target=_animate, daemon=True)
         try:
             # patch_stdout reroutes the worker thread's prints to render ABOVE the
             # live input box instead of corrupting it.
@@ -1024,6 +1043,7 @@ class FullScreen:
                 sys.stdout = self._stream
                 try:
                     t.start()
+                    anim.start()
                     self._app.run()
                 finally:
                     sys.stdout = self._stream._inner
