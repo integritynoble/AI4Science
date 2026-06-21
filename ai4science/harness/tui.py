@@ -35,7 +35,7 @@ _DISPLAY_TO_ID = {v.lower(): k for k, v in _MODE_DISPLAY.items()}   # {"claude":
 
 
 def resolve_mode(name: str) -> str:
-    """Map a user-typed mode name to its internal id, so `/mode Claude` (the
+    """Map a user-typed agent name to its internal id, so `/agent Claude` (the
     display name) resolves to `claude-code`. Unknown names pass through."""
     return _DISPLAY_TO_ID.get((name or "").strip().lower(), name)
 

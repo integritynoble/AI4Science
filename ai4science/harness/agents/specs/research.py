@@ -60,7 +60,7 @@ AGENT = AgentSpec(
     # imaging specifics (ci_modalities / ci_run_algorithm / fm_* forward-model
     # compiler) live ONLY in the `computational-imaging` agent, so a general
     # question (e.g. cancer) isn't steered toward CASSI/CT/MRI. Switch with
-    # `/mode computational-imaging` for those tools.
+    # `/agent computational-imaging` for those tools.
     capabilities=("pwm-actions", "pwm-data", "onboarding", "compute-providers",
                   "science-router"),
     order=2,

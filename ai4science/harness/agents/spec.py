@@ -12,7 +12,7 @@ class AgentSpec:
     tier: str                                   # "open" (no PWM) | "science" (PWM moat)
     category: str                               # "core" | "specific" | "hidden"
     title: str                                  # short human label
-    description: str                            # one-line; shown in /mode + dispatch enum
+    description: str                            # one-line; shown in /agent + dispatch enum
     keywords: Tuple[str, ...] = ()              # extra search terms
     system_prompt: Optional[str] = None
     capabilities: Tuple[str, ...] = ()          # bundle names added on top of the CC base
@@ -20,7 +20,7 @@ class AgentSpec:
     extra_tools: Optional[Callable] = None      # ctx -> list[Tool], optional custom tools
     aliases: Tuple[str, ...] = ()               # old/alt names that resolve to this spec
     default_backend: Optional[str] = None       # preferred LLM backend when user gives none
-    order: int = 100                            # display order in the /mode menu (lower first)
+    order: int = 100                            # display order in the /agent menu (lower first)
     # Plug-and-play extensions (manifest plug-ins; builtin specs leave these empty):
     wallet: Optional[str] = None                # PWM address that charges for using this agent
     price_pwm: float = 0.0                      # per-use price set by the contributor (0 = free)

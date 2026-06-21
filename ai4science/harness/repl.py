@@ -53,7 +53,7 @@ def _dispatch_slash(line: str, state: dict) -> tuple[bool, str]:
         return True, "bye"
     if cmd in ("help", "?"):
         return True, ("slash commands: /help /clear /model <backend> [id] "
-                      "/mode [name|specific <q>] /login /whoami /feedback <text> "
+                      "/agent [name|specific <q>] /login /whoami /feedback <text> "
                       "/readonly /yes /default /cost /files /exit")
     if cmd == "readonly":
         state["read_only"] = True
@@ -212,19 +212,19 @@ def _registry_for_spec(spec, *, is_subagent, ctx):
 
 
 def _format_mode_menu() -> str:
-    lines = ["[modes]"]
+    lines = ["[agents]"]
     for s in agent_registry.core_agents():
         lines.append(f"  {s.name:<10} {s.description}")
     n = len(agent_registry.specific_agents())
-    lines.append(f"  specific   ({n}) domain agents — /mode specific <query> to search")
-    lines.append("  switch with: /mode <name>")
+    lines.append(f"  specific   ({n}) domain agents — /agent specific <query> to search")
+    lines.append("  switch with: /agent <name>")
     return "\n".join(lines)
 
 
 def _format_specific_list(query: str) -> str:
     hits = agent_registry.search(query)
     if not hits:
-        return f"[modes] no specific agent matches {query!r}"
+        return f"[agents] no specific agent matches {query!r}"
     return "\n".join([f"  {s.name:<24} {s.title}" for s in hits])
 
 
@@ -601,8 +601,9 @@ def run_common_repl(
                     print(f"[harness] error: {e}", flush=True)
                 continue
 
-            # /mode switches the active AgentSpec — handle inline (rebuilds session).
-            if cmd == "mode":
+            # /agent switches the active AgentSpec — handle inline (rebuilds
+            # session). `/mode` kept as a silent back-compat alias.
+            if cmd in ("agent", "mode"):
                 if not arg:
                     print(_format_mode_menu(), flush=True)
                     continue
@@ -614,7 +615,7 @@ def run_common_repl(
                 from ai4science.harness import tui as _tui
                 target = agent_registry.get(_tui.resolve_mode(parts[0]))
                 if target is None:
-                    print(f"[modes] unknown agent {parts[0]!r}; /mode to list",
+                    print(f"[agents] unknown agent {parts[0]!r}; /agent to list",
                           flush=True)
                     continue
                 active_spec = target

@@ -171,7 +171,7 @@ def chat(
         help="Session mode: 'unified-LLM' (general assistant across Claude/ChatGPT/Gemini; "
              "'common' is an alias), 'research', 'paper', 'claude code', 'codex', or a "
              "'specific' domain agent. Defaults to AI4SCIENCE_MODE, else research. "
-             "Switch live with /mode.",
+             "Switch live with /agent.",
     ),
 ) -> None:
     """Open a persistent chat session with the agent."""
@@ -672,8 +672,8 @@ def _print_welcome(workspace: Path, read_only: bool, auto_yes: bool,
     console.print()
     console.print(f"[bold purple]ai4science chat[/bold purple]  v{__version__}")
     console.print(f"  workspace:  [cyan]{workspace}[/cyan]")
-    console.print(f"  agent:      claude ({toolmode}{yes_note})")
-    console.print(f"  mode:       {session_mode}  [dim](/mode to change)[/dim]")
+    console.print(f"  backend:    claude ({toolmode}{yes_note})")
+    console.print(f"  agent:      {session_mode}  [dim](/agent to change)[/dim]")
     console.print(f"  model:      {model or 'default'}  [dim](/model to change)[/dim]")
     console.print(f"  context:    {len(context_files)} artifact file(s) inlined")
     if memory_file is not None:
@@ -763,7 +763,7 @@ def _print_help() -> None:
         ("/files",             "list workspace artifact files"),
         ("/commands",          "list custom (user-defined) slash commands"),
         ("/plan <request>",    "single-turn plan mode (no edits, agent returns a plan)"),
-        ("/mode",              "switch mode: unified-LLM / research / paper / claude code / codex / specific"),
+        ("/agent",             "switch agent: research / claude / codex / unified-LLM / computational-imaging / paper / specific"),
         ("/model",             "pick the model from a menu (or /model <name> to switch directly)"),
         ("/validate",          "run `ai4science validate` (deterministic)"),
         ("/judge",             "run the CASSI Physics Judge"),
