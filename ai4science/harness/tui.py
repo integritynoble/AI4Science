@@ -855,24 +855,23 @@ class FullScreen:
 
         in_choice = Condition(lambda: self._choice is not None)
 
-        # Claude-Code-style composer: ONLY a top + bottom horizontal rule (no
-        # left/right verticals). Completed output streams ABOVE this box (native
-        # scrollback); the current partial line sits in `partial_win`.
-        def _rule():
-            return Window(height=1, char="─", style="class:rule")
+        # Borderless composer (Claude-Code-style input). We deliberately use NO
+        # full-width ─── rules: a rule rendered at the old width re-wraps into
+        # several lines when the window shrinks, and prompt_toolkit's inline
+        # (non-alt-screen) renderer can't erase the re-wrapped old frame — that is
+        # what piled up "a lot of lines" on resize. Without rules, the only thing
+        # that can re-wrap is the short prompt/info line, so resize stays clean and
+        # the native scrollback (history) is left untouched. The coral ❯ prompt and
+        # the dim info line give enough structure on their own.
         choice_panel = ConditionalContainer(HSplit([
-            _rule(),
             Window(FormattedTextControl(_choice_text), dont_extend_height=True,
                    style="class:input"),
-            _rule(),
             Window(FormattedTextControl(_choice_hint), height=1),
         ]), filter=in_choice)
         input_panel = ConditionalContainer(HSplit([
             partial_win,                                 # live streaming line
             queued_win,                                  # pending sent messages
-            _rule(),                                     # upper horizontal line
-            ta,                                          # input (grows; no side borders)
-            _rule(),                                     # bottom horizontal line
+            ta,                                          # input (grows; no borders)
             Window(FormattedTextControl(_info), height=1),   # info/status line
         ]), filter=~in_choice)
         body = HSplit([choice_panel, input_panel])
@@ -1039,41 +1038,12 @@ class FullScreen:
                         pass
 
         t = threading.Thread(target=_work, daemon=True)
-
-        def _resize_watch():
-            # Auto-clean on window resize: the inline composer re-wraps the
-            # scrollback on resize and leaves stale ─── rule lines. Poll the
-            # terminal size (cheap; acts ONLY on change, so it never floods input)
-            # and force a clear+repaint when it changes.
-            import shutil, time as _t
-            try:
-                last = shutil.get_terminal_size()
-            except Exception:
-                return
-            while not done["v"]:
-                _t.sleep(0.4)
-                try:
-                    cur = shutil.get_terminal_size()
-                except Exception:
-                    continue
-                if cur != last:
-                    last = cur
-                    app = self._app
-                    if app is None:
-                        continue
-
-                    def _clean():
-                        try:
-                            app.renderer.clear()
-                        except Exception:
-                            pass
-                        app.invalidate()
-                    try:
-                        app.loop.call_soon_threadsafe(_clean)
-                    except Exception:
-                        pass
-
-        resize_t = threading.Thread(target=_resize_watch, daemon=True)
+        # NOTE: no resize-poller here. An earlier version cleared the screen on
+        # resize to wipe stale rule lines — but renderer.clear() also erases the
+        # visible scrollback, which made HISTORY DISAPPEAR on resize. The real
+        # source of the rule pile-up was the full-width ─── rules in the composer
+        # (a 128-col rule re-wraps to 3 lines when you shrink the window); the
+        # composer is now BORDERLESS (no rules), so there is nothing to orphan.
         try:
             # patch_stdout reroutes the worker thread's prints to render ABOVE the
             # live input box instead of corrupting it.
@@ -1086,7 +1056,6 @@ class FullScreen:
                 sys.stdout = self._stream
                 try:
                     t.start()
-                    resize_t.start()
                     self._app.run()
                 finally:
                     sys.stdout = self._stream._inner
