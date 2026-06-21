@@ -13,5 +13,5 @@ AGENT = AgentSpec(
     # only — never a sub-agent.
     allow_as_subagent=False,
     aliases=("common",),
-    order=1,
+    order=4,
 )

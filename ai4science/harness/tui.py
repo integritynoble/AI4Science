@@ -23,7 +23,14 @@ _CORAL = "ansibrightred"   # closest named pt color; overridden by the rgb style
 
 # Friendly DISPLAY names for modes (the internal id is unchanged — only the
 # label shown in the info line / input header is mapped).
-_MODE_DISPLAY = {"claude-code": "Claude"}
+_MODE_DISPLAY = {
+    "claude-code": "Claude",
+    "codex": "Codex",
+    "research": "Research",
+    "paper": "Paper",
+    "unified-LLM": "Unified-LLM",
+    "computational-imaging": "Computational Imaging",
+}
 
 
 def _display_mode(mode: str) -> str:

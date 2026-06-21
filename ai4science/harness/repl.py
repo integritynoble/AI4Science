@@ -133,6 +133,20 @@ def _next_available_brand(current: Optional[str]):
     return None
 
 
+# Friendly model aliases per backend, so `/model haiku` switches just the model on
+# the current backend (like real Claude Code). Mirrors sdk_repl._MODEL_ALIASES.
+_BACKEND_MODEL_ALIASES = {
+    "anthropic": {
+        "fable": "claude-opus-4-8", "fable-5": "claude-opus-4-8",
+        "opus": "claude-opus-4-8", "opus-4-8": "claude-opus-4-8",
+        "sonnet": "claude-sonnet-4-6", "sonnet-4-6": "claude-sonnet-4-6",
+        "haiku": "claude-haiku-4-5", "haiku-4-5": "claude-haiku-4-5",
+    },
+    "openai": {"gpt": "gpt-5.5", "gpt-5.5": "gpt-5.5", "codex": "gpt-5.5-codex"},
+    "gemini": {"gemini": "gemini-3.1-pro-preview", "pro": "gemini-3.1-pro-preview"},
+}
+
+
 def _infer_backend(model: str) -> Optional[str]:
     """Guess the backend from a model id. Exact AGENT_CHAINS match first, then a
     substring heuristic — so `--model gemini-3.1-pro-preview` selects gemini."""
@@ -212,12 +226,13 @@ def _registry_for_spec(spec, *, is_subagent, ctx):
 
 
 def _format_mode_menu() -> str:
+    from ai4science.harness import tui as _tui
     lines = ["[agents]"]
     for s in agent_registry.core_agents():
-        lines.append(f"  {s.name:<10} {s.description}")
+        lines.append(f"  {_tui._display_mode(s.name):<22} {s.description}")
     n = len(agent_registry.specific_agents())
-    lines.append(f"  specific   ({n}) domain agents — /agent specific <query> to search")
-    lines.append("  switch with: /agent <name>")
+    lines.append(f"  {'specific':<22} ({n}) domain agents — /agent specific <query> to search")
+    lines.append("  switch with: /agent <name> (e.g. /agent Claude, /agent \"Computational Imaging\")")
     return "\n".join(lines)
 
 
@@ -578,15 +593,41 @@ def run_common_repl(
 
             # /model needs the live session — handle inline.
             if cmd == "model":
-                # /model <backend> [model-id]  or just /model (show current)
+                cur_aliases = _BACKEND_MODEL_ALIASES.get(active_backend, {})
+                # /model (no arg) → show current + the model picker for this backend
                 if not arg:
+                    opts = " | ".join(dict.fromkeys(
+                        a for a in cur_aliases if "-" not in a))
                     print(f"[harness] current: backend={active_backend}  model={active_model}",
                           flush=True)
-                    print("[harness] usage: /model <backend> [model-id]", flush=True)
+                    if opts:
+                        print(f"[harness] switch model: /model {opts}", flush=True)
+                    print("[harness] switch backend: /model <backend> [model-id]", flush=True)
                     continue
                 parts = arg.split(None, 1)
-                new_backend = parts[0]
+                tok = parts[0]
+                # (1) model-only switch: an alias/full-id for the CURRENT backend.
+                if len(parts) == 1:
+                    resolved = cur_aliases.get(tok.lower())
+                    if resolved is None and _infer_backend(tok) == active_backend:
+                        resolved = tok
+                    if resolved is not None:
+                        try:
+                            session.set_brand(adapter_for(active_backend), resolved, active_backend)
+                            session.meter = _make_wrapped_meter(active_backend, resolved)
+                            active_model = resolved
+                            brand_autodetected = False
+                            print(f"[harness] switched model: {active_model} "
+                                  f"(backend={active_backend})", flush=True)
+                        except ValueError as e:
+                            print(f"[harness] error: {e}", flush=True)
+                        continue
+                # (2) backend switch — /model <backend> [model-id|alias]
+                new_backend = tok
                 new_model = parts[1] if len(parts) > 1 else None
+                if new_model is not None:
+                    new_model = _BACKEND_MODEL_ALIASES.get(new_backend, {}).get(
+                        new_model.lower(), new_model)
                 try:
                     new_backend, new_model = _pick_brand(new_backend, new_model)
                     new_adapter = adapter_for(new_backend)
@@ -613,9 +654,12 @@ def run_common_repl(
                           flush=True)
                     continue
                 from ai4science.harness import tui as _tui
-                target = agent_registry.get(_tui.resolve_mode(parts[0]))
+                # the agent name may be multi-word / quoted (e.g. "Computational
+                # Imaging"), so resolve the FULL argument, not just the first token.
+                name = arg.strip().strip('"').strip("'")
+                target = agent_registry.get(_tui.resolve_mode(name))
                 if target is None:
-                    print(f"[agents] unknown agent {parts[0]!r}; /agent to list",
+                    print(f"[agents] unknown agent {name!r}; /agent to list",
                           flush=True)
                     continue
                 active_spec = target

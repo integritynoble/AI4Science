@@ -12,5 +12,5 @@ AGENT = AgentSpec(
     # Base coding agent (the original Codex): main agent only — never a sub-agent.
     allow_as_subagent=False,
     default_backend="openai",
-    order=5,
+    order=3,
 )

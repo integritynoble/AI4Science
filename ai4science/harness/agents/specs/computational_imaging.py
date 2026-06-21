@@ -39,7 +39,7 @@ PROMPT = (
 AGENT = AgentSpec(
     name="computational-imaging",
     tier="science",
-    category="specific",
+    category="core",
     title="Computational imaging",
     description="Snapshot/compressive spectral imaging (CASSI): solutions, physics, GPU eval.",
     keywords=("cassi", "spectral", "optics", "reconstruction", "hyperspectral",
@@ -47,4 +47,6 @@ AGENT = AgentSpec(
     system_prompt=PROMPT,
     capabilities=("pwm-actions", "pwm-data", "computational-imaging", "compute-providers",
                   "ci-algorithms", "optics-design", "forward-model", "science-router"),
+    aliases=("ci", "computational imaging", "imaging"),
+    order=5,
 )

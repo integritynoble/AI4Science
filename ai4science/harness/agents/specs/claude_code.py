@@ -14,5 +14,5 @@ AGENT = AgentSpec(
     allow_as_subagent=False,
     aliases=("claude code", "cc"),
     default_backend="anthropic",
-    order=4,
+    order=2,
 )
