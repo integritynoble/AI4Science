@@ -855,23 +855,28 @@ class FullScreen:
 
         in_choice = Condition(lambda: self._choice is not None)
 
-        # Borderless composer (Claude-Code-style input). We deliberately use NO
-        # full-width ─── rules: a rule rendered at the old width re-wraps into
-        # several lines when the window shrinks, and prompt_toolkit's inline
-        # (non-alt-screen) renderer can't erase the re-wrapped old frame — that is
-        # what piled up "a lot of lines" on resize. Without rules, the only thing
-        # that can re-wrap is the short prompt/info line, so resize stays clean and
-        # the native scrollback (history) is left untouched. The coral ❯ prompt and
-        # the dim info line give enough structure on their own.
+        # Two-line bordered composer: a top + bottom horizontal rule (no left/right
+        # verticals) framing the input, with completed output streaming ABOVE it in
+        # the native scrollback. This is the box the user wants; native mouse-wheel
+        # scrollback + click-drag copy keep working. KNOWN TRADE-OFF (chosen): on a
+        # window SHRINK the old full-width rule re-wraps and the inline renderer
+        # can't erase it, so a few stray ─── lines can remain — Ctrl-L (or Enter)
+        # repaints clean. Growing the window is always clean.
+        def _rule():
+            return Window(height=1, char="─", style="class:rule")
         choice_panel = ConditionalContainer(HSplit([
+            _rule(),
             Window(FormattedTextControl(_choice_text), dont_extend_height=True,
                    style="class:input"),
+            _rule(),
             Window(FormattedTextControl(_choice_hint), height=1),
         ]), filter=in_choice)
         input_panel = ConditionalContainer(HSplit([
             partial_win,                                 # live streaming line
             queued_win,                                  # pending sent messages
-            ta,                                          # input (grows; no borders)
+            _rule(),                                     # upper horizontal line
+            ta,                                          # input (grows; no side borders)
+            _rule(),                                     # bottom horizontal line
             Window(FormattedTextControl(_info), height=1),   # info/status line
         ]), filter=~in_choice)
         body = HSplit([choice_panel, input_panel])
