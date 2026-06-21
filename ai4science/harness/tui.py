@@ -1043,12 +1043,54 @@ class FullScreen:
                         pass
 
         t = threading.Thread(target=_work, daemon=True)
-        # NOTE: no resize-poller here. An earlier version cleared the screen on
-        # resize to wipe stale rule lines — but renderer.clear() also erases the
-        # visible scrollback, which made HISTORY DISAPPEAR on resize. The real
-        # source of the rule pile-up was the full-width ─── rules in the composer
-        # (a 128-col rule re-wraps to 3 lines when you shrink the window); the
-        # composer is now BORDERLESS (no rules), so there is nothing to orphan.
+
+        def _resize_watch():
+            # Resize cleanup that PRESERVES scrollback. prompt_toolkit already
+            # cleans up on SIGWINCH via Application._on_resize() — which does
+            # renderer.erase() (erase_down from the top of the box; NOT
+            # erase_screen, so history is untouched) + a CPR + redraw. But in our
+            # worker-thread + patch_stdout setup SIGWINCH isn't reliably delivered,
+            # so that handler may never fire and stale rule frames pile up across
+            # many resizes. Poll the size and, on change, invoke pt's OWN handler
+            # on the event loop. This is why an earlier renderer.clear() version
+            # wiped history; _on_resize() does not.
+            import shutil, time as _t
+            try:
+                last = shutil.get_terminal_size()
+            except Exception:
+                return
+            while not done["v"]:
+                _t.sleep(0.3)
+                try:
+                    cur = shutil.get_terminal_size()
+                except Exception:
+                    continue
+                if cur == last:
+                    continue
+                last = cur
+                app = self._app
+                if app is None:
+                    continue
+                handler = getattr(app, "_on_resize", None)
+
+                def _fix(_h=handler, _app=app):
+                    try:
+                        if _h is not None:
+                            _h()                 # pt's correct erase+CPR+redraw
+                        else:
+                            _app.renderer.erase(leave_alternate_screen=False)
+                            _app.invalidate()
+                    except Exception:
+                        try:
+                            _app.invalidate()
+                        except Exception:
+                            pass
+                try:
+                    app.loop.call_soon_threadsafe(_fix)
+                except Exception:
+                    pass
+
+        resize_t = threading.Thread(target=_resize_watch, daemon=True)
         try:
             # patch_stdout reroutes the worker thread's prints to render ABOVE the
             # live input box instead of corrupting it.
@@ -1061,6 +1103,7 @@ class FullScreen:
                 sys.stdout = self._stream
                 try:
                     t.start()
+                    resize_t.start()
                     self._app.run()
                 finally:
                     sys.stdout = self._stream._inner
