@@ -179,17 +179,23 @@ case ":$PATH:" in
       printf '\n\033[33m%s is not on your PATH.\033[0m Add this (and put it in ~/.bashrc):\n' "$BIN_DIR"
       printf '    %s\n' "$PATH_LINE"
     else
-      # Cover login + interactive shells; ~/.profile created only if NO rc exists.
-      changed=""; rc_seen=0
-      for rc in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile"; do
-        [ -e "$rc" ] && rc_seen=1
+      # Write to the rc for the user's ACTUAL shell, creating it if missing.
+      # macOS defaults to zsh, which never reads ~/.profile — the old behavior of
+      # only creating ~/.profile on a fresh box left the command off-PATH there.
+      shell_name="$(basename "${SHELL:-sh}")"
+      case "$shell_name" in
+        zsh)  primary_rc="$HOME/.zshrc" ;;
+        bash) primary_rc="$HOME/.bashrc" ;;
+        *)    primary_rc="$HOME/.profile" ;;
+      esac
+      touch "$primary_rc" 2>/dev/null || true
+      changed=""
+      # primary rc first (now exists), then any other existing rc files; add_path_to
+      # is idempotent so a file listed twice is only written once.
+      for rc in "$primary_rc" "$HOME/.zshrc" "$HOME/.zprofile" "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.profile"; do
+        [ -e "$rc" ] || continue
         out="$(add_path_to "$rc")" && [ -n "$out" ] && changed="$changed $out"
       done
-      if [ "$rc_seen" = "0" ]; then
-        # No shell rc at all — create ~/.profile so login shells pick it up.
-        printf '\n# Added by AI4Science installer\n%s\n' "$PATH_LINE" >> "$HOME/.profile"
-        changed=" $HOME/.profile"
-      fi
       if [ -n "$changed" ]; then
         ok "Added $BIN_DIR to PATH in:$changed"
       else
