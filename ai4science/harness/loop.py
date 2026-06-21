@@ -61,16 +61,17 @@ def run_loop(*, adapter, model: str, reasoning: str, history: List[Message],
                 try:
                     tool = registry.get(tc.name)
                     if tool.streams:
-                        # Cap the LIVE display like Claude Code: stream the first
-                        # _cap lines, then hide the rest (the agent still receives
-                        # the FULL output via the return value). Tunable with
-                        # AI4SCIENCE_TOOL_DISPLAY_LINES (default 15).
+                        # Cap the LIVE display like Claude Code: stream just a
+                        # short peek, then hide the rest (the agent still receives
+                        # the FULL output via the return value). Default 6; set
+                        # AI4SCIENCE_TOOL_DISPLAY_LINES=0 to fully collapse (show
+                        # only the '⎿ (+N lines)' note) or higher to see more.
                         import os as _os
                         try:
-                            _cap = max(1, int(_os.environ.get(
-                                "AI4SCIENCE_TOOL_DISPLAY_LINES", "15")))
+                            _cap = max(0, int(_os.environ.get(
+                                "AI4SCIENCE_TOOL_DISPLAY_LINES", "6")))
                         except (TypeError, ValueError):
-                            _cap = 15
+                            _cap = 6
                         _seen = {"n": 0}
 
                         def _capped(s, _on=on_text, _seen=_seen, _supp=_supp, _cap=_cap):
