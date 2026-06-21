@@ -54,21 +54,44 @@ def run_loop(*, adapter, model: str, reasoning: str, history: List[Message],
             on_tool_start(tc.name, tc.arguments)
             ok, reason = gate.allow(tc.name, tc.arguments)
             streamed = False
+            _supp = {"n": 0}
             if not ok:
                 result = f"[blocked] {reason}"
             else:
                 try:
                     tool = registry.get(tc.name)
                     if tool.streams:
-                        result = tool.func(workspace, **tc.arguments, _sink=on_text)
+                        # Cap the LIVE display like Claude Code: stream the first
+                        # _cap lines, then hide the rest (the agent still receives
+                        # the FULL output via the return value). Tunable with
+                        # AI4SCIENCE_TOOL_DISPLAY_LINES (default 15).
+                        import os as _os
+                        try:
+                            _cap = max(1, int(_os.environ.get(
+                                "AI4SCIENCE_TOOL_DISPLAY_LINES", "15")))
+                        except (TypeError, ValueError):
+                            _cap = 15
+                        _seen = {"n": 0}
+
+                        def _capped(s, _on=on_text, _seen=_seen, _supp=_supp, _cap=_cap):
+                            if _seen["n"] < _cap:
+                                _on(s)
+                                _seen["n"] += 1
+                            else:
+                                _supp["n"] += 1
+
+                        result = tool.func(workspace, **tc.arguments, _sink=_capped)
                         streamed = True
                     else:
                         result = tool.func(workspace, **tc.arguments)
                     on_tool(tc.name)   # contribution-usage hook (agent-mining)
                 except Exception as exc:
                     result = f"[error] {exc}"
-            # Streaming tools already printed their output live — suppress the
-            # `⎿` summary (empty string formats to nothing) to avoid doubling.
+            # Streaming tools printed their (capped) output live. If we hid lines,
+            # show a dim Claude-Code-style `⎿ (+N more lines)` note; otherwise
+            # suppress the `⎿` summary (empty string) to avoid doubling.
+            if streamed and _supp["n"] > 0:
+                on_text(f"\x1b[2m  ⎿ (+{_supp['n']} more lines)\x1b[0m\n")
             on_tool_end(tc.name, "" if streamed else str(result))
             history.append(Message(role="tool", content=str(result), tool_call_id=tc.id))
             if interrupt.requested():
