@@ -18,6 +18,9 @@ $GitUrl = "git+https://github.com/integritynoble/AI4Science.git"
 $InstallDir = if ($env:AI4SCIENCE_HOME) { $env:AI4SCIENCE_HOME } else { Join-Path $HOME ".ai4science" }
 $Venv = Join-Path $InstallDir "venv"
 $WithClaude = $env:AI4SCIENCE_WITH_CLAUDE -ne "0"
+# Pin an exact release with $env:AI4SCIENCE_VERSION (flags can't be passed through
+# `irm | iex`). Example:  $env:AI4SCIENCE_VERSION="0.6.21"; irm …/install.ps1 | iex
+$Version = if ($env:AI4SCIENCE_VERSION) { ($env:AI4SCIENCE_VERSION -replace '^v','') } else { "" }
 
 function Say($m) { Write-Host "▸ $m" -ForegroundColor Cyan }
 function Ok($m)  { Write-Host "✓ $m" -ForegroundColor Green }
@@ -82,13 +85,23 @@ Say "Creating venv at $Venv"
 $pip = Join-Path $Venv "Scripts\pip.exe"
 & $pip install --quiet --upgrade pip | Out-Null
 
-# 3. Install — PyPI first, fall back to GitHub.
+# 3. Install — pinned version (tag zip) first, else PyPI, else GitHub.
 $extra = if ($WithClaude) { "[claude]" } else { "" }
 $installed = $false
-try {
-    & $pip install --quiet "$Pkg$extra"
-    if ($LASTEXITCODE -eq 0) { $installed = $true; Ok "Installed $Pkg from PyPI" }
-} catch { }
+if ($Version) {
+    $tag = "https://github.com/integritynoble/AI4Science/archive/refs/tags/v$Version.zip"
+    Say "Installing pinned version v$Version…"
+    $src = if ($extra) { "$Pkg$extra @ $tag" } else { $tag }
+    & $pip install --quiet $src
+    if ($LASTEXITCODE -eq 0) { $installed = $true; Ok "Installed $Pkg v$Version from GitHub" }
+    else { throw "Could not install v$Version (does that tag exist? e.g. v0.6.21, v0.6.20)" }
+}
+if (-not $installed) {
+    try {
+        & $pip install --quiet "$Pkg$extra"
+        if ($LASTEXITCODE -eq 0) { $installed = $true; Ok "Installed $Pkg from PyPI" }
+    } catch { }
+}
 if (-not $installed) {
     Say "PyPI unavailable; installing from GitHub…"
     # PEP 508 direct reference for extras (the old '#egg=name[extra]' fragment is

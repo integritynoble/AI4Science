@@ -6,12 +6,19 @@
 # Creates an isolated venv under ~/.ai4science and links the `ai4science`
 # command into ~/.local/bin. Works on locked-down HPC login nodes.
 #
+# Channel / version flags (pass after `bash -s --`):
+#   --stable | --rc | --dev      pick a release channel (default stable)
+#   --version X.Y.Z              install an exact release tag, e.g.:
+#       curl -fsSL …/install.sh | bash -s -- --version 0.6.21
+#
 # Env overrides:
 #   AI4SCIENCE_HOME=<dir>     install location (default ~/.ai4science)
 #   AI4SCIENCE_BIN=<dir>      where to link the command (default ~/.local/bin)
 #   AI4SCIENCE_WITH_CLAUDE=0  skip the [claude] chat-agent extra (lean install).
 #                             Default is 1 — the chat agent is installed so
 #                             `ai4science` is a Claude-Code-like session.
+#   AI4SCIENCE_VERSION=X.Y.Z  same as --version (handy when piping to bash)
+#   AI4SCIENCE_PYVER=3.12     minor series for the auto-downloaded Python
 #   AI4SCIENCE_REF=<spec>     override the install source (pip requirement)
 set -euo pipefail
 
@@ -26,11 +33,16 @@ WITH_CLAUDE="${AI4SCIENCE_WITH_CLAUDE:-1}"
 # --stable or AI4SCIENCE_CHANNEL; each maps to a GitHub branch ZIP (no git needed,
 # pip downloads over HTTP). PyPI is phase 2. AI4SCIENCE_REF still overrides all.
 CHANNEL="${AI4SCIENCE_CHANNEL:-stable}"
-for _a in "$@"; do
-  case "$_a" in
+VERSION="${AI4SCIENCE_VERSION:-}"   # pin an exact release, e.g. --version 0.6.21
+while [ "$#" -gt 0 ]; do
+  case "$1" in
     --dev) CHANNEL=dev ;; --rc) CHANNEL=rc ;; --stable) CHANNEL=stable ;;
+    --version=*) VERSION="${1#--version=}" ;;
+    --version)  shift; VERSION="${1:-}" ;;
   esac
+  [ "$#" -gt 0 ] && shift
 done
+VERSION="${VERSION#v}"   # accept either "v0.6.21" or "0.6.21"
 case "$CHANNEL" in
   stable) BRANCH=stable ;; rc) BRANCH=rc ;; dev) BRANCH=main ;;
   *) printf '\033[31m✗ unknown channel %s (use stable|rc|dev)\033[0m\n' "$CHANNEL" >&2; exit 1 ;;
@@ -120,6 +132,12 @@ _src() { local url="$1"; if [ -n "$extra" ]; then echo "${PKG}${extra} @ ${url}"
 if [ -n "${AI4SCIENCE_REF:-}" ]; then
   say "Installing from AI4SCIENCE_REF=$AI4SCIENCE_REF"
   "$VENV/bin/pip" install --quiet "$AI4SCIENCE_REF" || die "install failed"
+elif [ -n "$VERSION" ]; then
+  TAG_URL="https://github.com/integritynoble/AI4Science/archive/refs/tags/v${VERSION}.zip"
+  say "Installing pinned version v$VERSION…"
+  "$VENV/bin/pip" install --quiet "$(_src "$TAG_URL")" \
+    || die "could not install v$VERSION (does that tag exist? e.g. v0.6.21, v0.6.20)"
+  ok "Installed $PKG v$VERSION from GitHub"
 else
   pre=""; [ "$CHANNEL" = rc ] && pre="--pre"
   ok_install=0
