@@ -199,7 +199,10 @@ def _syntax_listing(content: str, path: str) -> str:
         except Exception:
             lexer = "text"
         width = max(40, min(shutil.get_terminal_size((100, 24)).columns, 120))
-        syn = Syntax(content, lexer, line_numbers=True, theme="ansi_dark",
+        # Vivid Monokai palette (like Claude Code) instead of the muted 16-colour
+        # ansi_dark. Rendered at 256-colour so it stays vivid on terminals without
+        # truecolor (e.g. macOS Terminal.app); rich downsamples Monokai to nearest.
+        syn = Syntax(content, lexer, line_numbers=True, theme="monokai",
                      word_wrap=False, background_color="default")
         con = Console(file=io.StringIO(), force_terminal=True,
                       color_system="256", width=width)
