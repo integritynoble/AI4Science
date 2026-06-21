@@ -869,12 +869,20 @@ class FullScreen:
 
         # Permission picker (Claude Code's arrow-key menu). When self._choice is
         # set, this panel REPLACES the input box: ↑/↓ move the highlight, ⏎
-        # selects, 1/2/3 jump, esc = the last option.
-        def _choice_text():
+        # selects, 1/2/3 jump, esc = the last option. The QUESTION/preview and the
+        # OPTIONS live in SEPARATE windows: the preview shrinks/truncates when the
+        # window is short, but the options window is always shown at full height —
+        # so a long preview can never push the Yes/No options off-screen (the
+        # 'sometimes the proceed prompt doesn't show' bug).
+        def _choice_question():
+            c = self._choice
+            return ANSI(c["q"]) if (c and c.get("q")) else ANSI("")
+
+        def _choice_options():
             c = self._choice
             if not c:
                 return ANSI("")
-            out = [c["q"], ""] if c.get("q") else [""]
+            out = []
             for i, opt in enumerate(c["options"]):
                 if i == c["sel"]:
                     out.append(f"\x1b[38;5;173m❯ {i + 1}. {opt}\x1b[0m")   # highlighted
@@ -887,6 +895,7 @@ class FullScreen:
                         "esc = last\x1b[0m")
 
         in_choice = Condition(lambda: self._choice is not None)
+        from prompt_toolkit.layout.dimension import Dimension as _CD
 
         # Two-line bordered composer: a top + bottom horizontal rule (no left/right
         # verticals) framing the input, with completed output streaming ABOVE it in
@@ -899,7 +908,12 @@ class FullScreen:
             return Window(height=1, char="─", style="class:rule")
         choice_panel = ConditionalContainer(HSplit([
             _rule(),
-            Window(FormattedTextControl(_choice_text), dont_extend_height=True,
+            # preview/question: shrinks to as little as 1 row (truncates) so it can
+            # never crowd out the options below it.
+            Window(FormattedTextControl(_choice_question), wrap_lines=True,
+                   height=_CD(min=1, weight=1), style="class:input"),
+            # options: ALWAYS shown at full height (sized to the option count).
+            Window(FormattedTextControl(_choice_options), dont_extend_height=True,
                    style="class:input"),
             _rule(),
             Window(FormattedTextControl(_choice_hint), height=1),
