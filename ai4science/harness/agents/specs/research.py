@@ -56,7 +56,12 @@ AGENT = AgentSpec(
     description="PWM-grounded science agent: principles, specs, benchmarks, solutions.",
     keywords=("science", "pwm", "benchmark", "solution", "principle"),
     system_prompt=RESEARCH_PROMPT,
+    # Research is the GENERAL science agent — it stays domain-neutral. Computational-
+    # imaging specifics (ci_modalities / ci_run_algorithm / fm_* forward-model
+    # compiler) live ONLY in the `computational-imaging` agent, so a general
+    # question (e.g. cancer) isn't steered toward CASSI/CT/MRI. Switch with
+    # `/mode computational-imaging` for those tools.
     capabilities=("pwm-actions", "pwm-data", "onboarding", "compute-providers",
-                  "ci-algorithms", "forward-model", "science-router"),
+                  "science-router"),
     order=2,
 )
