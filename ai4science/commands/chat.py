@@ -200,9 +200,9 @@ def chat(
     # Resolve --mode against the agent registry. The active AgentSpec drives the
     # session (registry + system prompt) inside run_common_repl; here we only pass
     # mode_label and the spec's prompt as a harmless fallback.
-    # Default mode is RESEARCH (PWM-grounded science agent). Override per-session
-    # with --mode or AI4SCIENCE_MODE (e.g. unified-LLM / common, claude, codex).
-    mode = (mode or os.environ.get("AI4SCIENCE_MODE") or "research").lower()
+    # Default agent is UNIFIED-LLM (pure coding assistant, no PWM). Override
+    # per-session with --agent/--mode or AI4SCIENCE_MODE (e.g. research, claude, codex).
+    mode = (mode or os.environ.get("AI4SCIENCE_MODE") or "unified-LLM").lower()
     backend = backend or os.environ.get("AI4SCIENCE_BACKEND")
     from ai4science.harness.tui import resolve_mode
     mode = resolve_mode(mode)          # display name (e.g. 'claude') → id 'claude-code'

@@ -63,5 +63,5 @@ AGENT = AgentSpec(
     # `/agent computational-imaging` for those tools.
     capabilities=("pwm-actions", "pwm-data", "onboarding", "compute-providers",
                   "science-router"),
-    order=1,
+    order=2,
 )
