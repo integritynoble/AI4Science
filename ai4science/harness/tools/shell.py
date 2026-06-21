@@ -43,8 +43,15 @@ def bash(workspace: Path, *, cmd: str, _sink: Optional[Callable[[str], None]] = 
     enforcing a hard wall-clock timeout via a reader thread + proc.wait(timeout).
     On timeout the whole process group is killed (so the command does not leak)."""
     try:
+        # stdin=DEVNULL: without this the child inherits the parent's stdin (the
+        # TUI's raw-mode TTY). A `read` in the command — or any tool that probes
+        # isatty() — then RACES prompt_toolkit's reader for the user's keystrokes,
+        # eats them, and on exit can leave the TTY half-cooked (the "backspace
+        # echoes ^R, Ctrl+C echoes raw" symptom). Non-interactive tool commands
+        # never need a TTY for input, so pin stdin to /dev/null.
         proc = subprocess.Popen(
             cmd, shell=True, cwd=str(workspace),
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
             start_new_session=True,   # own process group → we can kill the whole tree
         )

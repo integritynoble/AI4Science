@@ -1298,6 +1298,58 @@ class FullScreen:
                         sys.stdout = self._stream._inner
                         self._stream = None
 
+        # SIGINT safety net (main thread only). In normal operation prompt_toolkit
+        # puts the TTY in RAW mode and Ctrl+C is just byte 0x03 routed through the
+        # `c-c` key binding above — SIGINT is never delivered. But when raw-mode
+        # setup is interrupted or a child process leaves the TTY in cooked mode
+        # (the "backspace echoes ^R, ^C echoes literal" symptom), SIGINT IS
+        # delivered. Without a handler, asyncio's run loop may swallow it and the
+        # user's only escape is to kill the process from another window. This
+        # handler escalates: 1st press → cooperative interrupt + app.exit(), 2nd →
+        # raise KeyboardInterrupt to break asyncio, 3rd → os._exit(130) as a last
+        # resort so the user is NEVER stuck.
+        import signal as _signal
+        _sigint_n = {"n": 0}
+        _prev_sigint = None
+
+        def _sigint_safety(_sig, _frame):
+            _sigint_n["n"] += 1
+            n = _sigint_n["n"]
+            if n >= 3:
+                # Final escape — restore the TTY and force-exit so the shell isn't
+                # left half-cooked when the process dies.
+                try:
+                    import termios, tty   # noqa: F401
+                    os.system("stty sane 2>/dev/null")
+                except Exception:
+                    pass
+                os._exit(130)
+            try:
+                from ai4science.harness import interrupt as _intr
+                _intr.request()
+            except Exception:
+                pass
+            app = self._app
+            if app is not None:
+                def _exit():
+                    try:
+                        if app.is_running:
+                            app.exit(exception=KeyboardInterrupt)
+                    except Exception:
+                        pass
+                try:
+                    app.loop.call_soon_threadsafe(_exit)
+                except Exception:
+                    pass
+            if n >= 2:
+                raise KeyboardInterrupt
+
+        if threading.current_thread() is threading.main_thread():
+            try:
+                _prev_sigint = _signal.signal(_signal.SIGINT, _sigint_safety)
+            except (ValueError, OSError):
+                _prev_sigint = None
+
         try:
             with _stdout_ctx():
                 try:
@@ -1307,6 +1359,23 @@ class FullScreen:
                 finally:
                     pass
         finally:
+            if _prev_sigint is not None:
+                try:
+                    _signal.signal(_signal.SIGINT, _prev_sigint)
+                except (ValueError, OSError):
+                    pass
+            # Belt-and-braces TTY recovery: prompt_toolkit's own cleanup restores
+            # termios on a clean exit, but if alt-screen entry, raw-mode setup, or
+            # the renderer crashed mid-stream, it can leave the terminal in a
+            # half-cooked state (ECHOCTL on, ICANON off → backspace prints `^?`,
+            # Ctrl+C echoes literal `^C`). `stty sane` is a no-op in the happy
+            # path and rescues the user in the unhappy one. Skipped if stdin
+            # isn't a TTY (piped input).
+            try:
+                if sys.stdin.isatty():
+                    os.system("stty sane 2>/dev/null")
+            except Exception:
+                pass
             _ACTIVE["screen"] = None
             if not done["v"]:
                 self._inq.put(None)              # unblock a waiting worker

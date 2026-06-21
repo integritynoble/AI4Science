@@ -102,7 +102,8 @@ def glob(workspace: Path, *, pattern: str, path: str | None = None,
         try:
             import select
             import time as _time
-            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+            proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL,
+                                    stdout=subprocess.PIPE,
                                     stderr=subprocess.DEVNULL)
             paths: list[str] = []
             truncated = False
@@ -180,7 +181,8 @@ def grep(workspace: Path, *, pattern: str, path: str | None = None,
         try:
             import select
             import time as _time
-            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+            proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL,
+                                    stdout=subprocess.PIPE,
                                     stderr=subprocess.DEVNULL)
             out: list[str] = []
             truncated = False
