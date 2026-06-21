@@ -166,10 +166,10 @@ def read_input(prompt: str = "› ", mode: str = "chat", status: str = "") -> st
     except Exception:
         return input(prompt)
     try:
-        # 'full' (default) → inline two-line input (native wheel-scroll + copy);
-        # 'box' → the bordered single-line input box.
-        return _bordered(prompt, mode, status) if m == "box" \
-            else _two_line_inline(prompt, mode, status)
+        # Both 'box' (default) and the transient 'full' path use the borderless
+        # two-line input: a coral ❯ prompt framed only by top/bottom rules (no
+        # left/right box sides), with native wheel-scroll + copy — like Claude Code.
+        return _two_line_inline(prompt, mode, status)
     except (EOFError, KeyboardInterrupt):
         raise
     except Exception:
