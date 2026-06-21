@@ -965,9 +965,15 @@ class FullScreen:
             # exposed for the scroll keybindings
             self._viewport = _viewport
             self._buf_nlines = lambda: self._buf.count("\n") + 1
+            # height=D(min=1, weight=1): the transcript takes the LEFTOVER space and
+            # can shrink to a single row, so the composer's fixed rows (rules +
+            # input + status) are always reserved. Without this the transcript's
+            # content-sized preferred height squeezed the input box off the bottom
+            # in a small window (box only appeared when the window was tall enough).
+            from prompt_toolkit.layout.dimension import Dimension as _D
             self._twin = Window(FormattedTextControl(_transcript),
                                 wrap_lines=True, always_hide_cursor=True,
-                                style="class:input")
+                                height=_D(min=1, weight=1), style="class:input")
             body = HSplit([self._twin, composer])
         else:
             body = composer
