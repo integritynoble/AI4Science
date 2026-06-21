@@ -177,36 +177,94 @@ def read_input(prompt: str = "› ", mode: str = "chat", status: str = "") -> st
         return input(prompt)
 
 
-def ask_choice(question: str, options, *, read_input=read_input,
-               mode: str = "chat") -> int:
-    """Ask the user to pick one of `options`, returning the 0-based index.
+def _inline_select(question: str, options):
+    """Transient inline ↑/↓/⏎ picker (no full-screen, native scrollback kept).
+    Returns the 0-based index, or None if cancelled (Esc / Ctrl-C). 1-9 quick-pick."""
+    from prompt_toolkit import Application
+    from prompt_toolkit.key_binding import KeyBindings
+    from prompt_toolkit.layout import Layout
+    from prompt_toolkit.layout.containers import HSplit, Window
+    from prompt_toolkit.layout.controls import FormattedTextControl
+    from prompt_toolkit.styles import Style
 
-    When the persistent composer owns the screen, this is Claude Code's
-    arrow-key picker (↑/↓/⏎, or 1/2/3). Otherwise it falls back to a typed
-    numeric menu (also accepting the legacy y/n/a aliases). Default / unknown
-    answers resolve to the LAST option (the safe 'No')."""
+    n = len(options)
+    sel = {"i": 0}
+
+    def _frags():
+        out = []
+        if question:
+            out.append(("class:q", f"{question}\n"))
+        for idx, opt in enumerate(options):
+            cur = idx == sel["i"]
+            out.append(("class:cur" if cur else "",
+                        f" {'❯' if cur else ' '} {opt}\n"))
+        out.append(("class:hint", " ↑/↓ move · ⏎ select · 1-9 pick · Esc cancel"))
+        return out
+
+    kb = KeyBindings()
+
+    @kb.add("up")
+    @kb.add("c-p")
+    def _(e): sel["i"] = (sel["i"] - 1) % n
+
+    @kb.add("down")
+    @kb.add("c-n")
+    def _(e): sel["i"] = (sel["i"] + 1) % n
+
+    @kb.add("enter")
+    def _(e): e.app.exit(result=sel["i"])
+
+    @kb.add("escape")
+    @kb.add("c-c")
+    def _(e): e.app.exit(result=None)
+
+    for _k in range(1, min(n, 9) + 1):
+        @kb.add(str(_k))
+        def _(e, _k=_k): e.app.exit(result=_k - 1)
+
+    body = HSplit([Window(FormattedTextControl(_frags),
+                          height=n + (2 if question else 1))])
+    style = Style.from_dict({"cur": "fg:#d7875f bold", "q": "bold",
+                             "hint": "fg:#8a8a8a"})
+    app = Application(layout=Layout(body), key_bindings=kb, style=style,
+                     full_screen=False, mouse_support=False, erase_when_done=True)
+    return app.run()
+
+
+def select(question: str, options):
+    """Arrow-key picker → 0-based index, or None if cancelled. Uses the
+    full-screen picker when a composer owns the terminal, else a transient
+    inline picker (box mode), else a numbered text prompt (off / no TTY)."""
     scr = _ACTIVE.get("screen")
     if scr is not None and getattr(scr, "request_choice", None):
         return scr.request_choice(question, options)
-    # Text fallback (box / off mode, or no active screen).
+    try:
+        if sys.stdin.isatty() and sys.stdout.isatty():
+            import prompt_toolkit  # noqa: F401
+            return _inline_select(question, options)
+    except Exception:
+        pass
+    # Non-TTY / no prompt_toolkit: numbered prompt; blank/invalid → None (cancel).
     lines = [question, ""] if question else [""]
     for i, opt in enumerate(options):
         lines.append(f"  {i + 1}. {opt}")
-    ans = read_input("\n".join(lines) + "\n❯ ", mode)
-    a = (ans or "").strip().lower()
-    if a in ("1", "y", "yes"):
-        return 0
-    if a in ("2", "a", "always"):
-        return 1
-    if a in ("3", "n", "no", ""):
-        return min(2, len(options) - 1)
     try:
-        k = int(a) - 1
-        if 0 <= k < len(options):
-            return k
+        ans = (input("\n".join(lines) + "\n❯ ") or "").strip()
+    except (EOFError, KeyboardInterrupt):
+        return None
+    try:
+        k = int(ans) - 1
+        return k if 0 <= k < len(options) else None
     except ValueError:
-        pass
-    return len(options) - 1            # unknown → last (No)
+        return None
+
+
+def ask_choice(question: str, options, *, read_input=read_input,
+               mode: str = "chat") -> int:
+    """Pick one of `options`, returning the 0-based index. Cancel (Esc) resolves
+    to the LAST option — the safe 'No' for yes/no confirmations."""
+    r = select(question, options)
+    return (len(options) - 1) if r is None else r
 
 
 def _bordered(prompt: str, mode: str, status: str = "") -> str:

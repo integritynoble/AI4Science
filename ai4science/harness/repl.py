@@ -635,8 +635,11 @@ def run_common_repl(
                     labels = [f"{lbl} ({mid})"
                               + ("  ← current" if (be == active_backend and mid == active_model) else "")
                               for lbl, be, mid in menu]
-                    idx = _tui.ask_choice(
+                    idx = _tui.select(
                         f"Select a model · {_tui._display_mode(active_spec.name)}", labels)
+                    if idx is None:
+                        print("[harness] (cancelled)", flush=True)
+                        continue
                     new_backend, new_model = menu[idx][1], menu[idx][2]
                 else:
                     hit = _resolve_in_menu(menu, arg.strip().strip('"').strip("'"))
@@ -674,7 +677,10 @@ def run_common_repl(
                         + ("  ← current" if s.name == active_spec.name else "")
                         for s in core
                     ]
-                    idx = _tui.ask_choice("Select an agent", labels)
+                    idx = _tui.select("Select an agent", labels)
+                    if idx is None:
+                        print("[harness] (cancelled)", flush=True)
+                        continue
                     target = core[idx]
                 else:
                     parts = arg.split(None, 1)
