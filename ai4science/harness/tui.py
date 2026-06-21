@@ -1039,6 +1039,41 @@ class FullScreen:
                         pass
 
         t = threading.Thread(target=_work, daemon=True)
+
+        def _resize_watch():
+            # Auto-clean on window resize: the inline composer re-wraps the
+            # scrollback on resize and leaves stale ─── rule lines. Poll the
+            # terminal size (cheap; acts ONLY on change, so it never floods input)
+            # and force a clear+repaint when it changes.
+            import shutil, time as _t
+            try:
+                last = shutil.get_terminal_size()
+            except Exception:
+                return
+            while not done["v"]:
+                _t.sleep(0.4)
+                try:
+                    cur = shutil.get_terminal_size()
+                except Exception:
+                    continue
+                if cur != last:
+                    last = cur
+                    app = self._app
+                    if app is None:
+                        continue
+
+                    def _clean():
+                        try:
+                            app.renderer.clear()
+                        except Exception:
+                            pass
+                        app.invalidate()
+                    try:
+                        app.loop.call_soon_threadsafe(_clean)
+                    except Exception:
+                        pass
+
+        resize_t = threading.Thread(target=_resize_watch, daemon=True)
         try:
             # patch_stdout reroutes the worker thread's prints to render ABOVE the
             # live input box instead of corrupting it.
@@ -1051,6 +1086,7 @@ class FullScreen:
                 sys.stdout = self._stream
                 try:
                     t.start()
+                    resize_t.start()
                     self._app.run()
                 finally:
                     sys.stdout = self._stream._inner
