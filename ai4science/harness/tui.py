@@ -1097,7 +1097,16 @@ class FullScreen:
                 interrupt.request()
                 self.append("\n\x1b[2m[esc] interrupting…\x1b[0m\n")
 
+        # Bind both `c-c` AND `<sigint>`. In RAW mode (the happy path) Ctrl+C
+        # is byte 0x03 routed through the `c-c` binding. In COOKED mode — when
+        # raw-mode setup failed or a child has flipped the TTY back (the user's
+        # bug case) — Ctrl+C is delivered as SIGINT instead;
+        # prompt_toolkit's `handle_sigint=True` routes that to the `<sigint>`
+        # key binding, NOT `c-c`. The handler logic is identical for both.
+        from prompt_toolkit.keys import Keys as _Keys
+
         @kb.add("c-c")
+        @kb.add(_Keys.SIGINT)
         def _(event):
             # Ctrl+C while the agent is working → interrupt the running turn
             # (like Esc) and return to the prompt so the user can send a new or
