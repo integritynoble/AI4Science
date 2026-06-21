@@ -830,8 +830,9 @@ class FullScreen:
             mode = f"\x1b[38;5;173mai4science · {_display_mode(self.mode)}\x1b[0m"
             extra = (f" · \x1b[38;5;245m{self._status_extra}\x1b[0m"
                      if self._status_extra else "")
-            hints = ("   \x1b[38;5;240m⏎ send · ⌥⏎ newline · ↑ edit · ^G bottom · "
-                     "/exit\x1b[0m")
+            _scroll = " · ↑↓/PgUp scroll" if self._fs else " · ↑ edit"
+            hints = ("   \x1b[38;5;240m⏎ send · ⌥⏎ newline" + _scroll +
+                     " · /exit\x1b[0m")
             return ANSI(f" {star}{mode}{extra}{hints}")
 
         # Live region: the in-progress streaming line (no trailing newline yet).
@@ -994,7 +995,28 @@ class FullScreen:
             # content-sized preferred height squeezed the input box off the bottom
             # in a small window (box only appeared when the window was tall enough).
             from prompt_toolkit.layout.dimension import Dimension as _D
-            self._twin = Window(FormattedTextControl(_transcript),
+            from prompt_toolkit.mouse_events import MouseEventType as _MET
+
+            class _ScrollControl(FormattedTextControl):
+                # Mouse-wheel over the transcript scrolls it (alt-screen has no
+                # native scrollback). Wheel-up moves back into history (stops
+                # following); wheel-down returns toward the newest and resumes
+                # follow at the bottom. ~3 lines per notch.
+                def mouse_handler(_self, ev):
+                    et = ev.event_type
+                    if et == _MET.SCROLL_UP:
+                        self._follow = False
+                        maxoff = max(0, self._buf_nlines() - 1)
+                        self._scroll_off = min(maxoff, self._scroll_off + 3)
+                        return None
+                    if et == _MET.SCROLL_DOWN:
+                        self._scroll_off = max(0, self._scroll_off - 3)
+                        if self._scroll_off == 0:
+                            self._follow = True
+                        return None
+                    return super().mouse_handler(ev)
+
+            self._twin = Window(_ScrollControl(_transcript),
                                 wrap_lines=True, always_hide_cursor=True,
                                 height=_D(min=1, weight=1), style="class:input")
             body = HSplit([self._twin, composer])
@@ -1017,6 +1039,10 @@ class FullScreen:
                 self._inq.put(None)
                 event.app.exit()
                 return
+            # Jump back to the bottom so the response to this message is visible
+            # even if the user had scrolled up into the transcript history.
+            self._follow = True
+            self._scroll_off = 0
             # Show the message as PENDING just above the box (stable at the
             # bottom) — it commits to the transcript when the worker processes
             # it, so it never lands in the middle of the current turn's output.
@@ -1047,6 +1073,15 @@ class FullScreen:
                     ta.buffer.cursor_position = len(shown)
                     event.app.invalidate()
                     return
+            # Full-screen: ↑ on an empty input scrolls the transcript up (3
+            # lines per press — same as mouse wheel). Input history is still
+            # reachable via Ctrl+P or by typing a character first.
+            if self._fs and not ta.text:
+                self._follow = False
+                maxoff = max(0, self._buf_nlines() - 1)
+                self._scroll_off = min(maxoff, self._scroll_off + 3)
+                event.app.invalidate()
+                return
             ta.buffer.auto_up(count=event.arg)
 
         @kb.add("down")
@@ -1054,6 +1089,14 @@ class FullScreen:
             if self._choice is not None:
                 n = len(self._choice["options"])
                 self._choice["sel"] = min(n - 1, self._choice["sel"] + 1)
+                event.app.invalidate()
+                return
+            # Full-screen: ↓ on an empty input scrolls the transcript back
+            # toward the newest line; resume auto-follow at the bottom.
+            if self._fs and not ta.text:
+                self._scroll_off = max(0, self._scroll_off - 3)
+                if self._scroll_off == 0:
+                    self._follow = True
                 event.app.invalidate()
                 return
             ta.buffer.auto_down(count=event.arg)
@@ -1205,11 +1248,13 @@ class FullScreen:
         # shows the tail that fits (PageUp/Down to scroll, End=newest, Home=oldest)
         # — no vertical_scroll/cursor tricks (those were ignored or crashed).
         # Inline mode (AI4SCIENCE_TUI_INLINE=1) keeps native terminal scrollback +
-        # the box pinned at the bottom. mouse_support OFF either way so the terminal
-        # owns click-drag copy.
+        # the box pinned at the bottom, mouse OFF so the terminal owns click-drag
+        # copy. Full-screen has NO native scrollback, so we capture the mouse there
+        # to enable WHEEL scrolling of the in-app transcript (PageUp/Down work too);
+        # native text selection then needs Shift/Option-drag (standard for TUIs).
         self._app = Application(layout=Layout(body, focused_element=ta),
                                 key_bindings=kb, style=style, full_screen=self._fs,
-                                refresh_interval=0.2, mouse_support=False)
+                                refresh_interval=0.2, mouse_support=self._fs)
 
         _ACTIVE["screen"] = self
         done = {"v": False}
