@@ -146,6 +146,16 @@ _BACKEND_MODEL_ALIASES = {
     "gemini": {"gemini": "gemini-3.1-pro-preview", "pro": "gemini-3.1-pro-preview"},
 }
 
+# Ordered, human-labelled model menu per backend — drives the `/model` arrow-key
+# picker (↑/↓/⏎), like real Claude Code. (label, model_id) pairs.
+_BACKEND_MODEL_MENU = {
+    "anthropic": [("Opus 4.8", "claude-opus-4-8"),
+                  ("Sonnet 4.6", "claude-sonnet-4-6"),
+                  ("Haiku 4.5", "claude-haiku-4-5")],
+    "openai": [("GPT-5.5", "gpt-5.5"), ("GPT-5.5 Codex", "gpt-5.5-codex")],
+    "gemini": [("Gemini 3.1 Pro", "gemini-3.1-pro-preview")],
+}
+
 
 def _infer_backend(model: str) -> Optional[str]:
     """Guess the backend from a model id. Exact AGENT_CHAINS match first, then a
@@ -594,15 +604,31 @@ def run_common_repl(
             # /model needs the live session — handle inline.
             if cmd == "model":
                 cur_aliases = _BACKEND_MODEL_ALIASES.get(active_backend, {})
-                # /model (no arg) → show current + the model picker for this backend
+                # /model (no arg) → interactive ↑/↓/⏎ picker (like real Claude Code).
                 if not arg:
-                    opts = " | ".join(dict.fromkeys(
-                        a for a in cur_aliases if "-" not in a))
-                    print(f"[harness] current: backend={active_backend}  model={active_model}",
-                          flush=True)
-                    if opts:
-                        print(f"[harness] switch model: /model {opts}", flush=True)
-                    print("[harness] switch backend: /model <backend> [model-id]", flush=True)
+                    menu = _BACKEND_MODEL_MENU.get(active_backend)
+                    if not menu:
+                        print(f"[harness] current: backend={active_backend}  model={active_model}",
+                              flush=True)
+                        print("[harness] switch backend: /model <backend> [model-id]", flush=True)
+                        continue
+                    from ai4science.harness import tui as _tui
+                    labels = [f"{lbl} ({mid})" + ("  ← current" if mid == active_model else "")
+                              for lbl, mid in menu]
+                    idx = _tui.ask_choice(f"Select a model · {active_backend}", labels)
+                    chosen = menu[idx][1]
+                    if chosen == active_model:
+                        print(f"[harness] model unchanged: {active_model}", flush=True)
+                        continue
+                    try:
+                        session.set_brand(adapter_for(active_backend), chosen, active_backend)
+                        session.meter = _make_wrapped_meter(active_backend, chosen)
+                        active_model = chosen
+                        brand_autodetected = False
+                        print(f"[harness] switched model: {active_model} "
+                              f"(backend={active_backend})", flush=True)
+                    except ValueError as e:
+                        print(f"[harness] error: {e}", flush=True)
                     continue
                 parts = arg.split(None, 1)
                 tok = parts[0]
