@@ -60,11 +60,21 @@ def _providers_tool() -> Tool:
         lines = ["[compute providers]",
                  "  local        your machine        free   (use your bash tool) "
                  "<- DEFAULT for CPU work"]
+        # friendly alias hints (gpu1/gpu2/modal) shown next to their real id
+        from ai4science.compute.registry import PROVIDER_ALIASES
+        _friendly = {}
+        for a, t in PROVIDER_ALIASES.items():
+            if a in ("gpu1", "gpu2", "modal"):
+                _friendly.setdefault(t, []).append(a)
         for p in all_providers():
+            alias = (f"  (alias: {', '.join(_friendly[p.provider_id])})"
+                     if p.provider_id in _friendly else "")
             lines.append(
                 f"  {p.provider_id:<16} {p.kind:<3}  "
                 f"{p.pwm_per_hour():>6.3f} PWM/hr  "
-                f"{p.trust_tier:<8} -> {p.wallet_address}")
+                f"{p.trust_tier:<8} -> {p.wallet_address}{alias}")
+        lines.append("Friendly names work too: gpu1=founder-1-subgpu, "
+                     "gpu2=founder-gpu-2, modal=modal-gpu.")
         lines.append("Policy: CPU jobs (NumPy/SciPy/Python) run LOCAL by default "
                      "(free; install missing deps with pip). Use founder-cpu only "
                      "when local truly can't; founder-gpu only for GPU work.")

@@ -123,6 +123,11 @@ def add_provider(provider: ComputeProvider, path: Optional[Path] = None) -> List
 PROVIDER_ALIASES = {
     "founder-gpu": "founder-1-subgpu",
     "founder-1-subgpu": "founder-gpu",
+    # Friendly names so any agent can dispatch to "gpu1"/"gpu2"/"modal" directly,
+    # instead of having to know the internal ids.
+    "gpu1": "founder-1-subgpu",        # sub-GPU #1
+    "gpu2": "founder-gpu-2",           # sub-GPU #2 (GCP T4)
+    "modal": "modal-gpu",              # Modal serverless GPU
 }
 
 
