@@ -598,7 +598,10 @@ class FullScreen:
         self._fs = False
         self._buf = ""
         self._follow = True
+        self._scroll_off = 0            # logical lines scrolled up from the bottom
         self._twin = None               # transcript Window (set in run)
+        self._viewport = None           # () -> (width, height) of the transcript
+        self._buf_nlines = lambda: 1    # current transcript line count
         self._buflock = threading.Lock()
         # Live "shining" status (Claude-Code style): gerund + elapsed + tokens +
         # what it's doing. Updated by the harness via tui.begin_turn/set_*/end_turn.
@@ -725,8 +728,9 @@ class FullScreen:
                 self._buf += text
                 if self._buf.count("\n") > 6000:
                     self._buf = "\n".join(self._buf.split("\n")[-6000:])
-            if self._follow and self._twin is not None:
-                self._twin.vertical_scroll = 10 ** 9   # clamped to bottom on render
+            # The after_render hook pins vertical_scroll to the true bottom while
+            # _follow is set (using the rendered content height), so we just need a
+            # repaint here.
             self._invalidate()
             return
         # Inline: write ABOVE the pinned box. Under patch_stdout this lands in the
@@ -912,12 +916,55 @@ class FullScreen:
 
         if self._fs:
             # Full-screen: a scrollable transcript on top, the composer pinned
-            # below. The transcript renders the ANSI output buffer; `_follow`
-            # keeps it at the newest line (append() sets vertical_scroll huge,
-            # which prompt_toolkit clamps to the bottom). PageUp/Down scroll it.
+            # below. prompt_toolkit RESETS a cursorless Window's vertical_scroll to
+            # 0 every render, so we can't pin the bottom by setting vertical_scroll
+            # (both 10**9 and the computed max were ignored). Instead we control the
+            # CONTENT: return only the slice of lines that fits the window, anchored
+            # by `_scroll_off` logical lines from the bottom (0 = follow newest).
+            # With vs=0 the Window shows that slice from its top, so the newest line
+            # always lands at the bottom. No cursor (that crashed real terminals).
+            import math as _math
+            import re as _re
+            _ansi_re = _re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
+
+            def _wrapped_rows(line, width):
+                vis = len(_ansi_re.sub("", line))
+                return max(1, _math.ceil(vis / max(1, width)))
+
+            def _viewport():
+                try:
+                    ri = self._twin.render_info
+                    width = max(1, ri.window_width)
+                    height = max(1, ri.window_height)
+                except Exception:
+                    import shutil
+                    sz = shutil.get_terminal_size((80, 24))
+                    width = max(1, sz.columns)
+                    height = max(1, sz.lines - 5)
+                return width, height
+
             def _transcript():
                 with self._buflock:
-                    return ANSI(self._buf)
+                    lines = self._buf.split("\n")
+                width, height = _viewport()
+                n = len(lines)
+                off = 0 if self._follow else max(0, min(self._scroll_off, max(0, n - 1)))
+                end = max(1, n - off)                 # exclusive bottom index
+                used = 0
+                start = end
+                for i in range(end - 1, -1, -1):      # walk up until the window fills
+                    rows = _wrapped_rows(lines[i], width)
+                    if used + rows > height and start != end:
+                        break
+                    used += rows
+                    start = i
+                    if used >= height:
+                        break
+                return ANSI("\n".join(lines[start:end]))
+
+            # exposed for the scroll keybindings
+            self._viewport = _viewport
+            self._buf_nlines = lambda: self._buf.count("\n") + 1
             self._twin = Window(FormattedTextControl(_transcript),
                                 wrap_lines=True, always_hide_cursor=True,
                                 style="class:input")
@@ -1042,40 +1089,46 @@ class FullScreen:
             event.app.invalidate()
 
         # ── transcript scrolling (full-screen only) ──────────────────────────
-        # Alt-screen has no native scrollback, so we scroll the in-app transcript:
-        # PageUp/PageDown by a screen, Home=top, End=back to following the newest.
+        # We scroll by changing _scroll_off (logical lines up from the bottom); the
+        # _transcript content function returns the matching slice. PageUp/PageDown
+        # by ~a screen, Home=oldest, End=follow the newest.
         def _page() -> int:
             try:
-                h = self._twin.render_info.window_height
-                return max(1, h - 2)
+                return max(1, self._viewport()[1] - 2)
             except Exception:
                 return 10
 
         @kb.add("pageup")
         def _(event):
-            if not self._fs or self._twin is None:
+            if not self._fs:
                 return
             self._follow = False
-            self._twin.vertical_scroll = max(0, self._twin.vertical_scroll - _page())
+            maxoff = max(0, self._buf_nlines() - 1)
+            self._scroll_off = min(maxoff, self._scroll_off + _page())
+            event.app.invalidate()
 
         @kb.add("pagedown")
         def _(event):
-            if not self._fs or self._twin is None:
+            if not self._fs:
                 return
-            self._twin.vertical_scroll += _page()
-            self._follow = True       # re-follow; render clamps to the true bottom
+            self._scroll_off = max(0, self._scroll_off - _page())
+            if self._scroll_off == 0:
+                self._follow = True               # back at the bottom → follow
+            event.app.invalidate()
 
         @kb.add("end")
         def _(event):
-            if self._fs and self._twin is not None:
-                self._follow = True
-                self._twin.vertical_scroll = 10 ** 9
+            if self._fs:
+                self._follow = True               # jump to + follow the newest
+                self._scroll_off = 0
+                event.app.invalidate()
 
         @kb.add("home")
         def _(event):
-            if self._fs and self._twin is not None:
+            if self._fs:
                 self._follow = False
-                self._twin.vertical_scroll = 0
+                self._scroll_off = max(0, self._buf_nlines() - 1)
+                event.app.invalidate()
 
         style = Style.from_dict({
             "prompt": "fg:#d7875f bold",   # coral ❯ like Claude Code
@@ -1084,10 +1137,12 @@ class FullScreen:
         })
         # full_screen=True (default): the app owns the whole screen, so window
         # RESIZE is always clean (no stray rule lines, no history wipe). Output
-        # lives in the in-app transcript above (PageUp/Down to scroll). Inline mode
-        # (AI4SCIENCE_TUI_INLINE=1) keeps native terminal scrollback + the box
-        # pinned at the bottom. mouse_support OFF either way so the terminal owns
-        # click-drag copy.
+        # lives in the in-app transcript above; the _transcript content function
+        # shows the tail that fits (PageUp/Down to scroll, End=newest, Home=oldest)
+        # — no vertical_scroll/cursor tricks (those were ignored or crashed).
+        # Inline mode (AI4SCIENCE_TUI_INLINE=1) keeps native terminal scrollback +
+        # the box pinned at the bottom. mouse_support OFF either way so the terminal
+        # owns click-drag copy.
         self._app = Application(layout=Layout(body, focused_element=ta),
                                 key_bindings=kb, style=style, full_screen=self._fs,
                                 refresh_interval=0.2, mouse_support=False)
