@@ -156,8 +156,8 @@ pipx install "git+https://github.com/integritynoble/AI4Science.git"
 The one-line installer takes flags (and matching env vars). It also **downloads its own standalone Python** if none ≥ 3.10 is present, so nothing else is needed on a fresh machine.
 
 ```bash
-# Pin an exact release — Linux/macOS (accepts "0.6.24" or "v0.6.24")
-curl -fsSL https://raw.githubusercontent.com/integritynoble/AI4Science/main/install.sh | bash -s -- --version 0.6.24
+# Pin an exact release — Linux/macOS (accepts "0.6.25" or "v0.6.25")
+curl -fsSL https://raw.githubusercontent.com/integritynoble/AI4Science/main/install.sh | bash -s -- --version 0.6.25
 
 # Pick a channel:  --stable (default) | --rc | --dev (latest main)
 curl -fsSL https://raw.githubusercontent.com/integritynoble/AI4Science/main/install.sh | bash -s -- --rc
@@ -165,10 +165,10 @@ curl -fsSL https://raw.githubusercontent.com/integritynoble/AI4Science/main/inst
 
 ```powershell
 # Windows — flags can't pass through `irm | iex`, so use the env var:
-$env:AI4SCIENCE_VERSION="0.6.24"; irm https://raw.githubusercontent.com/integritynoble/AI4Science/main/install.ps1 | iex
+$env:AI4SCIENCE_VERSION="0.6.25"; irm https://raw.githubusercontent.com/integritynoble/AI4Science/main/install.ps1 | iex
 ```
 
-Already installed? Switch lines without reinstalling: `ai4science update --rc` (or `--stable` / `--dev`). The same installer is mirrored at `https://physicsworldmodel.org/install.sh` and `/install.ps1`, and the website documents it at [physicsworldmodel.org/start#install-version](https://physicsworldmodel.org/start#install-version). Released tags: see [Releases](https://github.com/integritynoble/AI4Science/releases) (latest stable **v0.6.24**).
+Already installed? Switch lines without reinstalling: `ai4science update --rc` (or `--stable` / `--dev`). The same installer is mirrored at `https://physicsworldmodel.org/install.sh` and `/install.ps1`, and the website documents it at [physicsworldmodel.org/start#install-version](https://physicsworldmodel.org/start#install-version). Released tags: see [Releases](https://github.com/integritynoble/AI4Science/releases) (latest stable **v0.6.25**).
 
 From source (to modify / run tests): `git clone … && pip install -e ".[dev]" && pytest`. Full step-by-step for any OS incl. Windows: [`docs/INSTALL.md`](docs/INSTALL.md). Maintainers: [`docs/RELEASING.md`](docs/RELEASING.md).
 
