@@ -12,6 +12,16 @@ Dispatch is lease-gated: a provider serves at most max_concurrent users at
 once; a third request is refused until a slot frees. Running on a wallet-bound
 provider costs PWM (USD/hour ÷ PWM_USD), paid to that provider's wallet on
 completion; local compute is free.
+
+POLICY — local-first for CPU work:
+  * A CPU job (pure NumPy/SciPy/Python, no GPU) runs on the LOCAL machine by
+    default — use your bash tool, it's free and immediate. Do NOT reach for
+    founder-cpu just because a package is missing: install it locally first
+    (`pip install numpy scipy ...`). Only fall back to founder-cpu when the
+    local machine genuinely cannot run it (no Python, install blocked, etc.).
+  * Use founder-gpu ONLY when the work actually needs a GPU (CUDA/torch.cuda).
+  * founder-cpu / founder-gpu cost the user PWM; local does not — so prefer
+    local whenever it can do the job.
 """
 from __future__ import annotations
 
@@ -48,12 +58,16 @@ def _resolve(provider_id: str):
 def _providers_tool() -> Tool:
     def _list(workspace) -> str:
         lines = ["[compute providers]",
-                 "  local        your machine        free   (use your bash tool)"]
+                 "  local        your machine        free   (use your bash tool) "
+                 "<- DEFAULT for CPU work"]
         for p in all_providers():
             lines.append(
                 f"  {p.provider_id:<16} {p.kind:<3}  "
                 f"{p.pwm_per_hour():>6.3f} PWM/hr  "
                 f"{p.trust_tier:<8} -> {p.wallet_address}")
+        lines.append("Policy: CPU jobs (NumPy/SciPy/Python) run LOCAL by default "
+                     "(free; install missing deps with pip). Use founder-cpu only "
+                     "when local truly can't; founder-gpu only for GPU work.")
         lines.append("Dispatch with compute_dispatch(provider=\"<id>\", "
                      "run_command=\"...\", confirm=true) — runs over the HTTPS relay "
                      "(needs `ai4science login`). The relay manages the queue/slots "
@@ -171,8 +185,13 @@ def _dispatch_tool() -> Tool:
                      "run_command. Pass confirm=true to run: normal jobs auto-approve; "
                      "the relay queues it, the provider runs it, PWM is charged on "
                      "completion (bounded by max_runtime_s) only on a verified pass. "
-                     "Without confirm=true you get a preview. provider=local (or "
-                     "omitted) runs locally (free). GPU: provider=founder-gpu."),
+                     "Without confirm=true you get a preview. "
+                     "DEFAULT TO LOCAL for CPU work: provider=local (or omitted) "
+                     "runs on this machine for free — pure NumPy/SciPy/Python jobs "
+                     "should run local (install any missing deps with pip first), "
+                     "NOT on founder-cpu. Use provider=founder-cpu only when local "
+                     "genuinely can't run it, and provider=founder-gpu only when the "
+                     "job actually needs a GPU (both cost the user PWM)."),
         parameters={"type": "object", "properties": {
             "provider": {"type": "string"},
             "run_command": {"type": "string"},
