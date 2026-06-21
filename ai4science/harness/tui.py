@@ -987,14 +987,12 @@ class FullScreen:
         # bottom while the worker's output scrolls above it in the terminal's
         # native scrollback. mouse_support stays OFF so the terminal (not
         # prompt_toolkit) owns the wheel + click-drag copy, like Claude Code.
-        # refresh_interval=None: do NOT repaint on a timer. A constant repaint
-        # keeps yanking the terminal viewport back to the bottom, which is why
-        # scroll-up wouldn't "stick". Instead a busy-only ticker (see run())
-        # animates the spinner ONLY while a turn is running; when idle there are
-        # no repaints, so the terminal keeps your scroll position (like Claude Code).
+        # refresh_interval drives the spinner animation + commits streamed output.
+        # (Kept at 0.2 — the known-good value; the refresh_interval=None scroll
+        # experiment regressed input, so it was reverted.)
         self._app = Application(layout=Layout(body, focused_element=ta),
                                 key_bindings=kb, style=style, full_screen=False,
-                                refresh_interval=None, mouse_support=False)
+                                refresh_interval=0.2, mouse_support=False)
 
         _ACTIVE["screen"] = self
         done = {"v": False}
@@ -1024,18 +1022,6 @@ class FullScreen:
                         pass
 
         t = threading.Thread(target=_work, daemon=True)
-
-        def _animate():
-            # Repaint ONLY while a turn is busy → the spinner / token counter
-            # animate live (the dynamic process, like Claude Code), but when idle
-            # there are no repaints, so the terminal keeps your scroll position.
-            import time as _t
-            while not done["v"]:
-                if self._busy:
-                    self._invalidate()
-                _t.sleep(0.15)
-
-        anim = threading.Thread(target=_animate, daemon=True)
         try:
             # patch_stdout reroutes the worker thread's prints to render ABOVE the
             # live input box instead of corrupting it.
@@ -1048,7 +1034,6 @@ class FullScreen:
                 sys.stdout = self._stream
                 try:
                     t.start()
-                    anim.start()
                     self._app.run()
                 finally:
                     sys.stdout = self._stream._inner
@@ -1084,8 +1069,20 @@ def run_full(mode: str, runner) -> bool:
         return True
     except (EOFError, KeyboardInterrupt):
         raise
-    except Exception:
-        # Any TUI failure → tell the caller to fall back to the plain REPL.
-        # (Safe only because read_input below also de-routes once the screen is
-        # gone; a failure here means the worker never started consuming input.)
+    except Exception as e:
+        # Any TUI failure → fall back to the plain REPL. SURFACE the reason on
+        # stderr (instead of silently degrading to a raw input() with no line
+        # editing / no persistent box), and to a debug log, so the cause is
+        # diagnosable. Opt in to a full traceback with AI4SCIENCE_TUI_DEBUG=1.
+        import sys as _sys, os as _os, traceback as _tb
+        print(f"\x1b[33m[tui] persistent input unavailable "
+              f"({type(e).__name__}: {e}); using basic input.\x1b[0m", file=_sys.stderr)
+        if _os.environ.get("AI4SCIENCE_TUI_DEBUG") == "1":
+            _tb.print_exc()
+        try:
+            _hp = _history_path("_tui_error")
+            if _hp is not None:
+                _hp.write_text(_tb.format_exc(), encoding="utf-8")
+        except Exception:
+            pass
         return False
