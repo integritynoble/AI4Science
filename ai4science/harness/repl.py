@@ -671,31 +671,43 @@ def run_common_repl(
             # /agent switches the active AgentSpec — handle inline (rebuilds
             # session). `/mode` kept as a silent back-compat alias.
             if cmd in ("agent", "mode"):
-                if not arg:
-                    print(_format_mode_menu(), flush=True)
-                    continue
-                parts = arg.split(None, 1)
-                if parts[0] == "specific":
-                    print(_format_specific_list(parts[1] if len(parts) > 1 else ""),
-                          flush=True)
-                    continue
                 from ai4science.harness import tui as _tui
-                # the agent name may be multi-word / quoted (e.g. "Computational
-                # Imaging"), so resolve the FULL argument, not just the first token.
-                name = arg.strip().strip('"').strip("'")
-                target = agent_registry.get(_tui.resolve_mode(name))
-                if target is None:
-                    print(f"[agents] unknown agent {name!r}; /agent to list",
+                target = None
+                if not arg:
+                    # interactive ↑/↓/⏎ picker over the agents (like /model)
+                    core = agent_registry.core_agents()
+                    labels = [
+                        f"{_tui._display_mode(s.name)} — {s.description}"
+                        + ("  ← current" if s.name == active_spec.name else "")
+                        for s in core
+                    ]
+                    idx = _tui.ask_choice("Select an agent", labels)
+                    target = core[idx]
+                else:
+                    parts = arg.split(None, 1)
+                    if parts[0] == "specific":
+                        print(_format_specific_list(parts[1] if len(parts) > 1 else ""),
+                              flush=True)
+                        continue
+                    # the agent name may be multi-word / quoted (e.g. "Computational
+                    # Imaging"), so resolve the FULL argument, not just the first token.
+                    name = arg.strip().strip('"').strip("'")
+                    target = agent_registry.get(_tui.resolve_mode(name))
+                    if target is None:
+                        print(f"[agents] unknown agent {name!r}; /agent to list",
+                              flush=True)
+                        continue
+                if target.name == active_spec.name:
+                    print(f"[harness] agent unchanged: {_tui._display_mode(target.name)}",
                           flush=True)
                     continue
                 active_spec = target
                 session = _build_session()
-                # keep the full-TUI info line ("ai4science · <mode>") in sync
-                from ai4science.harness import tui as _tui
+                # keep the full-TUI info line ("ai4science · <agent>") in sync
                 _scr = getattr(_tui, "_ACTIVE", {}).get("screen")
                 if _scr is not None:
                     _scr.mode = target.name
-                print(f"[harness] switched mode: {_tui._display_mode(target.name)}",
+                print(f"[harness] switched agent: {_tui._display_mode(target.name)}",
                       flush=True)
                 continue
 
