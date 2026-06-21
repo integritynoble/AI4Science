@@ -741,10 +741,15 @@ class FullScreen:
         runs the REPL loop in a background thread, reading input through the
         module-level `read_input` (routed here) and printing output ABOVE the
         box via patch_stdout."""
-        # Disable CPR so terminals that don't answer ESC[6n (some SSH/web/CI
-        # shells) don't get stuck on prompt_toolkit's repeated "WARNING: …CPR…
-        # Press ENTER to continue" loop.
-        os.environ["PROMPT_TOOLKIT_NO_CPR"] = "1"
+        # CPR (cursor-position report, ESC[6n) lets prompt_toolkit track the
+        # cursor ROW so it can redraw the pinned composer IN PLACE. Forcing it OFF
+        # broke that on terminals that DO support CPR: every edit/backspace
+        # appended a NEW line instead of overwriting (the corruption + raw ^R/^C
+        # echo users hit). Default to leaving CPR ON (prompt_toolkit times out
+        # gracefully if the terminal doesn't answer). Terminals that genuinely
+        # hang on CPR can still opt out with AI4SCIENCE_NO_CPR=1.
+        if os.environ.get("AI4SCIENCE_NO_CPR") == "1":
+            os.environ["PROMPT_TOOLKIT_NO_CPR"] = "1"
         import threading
         from prompt_toolkit import Application
         from prompt_toolkit.formatted_text import ANSI
