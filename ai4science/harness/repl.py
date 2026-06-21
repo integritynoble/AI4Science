@@ -535,13 +535,33 @@ def run_common_repl(
                  "gemini-3.1-pro-preview": "Gemini 3.1 Pro"}
     _m = _friendly.get(active_model, active_model)
     _gate = ("gate on — turns charged in PWM" if gate.enabled else "gate off")
+    # Login status: is a PWM token available? (env or saved account)
+    def _signed_in() -> bool:
+        import os as _os
+        if _os.environ.get("PWM_TOKEN") or _os.environ.get("PWM_ONBOARD_TOKEN"):
+            return True
+        try:
+            from ai4science import pwm_account
+            return bool((pwm_account.load() or {}).get("token"))
+        except Exception:
+            return False
+    _logged_in = _signed_in()
+    _yellow = "\x1b[33m"
     print(f"\n{_coral}✷ ai4science{_rst} {_dim}v{_ver}{_rst}", flush=True)
     print(f"  {_dim}agent{_rst}  {_display_mode(mode_label)}  {_dim}·{_rst}  "
           f"{_m} {_dim}({active_backend}){_rst}", flush=True)
     print(f"  {_dim}cwd{_rst}    {workspace}", flush=True)
     print(f"  {_dim}tips{_rst}   /help · /agent · /model · /exit · Ctrl-C interrupts", flush=True)
-    print(f"  {_dim}pwm{_rst}    {_dim}{_gate} · session {_sid} (resume: --resume {_sid}){_rst}\n",
+    print(f"  {_dim}pwm{_rst}    {_dim}{_gate} · session {_sid} (resume: --resume {_sid}){_rst}",
           flush=True)
+    # Remind logged-out users to sign in — when the gate is on, turns are blocked
+    # ("could not verify your PWM balance") until they do.
+    if not _logged_in:
+        _why = ("turns are blocked until you sign in" if gate.enabled
+                else "sign in to earn/spend PWM")
+        print(f"  {_yellow}⚠ not signed in{_rst} {_dim}— run {_rst}{_coral}/login{_rst}"
+              f"{_dim} (or `ai4science login`); {_why}.{_rst}", flush=True)
+    print("", flush=True)
 
     from ai4science.harness import lineedit
     lineedit.enable(mode_label or "chat")     # ↑/↓ history, ←/→ cursor
