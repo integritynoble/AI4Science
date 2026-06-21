@@ -70,6 +70,58 @@ def _resolve_workspace(ws: Path, *, was_default: bool) -> Path:
     return ws
 
 
+def _trusted_file() -> Path:
+    base = Path(os.environ.get("AI4SCIENCE_HOME", Path.home() / ".ai4science"))
+    return base / "trusted_folders.json"
+
+
+def _is_trusted(ws: Path) -> bool:
+    import json
+    try:
+        data = json.loads(_trusted_file().read_text(encoding="utf-8"))
+        return str(ws.resolve()) in set(data.get("trusted", []))
+    except Exception:
+        return False
+
+
+def _remember_trust(ws: Path) -> None:
+    import json
+    f = _trusted_file()
+    try:
+        f.parent.mkdir(parents=True, exist_ok=True)
+        data = json.loads(f.read_text(encoding="utf-8")) if f.exists() else {}
+        trusted = set(data.get("trusted", []))
+        trusted.add(str(ws.resolve()))
+        data["trusted"] = sorted(trusted)
+        f.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def _trust_gate(ws: Path) -> bool:
+    """Claude-Code-style folder-trust check. Returns True to proceed, False to
+    exit. Asks once per folder (remembered); auto-trusts non-interactive runs and
+    AI4SCIENCE_TRUST_ALL=1."""
+    if os.environ.get("AI4SCIENCE_TRUST_ALL") == "1":
+        return True
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        return True   # don't block pipes / CI
+    if _is_trusted(ws):
+        return True
+    console.print(f"\n[bold]Accessing workspace:[/bold]\n\n  [cyan]{ws}[/cyan]\n")
+    console.print(
+        "Quick safety check: is this a folder you created or trust (your own code, "
+        "a well-known open-source project, or your team's work)? If not, review "
+        "what's in it first.\n")
+    console.print("[dim]AI4Science will be able to read, edit, and execute files here.[/dim]\n")
+    from ai4science.harness import tui
+    idx = tui.select("", ["Yes, I trust this folder", "No, exit"])
+    if idx == 0:
+        _remember_trust(ws)
+        return True
+    return False   # 'No, exit' or cancelled (Esc) → don't proceed
+
+
 def _maybe_offer_login() -> None:
     """Entering chat without a remembered login: offer to sign in now so the
     first turn isn't blocked by the PWM gate ("could not verify your PWM
@@ -196,6 +248,11 @@ def chat(
         raise typer.Exit(2)
 
     workspace = _resolve_workspace(workspace, was_default=(str(workspace) == "."))
+
+    # Claude-Code-style trust gate: confirm the folder before reading/editing it.
+    if not _trust_gate(workspace):
+        console.print("[dim]Exiting — workspace not trusted.[/dim]")
+        raise typer.Exit(0)
 
     # Resolve --mode against the agent registry. The active AgentSpec drives the
     # session (registry + system prompt) inside run_common_repl; here we only pass
