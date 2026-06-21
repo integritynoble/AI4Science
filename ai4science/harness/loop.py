@@ -41,6 +41,13 @@ def run_loop(*, adapter, model: str, reasoning: str, history: List[Message],
             elif isinstance(ev, Done):
                 pass
 
+        # The stream may have ENDED (StopIteration) rather than broken mid-loop
+        # because an interrupt canceller closed the socket. Treat that as an
+        # interrupt too, so the partial text is kept and the flag is cleared
+        # below — otherwise the flag leaks into the next turn and kills it.
+        if not stream_interrupted and interrupt.requested():
+            stream_interrupted = True
+
         assistant_text = "".join(text_buf)
 
         if stream_interrupted:

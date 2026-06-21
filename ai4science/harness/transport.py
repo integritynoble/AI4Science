@@ -25,16 +25,32 @@ def post_json(url: str, headers: Dict[str, str], payload: Dict[str, Any],
 
 def sse_post(url: str, headers: Dict[str, str], payload: Dict[str, Any],
              timeout: int = 600) -> Iterator[Dict[str, Any]]:
-    """POST and iterate Server-Sent-Event `data:` JSON chunks (stops at [DONE])."""
+    """POST and iterate Server-Sent-Event `data:` JSON chunks (stops at [DONE]).
+
+    Registers an interrupt canceller so Ctrl-C / Esc closes the socket from the
+    UI thread and aborts a blocked read at once (not at the next token)."""
+    from ai4science.harness import interrupt
     with urllib.request.urlopen(_request(url, headers, payload), timeout=timeout) as r:
-        for raw in r:
-            line = raw.decode("utf-8").strip()
-            if not line or not line.startswith("data:"):
-                continue
-            body = line[len("data:"):].strip()
-            if body == "[DONE]":
-                break
-            try:
-                yield json.loads(body)
-            except json.JSONDecodeError:
-                continue
+        interrupt.register_canceller(r.close)
+        try:
+            for raw in r:
+                if interrupt.requested():
+                    return
+                line = raw.decode("utf-8").strip()
+                if not line or not line.startswith("data:"):
+                    continue
+                body = line[len("data:"):].strip()
+                if body == "[DONE]":
+                    break
+                try:
+                    yield json.loads(body)
+                except json.JSONDecodeError:
+                    continue
+        except Exception:
+            # A cancel (r.close from the UI thread) surfaces as a read error —
+            # swallow it when an interrupt is pending; otherwise re-raise.
+            if interrupt.requested():
+                return
+            raise
+        finally:
+            interrupt.unregister_canceller(r.close)
