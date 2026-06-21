@@ -983,6 +983,18 @@ class FullScreen:
         def _(event):
             _jump_to_bottom(event.app)
 
+        # Ctrl-L — clear the screen + scrollback and repaint a clean composer.
+        # Fixes leftover rule lines after a window RESIZE (prompt_toolkit's inline
+        # composer re-wraps the scrollback on resize and can't erase the old
+        # frame). Like Claude Code's Ctrl-L.
+        @kb.add("c-l")
+        def _(event):
+            try:
+                event.app.renderer.clear()
+            except Exception:
+                pass
+            event.app.invalidate()
+
         style = Style.from_dict({
             "prompt": "fg:#d7875f bold",   # coral ❯ like Claude Code
             "rule": "fg:#d7875f",          # coral top/bottom horizontal lines
