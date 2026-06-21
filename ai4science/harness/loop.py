@@ -23,7 +23,14 @@ def run_loop(*, adapter, model: str, reasoning: str, history: List[Message],
     for _ in range(MAX_TOOL_ITERATIONS):
         text_buf: List[str] = []
         calls: List[ToolCall] = []
+        stream_interrupted = False
         for ev in adapter.stream(history, registry.specs(), model=model, reasoning=reasoning):
+            # Honor Ctrl-C / Esc mid-stream: stop consuming tokens at once (the
+            # generator closes → the LLM request aborts) instead of waiting for
+            # the whole response to finish. This is what makes Ctrl-C feel instant.
+            if interrupt.requested():
+                stream_interrupted = True
+                break
             if isinstance(ev, TextDelta):
                 text_buf.append(ev.text)
                 on_text(ev.text)
@@ -35,6 +42,17 @@ def run_loop(*, adapter, model: str, reasoning: str, history: List[Message],
                 pass
 
         assistant_text = "".join(text_buf)
+
+        if stream_interrupted:
+            # End the turn cleanly. Record only the partial TEXT (drop any
+            # half-formed tool_calls so the next request has no dangling tool_use).
+            if assistant_text:
+                history.append(Message(role="assistant", content=assistant_text))
+                final_text_parts.append(assistant_text)
+            interrupt.clear()
+            on_text("\n\x1b[2m[interrupted — type a new message]\x1b[0m\n")
+            break
+
         history.append(Message(role="assistant", content=assistant_text, tool_calls=list(calls)))
         if assistant_text:
             final_text_parts.append(assistant_text)
