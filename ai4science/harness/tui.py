@@ -222,8 +222,10 @@ def _inline_select(question: str, options):
         @kb.add(str(_k))
         def _(e, _k=_k): e.app.exit(result=_k - 1)
 
-    body = HSplit([Window(FormattedTextControl(_frags),
-                          height=n + (2 if question else 1))])
+    # The question may span multiple lines (e.g. a tool preview) — size the
+    # window to fit the whole question + every option + the hint, or options clip.
+    q_lines = len(question.splitlines()) if question else 0
+    body = HSplit([Window(FormattedTextControl(_frags), height=q_lines + n + 1)])
     style = Style.from_dict({"cur": "fg:#d7875f bold", "q": "bold",
                              "hint": "fg:#8a8a8a"})
     app = Application(layout=Layout(body), key_bindings=kb, style=style,
