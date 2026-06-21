@@ -133,28 +133,50 @@ def _next_available_brand(current: Optional[str]):
     return None
 
 
-# Friendly model aliases per backend, so `/model haiku` switches just the model on
-# the current backend (like real Claude Code). Mirrors sdk_repl._MODEL_ALIASES.
-_BACKEND_MODEL_ALIASES = {
-    "anthropic": {
-        "fable": "claude-opus-4-8", "fable-5": "claude-opus-4-8",
-        "opus": "claude-opus-4-8", "opus-4-8": "claude-opus-4-8",
-        "sonnet": "claude-sonnet-4-6", "sonnet-4-6": "claude-sonnet-4-6",
-        "haiku": "claude-haiku-4-5", "haiku-4-5": "claude-haiku-4-5",
-    },
-    "openai": {"gpt": "gpt-5.5", "gpt-5.5": "gpt-5.5", "codex": "gpt-5.5-codex"},
-    "gemini": {"gemini": "gemini-3.1-pro-preview", "pro": "gemini-3.1-pro-preview"},
+# The `/model` menu is AGENT-scoped, as (label, backend, model_id) entries:
+#  • Vendor agents are locked to one provider — Claude → Anthropic, Codex → OpenAI
+#    (keyed by the spec's default_backend).
+#  • Every other agent gets the cross-provider flagship menu and can switch freely.
+# Selecting an entry switches BOTH backend and model.
+_LOCKED_MENU = {
+    "anthropic": [("Opus 4.8", "anthropic", "claude-opus-4-8"),
+                  ("Sonnet 4.6", "anthropic", "claude-sonnet-4-6"),
+                  ("Haiku 4.5", "anthropic", "claude-haiku-4-5")],
+    "openai":    [("ChatGPT 5.5", "openai", "gpt-5.5"),
+                  ("ChatGPT 5.5 Codex", "openai", "gpt-5.5-codex")],
+}
+_FLAGSHIP_MENU = [("Opus 4.8", "anthropic", "claude-opus-4-8"),
+                  ("ChatGPT 5.5", "openai", "gpt-5.5"),
+                  ("Gemini 3.1 Pro", "gemini", "gemini-3.1-pro-preview")]
+
+# Typed shortcuts (`/model haiku`, `/model gpt`, …) → model id, resolved within
+# whatever menu the active agent allows.
+_TYPED_ALIASES = {
+    "opus": "claude-opus-4-8", "opus-4-8": "claude-opus-4-8", "fable": "claude-opus-4-8",
+    "sonnet": "claude-sonnet-4-6", "haiku": "claude-haiku-4-5",
+    "gpt": "gpt-5.5", "chatgpt": "gpt-5.5", "gpt-5.5": "gpt-5.5", "gpt5.5": "gpt-5.5",
+    "codex": "gpt-5.5-codex",
+    "gemini": "gemini-3.1-pro-preview", "pro": "gemini-3.1-pro-preview",
 }
 
-# Ordered, human-labelled model menu per backend — drives the `/model` arrow-key
-# picker (↑/↓/⏎), like real Claude Code. (label, model_id) pairs.
-_BACKEND_MODEL_MENU = {
-    "anthropic": [("Opus 4.8", "claude-opus-4-8"),
-                  ("Sonnet 4.6", "claude-sonnet-4-6"),
-                  ("Haiku 4.5", "claude-haiku-4-5")],
-    "openai": [("GPT-5.5", "gpt-5.5"), ("GPT-5.5 Codex", "gpt-5.5-codex")],
-    "gemini": [("Gemini 3.1 Pro", "gemini-3.1-pro-preview")],
-}
+
+def _agent_model_menu(spec):
+    """(label, backend, model) options the given agent may use."""
+    lock = getattr(spec, "default_backend", None)
+    if lock:
+        return _LOCKED_MENU.get(lock, _FLAGSHIP_MENU)
+    return _FLAGSHIP_MENU
+
+
+def _resolve_in_menu(menu, tok: str):
+    """Resolve a typed token (alias / id / label) to a (backend, model) IN this
+    agent's menu, or None if it isn't allowed for this agent."""
+    tl = (tok or "").strip().lower()
+    want = _TYPED_ALIASES.get(tl, tok)
+    for lbl, be, mid in menu:
+        if mid == want or mid.lower() == tl or lbl.lower() == tl:
+            return (be, mid)
+    return None
 
 
 def _infer_backend(model: str) -> Optional[str]:
@@ -601,69 +623,40 @@ def run_common_repl(
                           flush=True)
                 continue
 
-            # /model needs the live session — handle inline.
+            # /model needs the live session — handle inline. The menu is scoped to
+            # the active agent: Claude → Anthropic models, Codex → OpenAI models,
+            # every other agent → cross-provider flagships (Opus 4.8 / ChatGPT 5.5
+            # / Gemini 3.1 Pro). Selecting switches BOTH backend and model.
             if cmd == "model":
-                cur_aliases = _BACKEND_MODEL_ALIASES.get(active_backend, {})
-                # /model (no arg) → interactive ↑/↓/⏎ picker (like real Claude Code).
+                from ai4science.harness import tui as _tui
+                menu = _agent_model_menu(active_spec)
                 if not arg:
-                    menu = _BACKEND_MODEL_MENU.get(active_backend)
-                    if not menu:
-                        print(f"[harness] current: backend={active_backend}  model={active_model}",
-                              flush=True)
-                        print("[harness] switch backend: /model <backend> [model-id]", flush=True)
+                    # interactive ↑/↓/⏎ picker (like real Claude Code).
+                    labels = [f"{lbl} ({mid})"
+                              + ("  ← current" if (be == active_backend and mid == active_model) else "")
+                              for lbl, be, mid in menu]
+                    idx = _tui.ask_choice(
+                        f"Select a model · {_tui._display_mode(active_spec.name)}", labels)
+                    new_backend, new_model = menu[idx][1], menu[idx][2]
+                else:
+                    hit = _resolve_in_menu(menu, arg.strip().strip('"').strip("'"))
+                    if hit is None:
+                        opts = ", ".join(lbl for lbl, _, _ in menu)
+                        print(f"[harness] {_tui._display_mode(active_spec.name)} "
+                              f"can use: {opts}", flush=True)
                         continue
-                    from ai4science.harness import tui as _tui
-                    labels = [f"{lbl} ({mid})" + ("  ← current" if mid == active_model else "")
-                              for lbl, mid in menu]
-                    idx = _tui.ask_choice(f"Select a model · {active_backend}", labels)
-                    chosen = menu[idx][1]
-                    if chosen == active_model:
-                        print(f"[harness] model unchanged: {active_model}", flush=True)
-                        continue
-                    try:
-                        session.set_brand(adapter_for(active_backend), chosen, active_backend)
-                        session.meter = _make_wrapped_meter(active_backend, chosen)
-                        active_model = chosen
-                        brand_autodetected = False
-                        print(f"[harness] switched model: {active_model} "
-                              f"(backend={active_backend})", flush=True)
-                    except ValueError as e:
-                        print(f"[harness] error: {e}", flush=True)
+                    new_backend, new_model = hit
+                if new_backend == active_backend and new_model == active_model:
+                    print(f"[harness] model unchanged: {active_model}", flush=True)
                     continue
-                parts = arg.split(None, 1)
-                tok = parts[0]
-                # (1) model-only switch: an alias/full-id for the CURRENT backend.
-                if len(parts) == 1:
-                    resolved = cur_aliases.get(tok.lower())
-                    if resolved is None and _infer_backend(tok) == active_backend:
-                        resolved = tok
-                    if resolved is not None:
-                        try:
-                            session.set_brand(adapter_for(active_backend), resolved, active_backend)
-                            session.meter = _make_wrapped_meter(active_backend, resolved)
-                            active_model = resolved
-                            brand_autodetected = False
-                            print(f"[harness] switched model: {active_model} "
-                                  f"(backend={active_backend})", flush=True)
-                        except ValueError as e:
-                            print(f"[harness] error: {e}", flush=True)
-                        continue
-                # (2) backend switch — /model <backend> [model-id|alias]
-                new_backend = tok
-                new_model = parts[1] if len(parts) > 1 else None
-                if new_model is not None:
-                    new_model = _BACKEND_MODEL_ALIASES.get(new_backend, {}).get(
-                        new_model.lower(), new_model)
                 try:
-                    new_backend, new_model = _pick_brand(new_backend, new_model)
-                    new_adapter = adapter_for(new_backend)
-                    session.set_brand(new_adapter, new_model, new_backend)
+                    session.set_brand(adapter_for(new_backend), new_model, new_backend)
                     session.meter = _make_wrapped_meter(new_backend, new_model)
                     active_backend, active_model = new_backend, new_model
                     # User chose this brand explicitly — stop auto-healing away from it.
                     brand_autodetected = False
-                    print(f"[harness] switched: backend={active_backend}  model={active_model}",
-                          flush=True)
+                    print(f"[harness] switched model: {active_model} "
+                          f"(backend={active_backend})", flush=True)
                 except ValueError as e:
                     print(f"[harness] error: {e}", flush=True)
                 continue
@@ -702,6 +695,16 @@ def run_common_repl(
                           flush=True)
                     continue
                 active_spec = target
+                # Enforce the agent's provider lock: Codex → OpenAI (ChatGPT),
+                # Claude → Anthropic. Switch the brand to that provider's flagship
+                # so a Codex session never runs on Claude (and vice-versa). Other
+                # agents are cross-provider and keep the current backend/model.
+                _lock = getattr(target, "default_backend", None)
+                if _lock and active_backend != _lock:
+                    _, active_backend, active_model = _agent_model_menu(target)[0]
+                    brand_autodetected = False
+                    print(f"[harness] backend → {active_backend} (model {active_model})",
+                          flush=True)
                 session = _build_session()
                 # keep the full-TUI info line ("ai4science · <agent>") in sync
                 _scr = getattr(_tui, "_ACTIVE", {}).get("screen")
