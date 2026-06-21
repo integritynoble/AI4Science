@@ -921,10 +921,10 @@ class FullScreen:
         input_panel = ConditionalContainer(HSplit([
             partial_win,                                 # live streaming line
             queued_win,                                  # pending sent messages
+            Window(FormattedTextControl(_info), height=1),   # info/status ABOVE box
             _rule(),                                     # upper horizontal line
             ta,                                          # input (grows; no side borders)
-            _rule(),                                     # bottom horizontal line
-            Window(FormattedTextControl(_info), height=1),   # info/status line
+            _rule(),                                     # bottom horizontal line — at the very bottom
         ]), filter=~in_choice)
         composer = HSplit([choice_panel, input_panel])
 
