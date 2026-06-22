@@ -64,6 +64,16 @@ def _science_router(ctx: BuildContext) -> List[Tool]:
     return list(science_router_tools(gate_provider=None, workspace=ctx.workspace))
 
 
+def _drug_design(ctx: BuildContext) -> List[Tool]:
+    from ai4science.harness.drug_design_tools import drug_design_tools
+    return list(drug_design_tools())
+
+
+def _cancer(ctx: BuildContext) -> List[Tool]:
+    from ai4science.harness.cancer_tools import cancer_tools
+    return list(cancer_tools())
+
+
 # name -> provider(ctx) -> list[Tool]. Built-in bundles.
 BUILTIN_BUNDLES: Dict[str, Callable[[BuildContext], List[Tool]]] = {
     "pwm-actions": _pwm_actions,
@@ -76,6 +86,8 @@ BUILTIN_BUNDLES: Dict[str, Callable[[BuildContext], List[Tool]]] = {
     "optics-design": _optics_design,
     "forward-model": _forward_model,
     "science-router": _science_router,
+    "drug-design": _drug_design,
+    "cancer": _cancer,
 }
 
 # Dynamic bundles registered by tool plug-ins (manifest kind="tool"). Kept apart
