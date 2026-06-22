@@ -788,10 +788,15 @@ class FullScreen:
         # hang on CPR can still opt out with AI4SCIENCE_NO_CPR=1.
         if os.environ.get("AI4SCIENCE_NO_CPR") == "1":
             os.environ["PROMPT_TOOLKIT_NO_CPR"] = "1"
-        # Full-screen (alt-screen) is the default: it owns the screen so resize is
-        # always clean. Opt back into the inline (native-scrollback) composer with
-        # AI4SCIENCE_TUI_INLINE=1.
-        self._fs = os.environ.get("AI4SCIENCE_TUI_INLINE") != "1"
+        # Inline (native scrollback) is the default — like Claude Code: output
+        # streams above the box via patch_stdout; the terminal handles mouse-wheel
+        # scroll, click-drag copy, and Shift+PgUp history natively.
+        # Opt into full-screen (alt-screen, clean resize, in-app scroll) with
+        # AI4SCIENCE_TUI_FULLSCREEN=1.  AI4SCIENCE_TUI_INLINE=1 is accepted too
+        # (kept for backwards compat; redundant now that inline is the default).
+        _want_fs = (os.environ.get("AI4SCIENCE_TUI_FULLSCREEN") == "1" and
+                    os.environ.get("AI4SCIENCE_TUI_INLINE") != "1")
+        self._fs = _want_fs
         import threading
         from prompt_toolkit import Application
         from prompt_toolkit.formatted_text import ANSI
@@ -1242,16 +1247,12 @@ class FullScreen:
             "rule": "fg:#d7875f",          # coral top/bottom horizontal lines
             "input": "fg:#ffffff",         # what you type is bright too
         })
-        # full_screen=True (default): the app owns the whole screen, so window
-        # RESIZE is always clean (no stray rule lines, no history wipe). Output
-        # lives in the in-app transcript above; the _transcript content function
-        # shows the tail that fits (PageUp/Down to scroll, End=newest, Home=oldest)
-        # — no vertical_scroll/cursor tricks (those were ignored or crashed).
-        # Inline mode (AI4SCIENCE_TUI_INLINE=1) keeps native terminal scrollback +
-        # the box pinned at the bottom, mouse OFF so the terminal owns click-drag
-        # copy. Full-screen has NO native scrollback, so we capture the mouse there
-        # to enable WHEEL scrolling of the in-app transcript (PageUp/Down work too);
-        # native text selection then needs Shift/Option-drag (standard for TUIs).
+        # Inline (default): full_screen=False, native terminal scrollback — mouse
+        # wheel and Shift+PgUp scroll history, click-drag copies text, exactly
+        # like Claude Code. Resize may leave stray ─── rule lines (Ctrl-L fixes).
+        # Full-screen (AI4SCIENCE_TUI_FULLSCREEN=1): alt-screen, always-clean
+        # resize; in-app transcript with PageUp/Down/↑↓/wheel scroll; no native
+        # scrollback (text selection needs Shift/Option-drag).
         self._app = Application(layout=Layout(body, focused_element=ta),
                                 key_bindings=kb, style=style, full_screen=self._fs,
                                 refresh_interval=0.2, mouse_support=self._fs)
