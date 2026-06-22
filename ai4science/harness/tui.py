@@ -210,13 +210,14 @@ def _inline_select(question: str, options):
 
     kb = KeyBindings()
 
-    @kb.add("up")
-    @kb.add("c-p")
-    def _(e): sel["i"] = (sel["i"] - 1) % n
+    def _move(e, delta):
+        sel["i"] = (sel["i"] + delta) % n
+        e.app.invalidate()             # repaint the highlight (don't rely on auto-redraw)
 
-    @kb.add("down")
-    @kb.add("c-n")
-    def _(e): sel["i"] = (sel["i"] + 1) % n
+    for _k in ("up", "c-p", "k"):
+        kb.add(_k)(lambda e: _move(e, -1))
+    for _k in ("down", "c-n", "j"):
+        kb.add(_k)(lambda e: _move(e, +1))
 
     @kb.add("enter")
     @kb.add("tab")
@@ -233,10 +234,18 @@ def _inline_select(question: str, options):
     # The question may span multiple lines (e.g. a tool preview) — size the
     # window to fit the whole question + every option + the hint, or options clip.
     q_lines = len(question.splitlines()) if question else 0
-    body = HSplit([Window(FormattedTextControl(_frags), height=q_lines + n + 1)])
+    # Attach the key bindings to a FOCUSABLE control and let the layout focus it
+    # (the RadioList pattern). WINDOWS FIX: an Application whose only content is a
+    # NON-focusable window does not reliably route ↑/↓ to *app-level* bindings on
+    # the Windows console input path, so the highlight froze on option 1 (Linux's
+    # vt100 path dispatched them fine). Binding on the focused control fixes it on
+    # both. j/k added as arrow-independent alternates.
+    control = FormattedTextControl(_frags, focusable=True, show_cursor=False,
+                                   key_bindings=kb)
+    body = HSplit([Window(control, height=q_lines + n + 1)])
     style = Style.from_dict({"cur": "fg:#d7875f bold", "q": "bold",
                              "hint": "fg:#8a8a8a"})
-    app = Application(layout=Layout(body), key_bindings=kb, style=style,
+    app = Application(layout=Layout(body), style=style,
                      full_screen=False, mouse_support=False, erase_when_done=True)
     return app.run()
 
