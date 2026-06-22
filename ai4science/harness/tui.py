@@ -512,7 +512,7 @@ def tui_mode() -> str:
     v = str(os.environ.get("AI4SCIENCE_TUI", "")).strip().lower()
     if v in ("0", "false", "no", "off", "plain"):
         return "off"
-    if v in ("1", "true", "yes", "box"):
+    if v in ("1", "true", "yes", "on", "box"):
         return "box"
     # Default: `full` — the persistent two-line input box (always visible; type /
     # insert a new message at any time, Ctrl+C to interrupt the running turn),

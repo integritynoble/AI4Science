@@ -54,11 +54,10 @@ def test_harness_available_via_proxy(monkeypatch):
 
 
 def test_stream_no_key_guard(tmp_path):
-    # an adapter with no api_key yields a helpful message instead of crashing
+    # an adapter with no api_key raises RuntimeError (so the fallback chain fires)
     from ai4science.harness.adapters.openai import OpenAIAdapter
     from ai4science.harness.adapters.creds import CredInfo
-    from ai4science.harness.events import TextDelta, Done
+    import pytest
     a = OpenAIAdapter(creds=CredInfo("openai_compat", "http://x", None, "m"))
-    events = list(a.stream([], [], model="m", reasoning="low"))
-    assert any(isinstance(e, TextDelta) and "key" in e.text.lower() for e in events)
-    assert any(isinstance(e, Done) for e in events)
+    with pytest.raises(RuntimeError, match="no API key"):
+        list(a.stream([], [], model="m", reasoning="low"))
