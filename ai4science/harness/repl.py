@@ -821,6 +821,7 @@ def run_common_repl(
         turn_tools.clear()
         turn_counter["n"] += 1
         text, images = mentions.expand(line, workspace)
+        _history_len_before_turn = len(session.history)  # snapshot for fallback rollback
 
         def _do_turn():
             import time
@@ -891,9 +892,10 @@ def run_common_repl(
             _intr.clear()
             print("\n[harness] turn stopped — type a new message.", flush=True)
         except Exception as exc:
-            # Directive 2026-06-11: NEVER stop the user — walk the whole
-            # orchestration chain (Opus 4.8 → GPT-5.5 → safety net),
-            # switching automatically until one model serves the turn.
+            # Walk the orchestration chain automatically: Opus 4.8 → GPT-5.5 →
+            # Gemini (see routing.AGENT_CHAINS). If the primary model is
+            # unavailable (overloaded, quota, no key), switch silently and retry
+            # without interrupting the user.
             from ai4science.harness.adapters.factory import harness_available
             last = exc
             rest = [(b, m) for b, m in routing.AGENT_CHAINS.get("orchestration", [])
@@ -905,6 +907,9 @@ def run_common_repl(
                 active_backend, active_model = nb, nm
                 session.set_brand(adapter_for(nb), nm, nb)
                 session.meter = _make_wrapped_meter(nb, nm)
+                # Roll back history to before the failed turn so run_turn()
+                # doesn't append a duplicate user message on the retry.
+                del session.history[_history_len_before_turn:]
                 try:
                     _do_turn()
                     served = True

@@ -45,9 +45,7 @@ class ProxyAdapter:
                 try:
                     if r.status_code >= 400:
                         detail = r.read().decode("utf-8", "replace")[:200]
-                        yield TextDelta(f"[proxy {r.status_code}: {detail}]")
-                        yield Done("error")
-                        return
+                        raise RuntimeError(f"HTTP {r.status_code}: {detail}")
                     for line in r.iter_lines():
                         if interrupt.requested():
                             return
@@ -64,11 +62,12 @@ class ProxyAdapter:
                             yield ev
                 finally:
                     interrupt.unregister_canceller(r.close)
+        except RuntimeError:
+            raise               # re-raise our own HTTP-status errors (triggers fallback)
         except Exception as exc:
             # A cancel (r.close from another thread) surfaces here as a read
             # error — that's intentional, so end quietly instead of showing a
             # scary "[proxy unreachable]". Only report genuine failures.
             if interrupt.requested():
                 return
-            yield TextDelta(f"[proxy unreachable: {type(exc).__name__}: {exc}]")
-            yield Done("error")
+            raise RuntimeError(f"proxy unreachable: {type(exc).__name__}: {exc}")
