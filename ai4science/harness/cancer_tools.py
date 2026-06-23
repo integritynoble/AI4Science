@@ -397,16 +397,24 @@ def _cancer_registry_tool() -> Tool:
         from ai4science.harness import pwm_data
         q = " ".join(filter(None, [query, cancer_type])).strip() or "cancer genomics"
         try:
-            results = pwm_data.search(q)
+            raw = pwm_data.search(q)
         except Exception as e:
             return f"[cancer_registry] PWM search error: {e}"
-        if not results:
+        # search() returns {query, principles[], specs[], benchmarks[]} — flatten
+        flat = []
+        for layer, label in (("principles", "principle"), ("specs", "digital-twin"),
+                              ("benchmarks", "benchmark")):
+            for item in (raw.get(layer) or []):
+                item = dict(item)
+                item.setdefault("_layer", label)
+                flat.append(item)
+        if not flat:
             return (f"[cancer_registry] no results for '{q}' in PWM registry.\n"
                     "The cancer domain may be sparse — consider contributing a new "
                     "principle/benchmark via pwm_contribute to earn PWM.")
         lines = [f"PWM registry results for '{q}':"]
-        for r in results[:15]:
-            kind = r.get("type") or r.get("artifact_type") or "?"
+        for r in flat[:15]:
+            kind = r.get("_layer") or r.get("type") or r.get("artifact_type") or "?"
             aid = r.get("artifact_id") or r.get("id") or "?"
             title = r.get("title") or r.get("name") or "(untitled)"
             haystack = (title + " " + (r.get("description") or "")).lower()
