@@ -19,5 +19,5 @@ AGENT = AgentSpec(
     system_prompt=PAPER_PROMPT,
     capabilities=("pwm-actions", "pwm-data", "paper-review", "compute-providers",
                   "ci-algorithms"),
-    order=6,
+    order=3,
 )

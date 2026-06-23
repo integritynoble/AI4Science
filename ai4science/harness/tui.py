@@ -278,12 +278,51 @@ def select(question: str, options):
         return None
 
 
-def ask_choice(question: str, options, *, read_input=read_input,
+_DEFAULT_READ_INPUT = read_input
+
+
+def ask_choice(question: str, options, *, read_input=None,
                mode: str = "chat") -> int:
     """Pick one of `options`, returning the 0-based index. Cancel (Esc) resolves
-    to the LAST option — the safe 'No' for yes/no confirmations."""
-    r = select(question, options)
-    return (len(options) - 1) if r is None else r
+    to the LAST option — the safe 'No' for yes/no confirmations.
+
+    When a custom `read_input` is injected (tests, non-TTY callers), bypasses the
+    TUI select and uses a numbered text prompt instead."""
+    import sys
+    _ri = read_input if read_input is not None else globals().get("read_input")
+    use_tui = (_ri is _DEFAULT_READ_INPUT and sys.stdin.isatty()
+               and sys.stdout.isatty())
+    if use_tui:
+        try:
+            r = select(question, options)
+            return (len(options) - 1) if r is None else r
+        except Exception:
+            pass
+    # Text-based fallback: build a single prompt string containing question +
+    # numbered options so callers (and tests) see the full context in one call.
+    numbered = "\n".join(f"  {i + 1}. {opt}" for i, opt in enumerate(options))
+    full_prompt = f"{question}\n\n{numbered}\n❯ "
+    if _ri is None:
+        print(full_prompt)
+        return len(options) - 1
+    try:
+        raw = _ri(full_prompt, mode).strip().lower()
+    except (EOFError, StopIteration):
+        raise EOFError
+    if raw in ("y", "yes", "1"):
+        return 0
+    if raw in ("a", "always") or "always" in raw:
+        for i, opt in enumerate(options):
+            if "always" in opt.lower() or "don't ask" in opt.lower():
+                return i
+        return 1
+    try:
+        idx = int(raw) - 1
+        if 0 <= idx < len(options):
+            return idx
+    except ValueError:
+        pass
+    return len(options) - 1
 
 
 def _bordered(prompt: str, mode: str, status: str = "") -> str:

@@ -52,4 +52,6 @@ def test_channel_env_overrides_file(tmp_path, monkeypatch):
 def test_spec_maps_channel_to_branch():
     assert u._spec("stable").endswith("/stable.zip")
     assert u._spec("rc").endswith("/rc.zip")
-    assert u._spec("dev").endswith("/main.zip")
+    # dev resolves to an immutable per-commit archive URL (SHA or branch fallback)
+    dev_spec = u._spec("dev")
+    assert "integritynoble/AI4Science/archive" in dev_spec and dev_spec.endswith(".zip")

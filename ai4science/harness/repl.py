@@ -170,12 +170,20 @@ def _agent_model_menu(spec):
 
 def _resolve_in_menu(menu, tok: str):
     """Resolve a typed token (alias / id / label) to a (backend, model) IN this
-    agent's menu, or None if it isn't allowed for this agent."""
+    agent's menu, or None if it isn't allowed for this agent.
+
+    Also handles two-token form: `/model openai gpt-5.5` → (backend, model_id)."""
     tl = (tok or "").strip().lower()
     want = _TYPED_ALIASES.get(tl, tok)
     for lbl, be, mid in menu:
         if mid == want or mid.lower() == tl or lbl.lower() == tl:
             return (be, mid)
+    # Two-token form: "openai gpt-5.5" — split on first space
+    if " " in tl:
+        be_part, mid_part = tl.split(None, 1)
+        for lbl, be, mid in menu:
+            if be.lower() == be_part and (mid.lower() == mid_part or mid == mid_part):
+                return (be, mid)
     return None
 
 

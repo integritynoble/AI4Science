@@ -57,11 +57,11 @@ AGENT = AgentSpec(
     keywords=("science", "pwm", "benchmark", "solution", "principle"),
     system_prompt=RESEARCH_PROMPT,
     # Research is the GENERAL science agent — it stays domain-neutral. Computational-
-    # imaging specifics (ci_modalities / ci_run_algorithm / fm_* forward-model
-    # compiler) live ONLY in the `computational-imaging` agent, so a general
-    # question (e.g. cancer) isn't steered toward CASSI/CT/MRI. Switch with
-    # `/agent computational-imaging` for those tools.
+    # imaging-specifics (ci_modalities / ci_run_algorithm / optics-design) live
+    # ONLY in the `computational-imaging` agent so a general question (e.g.
+    # cancer) isn't steered toward CASSI/CT/MRI. fm_* forward-model compiler is
+    # general physics and shared with research.
     capabilities=("pwm-actions", "pwm-data", "onboarding", "compute-providers",
-                  "science-router"),
+                  "ci-algorithms", "forward-model", "science-router"),
     order=2,
 )
