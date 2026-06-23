@@ -46,21 +46,25 @@ class PwmGate:
         # Route through the shared wallet transport (single billing client).
         return wallet.http_post(self.base, path, self.token, body)
 
-    def _get_balance(self) -> Optional[float]:
+    def _get_balance(self) -> Tuple[Optional[float], str]:
+        """Returns (balance, error_detail). balance=None means the check failed."""
         try:
             d = self._get("/api/v1/pwm-token/balance")
             b = d.get("balance")
-            return float(b) if b is not None else None
-        except Exception:
-            return None
+            if b is None:
+                # Server responded but no 'balance' field (e.g. 401 → error body)
+                err = d.get("detail") or d.get("message") or d.get("error") or repr(d)[:80]
+                return None, f"server replied without a balance ({err})"
+            return float(b), ""
+        except Exception as e:
+            return None, str(e)[:120]
 
     def check(self) -> Tuple[bool, str]:
         if not self.enabled:
             return True, ""
-        bal = self._get_balance()
+        bal, err = self._get_balance()
         if bal is None:
-            return False, ("[pwm] could not verify your PWM balance (set PWM_TOKEN to your "
-                           "pwm_ key). " + _EARN)
+            return False, (f"[pwm] could not verify your PWM balance: {err}. " + _EARN)
         if bal <= self.min_balance:
             return False, (f"[pwm] insufficient PWM (balance {bal:.3f}). " + _EARN)
         return True, ""

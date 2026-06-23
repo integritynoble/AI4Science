@@ -100,12 +100,45 @@ def _require_token() -> str:
 
 # ───────────── shared HTTP transport (used by wallet AND PwmGate) ─────────────
 
+def _http_request_httpx(method: str, url: str, token: Optional[str],
+                        body: Optional[dict]) -> Tuple[int, dict]:
+    """httpx-based transport (prefers bundled certifi over OS cert store —
+    avoids Windows SSL store gaps that affect urllib). Only called when httpx
+    is installed (it's a hard dep via pwm_account → login flow)."""
+    import httpx
+    headers: dict = {"Accept": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    try:
+        resp = httpx.request(method, url, json=body, headers=headers, timeout=30)
+        try:
+            data = resp.json()
+        except Exception:
+            data = {}
+        return resp.status_code, (data if isinstance(data, dict) else {})
+    except httpx.HTTPStatusError as e:
+        try:
+            data = e.response.json()
+        except Exception:
+            data = {}
+        return e.response.status_code, (data if isinstance(data, dict) else {})
+    except httpx.RequestError as e:
+        raise BillingError(f"PWM billing API unreachable at {url}: {e}") from e
+
+
 def http_request(method: str, base: str, path: str, token: Optional[str],
                  body: Optional[dict] = None) -> Tuple[int, dict]:
     """Single HTTP entry point for all PWM billing calls. Returns
     (status_code, parsed_json). HTTP error *statuses* are returned (not raised)
-    so callers can branch on 402/401; only true unreachability raises."""
+    so callers can branch on 402/401; only true unreachability raises.
+
+    Prefers httpx (bundled certifi, works on Windows) over urllib when available."""
     url = base.rstrip("/") + path
+    try:
+        return _http_request_httpx(method, url, token, body)
+    except ImportError:
+        pass  # httpx not installed — fall through to urllib
+
     data = json.dumps(body).encode("utf-8") if body is not None else None
     req = urllib.request.Request(url, data=data, method=method)
     if token:

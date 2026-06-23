@@ -14,21 +14,21 @@ def test_disabled_gate_always_allows(monkeypatch):
 
 def test_check_allows_with_positive_balance(monkeypatch):
     g = _gate()
-    monkeypatch.setattr(g, "_get_balance", lambda: 0.5)
+    monkeypatch.setattr(g, "_get_balance", lambda: (0.5, ""))
     allowed, reason = g.check()
     assert allowed is True and reason == ""
 
 
 def test_check_blocks_on_zero_balance(monkeypatch):
     g = _gate()
-    monkeypatch.setattr(g, "_get_balance", lambda: 0.0)
+    monkeypatch.setattr(g, "_get_balance", lambda: (0.0, ""))
     allowed, reason = g.check()
     assert allowed is False and "earn pwm" in reason.lower() and "[pwm]" in reason.lower()
 
 
 def test_check_blocks_when_balance_unavailable(monkeypatch):
     g = _gate()
-    monkeypatch.setattr(g, "_get_balance", lambda: None)
+    monkeypatch.setattr(g, "_get_balance", lambda: (None, "ssl error"))
     allowed, reason = g.check()
     assert allowed is False and "[pwm]" in reason.lower()
 
