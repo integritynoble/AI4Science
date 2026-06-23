@@ -261,7 +261,7 @@ def _format_mode_menu() -> str:
     from ai4science.harness import tui as _tui
     lines = ["[agents]"]
     for s in agent_registry.core_agents():
-        lines.append(f"  {_tui._display_mode(s.name):<22} {s.description}")
+        lines.append(f"  {s.name:<22} {s.description}")
     n = len(agent_registry.specific_agents())
     lines.append(f"  {'specific':<22} ({n}) domain agents — /agent specific <query> to search")
     lines.append("  switch with: /agent <name> (e.g. /agent Claude, /agent \"Computational Imaging\")")
