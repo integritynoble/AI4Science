@@ -120,3 +120,38 @@ def test_ci_and_research_specs_have_forward_model_capability():
     from ai4science.harness.agents.specs.research import AGENT as RESEARCH_SPEC
     assert "forward-model" in CI_SPEC.capabilities
     assert "forward-model" in RESEARCH_SPEC.capabilities
+
+
+# ── multi-modality bridge tests ───────────────────────────────────────────────
+
+import pytest
+import numpy as np
+from pwm_core.forward_compiler import from_modality, compile_model, NativeCompiledOperator
+
+NATIVE_MODALITIES = [
+    ("mri",          dict(H=16, W=16)),
+    ("ct",           dict(H=16, W=16, n_angles=18)),
+    ("lensless",     dict(H=16, W=16)),
+    ("holography",   dict(H=16, W=16)),
+    ("ptychography", dict(H=16, W=16, probe_size=4, n_positions=3)),
+    ("fluorescence", dict(H=16, W=16)),
+    ("lightsheet",   dict(H=8,  W=8,  D=4)),
+    ("ultrasound",   dict(H=16, W=16)),
+    ("photoacoustic",dict(H=16, W=16)),
+]
+
+
+@pytest.mark.parametrize("modality,kw", NATIVE_MODALITIES)
+def test_native_modality_forward(modality, kw):
+    fm = from_modality(modality, **kw)
+    op = compile_model(fm)
+    assert isinstance(op, NativeCompiledOperator)
+    x = np.random.default_rng(0).standard_normal(op.x_shape).astype(np.float64)
+    y = op.forward(x)
+    assert np.all(np.isfinite(y)), f"{modality}: non-finite output"
+    assert tuple(op.x_shape) == tuple(fm.x_shape)
+
+
+def test_from_modality_unknown_raises():
+    with pytest.raises(ValueError, match="unknown modality"):
+        from_modality("xray_banana", H=8, W=8)
