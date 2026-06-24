@@ -24,6 +24,25 @@ def test_fm_primitives_lists_builtins(tmp_path):
     assert linear["square_magnitude"] is False
 
 
+def test_fm_modalities_lists_all_ten(tmp_path):
+    tools = {t.name: t for t in forward_model_tools(gate_provider=None, workspace=tmp_path)}
+    out = json.loads(tools["fm_modalities"].func(str(tmp_path)))
+    assert out["ok"] is True
+    assert {"cassi", "mri", "ct", "lensless", "holography", "ptychography",
+            "fluorescence", "lightsheet", "ultrasound", "photoacoustic"} == set(out["modalities"])
+
+
+def test_fm_compile_modality_shortcut(tmp_path):
+    # The agent can build a model from a modality template without authoring JSON.
+    tools = {t.name: t for t in forward_model_tools(gate_provider=None, workspace=tmp_path)}
+    c = json.loads(tools["fm_compile"].func(
+        str(tmp_path), None, "forward_model_in.json", "mri.json",
+        "mri", '{"H": 32, "W": 32, "sampling_rate": 0.3}'))
+    assert c["ok"] is True and (tmp_path / "mri.json").exists()
+    s = json.loads(tools["fm_simulate"].func(str(tmp_path), "mri.json", None, "y.npy", 0))
+    assert s["ok"] is True and tuple(s["y_shape"]) == (32, 32)
+
+
 def test_model_json_ref_roundtrip(tmp_path):
     mask = np.random.default_rng(0).integers(0, 2, (8, 8)).astype(np.float64)
     model = from_modality("cassi", H=8, W=8, N_bands=4, mask=mask)
