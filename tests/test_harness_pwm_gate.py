@@ -33,6 +33,16 @@ def test_check_blocks_when_balance_unavailable(monkeypatch):
     assert allowed is False and "[pwm]" in reason.lower()
 
 
+def test_check_reauth_gives_short_login_message(monkeypatch):
+    g = _gate()
+    monkeypatch.setattr(g, "_get_balance", lambda: (None, "reauth"))
+    allowed, reason = g.check()
+    assert allowed is False
+    assert "login" in reason and "ai4science" in reason
+    # Must NOT contain the long _EARN paragraph
+    assert "mine on" not in reason.lower()
+
+
 def test_charge_posts_spend(monkeypatch):
     g = _gate()
     seen = {}

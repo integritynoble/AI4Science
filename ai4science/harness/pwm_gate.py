@@ -5,12 +5,7 @@ from typing import Optional, Tuple
 
 from ai4science import wallet  # shared PWM billing transport (linked mode)
 
-_EARN = ("Earn PWM two ways: (1) Mine on physicsworldmodel.org (principles, digital "
-         "twins, benchmarks, solutions) to bootstrap your first balance. (2) IMPROVE "
-         "THE AGENTS — use them until your PWM runs low, then /feedback problems + "
-         "suggestions (refills a shrinking runway: ~19 turns, then 18, … floor 5; "
-         "early feedback refills the most) — or contribute tools/solutions others "
-         "use; the agent pools (4M PWM) pay weekly for those.")
+_EARN = "Earn PWM: mine on physicsworldmodel.org or /feedback to refill your runway."
 
 
 def _truthy(v) -> bool:
@@ -52,21 +47,24 @@ class PwmGate:
             d = self._get("/api/v1/pwm-token/balance")
             b = d.get("balance")
             if b is None:
-                # Server responded but no 'balance' field (e.g. 401 → error body)
-                err = d.get("detail") or d.get("message") or d.get("error") or repr(d)[:80]
-                return None, f"server replied without a balance ({err})"
+                if d.get("require_reauth") or d.get("error") == "invalid_token":
+                    return None, "reauth"
+                err = d.get("message") or d.get("error") or d.get("detail") or "unknown"
+                return None, err
             return float(b), ""
         except Exception as e:
-            return None, str(e)[:120]
+            return None, str(e)[:80]
 
     def check(self) -> Tuple[bool, str]:
         if not self.enabled:
             return True, ""
         bal, err = self._get_balance()
         if bal is None:
-            return False, (f"[pwm] could not verify your PWM balance: {err}. " + _EARN)
+            if err == "reauth":
+                return False, "[pwm] token expired — run: ai4science login --pwm"
+            return False, f"[pwm] balance check failed ({err}). " + _EARN
         if bal <= self.min_balance:
-            return False, (f"[pwm] insufficient PWM (balance {bal:.3f}). " + _EARN)
+            return False, f"[pwm] insufficient PWM ({bal:.3f}). " + _EARN
         return True, ""
 
     def charge(self, amount: float, provider_wallet: Optional[str], purpose: str,
