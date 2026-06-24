@@ -61,7 +61,12 @@ class PwmGate:
         bal, err = self._get_balance()
         if bal is None:
             if err == "reauth":
-                return False, "[pwm] token expired — run: ai4science login --pwm"
+                try:
+                    from ai4science import pwm_account
+                    pwm_account.clear()
+                except Exception:
+                    pass
+                return False, "[pwm] token expired — logged out. Run: ai4science login --pwm"
             return False, f"[pwm] balance check failed ({err}). " + _EARN
         if bal <= self.min_balance:
             return False, f"[pwm] insufficient PWM ({bal:.3f}). " + _EARN

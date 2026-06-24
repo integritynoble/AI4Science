@@ -33,12 +33,16 @@ def test_check_blocks_when_balance_unavailable(monkeypatch):
     assert allowed is False and "[pwm]" in reason.lower()
 
 
-def test_check_reauth_gives_short_login_message(monkeypatch):
+def test_check_reauth_auto_logout_and_short_message(monkeypatch):
+    from ai4science import pwm_account
+    cleared = []
+    monkeypatch.setattr(pwm_account, "clear", lambda: cleared.append(1))
     g = _gate()
     monkeypatch.setattr(g, "_get_balance", lambda: (None, "reauth"))
     allowed, reason = g.check()
     assert allowed is False
-    assert "login" in reason and "ai4science" in reason
+    assert "login" in reason and "logged out" in reason
+    assert cleared, "clear() should have been called"
     # Must NOT contain the long _EARN paragraph
     assert "mine on" not in reason.lower()
 
