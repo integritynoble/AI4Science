@@ -150,6 +150,20 @@ def test_native_modality_forward(modality, kw):
     y = op.forward(x)
     assert np.all(np.isfinite(y)), f"{modality}: non-finite output"
     assert tuple(op.x_shape) == tuple(fm.x_shape)
+    assert tuple(op.y_shape) == tuple(np.asarray(y).shape)
+
+
+@pytest.mark.parametrize("modality,kw", NATIVE_MODALITIES)
+def test_native_modality_validate_and_simulate_through_tools(modality, kw, tmp_path):
+    # The full path the agent uses: fm_validate + fm_simulate via the tool layer.
+    # Native operators have reconstruction-style adjoints → validate.ok stays
+    # True (advisory warning, not a crash); simulate always produces output.
+    tools = {t.name: t for t in forward_model_tools(gate_provider=None, workspace=tmp_path)}
+    dump_model_json(from_modality(modality, **kw), tmp_path, "fm.json")
+    v = json.loads(tools["fm_validate"].func(str(tmp_path), "fm.json"))
+    assert v["ok"] is True, f"{modality}: {v}"
+    s = json.loads(tools["fm_simulate"].func(str(tmp_path), "fm.json", None, "y.npy", 0))
+    assert s["ok"] is True and (tmp_path / "y.npy").exists()
 
 
 def test_from_modality_unknown_raises():
