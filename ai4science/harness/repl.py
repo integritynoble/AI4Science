@@ -708,18 +708,24 @@ def run_common_repl(
                 from ai4science.harness import tui as _tui
                 target = None
                 if not arg:
-                    # interactive ↑/↓/⏎ picker over the agents (like /model)
+                    # interactive ↑/↓/⏎ picker over ALL agents — core first, then
+                    # the domain-specific agents (cancer, drug-design, …) so they
+                    # are directly selectable, not hidden behind `specific <query>`.
                     core = agent_registry.core_agents()
+                    specific = sorted(agent_registry.specific_agents(),
+                                      key=lambda s: (s.order, s.name))
+                    pick = list(core) + list(specific)
                     labels = [
                         f"{_tui._display_mode(s.name)} — {s.description}"
                         + ("  ← current" if s.name == active_spec.name else "")
-                        for s in core
+                        + ("  [domain]" if s in specific else "")
+                        for s in pick
                     ]
                     idx = _tui.select("Select an agent", labels)
                     if idx is None:
                         print("[harness] (cancelled)", flush=True)
                         continue
-                    target = core[idx]
+                    target = pick[idx]
                 else:
                     parts = arg.split(None, 1)
                     if parts[0] == "specific":

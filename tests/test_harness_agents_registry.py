@@ -39,6 +39,21 @@ def test_menu_partitions_core_vs_specific():
     assert "general-purpose" not in {s.name for s in registry.specific_agents()}
 
 
+def test_agent_picker_lists_core_and_specific():
+    # The interactive /agent picker shows core agents FOLLOWED BY the
+    # domain-specific agents (cancer, drug-design, ...) so they are directly
+    # selectable — not hidden behind `/agent specific <query>`.
+    registry.reload()
+    core = registry.core_agents()
+    specific = sorted(registry.specific_agents(), key=lambda s: (s.order, s.name))
+    pick = list(core) + list(specific)
+    names = [s.name for s in pick]
+    assert {"cancer", "drug-design", "computational-imaging"} <= set(names)
+    # core agents come before specific ones in the list
+    assert names.index("unified-LLM") < names.index("cancer")
+    assert names.index("unified-LLM") < names.index("drug-design")
+
+
 def test_duplicate_name_raises(tmp_path):
     d = tmp_path / "specs"
     d.mkdir()
