@@ -170,6 +170,35 @@ def test_sent_message_stays_visible():
         "sent message vanished from the transcript"
 
 
+# The picker (select → request_choice) must navigate via arrow, j/k AND digit.
+# On Windows the hidden input box used to keep focus so NOTHING navigated; the
+# fix focuses the picker control. These prove every key route lands on option 2.
+_DRIVER_PICKER = r'''
+import os, sys
+os.environ["AI4SCIENCE_TUI"] = "full"
+os.environ["PROMPT_TOOLKIT_NO_CPR"] = "1"
+from ai4science.harness import tui
+fs = tui.FullScreen("claude-code")
+def worker():
+    idx = tui.select("Pick one:", ["alpha", "bravo", "charlie"])
+    print("PICKED:" + str(idx))
+    tui.read_input("X ", "claude-code", "demo")   # keep the box alive after
+fs.run(worker)
+'''
+
+
+@pytest.mark.parametrize("keys,expected", [
+    ([b"\x1b[B", b"\r"], "PICKED:1"),   # ↓ then Enter → bravo
+    ([b"j", b"\r"],      "PICKED:1"),   # j then Enter → bravo (arrow-free)
+    ([b"2"],             "PICKED:1"),   # digit jump → bravo
+])
+def test_picker_navigates_by_arrow_jk_and_digit(keys, expected):
+    raw, lines = _spawn_and_drive(keys + [b"/exit\r"], driver=_DRIVER_PICKER,
+                                  settle=1.2, total_timeout=16.0)
+    text = "\n".join(lines)
+    assert expected in text, f"picker did not select bravo via {keys}:\n{text}"
+
+
 # Token-by-token streaming (partial lines, NO trailing newline) must NOT corrupt
 # the box's top rule, and the streamed text must survive (the real-terminal bug
 # whole-line print() tests missed).

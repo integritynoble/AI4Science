@@ -697,6 +697,23 @@ class FullScreen:
             except Exception:
                 pass
 
+    def _focus(self, target) -> None:
+        """Move keyboard focus to `target` (a control/window) on the app thread.
+        Used to focus the picker control during a choice so its key bindings
+        receive input — on Windows keys otherwise go to the focused input box."""
+        app = self._app
+        if app is None or target is None:
+            return
+        def _do():
+            try:
+                app.layout.focus(target)
+            except Exception:
+                pass
+        try:
+            app.loop.call_soon_threadsafe(_do)
+        except Exception:
+            pass
+
     def _set_partial(self, s: str) -> None:
         self._partial = s
         # During a turn the busy-ticker already repaints ~7×/s. Invalidating on
@@ -757,11 +774,17 @@ class FullScreen:
         self._choice = {"q": question, "options": list(options), "sel": 0,
                         "result": q}
         self._busy = False
+        # Focus the picker control so its key bindings receive ↑/↓/j-k/1-9 — on
+        # Windows the keys otherwise route to the (focused) hidden input box and
+        # nothing navigates. current_window is a plain attribute set; assigning it
+        # from the worker thread is safe (the next render reads it).
+        self._focus(getattr(self, "_choice_ctrl", None))
         self._invalidate()
         idx = q.get()                            # blocks the WORKER only
         self._busy = True
         opts = self._choice["options"] if self._choice else list(options)
         self._choice = None
+        self._focus(getattr(self, "_ta", None))  # hand focus back to the input box
         self._invalidate()
         if 0 <= idx < len(opts):                 # echo the decision to scrollback
             self.append(f"\n\x1b[38;5;173m❯\x1b[0m {opts[idx]}\n")
@@ -952,6 +975,55 @@ class FullScreen:
             return ANSI(" \x1b[38;5;240m↑↓/jk choose · ⏎ select · 1-9 jump · "
                         "esc = last\x1b[0m")
 
+        # WINDOWS FIX: the options control is FOCUSABLE and owns the picker key
+        # bindings, and request_choice focuses it. Previously the bindings were
+        # app-level while the hidden input box kept focus — on the Windows console
+        # every key (arrows AND j/k/digits) went to that hidden box instead of the
+        # picker, so nothing navigated. Focusing a control that carries the
+        # bindings routes the keys reliably (same pattern as _inline_select).
+        from prompt_toolkit.key_binding import KeyBindings as _KB
+        choice_kb = _KB()
+
+        def _choice_move(delta):
+            c = self._choice
+            if not c:
+                return
+            n = len(c["options"])
+            c["sel"] = (c["sel"] + delta) % n
+            self._invalidate()
+
+        def _choice_put(idx):
+            c = self._choice
+            if c and 0 <= idx < len(c["options"]):
+                c["sel"] = idx
+                c["result"].put(idx)
+
+        for _ck in ("up", "k", "c-p", "s-tab"):
+            choice_kb.add(_ck, eager=True)(lambda e: _choice_move(-1))
+        for _ck in ("down", "j", "c-n", "tab"):
+            choice_kb.add(_ck, eager=True)(lambda e: _choice_move(1))
+
+        @choice_kb.add("enter", eager=True)
+        def _(e):
+            if self._choice:
+                _choice_put(self._choice["sel"])
+
+        @choice_kb.add("escape", eager=True)
+        @choice_kb.add("c-c", eager=True)
+        def _(e):
+            if self._choice:
+                _choice_put(len(self._choice["options"]) - 1)
+
+        for _cd in "123456789":
+            @choice_kb.add(_cd, eager=True)
+            def _(e, _cd=_cd):
+                _choice_put(int(_cd) - 1)
+
+        _choice_ctrl = FormattedTextControl(
+            _choice_options, focusable=True, show_cursor=False,
+            key_bindings=choice_kb)
+        self._choice_ctrl = _choice_ctrl   # focused by request_choice on Windows
+
         in_choice = Condition(lambda: self._choice is not None)
         from prompt_toolkit.layout.dimension import Dimension as _CD
 
@@ -971,8 +1043,9 @@ class FullScreen:
             Window(FormattedTextControl(_choice_question), wrap_lines=True,
                    height=_CD(min=1, weight=1), style="class:input"),
             # options: ALWAYS shown at full height (sized to the option count).
-            Window(FormattedTextControl(_choice_options), dont_extend_height=True,
-                   style="class:input"),
+            # Uses the focusable _choice_ctrl so its key bindings receive input
+            # when focused (the Windows routing fix).
+            Window(_choice_ctrl, dont_extend_height=True, style="class:input"),
             _rule(),
             Window(FormattedTextControl(_choice_hint), height=1),
         ]), filter=in_choice)
@@ -1304,6 +1377,7 @@ class FullScreen:
         # Full-screen (AI4SCIENCE_TUI_FULLSCREEN=1): alt-screen, always-clean
         # resize; in-app transcript with PageUp/Down/↑↓/wheel scroll; no native
         # scrollback (text selection needs Shift/Option-drag).
+        self._ta = ta                      # restored as focus when a choice ends
         self._app = Application(layout=Layout(body, focused_element=ta),
                                 key_bindings=kb, style=style, full_screen=self._fs,
                                 refresh_interval=0.2, mouse_support=self._fs)
