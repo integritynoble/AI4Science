@@ -191,12 +191,17 @@ fs.run(worker)
     ([b"\x1b[B", b"\r"], "PICKED:1"),   # ↓ then Enter → bravo
     ([b"j", b"\r"],      "PICKED:1"),   # j then Enter → bravo (arrow-free)
     ([b"2"],             "PICKED:1"),   # digit jump → bravo
+    ([b"2", b"\r"],      "PICKED:1"),   # TYPE "2" then Enter → bravo (console
+                                        # fallback: digit lands in the buffer,
+                                        # Enter parses it — works where nav keys
+                                        # don't route, e.g. some Windows consoles)
+    ([b"3", b"\r"],      "PICKED:2"),   # type "3" + Enter → charlie
 ])
 def test_picker_navigates_by_arrow_jk_and_digit(keys, expected):
     raw, lines = _spawn_and_drive(keys + [b"/exit\r"], driver=_DRIVER_PICKER,
                                   settle=1.2, total_timeout=16.0)
     text = "\n".join(lines)
-    assert expected in text, f"picker did not select bravo via {keys}:\n{text}"
+    assert expected in text, f"picker did not select via {keys}:\n{text}"
 
 
 # Token-by-token streaming (partial lines, NO trailing newline) must NOT corrupt

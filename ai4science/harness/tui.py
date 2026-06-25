@@ -972,8 +972,8 @@ class FullScreen:
             return ANSI("\n".join(out))
 
         def _choice_hint():
-            return ANSI(" \x1b[38;5;240m↑↓/jk choose · ⏎ select · 1-9 jump · "
-                        "esc = last\x1b[0m")
+            return ANSI(" \x1b[38;5;240m↑↓/jk move · 1-9 or type number+⏎ select · "
+                        "esc cancel\x1b[0m")
 
         # WINDOWS FIX: the options control is FOCUSABLE and owns the picker key
         # bindings, and request_choice focuses it. Previously the bindings were
@@ -1151,7 +1151,21 @@ class FullScreen:
         @kb.add("enter")
         def _(event):
             if self._choice is not None:         # picker mode → confirm selection
-                self._choice["result"].put(self._choice["sel"])
+                # Typed-number fallback: on consoles where the picker can't
+                # receive navigation keys (some Windows/RDP/VS Code terminals,
+                # where arrows/j-k/digit bindings don't route to the choice
+                # control), the typed option number still lands in the focused
+                # input buffer — even while it's hidden. Parse it here so the
+                # user can type e.g. "8" then Enter to pick option 8. Empty/
+                # invalid input falls back to the highlighted selection (the
+                # normal arrow-navigation path on terminals where keys work).
+                opts = self._choice["options"]
+                typed = (ta.text or "").strip()
+                sel = self._choice["sel"]
+                if typed.isdigit() and 1 <= int(typed) <= len(opts):
+                    sel = int(typed) - 1
+                ta.buffer.reset()                # clear any typed digits
+                self._choice["result"].put(sel)
                 return
             shown = ta.text                      # collapsed (paste placeholders)
             full = self._expand(shown)
