@@ -205,7 +205,7 @@ def _inline_select(question: str, options):
             cur = idx == sel["i"]
             out.append(("class:cur" if cur else "",
                         f" {'❯' if cur else ' '} {opt}\n"))
-        out.append(("class:hint", " ↑/↓ move · ⏎/Tab select · 1-9 pick · Esc cancel"))
+        out.append(("class:hint", " ↑/↓ or j/k move · 1-9 pick · ⏎/Tab select · Esc cancel"))
         return out
 
     kb = KeyBindings()
