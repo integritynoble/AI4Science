@@ -1560,8 +1560,14 @@ class FullScreen:
             # Ctrl+C echoes literal `^C`). `stty sane` is a no-op in the happy
             # path and rescues the user in the unhappy one. Skipped if stdin
             # isn't a TTY (piped input).
+            #
+            # POSIX ONLY: `stty` is a Unix command. On Windows it doesn't exist and
+            # the `2>/dev/null` redirect makes cmd.exe print "The system cannot find
+            # the path specified." to the console (os.system doesn't raise, so the
+            # except can't suppress it). prompt_toolkit restores the Windows console
+            # itself, so we simply skip this there.
             try:
-                if sys.stdin.isatty():
+                if os.name == "posix" and sys.stdin.isatty():
                     os.system("stty sane 2>/dev/null")
             except Exception:
                 pass
