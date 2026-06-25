@@ -16,16 +16,33 @@
 #   $env:AI4SCIENCE_WITH_CLAUDE  "0" to skip the [claude] chat-agent extra.
 #   $env:AI4SCIENCE_VERSION      pin a specific release (e.g. "0.6.21")
 #   $env:AI4SCIENCE_PYVER        standalone Python version to download (default "3.12")
+#   $env:AI4SCIENCE_CHANNEL      stable (default) | rc | dev — picks the GitHub
+#                                branch zip (stable.zip / rc.zip / main.zip)
 
 $ErrorActionPreference = "Stop"
 
 $Pkg       = "pwm-ai4science"
-$GitUrl    = "https://github.com/integritynoble/AI4Science/archive/refs/heads/main.zip"
 $InstallDir = if ($env:AI4SCIENCE_HOME) { $env:AI4SCIENCE_HOME } else { Join-Path $HOME ".ai4science" }
 $Venv      = Join-Path $InstallDir "venv"
 $WithClaude = $env:AI4SCIENCE_WITH_CLAUDE -ne "0"
 $Version   = if ($env:AI4SCIENCE_VERSION) { ($env:AI4SCIENCE_VERSION -replace '^v','') } else { "" }
 $PyVer     = if ($env:AI4SCIENCE_PYVER) { $env:AI4SCIENCE_PYVER } else { "3.12" }
+
+# Release channel → GitHub branch zip (no git needed). Default stable, matching
+# install.sh. PyPI is not published yet (phase 2), so we install from the branch
+# zip directly — uv and pip both get this URL, never a bare PyPI name (which 404s).
+$Channel   = if ($env:AI4SCIENCE_CHANNEL) { $env:AI4SCIENCE_CHANNEL.ToLower() } else { "stable" }
+$Branch    = switch ($Channel) { "rc" { "rc" } "dev" { "main" } default { "stable" } }
+$GitUrl    = "https://github.com/integritynoble/AI4Science/archive/refs/heads/$Branch.zip"
+# Source spec with optional [claude] extra, as a PEP 508 direct reference.
+$Extra     = if ($WithClaude) { "[claude]" } else { "" }
+function Get-SrcSpec {
+    if ($Version) {
+        $tag = "https://github.com/integritynoble/AI4Science/archive/refs/tags/v$Version.zip"
+        return "pwm-ai4science$Extra @ $tag"
+    }
+    return "pwm-ai4science$Extra @ $GitUrl"
+}
 
 function Say($m) { Write-Host "▸ $m" -ForegroundColor Cyan }
 function Ok($m)  { Write-Host "✓ $m" -ForegroundColor Green }
@@ -81,20 +98,22 @@ if (-not $py) {
 }
 
 if ($uvExe) {
-    Say "Installing via uv (uv tool install)…"
-    $extra = if ($WithClaude) { "[claude]" } else { "" }
-    $src   = if ($Version) { "pwm-ai4science$extra==$Version" } else { "pwm-ai4science$extra" }
+    Say "Installing via uv from the [$Channel] channel…"
+    # Install from the GitHub branch zip — NOT a bare PyPI name (pwm-ai4science
+    # is not on PyPI yet → 404). uv resolves the [claude] extra from the zip.
+    $src = Get-SrcSpec
     try {
         & $uvExe tool install $src --force 2>&1
         if ($LASTEXITCODE -eq 0) {
-            # uv installs into its own bin dir; add it to PATH
+            New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
+            Set-Content -Path (Join-Path $InstallDir "channel") -Value $Channel
             $uvToolBin = Join-Path $HOME ".local\bin"
             $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
             if ($userPath -notlike "*$uvToolBin*") {
                 [Environment]::SetEnvironmentVariable("Path", "$uvToolBin;$userPath", "User")
                 Ok "Added $uvToolBin to your user PATH (restart terminal to pick it up)"
             }
-            Ok "Installed via uv."
+            Ok "Installed via uv ([$Channel] channel)."
             Write-Host "`nDone. Open a new terminal and run:  ai4science"
             exit 0
         }
@@ -173,29 +192,16 @@ $pip     = Join-Path $Venv "Scripts\pip.exe"
 $scripts = Join-Path $Venv "Scripts"
 & $pip install --quiet --upgrade pip | Out-Null
 
-$extra = if ($WithClaude) { "[claude]" } else { "" }
-$installed = $false
-
-if ($Version) {
-    $tag = "https://github.com/integritynoble/AI4Science/archive/refs/tags/v$Version.zip"
-    Say "Installing pinned version v$Version…"
-    $src = if ($extra) { "$Pkg$extra @ $tag" } else { $tag }
-    & $pip install --quiet $src
-    if ($LASTEXITCODE -eq 0) { $installed = $true; Ok "Installed $Pkg v$Version" }
-    else { throw "Could not install v$Version — does that tag exist?" }
-}
-if (-not $installed) {
-    try {
-        & $pip install --quiet "$Pkg$extra"
-        if ($LASTEXITCODE -eq 0) { $installed = $true; Ok "Installed $Pkg from PyPI" }
-    } catch { }
-}
-if (-not $installed) {
-    Say "PyPI unavailable — installing from GitHub main branch…"
-    $src = if ($extra) { "$Pkg$extra @ $GitUrl" } else { $GitUrl }
-    & $pip install --quiet $src
-    if ($LASTEXITCODE -eq 0) { Ok "Installed $Pkg from GitHub" }
-    else { throw "All install paths failed. Check your network connection." }
+# Install from the channel's GitHub branch zip (PyPI is not published yet).
+$src = Get-SrcSpec
+if ($Version) { Say "Installing pinned version v$Version…" }
+else { Say "Installing the [$Channel] channel from GitHub ($Branch.zip)…" }
+& $pip install --quiet $src
+if ($LASTEXITCODE -eq 0) {
+    Set-Content -Path (Join-Path $InstallDir "channel") -Value $Channel
+    Ok "Installed $Pkg ([$Channel] channel)"
+} else {
+    throw "Install failed from $GitUrl — check your network connection."
 }
 
 # ── PATH ──────────────────────────────────────────────────────────────────────
