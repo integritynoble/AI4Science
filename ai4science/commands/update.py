@@ -118,23 +118,86 @@ def _pip_cmd(*specs: str, force: bool = True, no_deps: bool = False) -> list:
     return cmd
 
 
+def _overlay_install(tail: tuple) -> int:
+    """Windows-safe code refresh that NEVER touches the running launcher.
+
+    `ai4science update` runs AS `ai4science.exe`; on Windows a running .exe is
+    locked, so pip's `--force-reinstall` (which uninstalls then rewrites the
+    console script) fails with [WinError 32] — and worse, it removes the old
+    code first, leaving a half-installed `ModuleNotFoundError` state.
+
+    The launcher is a stable generated shim that just imports `ai4science`, so
+    it never needs rewriting between builds. We refresh only the pure-Python
+    package source:
+
+      1. `pip install --no-deps --target <tmp>` unpacks ai4science + the vendored
+         pwm_core into a scratch dir (no scripts, no deps, no site-packages writes).
+      2. copy those package trees file-by-file over the live install — .py files
+         are never locked on Windows; a locked compiled .pyd is skipped, not fatal.
+
+    Returns 0 on success. The launcher (ai4science.exe) is left untouched.
+    """
+    import shutil
+    import tempfile
+
+    # 1. resolve where ai4science is installed (parent of the package dir)
+    try:
+        import ai4science
+        site = Path(ai4science.__file__).resolve().parent.parent
+    except Exception as exc:  # noqa: BLE001
+        typer.echo(f"[update] overlay: cannot locate install ({exc})")
+        return 1
+
+    tmp = Path(tempfile.mkdtemp(prefix="ai4s-update-"))
+    try:
+        cmd = [sys.executable, "-m", "pip", "install", "--no-cache-dir",
+               "--no-deps", "--target", str(tmp), *tail]
+        rc = subprocess.call(cmd)
+        if rc != 0:
+            return rc
+        copied = 0
+        for pkg in ("ai4science", "pwm_core"):
+            src = tmp / pkg
+            if not src.is_dir():
+                continue
+            for f in src.rglob("*"):
+                rel = f.relative_to(src)
+                target = site / pkg / rel
+                if f.is_dir():
+                    target.mkdir(parents=True, exist_ok=True)
+                    continue
+                try:
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(f, target)
+                    copied += 1
+                except OSError:
+                    # locked (running .pyd) — pure-Python code still refreshes
+                    pass
+        if copied == 0:
+            typer.echo("[update] overlay: nothing copied (empty download?)")
+            return 1
+        return 0
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def _install_one(tail: tuple) -> int:
-    """Install one candidate in two phases to avoid the Windows [WinError 5]
-    file-lock that --force-reinstall triggers on compiled deps (PyYAML/pyzmq
-    .pyd files locked by the running interpreter):
+    """Install one candidate.
 
-      1. deps WITHOUT --force — pip skips already-satisfied compiled deps, so
-         their locked .pyd files are never touched.
-      2. our package WITH --force-reinstall --no-deps — pure-Python, overwrites
-         only ai4science/pwm_core .py files (never locked), refreshing the code
-         even when the version string is unchanged.
+    On Windows, refresh code via _overlay_install — it never rewrites the
+    running ai4science.exe (the [WinError 32] self-update deadlock). Deps are
+    installed first (no --force, so locked compiled .pyd files are left alone).
 
-    Success is judged on phase 2 (the code refresh); phase 1 failures are
-    non-fatal — if deps are already present, the code update still lands.
+    Elsewhere, the two-phase pip install avoids the [WinError 5] compiled-dep
+    lock: (1) deps without --force, (2) our pure-Python package with
+    --force-reinstall --no-deps so the code refreshes even at an unchanged
+    version string.
     """
     if _via_pipx():
         return subprocess.call(["pipx", "install", "--force", *tail])
     subprocess.call(_pip_cmd(*tail, force=False, no_deps=False))   # phase 1: deps
+    if sys.platform == "win32":
+        return _overlay_install(tail)                              # phase 2: code (Windows)
     return subprocess.call(_pip_cmd(*tail, force=True, no_deps=True))  # phase 2: code
 
 
@@ -172,11 +235,21 @@ def update(
         if i + 1 < len(cands):
             typer.echo("[update] that source failed; trying the next…")
     if rc_code != 0:
-        # --no-deps avoids relocking compiled deps (the Windows [WinError 5] cause)
-        typer.echo("[update] failed — see pip output above. Manual fallback "
-                   "(skips deps, avoids the Windows file-lock):\n"
-                   f"  pip install --user --force-reinstall --no-deps "
-                   f"--no-cache-dir '{_spec(channel)}'")
+        url = _spec(channel).split(" @ ", 1)[-1]
+        if sys.platform == "win32":
+            # The lock is ai4science.exe (the running launcher). Recovery must
+            # run via python.exe (not ai4science.exe) so the exe isn't held —
+            # and --no-deps avoids relocking compiled .pyd deps.
+            typer.echo(
+                "[update] failed — see pip output above.\n"
+                "  Recover from a NORMAL PowerShell window (NOT inside ai4science):\n"
+                f'    & "{sys.executable}" -m pip install --no-deps '
+                f"--force-reinstall --no-cache-dir \"pwm-ai4science @ {url}\"")
+        else:
+            typer.echo("[update] failed — see pip output above. Manual fallback "
+                       "(skips deps, avoids the file-lock):\n"
+                       f"  pip install --user --force-reinstall --no-deps "
+                       f"--no-cache-dir '{_spec(channel)}'")
         raise typer.Exit(rc_code)
     # report the NEW version from a fresh interpreter (this process still has the
     # old module loaded; importlib.metadata can hit a stale dist-info)
