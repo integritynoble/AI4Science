@@ -150,6 +150,18 @@ def test_up_arrow_recalls_last_message():
     assert "GOT2:first msg" in text, f"up-arrow did not recall the message:\n{text}"
 
 
+def test_ctrl_p_recalls_last_message():
+    # Ctrl-P is the conhost-safe history alternate (the legacy Windows console
+    # can eat the ↑ escape sequence). It must recall the last message just like
+    # ↑ does. \x10 == Ctrl-P.
+    raw, lines = _spawn_and_drive(
+        [b"first msg\r", b"\x10", b"\r", b"/exit\r"],
+        driver=_DRIVER_UPARROW, settle=1.2, total_timeout=16.0)
+    text = "\n".join(lines)
+    assert "GOT1:first msg" in text
+    assert "GOT2:first msg" in text, f"Ctrl-P did not recall the message:\n{text}"
+
+
 def test_sent_message_stays_visible():
     # The echoed `❯ <msg>` must remain in the transcript after sending (the bug
     # was the old per-prompt input erasing itself).

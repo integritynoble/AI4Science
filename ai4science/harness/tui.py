@@ -454,13 +454,17 @@ def _two_line_inline(prompt: str, mode: str, status: str = "") -> str:
 
     # ↑/↓ navigate a multi-line draft, then step through history at the edges
     # (Claude Code parity — ↑ on an empty prompt recalls your last message).
-    @kb.add("up")
-    def _(event):
-        ta.buffer.auto_up(count=event.arg)
-
-    @kb.add("down")
-    def _(event):
-        ta.buffer.auto_down(count=event.arg)
+    # eager + Ctrl-P/Ctrl-N alternates so history still works on the legacy
+    # Windows console (conhost), which can swallow the arrow keys (see the
+    # persistent composer for the full rationale).
+    for _k in ("up", "c-p"):
+        @kb.add(_k, eager=True)
+        def _(event):
+            ta.buffer.auto_up(count=event.arg)
+    for _k in ("down", "c-n"):
+        @kb.add(_k, eager=True)
+        def _(event):
+            ta.buffer.auto_down(count=event.arg)
 
     @kb.add("c-c")
     def _(event):
@@ -1102,12 +1106,17 @@ class FullScreen:
         # ↑/↓ move the picker highlight in choice mode; otherwise edit prior
         # messages (auto_up/auto_down move within a multi-line draft, then step
         # through history at the edges — ↑ on an empty prompt recalls the last).
-        @kb.add("up")
-        def _(event):
-            if self._choice is not None:
-                self._choice["sel"] = max(0, self._choice["sel"] - 1)
-                event.app.invalidate()
-                return
+        #
+        # eager + ~in_choice + Ctrl-P/Ctrl-N alternates: the legacy Windows
+        # console (conhost) either lets the input buffer's own cursor binding
+        # swallow ↑/↓ before this handler runs, or eats the arrow escape sequence
+        # entirely — the same failure the picker hit (see below). eager makes our
+        # handler win; Ctrl-P/Ctrl-N are control chars conhost always delivers, so
+        # history stays reachable even when ↑ never arrives. (~in_choice keeps
+        # these off the picker, which has its own eager handlers.)
+        not_choice = ~in_choice
+
+        def _hist_up(event):
             # ↑ on an empty composer with a pending (queued) message → pull it
             # back into the box to edit before the agent processes it.
             if not ta.text.strip() and self._queued:
@@ -1128,13 +1137,7 @@ class FullScreen:
                 return
             ta.buffer.auto_up(count=event.arg)
 
-        @kb.add("down")
-        def _(event):
-            if self._choice is not None:
-                n = len(self._choice["options"])
-                self._choice["sel"] = min(n - 1, self._choice["sel"] + 1)
-                event.app.invalidate()
-                return
+        def _hist_down(event):
             # Full-screen: ↓ on an empty input scrolls the transcript back
             # toward the newest line; resume auto-follow at the bottom.
             if self._fs and not ta.text:
@@ -1144,6 +1147,15 @@ class FullScreen:
                 event.app.invalidate()
                 return
             ta.buffer.auto_down(count=event.arg)
+
+        for _k in ("up", "c-p"):
+            @kb.add(_k, filter=not_choice, eager=True)
+            def _(event):
+                _hist_up(event)
+        for _k in ("down", "c-n"):
+            @kb.add(_k, filter=not_choice, eager=True)
+            def _(event):
+                _hist_down(event)
 
         # ── picker navigation (choice mode) — ROBUST ─────────────────────────
         # The plain ↑/↓ handlers above also move the picker, but while a choice
