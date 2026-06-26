@@ -300,8 +300,11 @@ def ask_choice(question: str, options, *, read_input=None,
             pass
     # Text-based fallback: build a single prompt string containing question +
     # numbered options so callers (and tests) see the full context in one call.
+    # The explicit "Type a number" line matters on consoles where users expect
+    # to arrow (Windows): this prompt is answered by TYPING the option number.
     numbered = "\n".join(f"  {i + 1}. {opt}" for i, opt in enumerate(options))
-    full_prompt = f"{question}\n\n{numbered}\n❯ "
+    full_prompt = (f"{question}\n\n{numbered}\n\n"
+                   f"Type a number (1-{len(options)}) and press Enter ❯ ")
     if _ri is None:
         print(full_prompt)
         return len(options) - 1
