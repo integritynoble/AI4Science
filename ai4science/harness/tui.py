@@ -245,8 +245,11 @@ def _inline_select(question: str, options):
     body = HSplit([Window(control, height=q_lines + n + 1)])
     style = Style.from_dict({"cur": "fg:#d7875f bold", "q": "bold",
                              "hint": "fg:#8a8a8a"})
+    _vt = _experimental_vt_input()
+    _appkw = {"input": _vt} if _vt is not None else {}
     app = Application(layout=Layout(body), style=style,
-                     full_screen=False, mouse_support=False, erase_when_done=True)
+                     full_screen=False, mouse_support=False, erase_when_done=True,
+                     **_appkw)
     return app.run()
 
 
@@ -393,9 +396,11 @@ def _bordered(prompt: str, mode: str, status: str = "") -> str:
         "hint": "fg:#8a8a8a",
     })
 
+    _vt = _experimental_vt_input()
+    _appkw = {"input": _vt} if _vt is not None else {}
     app = Application(layout=Layout(body, focused_element=ta),
                       key_bindings=kb, style=style, full_screen=False,
-                      mouse_support=False)
+                      mouse_support=False, **_appkw)
     app.run()
     txt = out["text"]
     if txt is None:
@@ -487,9 +492,11 @@ def _two_line_inline(prompt: str, mode: str, status: str = "") -> str:
         "rule": "fg:#d7875f",
         "input": "",
     })
+    _vt = _experimental_vt_input()
+    _appkw = {"input": _vt} if _vt is not None else {}
     app = Application(layout=Layout(body, focused_element=ta), key_bindings=kb,
                       style=style, full_screen=False, mouse_support=False,
-                      erase_when_done=True)
+                      erase_when_done=True, **_appkw)
     app.run()
     txt = out["text"]
     if txt is None:
@@ -594,6 +601,10 @@ def _resolve_fullscreen() -> bool:
     return os.name == "nt"      # platform default: Windows → alt-screen
 
 
+def _vt_input_forced() -> bool:
+    return os.environ.get("AI4SCIENCE_TUI_VT_INPUT") == "1" and os.name == "nt"
+
+
 def _use_typed_choice() -> bool:
     """Whether request_choice uses the typed-number prompt instead of the visual
     ↑/↓ picker. Default: Windows (the arrow picker's key delivery + focus swap are
@@ -604,7 +615,36 @@ def _use_typed_choice() -> bool:
         return True
     if v == "0":
         return False
+    # Experimental VT input forces real arrow keys → use the visual arrow picker.
+    if _vt_input_forced():
+        return False
     return os.name == "nt"
+
+
+def _experimental_vt_input():
+    """EXPERIMENTAL (AI4SCIENCE_TUI_VT_INPUT=1, Windows only): force prompt_toolkit's
+    VT100 console input reader, which parses arrow keys as ESC[ escape sequences —
+    the way Node/Ink (Claude Code) reads them.
+
+    prompt_toolkit auto-selects this reader only when `_is_win_vt100_input_enabled()`
+    succeeds; on some Windows Terminal / ConPTY / RDP setups that detection returns
+    false, so it falls back to the Win32 key-event reader, which misses arrows that
+    the console only delivers as VT bytes. Forcing the VT reader + VT input console
+    mode can recover real arrow navigation. Returns an Input for Application(input=…)
+    or None to use the default. Best-effort; any failure → None (default path)."""
+    if not _vt_input_forced():
+        return None
+    try:
+        from prompt_toolkit.input.win32 import Win32Input, Vt100ConsoleInputReader
+        inp = Win32Input()
+        # Force the VT path: the reader parses ESC[ sequences, and raw_mode() reads
+        # _use_virtual_terminal_input to enable ENABLE_VIRTUAL_TERMINAL_INPUT so the
+        # console actually emits them.
+        inp._use_virtual_terminal_input = True
+        inp.console_input_reader = Vt100ConsoleInputReader()
+        return inp
+    except Exception:
+        return None
 
 
 class _StreamCommit:
@@ -1475,9 +1515,12 @@ class FullScreen:
         # resize; in-app transcript with PageUp/Down/↑↓/wheel scroll; no native
         # scrollback (text selection needs Shift/Option-drag).
         self._ta = ta                      # restored as focus when a choice ends
+        _vt = _experimental_vt_input()     # AI4SCIENCE_TUI_VT_INPUT=1 (Windows)
+        _appkw = {"input": _vt} if _vt is not None else {}
         self._app = Application(layout=Layout(body, focused_element=ta),
                                 key_bindings=kb, style=style, full_screen=self._fs,
-                                refresh_interval=0.2, mouse_support=self._fs)
+                                refresh_interval=0.2, mouse_support=self._fs,
+                                **_appkw)
 
         _ACTIVE["screen"] = self
         done = {"v": False}

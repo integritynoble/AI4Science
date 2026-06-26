@@ -110,3 +110,40 @@ def test_ask_choice_text_fallback_invalid_is_last_option():
     idx = tui.ask_choice("Proceed?", ["Yes", "No"],
                          read_input=lambda p, m: "garbage")
     assert idx == 1
+
+
+# ── experimental VT input flag (AI4SCIENCE_TUI_VT_INPUT=1, Windows) ───────────
+
+def test_vt_input_forced_requires_windows_and_flag(monkeypatch):
+    monkeypatch.setenv("AI4SCIENCE_TUI_VT_INPUT", "1")
+    monkeypatch.setattr(tui.os, "name", "posix")
+    assert tui._vt_input_forced() is False          # not Windows → off
+    monkeypatch.setattr(tui.os, "name", "nt")
+    assert tui._vt_input_forced() is True           # Windows + flag → on
+    monkeypatch.delenv("AI4SCIENCE_TUI_VT_INPUT", raising=False)
+    assert tui._vt_input_forced() is False           # no flag → off
+
+
+def test_vt_flag_switches_picker_back_to_visual(monkeypatch):
+    # With VT input forced, arrows should work → use the visual picker, not the
+    # typed-number prompt.
+    monkeypatch.setenv("AI4SCIENCE_TUI_VT_INPUT", "1")
+    monkeypatch.delenv("AI4SCIENCE_TYPED_CHOICE", raising=False)
+    monkeypatch.setattr(tui.os, "name", "nt")
+    assert tui._use_typed_choice() is False
+    # Without the VT flag, Windows defaults to the typed-number picker.
+    monkeypatch.delenv("AI4SCIENCE_TUI_VT_INPUT", raising=False)
+    assert tui._use_typed_choice() is True
+
+
+def test_experimental_vt_input_none_when_flag_off(monkeypatch):
+    monkeypatch.delenv("AI4SCIENCE_TUI_VT_INPUT", raising=False)
+    assert tui._experimental_vt_input() is None
+
+
+def test_experimental_vt_input_degrades_gracefully(monkeypatch):
+    # Flag on + faked Windows, but Win32Input construction fails off-Windows →
+    # must return None (fall back to default input), never raise.
+    monkeypatch.setenv("AI4SCIENCE_TUI_VT_INPUT", "1")
+    monkeypatch.setattr(tui.os, "name", "nt")
+    assert tui._experimental_vt_input() is None
