@@ -51,3 +51,34 @@ def test_tui_enabled_only_gates_box(monkeypatch):
     assert tui.tui_enabled() is True      # prompt_toolkit is a test dep
     monkeypatch.setenv("AI4SCIENCE_TUI", "off")
     assert tui.tui_enabled() is False
+
+
+# ── _resolve_fullscreen: POSIX=inline, Windows=alt-screen, env overrides ──────
+
+def test_fullscreen_default_posix_is_inline(monkeypatch):
+    monkeypatch.delenv("AI4SCIENCE_TUI_INLINE", raising=False)
+    monkeypatch.delenv("AI4SCIENCE_TUI_FULLSCREEN", raising=False)
+    monkeypatch.setattr(tui.os, "name", "posix")
+    assert tui._resolve_fullscreen() is False
+
+
+def test_fullscreen_default_windows_is_altscreen(monkeypatch):
+    # Windows must own the alt-screen or Windows Terminal steals the arrows.
+    monkeypatch.delenv("AI4SCIENCE_TUI_INLINE", raising=False)
+    monkeypatch.delenv("AI4SCIENCE_TUI_FULLSCREEN", raising=False)
+    monkeypatch.setattr(tui.os, "name", "nt")
+    assert tui._resolve_fullscreen() is True
+
+
+def test_fullscreen_inline_env_forces_inline_even_on_windows(monkeypatch):
+    monkeypatch.setenv("AI4SCIENCE_TUI_INLINE", "1")
+    monkeypatch.delenv("AI4SCIENCE_TUI_FULLSCREEN", raising=False)
+    monkeypatch.setattr(tui.os, "name", "nt")
+    assert tui._resolve_fullscreen() is False
+
+
+def test_fullscreen_env_forces_altscreen_even_on_posix(monkeypatch):
+    monkeypatch.setenv("AI4SCIENCE_TUI_FULLSCREEN", "1")
+    monkeypatch.delenv("AI4SCIENCE_TUI_INLINE", raising=False)
+    monkeypatch.setattr(tui.os, "name", "posix")
+    assert tui._resolve_fullscreen() is True

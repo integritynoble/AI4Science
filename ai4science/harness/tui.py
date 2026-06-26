@@ -564,6 +564,33 @@ def tui_mode() -> str:
     return "full"
 
 
+def _resolve_fullscreen() -> bool:
+    """Whether the persistent composer owns the ALTERNATE screen (full_screen).
+
+    POSIX defaults to INLINE (full_screen=False): output streams above the box
+    in the terminal's native scrollback, so mouse-wheel scroll + click-drag copy
+    work like Claude Code.
+
+    WINDOWS defaults to ALT-SCREEN (full_screen=True): in inline mode the app
+    does not own the screen, so Windows Terminal intercepts ↑/↓ for ITS OWN
+    scrollback instead of passing them to the picker — the highlight never moves
+    and "the whole terminal scrolls." Owning the alternate screen makes the app
+    capture the arrows. (Trade-off accepted on Windows: native scrollback is
+    replaced by in-app PgUp/↑↓ scroll.)
+
+    Override either way:
+      AI4SCIENCE_TUI_INLINE=1      → force inline (even on Windows)
+      AI4SCIENCE_TUI_FULLSCREEN=1  → force alt-screen (even on POSIX)
+    """
+    inline = os.environ.get("AI4SCIENCE_TUI_INLINE") == "1"
+    full = os.environ.get("AI4SCIENCE_TUI_FULLSCREEN") == "1"
+    if full and not inline:
+        return True
+    if inline and not full:
+        return False
+    return os.name == "nt"      # platform default: Windows → alt-screen
+
+
 class _StreamCommit:
     """stdout wrapper that commits ONLY complete lines to the scrollback (via the
     patch_stdout proxy it wraps); the in-progress partial line is handed to the
@@ -854,15 +881,11 @@ class FullScreen:
         # hang on CPR can still opt out with AI4SCIENCE_NO_CPR=1.
         if os.environ.get("AI4SCIENCE_NO_CPR") == "1":
             os.environ["PROMPT_TOOLKIT_NO_CPR"] = "1"
-        # Inline (native scrollback) is the default — like Claude Code: output
-        # streams above the box via patch_stdout; the terminal handles mouse-wheel
-        # scroll, click-drag copy, and Shift+PgUp history natively.
-        # Opt into full-screen (alt-screen, clean resize, in-app scroll) with
-        # AI4SCIENCE_TUI_FULLSCREEN=1.  AI4SCIENCE_TUI_INLINE=1 is accepted too
-        # (kept for backwards compat; redundant now that inline is the default).
-        _want_fs = (os.environ.get("AI4SCIENCE_TUI_FULLSCREEN") == "1" and
-                    os.environ.get("AI4SCIENCE_TUI_INLINE") != "1")
-        self._fs = _want_fs
+        # Inline (native scrollback) on POSIX, alt-screen on Windows — see
+        # _resolve_fullscreen. Windows must own the alt-screen or Windows Terminal
+        # steals ↑/↓ for its own scrollback and the picker can't be navigated.
+        # Override: AI4SCIENCE_TUI_INLINE=1 / AI4SCIENCE_TUI_FULLSCREEN=1.
+        self._fs = _resolve_fullscreen()
         import threading
         from prompt_toolkit import Application
         from prompt_toolkit.formatted_text import ANSI
