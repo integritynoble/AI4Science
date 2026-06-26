@@ -591,6 +591,19 @@ def _resolve_fullscreen() -> bool:
     return os.name == "nt"      # platform default: Windows → alt-screen
 
 
+def _use_typed_choice() -> bool:
+    """Whether request_choice uses the typed-number prompt instead of the visual
+    ↑/↓ picker. Default: Windows (the arrow picker's key delivery + focus swap are
+    unreliable on Windows Terminal / RDP / VS Code consoles). Override with
+    AI4SCIENCE_TYPED_CHOICE=1/0 (also lets POSIX tests exercise the typed path)."""
+    v = os.environ.get("AI4SCIENCE_TYPED_CHOICE")
+    if v == "1":
+        return True
+    if v == "0":
+        return False
+    return os.name == "nt"
+
+
 class _StreamCommit:
     """stdout wrapper that commits ONLY complete lines to the scrollback (via the
     patch_stdout proxy it wraps); the in-progress partial line is handed to the
@@ -667,7 +680,8 @@ class FullScreen:
         self._expand = lambda t: t      # paste-collapse expander (set in run)
         self._partial = ""              # in-progress streaming line (live region)
         self._stream = None             # the _StreamCommit proxy (set in run)
-        self._choice = None             # active permission picker, or None
+        self._choice = None             # active visual (arrow) picker, or None
+        self._typed_choice = None       # active typed-number picker (Windows), or None
         self._queued = []               # sent-but-not-yet-processed messages
         self._qlock = threading.Lock()
         # Full-screen (alt-screen) mode: the app owns the whole screen, so resize
@@ -792,11 +806,13 @@ class FullScreen:
         return shown
 
     def request_choice(self, question: str, options) -> int:
-        """Block the worker while the user picks an option with ↑/↓/⏎ (or 1/2/3)
-        in the box's picker panel. Returns the selected index (0-based)."""
+        """Block the worker while the user picks an option. POSIX uses the visual
+        ↑/↓ picker panel; Windows uses a typed-number prompt (see below)."""
         import queue
         if self._stream is not None:
             self._stream.commit_partial()       # flush any dangling partial line
+        if _use_typed_choice():
+            return self._request_choice_typed(question, list(options))
         q: "queue.Queue" = queue.Queue()
         self._choice = {"q": question, "options": list(options), "sel": 0,
                         "result": q}
@@ -815,6 +831,36 @@ class FullScreen:
         self._invalidate()
         if 0 <= idx < len(opts):                 # echo the decision to scrollback
             self.append(f"\n\x1b[38;5;173m❯\x1b[0m {opts[idx]}\n")
+        return idx
+
+    def _request_choice_typed(self, question: str, opts) -> int:
+        """Windows picker: a typed-number prompt through the NORMAL input box.
+
+        The visual ↑/↓ picker relies on the terminal delivering arrow keys to the
+        app AND on a cross-thread focus swap onto a hidden control — both fail on
+        Windows Terminal / RDP / VS Code consoles (arrows scroll the terminal or
+        aren't delivered; focus routing is racy). This path needs neither: it
+        prints the numbered options to the transcript and reads the choice from
+        the SAME input box the user already types into (which reliably receives
+        keystrokes). The Enter handler routes a typed number back here.
+        """
+        import queue
+        q: "queue.Queue" = queue.Queue()
+        lines = ["", (question.strip() if question else "Select an option:")]
+        for i, opt in enumerate(opts):
+            lines.append(f"  {i + 1}. {opt}")
+        lines.append(f"\x1b[38;5;173mType a number (1-{len(opts)}) and press "
+                     f"Enter:\x1b[0m")
+        self.append("\n".join(lines) + "\n")
+        self._typed_choice = {"options": list(opts), "result": q}
+        self._busy = False
+        self._invalidate()
+        idx = q.get()                            # blocks the WORKER only
+        self._busy = True
+        self._typed_choice = None
+        self._invalidate()
+        if 0 <= idx < len(opts):
+            self.append(f"\x1b[38;5;173m❯\x1b[0m {opts[idx]}\n")
         return idx
 
     # ── worker-side API ────────────────────────────────────────────────────
@@ -1173,6 +1219,17 @@ class FullScreen:
 
         @kb.add("enter")
         def _(event):
+            if self._typed_choice is not None:   # Windows typed-number picker
+                opts = self._typed_choice["options"]
+                raw = (ta.text or "").strip()
+                ta.buffer.reset()
+                if raw.isdigit() and 1 <= int(raw) <= len(opts):
+                    self._typed_choice["result"].put(int(raw) - 1)
+                else:
+                    self.append(f"  please type a number between 1 and "
+                                f"{len(opts)}\n")
+                    self._invalidate()
+                return
             if self._choice is not None:         # picker mode → confirm selection
                 # Typed-number fallback: on consoles where the picker can't
                 # receive navigation keys (some Windows/RDP/VS Code terminals,

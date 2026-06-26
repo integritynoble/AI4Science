@@ -204,6 +204,32 @@ def test_picker_navigates_by_arrow_jk_and_digit(keys, expected):
     assert expected in text, f"picker did not select via {keys}:\n{text}"
 
 
+# Windows path: the typed-number prompt (no arrow picker, no focus swap). Driven
+# on Linux via AI4SCIENCE_TYPED_CHOICE=1 so it can't depend on arrow delivery.
+_DRIVER_TYPED_PICKER = r'''
+import os, sys
+os.environ["AI4SCIENCE_TUI"] = "full"
+os.environ["PROMPT_TOOLKIT_NO_CPR"] = "1"
+os.environ["AI4SCIENCE_TYPED_CHOICE"] = "1"
+from ai4science.harness import tui
+fs = tui.FullScreen("claude-code")
+def worker():
+    idx = tui.select("Pick one:", ["alpha", "bravo", "charlie"])
+    print("PICKED:" + str(idx))
+    tui.read_input("X ", "claude-code", "demo")
+fs.run(worker)
+'''
+
+
+def test_typed_choice_picker_selects_by_typed_number():
+    # Type "3" then Enter through the normal input box → charlie (index 2).
+    raw, lines = _spawn_and_drive([b"3\r", b"/exit\r"], driver=_DRIVER_TYPED_PICKER,
+                                  settle=1.2, total_timeout=16.0)
+    text = "\n".join(lines)
+    assert "Type a number" in text, f"typed-choice prompt missing:\n{text}"
+    assert "PICKED:2" in text, f"typed number did not select charlie:\n{text}"
+
+
 # Token-by-token streaming (partial lines, NO trailing newline) must NOT corrupt
 # the box's top rule, and the streamed text must survive (the real-terminal bug
 # whole-line print() tests missed).
