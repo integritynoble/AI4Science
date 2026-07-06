@@ -11,6 +11,10 @@ name = "pwm-ai4science"
 dynamic = ["version"]
 description = "Open-source contribution tool for Physics World Model (PWM). Create, validate, package, and submit Principles, Specs, Benchmarks, and Solutions for verified AI4Science workflows."
 readme = "README.md"
+# Runtime contract for standalone agent packages: they import the runtime ONLY
+# via the top-level `pwm_agent_core` module (shipped by py-modules). The contract
+# surface + version live in pwm_agent_core.py (CONTRACT_VERSION). Agent packages
+# pin: pwm-agent-core>=1,<2.
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.10"
