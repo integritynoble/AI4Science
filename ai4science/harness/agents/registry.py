@@ -12,6 +12,7 @@ from ai4science.harness.agents.context import BuildContext
 from ai4science.harness.agents.capabilities import (
     resolve_capability, CAPABILITY_BUNDLES,
     register_plugin_bundle, clear_plugin_bundles,
+    register_agent_bundle, clear_agent_bundles,   # NEW
 )
 
 _SPECS_DIR = Path(__file__).parent / "specs"
@@ -115,6 +116,15 @@ def _load_spec_file(path: Path) -> AgentSpec:
 AGENT_ALIASES: Dict[str, str] = {}
 
 
+def _iter_entry_points(*, group: str):
+    """Indirection so tests can inject fake entry points."""
+    from importlib.metadata import entry_points
+    try:
+        return list(entry_points(group=group))       # py3.10+ selectable API
+    except TypeError:                                 # very old importlib shim
+        return list(entry_points().get(group, []))
+
+
 def _validate_caps(name: str, caps, where: str) -> None:
     for cap in caps:
         if cap not in CAPABILITY_BUNDLES:
@@ -139,6 +149,34 @@ def reload(specs_dir: Optional[Path] = None, *, load_plugins: bool = True) -> Di
         if agent.name in found:
             raise ValueError(f"duplicate agent name {agent.name!r} ({path})")
         _validate_caps(agent.name, agent.capabilities, str(path))
+        found[agent.name] = agent
+        for alias in agent.aliases:
+            aliases[alias] = agent.name
+
+    # ── entry-point plug-ins (installed agent packages) ──
+    clear_agent_bundles()
+    for ep in _iter_entry_points(group="pwm_agent.bundles"):
+        try:
+            ep.load()()                              # register() -> register_agent_bundle(...)
+        except Exception as exc:
+            PLUGIN_ERRORS.append(f"bundle entry-point {ep.name!r}: {exc}")
+    for ep in _iter_entry_points(group="pwm_agent.specs"):
+        try:
+            agent = ep.load()
+        except Exception as exc:
+            PLUGIN_ERRORS.append(f"spec entry-point {ep.name!r}: {exc}")
+            continue
+        if not isinstance(agent, AgentSpec):
+            PLUGIN_ERRORS.append(f"spec entry-point {ep.name!r}: not an AgentSpec")
+            continue
+        if agent.name in found:
+            PLUGIN_ERRORS.append(f"spec entry-point {agent.name!r}: name collides; skipped")
+            continue
+        try:
+            _validate_caps(agent.name, agent.capabilities, "entry-point")
+        except ValueError as exc:
+            PLUGIN_ERRORS.append(str(exc))
+            continue
         found[agent.name] = agent
         for alias in agent.aliases:
             aliases[alias] = agent.name
