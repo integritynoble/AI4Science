@@ -136,7 +136,12 @@ def test_forward_model_capability_bundle_resolves():
 
 def test_ci_and_research_specs_have_forward_model_capability():
     from ai4science.harness.agents.specs.computational_imaging import AGENT as CI_SPEC
-    from ai4science.harness.agents.specs.research import AGENT as RESEARCH_SPEC
+    # research is now sourced from the pwm-agent-research package via entry
+    # point (no local specs/research.py file to import) — fetch it through
+    # the registry instead.
+    from ai4science.harness.agents import registry
+    registry.reload()
+    RESEARCH_SPEC = registry.get("research")
     assert "forward-model" in CI_SPEC.capabilities
     assert "forward-model" in RESEARCH_SPEC.capabilities
 

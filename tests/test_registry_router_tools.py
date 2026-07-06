@@ -92,7 +92,12 @@ def test_science_router_capability_bundle_resolves():
 
 def test_ci_and_research_specs_have_science_router():
     from ai4science.harness.agents.specs.computational_imaging import AGENT as CI
-    from ai4science.harness.agents.specs.research import AGENT as RESEARCH
+    # research is now sourced from the pwm-agent-research package via entry
+    # point (no local specs/research.py file to import) — fetch it through
+    # the registry instead.
+    from ai4science.harness.agents import registry
+    registry.reload()
+    RESEARCH = registry.get("research")
     assert "science-router" in CI.capabilities
     assert "science-router" in RESEARCH.capabilities
 

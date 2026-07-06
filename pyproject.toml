@@ -44,6 +44,7 @@ dependencies = [
   "pyreadline3>=3.4; sys_platform == 'win32'",    # arrow keys/history on Windows
   "optiland>=0.6.0",                              # Optical design simulation (Phase 0)
   "rayoptics>=0.9.8",                             # Optical design ray tracing (Phase 0)
+  "pwm-agent-research>=0.1,<1",                   # research agent spec+tools (entry-point sourced)
 ]
 
 [project.optional-dependencies]
