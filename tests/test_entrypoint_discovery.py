@@ -1,5 +1,14 @@
-import types
+import pytest
 from ai4science.harness.agents import registry, capabilities
+
+
+@pytest.fixture(autouse=True)
+def _restore_default_registry():
+    """Guarantee the global AGENT_REGISTRY is restored after every test, even if
+    a test reloads a tmp specs dir and then raises before its inline restore."""
+    yield
+    registry.reload()
+
 
 class _FakeEP:
     def __init__(self, name, group, obj):

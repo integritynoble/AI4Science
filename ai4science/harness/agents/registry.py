@@ -135,8 +135,10 @@ def _validate_caps(name: str, caps, where: str) -> None:
 
 
 def reload(specs_dir: Optional[Path] = None, *, load_plugins: bool = True) -> Dict[str, AgentSpec]:
-    """Discover built-in specs/*.py (each exposing AGENT), then merge manifest
-    plug-ins from the plugins dir, into AGENT_REGISTRY."""
+    """Discover built-in specs/*.py (each exposing AGENT), then entry-point
+    bundles/specs (installed agent packages, groups `pwm_agent.bundles` and
+    `pwm_agent.specs`), then merge manifest plug-ins from the plugins dir,
+    into AGENT_REGISTRY."""
     directory = Path(specs_dir) if specs_dir else _SPECS_DIR
     found: Dict[str, AgentSpec] = {}
     aliases: Dict[str, str] = {}
