@@ -20,6 +20,26 @@ AGENT_REGISTRY: Dict[str, AgentSpec] = {}
 # Non-fatal problems from the last reload (bad manifests, etc.) — surfaced by /mcp diag.
 PLUGIN_ERRORS: List[str] = []
 
+# Canonical agent spec-name -> pip distribution name (see design doc naming table).
+_AGENT_DIST: Dict[str, str] = {
+    "research": "pwm-agent-research",
+    "paper": "pwm-agent-paper",
+    "computational-imaging": "pwm-agent-imaging",
+    "drug-design": "pwm-agent-drug",
+    "cancer": "pwm-agent-cancer",
+    "unified-LLM": "pwm-agent-unified",
+    "claude-gpu": "pwm-agent-claude-gpu",
+    "codex-gpu": "pwm-agent-codex-gpu",
+}
+
+# First-party agents that ship as their own package (for install hints).
+_SPLITTABLE_AGENTS = set(_AGENT_DIST)
+
+
+def install_hint(name: str) -> str:
+    dist = _AGENT_DIST.get(name, f"pwm-agent-{name}")
+    return f"{name} agent not installed — run: pip install {dist}"
+
 
 def _claude_code_base(ctx: BuildContext) -> Registry:
     """Pure Claude Code: fs read/write/edit/grep/glob + bash + MCP. NO PWM."""
@@ -84,6 +104,8 @@ def _agent_dispatch_tool(main: AgentSpec, ctx: BuildContext) -> Optional[Tool]:
     def _task(workspace, *, subagent_type: str, prompt: str) -> str:
         child_spec = AGENT_REGISTRY.get(subagent_type)
         if subagent_type not in targets or child_spec is None:
+            if subagent_type in _SPLITTABLE_AGENTS and child_spec is None:
+                return install_hint(subagent_type)
             return (f"[task] unknown subagent_type {subagent_type!r}; "
                     f"available: {listed}")
         session = ctx.session_factory(spec=child_spec, ctx=ctx)
