@@ -17,6 +17,10 @@ from ai4science.harness.agents.capabilities import (
 
 _SPECS_DIR = Path(__file__).parent / "specs"
 AGENT_REGISTRY: Dict[str, AgentSpec] = {}
+
+# GPU compute is a core capability for every agent, not an opt-in bundle —
+# so it is unioned into every spec's capabilities at registry build time.
+ALWAYS_ON_BUNDLES = ("compute-providers",)
 # Non-fatal problems from the last reload (bad manifests, etc.) — surfaced by /mcp diag.
 PLUGIN_ERRORS: List[str] = []
 
@@ -72,7 +76,8 @@ def _attach_spec_mcp_servers(spec: AgentSpec, ctx: BuildContext, reg: Registry) 
 
 def build_registry_for(spec: AgentSpec, *, is_subagent: bool, ctx: BuildContext) -> Registry:
     reg = _claude_code_base(ctx)
-    for cap in spec.capabilities:
+    caps = tuple(dict.fromkeys(spec.capabilities + ALWAYS_ON_BUNDLES))
+    for cap in caps:
         for t in resolve_capability(cap, ctx):
             reg.add(t)
     _attach_spec_mcp_servers(spec, ctx, reg)
