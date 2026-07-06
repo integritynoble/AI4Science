@@ -68,6 +68,9 @@ Issues = "https://github.com/integritynoble/AI4Science/issues"
 [tool.setuptools.dynamic]
 version = { attr = "ai4science.__version__" }
 
+[tool.setuptools]
+py-modules = ["pwm_agent_core"]
+
 [tool.setuptools.packages.find]
 include = ["ai4science*", "pwm_core*"]
 exclude = ["tests*", "examples*"]
