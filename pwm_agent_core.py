@@ -28,14 +28,15 @@ from ai4science.harness.agents.capabilities import register_agent_bundle
 
 
 def run_cli(default_agent: str | None = None) -> None:
-    """Boot the standard AI4Science CLI/TUI, defaulted to one agent.
+    """Boot the standard AI4Science CLI/TUI, defaulted to one agent (mode).
 
     A standalone `pwm-<agent>` command calls run_cli("<agent>"). When
-    default_agent is set and the user passes no explicit --agent/AI4SCIENCE_AGENT,
-    that agent is preselected.
+    default_agent is set and the user passes no explicit --mode/AI4SCIENCE_MODE,
+    that agent's mode is preselected. (The persona/agent is chosen via the
+    session MODE; AI4SCIENCE_AGENT selects the engine and is left untouched.)
     """
     import os
     from ai4science.cli import main as _main
-    if default_agent and not os.environ.get("AI4SCIENCE_AGENT"):
-        os.environ["AI4SCIENCE_AGENT"] = default_agent
+    if default_agent and not os.environ.get("AI4SCIENCE_MODE"):
+        os.environ["AI4SCIENCE_MODE"] = default_agent
     _main()
