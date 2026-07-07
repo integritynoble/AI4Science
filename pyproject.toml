@@ -50,6 +50,8 @@ dependencies = [
   "pwm-agent-drug>=0.1,<1",                       # drug-design agent spec (entry-point sourced)
   "pwm-agent-cancer>=0.1,<1",                     # cancer agent spec (entry-point sourced)
   "pwm-agent-unified>=0.1,<1",                    # unified-LLM agent spec (entry-point sourced)
+  "pwm-agent-claude-gpu>=0.1,<1",                 # claude-code agent spec (entry-point sourced)
+  "pwm-agent-codex-gpu>=0.1,<1",                  # codex agent spec (entry-point sourced)
 ]
 
 [project.optional-dependencies]
