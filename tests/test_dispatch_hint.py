@@ -31,16 +31,27 @@ def test_install_hint_falls_back_for_unmapped_name():
         "some-plugin agent not installed — run: pip install pwm-agent-some-plugin"
 
 
-def test_task_tool_returns_install_hint_for_known_uninstalled_agent(tmp_path):
+def test_task_tool_returns_install_hint_for_known_uninstalled_agent(tmp_path, monkeypatch):
     registry.reload()
-    # "claude-gpu" is a known first-party splittable agent name that is not
-    # registered as an installed spec in this environment (the actual local
-    # spec is named "claude-code"), so it must trigger the install hint.
-    assert registry.AGENT_REGISTRY.get("claude-gpu") is None
-    assert "claude-gpu" in registry._SPLITTABLE_AGENTS
+    # Simulate a first-party splittable agent name whose package is not
+    # installed (claude-code/codex are both installed as specs in this dev
+    # environment, so we synthesize a stand-in rather than assert on those).
+    fake_name = "claude-gpu-not-installed"
+    monkeypatch.setattr(registry, "_SPLITTABLE_AGENTS",
+                         registry._SPLITTABLE_AGENTS | {fake_name})
+    assert registry.AGENT_REGISTRY.get(fake_name) is None
+    assert fake_name in registry._SPLITTABLE_AGENTS
     reg = build_registry_for(registry.get("research"), is_subagent=False, ctx=_ctx(tmp_path))
-    out = reg.get("task").func(tmp_path, subagent_type="claude-gpu", prompt="hi")
-    assert out == registry.install_hint("claude-gpu")
+    out = reg.get("task").func(tmp_path, subagent_type=fake_name, prompt="hi")
+    assert out == registry.install_hint(fake_name)
+
+
+def test_install_hint_gpu_agents_use_gpu_dist_names():
+    from ai4science.harness.agents import registry
+    assert registry.install_hint("claude-code") == \
+        "claude-code agent not installed — run: pip install pwm-agent-claude-gpu"
+    assert registry.install_hint("codex") == \
+        "codex agent not installed — run: pip install pwm-agent-codex-gpu"
 
 
 def test_task_tool_still_reports_unknown_for_unrecognized_name(tmp_path):

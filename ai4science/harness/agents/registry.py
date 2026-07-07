@@ -32,8 +32,8 @@ _AGENT_DIST: Dict[str, str] = {
     "drug-design": "pwm-agent-drug",
     "cancer": "pwm-agent-cancer",
     "unified-LLM": "pwm-agent-unified",
-    "claude-gpu": "pwm-agent-claude-gpu",
-    "codex-gpu": "pwm-agent-codex-gpu",
+    "claude-code": "pwm-agent-claude-gpu",   # was keyed "claude-gpu"
+    "codex": "pwm-agent-codex-gpu",           # was keyed "codex-gpu"
 }
 
 # First-party agents that ship as their own package (for install hints).
