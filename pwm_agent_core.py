@@ -36,6 +36,11 @@ def run_cli(default_agent: str | None = None) -> None:
     session MODE; AI4SCIENCE_AGENT selects the engine and is left untouched.)
     """
     import os
+    # Re-discover installed agent packages now that the (possibly agent-package)
+    # root import has fully initialized. The import-time reload in registry.py can
+    # miss the root package's own entry point when THAT package is the entrypoint.
+    from ai4science.harness.agents import registry
+    registry.reload()
     from ai4science.cli import main as _main
     if default_agent and not os.environ.get("AI4SCIENCE_MODE"):
         os.environ["AI4SCIENCE_MODE"] = default_agent
