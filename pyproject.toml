@@ -45,6 +45,11 @@ dependencies = [
   "optiland>=0.6.0",                              # Optical design simulation (Phase 0)
   "rayoptics>=0.9.8",                             # Optical design ray tracing (Phase 0)
   "pwm-agent-research>=0.1,<1",                   # research agent spec+tools (entry-point sourced)
+  "pwm-agent-paper>=0.1,<1",                      # paper agent spec (entry-point sourced)
+  "pwm-agent-imaging>=0.1,<1",                    # computational-imaging agent spec (entry-point sourced)
+  "pwm-agent-drug>=0.1,<1",                       # drug-design agent spec (entry-point sourced)
+  "pwm-agent-cancer>=0.1,<1",                     # cancer agent spec (entry-point sourced)
+  "pwm-agent-unified>=0.1,<1",                    # unified-LLM agent spec (entry-point sourced)
 ]
 
 [project.optional-dependencies]
