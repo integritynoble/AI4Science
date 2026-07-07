@@ -3,13 +3,16 @@ requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-# Distribution name on PyPI. The CLI command stays `ai4science` (see
-# [project.scripts]); only the install name is PWM-branded because the
-# bare `ai4science` name is already taken on PyPI. This mirrors Claude
-# Code: package `@anthropic-ai/claude-code`, command `claude`.
-name = "pwm-ai4science"
-dynamic = ["version"]
-description = "Open-source contribution tool for Physics World Model (PWM). Create, validate, package, and submit Principles, Specs, Benchmarks, and Solutions for verified AI4Science workflows."
+# This distribution is the PWM agent RUNTIME (the "core"): it ships the
+# `ai4science.*` harness, `pwm_core.*`, and the top-level `pwm_agent_core`
+# facade that standalone agent packages import and pin (`pwm-agent-core>=1,<2`).
+# The `ai4science` CLI command lives here (see [project.scripts]). The
+# `pwm-ai4science` name is now a thin meta-package (core + all agents) built
+# separately. The dist version tracks the pwm_agent_core CONTRACT_VERSION major
+# (1.x); the internal code version is `ai4science.__version__`.
+name = "pwm-agent-core"
+version = "1.0.0"
+description = "PWM agent runtime (core): the AI4Science harness + pwm_agent_core facade that standalone PWM agent packages run on."
 readme = "README.md"
 # Runtime contract for standalone agent packages: they import the runtime ONLY
 # via the top-level `pwm_agent_core` module (shipped by py-modules). The contract
@@ -44,14 +47,9 @@ dependencies = [
   "pyreadline3>=3.4; sys_platform == 'win32'",    # arrow keys/history on Windows
   "optiland>=0.6.0",                              # Optical design simulation (Phase 0)
   "rayoptics>=0.9.8",                             # Optical design ray tracing (Phase 0)
-  "pwm-agent-research>=0.1,<1",                   # research agent spec+tools (entry-point sourced)
-  "pwm-agent-paper>=0.1,<1",                      # paper agent spec (entry-point sourced)
-  "pwm-agent-imaging>=0.1,<1",                    # computational-imaging agent spec (entry-point sourced)
-  "pwm-agent-drug>=0.1,<1",                       # drug-design agent spec (entry-point sourced)
-  "pwm-agent-cancer>=0.1,<1",                     # cancer agent spec (entry-point sourced)
-  "pwm-agent-unified>=0.1,<1",                    # unified-LLM agent spec (entry-point sourced)
-  "pwm-agent-claude-gpu>=0.1,<1",                 # claude-code agent spec (entry-point sourced)
-  "pwm-agent-codex-gpu>=0.1,<1",                  # codex agent spec (entry-point sourced)
+  # NOTE: core does NOT depend on the pwm-agent-* packages (that would be a
+  # dependency cycle). The full framework (core + all agents) is the separate
+  # `pwm-ai4science` meta-package.
 ]
 
 [project.optional-dependencies]
@@ -76,9 +74,6 @@ Homepage = "https://github.com/integritynoble/AI4Science"
 Repository = "https://github.com/integritynoble/AI4Science"
 Issues = "https://github.com/integritynoble/AI4Science/issues"
 "PWM Protocol" = "https://physicsworldmodel.org"
-
-[tool.setuptools.dynamic]
-version = { attr = "ai4science.__version__" }
 
 [tool.setuptools]
 py-modules = ["pwm_agent_core"]
