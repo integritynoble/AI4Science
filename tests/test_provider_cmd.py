@@ -1,5 +1,6 @@
 """`ai4science provider start` — the one-command GPU-provider plug-in."""
 import os
+import re
 from typer.testing import CliRunner
 
 import ai4science.cli as climod
@@ -7,6 +8,13 @@ from ai4science import wallet as W
 from ai4science.commands import provider as provider_cmd
 
 runner = CliRunner()
+
+
+def _plain(s: str) -> str:
+    """Strip ANSI codes. On GitHub Actions, typer's rich help force-enables
+    terminal colors (GITHUB_ACTIONS env) and styles option tokens so that
+    '--wallet' is not a contiguous substring of the raw output."""
+    return re.sub(r"\x1b\[[0-9;]*m", "", s)
 
 
 def _clear_token():
@@ -17,7 +25,8 @@ def _clear_token():
 def test_provider_start_registered_in_cli():
     res = runner.invoke(climod.app, ["provider", "start", "--help"])
     assert res.exit_code == 0
-    assert "--wallet" in res.output and "--allow-exec" in res.output
+    out = _plain(res.output)
+    assert "--wallet" in out and "--allow-exec" in out
 
 
 def test_provider_start_requires_login(monkeypatch):
