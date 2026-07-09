@@ -12,6 +12,14 @@ from ai4science.harness import algorithm_tools
 CI_TOOLS = {"ci_modalities", "ci_algorithms", "ci_algorithm_info", "ci_run_algorithm",
             "run_algorithm"}
 
+# The real solver registry lives in the Physics_World_Model monorepo
+# (algorithm_base/), outside this package. Tests that hit it can only run
+# where that checkout exists (PWM_REPO_ROOT or a parent dir) — e.g. not on a
+# bare CI runner.
+needs_algorithm_base = pytest.mark.skipif(
+    algorithm_tools._repo_root() is None,
+    reason="requires the Physics_World_Model checkout (set PWM_REPO_ROOT)")
+
 
 def test_run_algorithm_preview_and_modality_scope():
     from pathlib import Path
@@ -61,6 +69,7 @@ def test_base_agents_never_subagents():
         assert not (BASE_AGENTS & targets), (spec.name, targets)
 
 
+@needs_algorithm_base
 def test_list_algorithms_real_registry(tmp_path):
     """In-repo: algorithm_base resolves via parent walk; CASSI solvers listed."""
     tool = {t.name: t for t in algorithm_tools.algorithm_tools()}["ci_algorithms"]
@@ -68,18 +77,21 @@ def test_list_algorithms_real_registry(tmp_path):
     assert "GAP-TV" in out and "MST-L" in out
 
 
+@needs_algorithm_base
 def test_modalities_filter(tmp_path):
     tool = {t.name: t for t in algorithm_tools.algorithm_tools()}["ci_modalities"]
     out = tool.func(tmp_path, filter="cassi")
     assert "cassi" in out
 
 
+@needs_algorithm_base
 def test_info_unknown_solver(tmp_path):
     tool = {t.name: t for t in algorithm_tools.algorithm_tools()}["ci_algorithm_info"]
     out = tool.func(tmp_path, modality="cassi", solver="nope")
     assert "[ci error]" in out and "nope" in out
 
 
+@needs_algorithm_base
 def test_run_refuses_gpu(tmp_path):
     np = pytest.importorskip("numpy")
     y = tmp_path / "y.npy"
