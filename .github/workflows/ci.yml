@@ -8,9 +8,22 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      COLUMNS: "200"   # wide terminal so rich/typer --help output isn't truncated in asserts
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
+      # GL libs for the optics stack (optiland/rayoptics import EGL via Qt)
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq libegl1 libgl1
       - run: pip install -e ".[dev]" || pip install -e .
+      # First-party agent packages (entry-point sourced, live on PyPI). The
+      # editable core above already satisfies their pwm-agent-core>=1,<2 pin,
+      # so the local runtime stays the one under test.
+      - run: >
+          pip install pwm-agent-research pwm-agent-paper pwm-agent-imaging
+          pwm-agent-drug pwm-agent-cancer pwm-agent-unified
+          pwm-agent-claude-gpu pwm-agent-codex-gpu
+      # Optional claude extra — a handful of tests import claude_agent_sdk.
+      - run: pip install claude-agent-sdk || true
       - run: python -m pytest -q

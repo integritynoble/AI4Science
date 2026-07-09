@@ -12,12 +12,37 @@ from ai4science.harness.agents.context import BuildContext
 from ai4science.harness.agents.capabilities import (
     resolve_capability, CAPABILITY_BUNDLES,
     register_plugin_bundle, clear_plugin_bundles,
+    register_agent_bundle, clear_agent_bundles,   # NEW
 )
 
 _SPECS_DIR = Path(__file__).parent / "specs"
 AGENT_REGISTRY: Dict[str, AgentSpec] = {}
+
+# GPU compute is a core capability for every agent, not an opt-in bundle —
+# so it is unioned into every spec's capabilities at registry build time.
+ALWAYS_ON_BUNDLES = ("compute-providers",)
 # Non-fatal problems from the last reload (bad manifests, etc.) — surfaced by /mcp diag.
 PLUGIN_ERRORS: List[str] = []
+
+# Canonical agent spec-name -> pip distribution name (see design doc naming table).
+_AGENT_DIST: Dict[str, str] = {
+    "research": "pwm-agent-research",
+    "paper": "pwm-agent-paper",
+    "computational-imaging": "pwm-agent-imaging",
+    "drug-design": "pwm-agent-drug",
+    "cancer": "pwm-agent-cancer",
+    "unified-LLM": "pwm-agent-unified",
+    "claude-code": "pwm-agent-claude-gpu",   # was keyed "claude-gpu"
+    "codex": "pwm-agent-codex-gpu",           # was keyed "codex-gpu"
+}
+
+# First-party agents that ship as their own package (for install hints).
+_SPLITTABLE_AGENTS = set(_AGENT_DIST)
+
+
+def install_hint(name: str) -> str:
+    dist = _AGENT_DIST.get(name, f"pwm-agent-{name}")
+    return f"{name} agent not installed — run: pip install {dist}"
 
 
 def _claude_code_base(ctx: BuildContext) -> Registry:
@@ -51,7 +76,8 @@ def _attach_spec_mcp_servers(spec: AgentSpec, ctx: BuildContext, reg: Registry) 
 
 def build_registry_for(spec: AgentSpec, *, is_subagent: bool, ctx: BuildContext) -> Registry:
     reg = _claude_code_base(ctx)
-    for cap in spec.capabilities:
+    caps = tuple(dict.fromkeys(spec.capabilities + ALWAYS_ON_BUNDLES))
+    for cap in caps:
         for t in resolve_capability(cap, ctx):
             reg.add(t)
     _attach_spec_mcp_servers(spec, ctx, reg)
@@ -83,6 +109,8 @@ def _agent_dispatch_tool(main: AgentSpec, ctx: BuildContext) -> Optional[Tool]:
     def _task(workspace, *, subagent_type: str, prompt: str) -> str:
         child_spec = AGENT_REGISTRY.get(subagent_type)
         if subagent_type not in targets or child_spec is None:
+            if subagent_type in _SPLITTABLE_AGENTS and child_spec is None:
+                return install_hint(subagent_type)
             return (f"[task] unknown subagent_type {subagent_type!r}; "
                     f"available: {listed}")
         session = ctx.session_factory(spec=child_spec, ctx=ctx)
@@ -115,6 +143,15 @@ def _load_spec_file(path: Path) -> AgentSpec:
 AGENT_ALIASES: Dict[str, str] = {}
 
 
+def _iter_entry_points(*, group: str):
+    """Indirection so tests can inject fake entry points."""
+    from importlib.metadata import entry_points
+    try:
+        return list(entry_points(group=group))       # py3.10+ selectable API
+    except TypeError:                                 # very old importlib shim
+        return list(entry_points().get(group, []))
+
+
 def _validate_caps(name: str, caps, where: str) -> None:
     for cap in caps:
         if cap not in CAPABILITY_BUNDLES:
@@ -125,8 +162,10 @@ def _validate_caps(name: str, caps, where: str) -> None:
 
 
 def reload(specs_dir: Optional[Path] = None, *, load_plugins: bool = True) -> Dict[str, AgentSpec]:
-    """Discover built-in specs/*.py (each exposing AGENT), then merge manifest
-    plug-ins from the plugins dir, into AGENT_REGISTRY."""
+    """Discover built-in specs/*.py (each exposing AGENT), then entry-point
+    bundles/specs (installed agent packages, groups `pwm_agent.bundles` and
+    `pwm_agent.specs`), then merge manifest plug-ins from the plugins dir,
+    into AGENT_REGISTRY."""
     directory = Path(specs_dir) if specs_dir else _SPECS_DIR
     found: Dict[str, AgentSpec] = {}
     aliases: Dict[str, str] = {}
@@ -139,6 +178,34 @@ def reload(specs_dir: Optional[Path] = None, *, load_plugins: bool = True) -> Di
         if agent.name in found:
             raise ValueError(f"duplicate agent name {agent.name!r} ({path})")
         _validate_caps(agent.name, agent.capabilities, str(path))
+        found[agent.name] = agent
+        for alias in agent.aliases:
+            aliases[alias] = agent.name
+
+    # ── entry-point plug-ins (installed agent packages) ──
+    clear_agent_bundles()
+    for ep in _iter_entry_points(group="pwm_agent.bundles"):
+        try:
+            ep.load()()                              # register() -> register_agent_bundle(...)
+        except Exception as exc:
+            PLUGIN_ERRORS.append(f"bundle entry-point {ep.name!r}: {exc}")
+    for ep in _iter_entry_points(group="pwm_agent.specs"):
+        try:
+            agent = ep.load()
+        except Exception as exc:
+            PLUGIN_ERRORS.append(f"spec entry-point {ep.name!r}: {exc}")
+            continue
+        if not isinstance(agent, AgentSpec):
+            PLUGIN_ERRORS.append(f"spec entry-point {ep.name!r}: not an AgentSpec")
+            continue
+        if agent.name in found:
+            PLUGIN_ERRORS.append(f"spec entry-point {agent.name!r}: name collides; skipped")
+            continue
+        try:
+            _validate_caps(agent.name, agent.capabilities, "entry-point")
+        except ValueError as exc:
+            PLUGIN_ERRORS.append(str(exc))
+            continue
         found[agent.name] = agent
         for alias in agent.aliases:
             aliases[alias] = agent.name

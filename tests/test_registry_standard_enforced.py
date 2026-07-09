@@ -13,7 +13,12 @@ def _prompt_text(agent) -> str:
 
 
 def test_ci_agent_enforces_standard():
-    from ai4science.harness.agents.specs.computational_imaging import AGENT
+    # computational-imaging is now sourced from the pwm-agent-imaging package
+    # via entry point (no local specs/computational_imaging.py file to
+    # import) — fetch it through the registry instead.
+    from ai4science.harness.agents import registry
+    registry.reload()
+    AGENT = registry.get("computational-imaging")
     t = _prompt_text(AGENT).lower()
     assert "pwm_standard_check" in t
     assert "registry standard" in t
@@ -21,14 +26,24 @@ def test_ci_agent_enforces_standard():
 
 
 def test_research_agent_enforces_standard():
-    from ai4science.harness.agents.specs.research import AGENT
+    # research is now sourced from the pwm-agent-research package via entry
+    # point (no local specs/research.py file to import) — fetch it through
+    # the registry instead.
+    from ai4science.harness.agents import registry
+    registry.reload()
+    AGENT = registry.get("research")
     t = _prompt_text(AGENT).lower()
     assert "pwm_standard_check" in t
     assert "registry standard" in t
 
 
 def test_both_have_science_router_capability():
-    from ai4science.harness.agents.specs.computational_imaging import AGENT as CI
-    from ai4science.harness.agents.specs.research import AGENT as R
+    # computational-imaging is now sourced from the pwm-agent-imaging package
+    # via entry point (no local specs/computational_imaging.py file to
+    # import) — fetch it through the registry instead.
+    from ai4science.harness.agents import registry
+    registry.reload()
+    CI = registry.get("computational-imaging")
+    R = registry.get("research")
     assert "science-router" in CI.capabilities
     assert "science-router" in R.capabilities

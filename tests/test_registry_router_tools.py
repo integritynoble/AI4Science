@@ -91,8 +91,13 @@ def test_science_router_capability_bundle_resolves():
 
 
 def test_ci_and_research_specs_have_science_router():
-    from ai4science.harness.agents.specs.computational_imaging import AGENT as CI
-    from ai4science.harness.agents.specs.research import AGENT as RESEARCH
+    # computational-imaging and research are now sourced from their packages
+    # via entry point (no local specs/computational_imaging.py or specs/research.py
+    # files to import) — fetch them through the registry instead.
+    from ai4science.harness.agents import registry
+    registry.reload()
+    CI = registry.get("computational-imaging")
+    RESEARCH = registry.get("research")
     assert "science-router" in CI.capabilities
     assert "science-router" in RESEARCH.capabilities
 

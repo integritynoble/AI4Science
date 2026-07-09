@@ -16,11 +16,6 @@ def _pwm_data(ctx: BuildContext) -> List[Tool]:
     return list(research_tools())
 
 
-def _onboarding(ctx: BuildContext) -> List[Tool]:
-    from ai4science.harness.onboard_tools import onboard_tools
-    return list(onboard_tools())
-
-
 def _paper_review(ctx: BuildContext) -> List[Tool]:
     from ai4science.harness.paper_tools import paper_tools
     from ai4science.harness.research_tools import research_tools
@@ -78,7 +73,6 @@ def _cancer(ctx: BuildContext) -> List[Tool]:
 BUILTIN_BUNDLES: Dict[str, Callable[[BuildContext], List[Tool]]] = {
     "pwm-actions": _pwm_actions,
     "pwm-data": _pwm_data,
-    "onboarding": _onboarding,
     "paper-review": _paper_review,
     "computational-imaging": _computational_imaging,
     "compute-providers": _compute_providers,
@@ -95,6 +89,10 @@ BUILTIN_BUNDLES: Dict[str, Callable[[BuildContext], List[Tool]]] = {
 # touching the built-ins.
 PLUGIN_BUNDLES: Dict[str, Callable[[BuildContext], List[Tool]]] = {}
 
+# Bundles contributed by installed agent packages (entry-point group
+# "pwm_agent.bundles"). Rebuilt from entry points on every registry reload.
+AGENT_BUNDLES: Dict[str, Callable[[BuildContext], List[Tool]]] = {}
+
 # Back-compat name: the union view used for validation + lookup.
 CAPABILITY_BUNDLES: Dict[str, Callable[[BuildContext], List[Tool]]] = dict(BUILTIN_BUNDLES)
 
@@ -102,6 +100,7 @@ CAPABILITY_BUNDLES: Dict[str, Callable[[BuildContext], List[Tool]]] = dict(BUILT
 def _rebuild_union() -> None:
     CAPABILITY_BUNDLES.clear()
     CAPABILITY_BUNDLES.update(BUILTIN_BUNDLES)
+    CAPABILITY_BUNDLES.update(AGENT_BUNDLES)
     CAPABILITY_BUNDLES.update(PLUGIN_BUNDLES)
 
 
@@ -113,6 +112,17 @@ def register_plugin_bundle(name: str, provider: Callable[[BuildContext], List[To
 
 def clear_plugin_bundles() -> None:
     PLUGIN_BUNDLES.clear()
+    _rebuild_union()
+
+
+def register_agent_bundle(name: str, provider: Callable[[BuildContext], List[Tool]]) -> None:
+    """Register a capability bundle owned by an installed agent package."""
+    AGENT_BUNDLES[name] = provider
+    _rebuild_union()
+
+
+def clear_agent_bundles() -> None:
+    AGENT_BUNDLES.clear()
     _rebuild_union()
 
 
