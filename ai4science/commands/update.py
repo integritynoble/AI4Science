@@ -25,7 +25,15 @@ from typing import Optional
 
 import typer
 
-PKG = "pwm-ai4science[claude]"
+# Packaging since 1.0: PyPI installs use the thin META (core + all agents; it
+# has no [claude] extra — the SDK is topped up separately). Branch/tag ZIPs of
+# this repo build the RUNTIME dist `pwm-agent-core`, whose [claude] extra still
+# exists; after a zip update the agent packages are topped up from PyPI.
+PKG = "pwm-ai4science"
+CORE_PKG = "pwm-agent-core[claude]"
+AGENT_PKGS = ("pwm-agent-research", "pwm-agent-paper", "pwm-agent-imaging",
+              "pwm-agent-drug", "pwm-agent-cancer", "pwm-agent-unified",
+              "pwm-agent-claude-gpu", "pwm-agent-codex-gpu")
 _GH = "https://github.com/integritynoble/AI4Science/archive/refs/heads"
 _GH_SHA = "https://github.com/integritynoble/AI4Science/archive"
 _API = "https://api.github.com/repos/integritynoble/AI4Science/commits/main"
@@ -84,8 +92,10 @@ def write_channel(channel: str) -> None:
 
 
 def _spec(channel: str) -> str:
+    """Branch-zip spec. The zip builds the runtime dist `pwm-agent-core` —
+    naming it anything else makes pip abort on a metadata name mismatch."""
     url = _dev_zip_url() if channel == "dev" else f"{_GH}/{_BRANCH[channel]}.zip"
-    return f"{PKG} @ {url}"
+    return f"{CORE_PKG} @ {url}"
 
 
 def _in_venv() -> bool:
@@ -244,13 +254,18 @@ def update(
                 "[update] failed — see pip output above.\n"
                 "  Recover from a NORMAL PowerShell window (NOT inside ai4science):\n"
                 f'    & "{sys.executable}" -m pip install --no-deps '
-                f"--force-reinstall --no-cache-dir \"pwm-ai4science @ {url}\"")
+                f"--force-reinstall --no-cache-dir \"pwm-agent-core @ {url}\"")
         else:
             typer.echo("[update] failed — see pip output above. Manual fallback "
                        "(skips deps, avoids the file-lock):\n"
                        f"  pip install --user --force-reinstall --no-deps "
                        f"--no-cache-dir '{_spec(channel)}'")
         raise typer.Exit(rc_code)
+    # Top-up: after a zip update only core refreshed — make sure the agent
+    # packages and the claude SDK are present (fast no-op when already
+    # satisfied, e.g. after a PyPI meta install). Best-effort.
+    subprocess.call(_pip_cmd(*AGENT_PKGS, "claude-agent-sdk>=0.1",
+                             force=False, no_deps=False))
     # report the NEW version from a fresh interpreter (this process still has the
     # old module loaded; importlib.metadata can hit a stale dist-info)
     out = subprocess.run(

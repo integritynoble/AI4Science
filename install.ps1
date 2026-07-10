@@ -35,13 +35,22 @@ $Channel   = if ($env:AI4SCIENCE_CHANNEL) { $env:AI4SCIENCE_CHANNEL.ToLower() } 
 $Branch    = switch ($Channel) { "rc" { "rc" } "dev" { "main" } default { "stable" } }
 $GitUrl    = "https://github.com/integritynoble/AI4Science/archive/refs/heads/$Branch.zip"
 # Source spec with optional [claude] extra, as a PEP 508 direct reference.
+# Packaging since 1.0: repo zips build the RUNTIME dist `pwm-agent-core`; the
+# 8 first-party agents are separate PyPI packages ($AgentPkgs, installed after
+# a zip install). Tags v0.x predate the split and still build the
+# self-contained `pwm-ai4science` dist (agents builtin — no top-up, and adding
+# core 1.x next to it would shadow the old runtime).
 $Extra     = if ($WithClaude) { "[claude]" } else { "" }
+$AgentPkgs = @("pwm-agent-research","pwm-agent-paper","pwm-agent-imaging","pwm-agent-drug",
+               "pwm-agent-cancer","pwm-agent-unified","pwm-agent-claude-gpu","pwm-agent-codex-gpu")
+$IsLegacyTag = [bool]($Version -and $Version -like "0.*")
 function Get-SrcSpec {
     if ($Version) {
         $tag = "https://github.com/integritynoble/AI4Science/archive/refs/tags/v$Version.zip"
-        return "pwm-ai4science$Extra @ $tag"
+        if ($IsLegacyTag) { return "pwm-ai4science$Extra @ $tag" }
+        return "pwm-agent-core$Extra @ $tag"
     }
-    return "pwm-ai4science$Extra @ $GitUrl"
+    return "pwm-agent-core$Extra @ $GitUrl"
 }
 
 function Say($m) { Write-Host "▸ $m" -ForegroundColor Cyan }
@@ -102,8 +111,11 @@ if ($uvExe) {
     # Install from the GitHub branch zip — NOT a bare PyPI name (pwm-ai4science
     # is not on PyPI yet → 404). uv resolves the [claude] extra from the zip.
     $src = Get-SrcSpec
+    # A repo zip is core-only — bring the agent packages into the tool env too.
+    $withFlags = @()
+    if (-not $IsLegacyTag) { foreach ($p in $AgentPkgs) { $withFlags += @("--with", $p) } }
     try {
-        & $uvExe tool install $src --force 2>&1
+        & $uvExe tool install $src @withFlags --force 2>&1
         if ($LASTEXITCODE -eq 0) {
             New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
             Set-Content -Path (Join-Path $InstallDir "channel") -Value $Channel
@@ -199,9 +211,17 @@ else { Say "Installing the [$Channel] channel from GitHub ($Branch.zip)…" }
 & $pip install --quiet $src
 if ($LASTEXITCODE -eq 0) {
     Set-Content -Path (Join-Path $InstallDir "channel") -Value $Channel
-    Ok "Installed $Pkg ([$Channel] channel)"
+    Ok "Installed ([$Channel] channel)"
 } else {
     throw "Install failed from $GitUrl — check your network connection."
+}
+
+# A repo zip is core-only — install the first-party agent packages from PyPI.
+if (-not $IsLegacyTag) {
+    Say "Installing the first-party agent packages…"
+    & $pip install --quiet @AgentPkgs
+    if ($LASTEXITCODE -eq 0) { Ok "Installed agent packages" }
+    else { Warn "agent packages failed to install — run: $pip install $($AgentPkgs -join ' ')" }
 }
 
 # ── PATH ──────────────────────────────────────────────────────────────────────

@@ -347,7 +347,7 @@ def _route_prompt(prompt: str, agent_name: str,
         console.print(
             "[yellow]No rule matched and no agent is available.[/yellow]\n"
             "Enable a real agent (works like Claude Code):\n"
-            "  • Claude:  [cyan]pip install 'pwm-ai4science\\[claude]'[/cyan] then [cyan]claude login[/cyan]\n"
+            "  • Claude:  [cyan]pip install claude-agent-sdk[/cyan] then [cyan]claude login[/cyan]\n"
             "  • Codex:   install the [cyan]codex[/cyan] CLI then [cyan]codex login[/cyan]\n"
             "Then re-run, or pass [cyan]--agent claude[/cyan] / [cyan]--agent codex[/cyan] explicitly.\n"
             "Or use a deterministic command directly:\n"

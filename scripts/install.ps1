@@ -6,7 +6,10 @@
 # No git required (installs from the GitHub zip archive). Safe to re-run.
 $ErrorActionPreference = "Stop"
 
-$Spec = "pwm-ai4science[claude] @ https://github.com/integritynoble/AI4Science/archive/refs/heads/main.zip"
+# The repo zip builds the RUNTIME dist `pwm-agent-core` (since 1.0); the 8
+# first-party agents are separate PyPI packages installed right after.
+$Spec = "pwm-agent-core[claude] @ https://github.com/integritynoble/AI4Science/archive/refs/heads/main.zip"
+$AgentPkgs = "pwm-agent-research pwm-agent-paper pwm-agent-imaging pwm-agent-drug pwm-agent-cancer pwm-agent-unified pwm-agent-claude-gpu pwm-agent-codex-gpu"
 
 function Find-Python {
     foreach ($c in @("py -3", "python", "python3")) {
@@ -25,8 +28,9 @@ if (-not $Py) {
     exit 1
 }
 
-Write-Host "- installing AI4Science (pwm-ai4science[claude]) ..." -ForegroundColor Cyan
+Write-Host "- installing AI4Science (pwm-agent-core[claude] + agents) ..." -ForegroundColor Cyan
 Invoke-Expression "$Py -m pip install --user --upgrade --no-cache-dir `"$Spec`""
+Invoke-Expression "$Py -m pip install --user --no-cache-dir $AgentPkgs"
 
 # Add the user scripts dir to PATH automatically (like Claude Code's installer)
 $UserScripts = Invoke-Expression "$Py -c `"import sysconfig; print(sysconfig.get_path('scripts', 'nt_user'))`""

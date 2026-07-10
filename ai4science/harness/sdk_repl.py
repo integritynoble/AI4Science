@@ -69,7 +69,7 @@ def sdk_available() -> Tuple[bool, str]:
         import claude_agent_sdk  # noqa: F401
     except ImportError:
         return False, ("claude-agent-sdk not installed — "
-                       "pip install 'pwm-ai4science[claude]'")
+                       "pip install claude-agent-sdk")
     if not shutil.which("claude"):
         return False, ("claude CLI not on PATH — npm i -g @anthropic-ai/claude-code "
                        "then `claude login`")

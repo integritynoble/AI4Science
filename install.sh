@@ -127,24 +127,47 @@ say "Creating venv at $VENV"
 
 # 3. Install the chosen channel: PyPI first for stable/rc (phase 2), then the
 #    branch ZIP from GitHub (no git needed), then dev (main) as a last resort.
+#
+#    Packaging (since 1.0): the repo builds the RUNTIME dist `pwm-agent-core`;
+#    the 8 first-party agents are separate PyPI packages; `pwm-ai4science` is a
+#    thin meta-package = core + all agents. So:
+#      • PyPI installs use the meta ($PKG) — agents come along automatically.
+#      • Branch/tag ZIP installs build `pwm-agent-core` — the agent packages
+#        must be installed afterwards (from PyPI) or agents are missing.
+#      • Tags v0.x predate the split: their zips still build `pwm-ai4science`
+#        (self-contained, agents builtin) — no agent packages needed (and
+#        installing them would shadow the old runtime with core 1.x).
+CORE_PKG="pwm-agent-core"
+AGENT_PKGS="pwm-agent-research pwm-agent-paper pwm-agent-imaging pwm-agent-drug
+            pwm-agent-cancer pwm-agent-unified pwm-agent-claude-gpu pwm-agent-codex-gpu"
 extra=""; [ "$WITH_CLAUDE" = "1" ] && extra="[claude]"
-_src() { local url="$1"; if [ -n "$extra" ]; then echo "${PKG}${extra} @ ${url}"; else echo "$url"; fi; }
+_src() { local url="$1"; echo "${CORE_PKG}${extra} @ ${url}"; }
+NEED_AGENTS=0   # set after a core-only (zip) install; meta/PyPI installs don't need it
 if [ -n "${AI4SCIENCE_REF:-}" ]; then
   say "Installing from AI4SCIENCE_REF=$AI4SCIENCE_REF"
   "$VENV/bin/pip" install --quiet "$AI4SCIENCE_REF" || die "install failed"
+  # A REF may be a bare zip of this repo (core-only) — top up agents if so.
+  "$VENV/bin/pip" show pwm-agent-core >/dev/null 2>&1 && NEED_AGENTS=1
 elif [ -n "$VERSION" ]; then
   TAG_URL="https://github.com/integritynoble/AI4Science/archive/refs/tags/v${VERSION}.zip"
   say "Installing pinned version v$VERSION…"
-  "$VENV/bin/pip" install --quiet "$(_src "$TAG_URL")" \
-    || die "could not install v$VERSION (does that tag exist? e.g. v0.6.21, v0.6.20)"
-  ok "Installed $PKG v$VERSION from GitHub"
+  case "$VERSION" in
+    0.*)  # pre-split, self-contained dist
+      SPEC="pwm-ai4science${extra} @ ${TAG_URL}" ;;
+    *)    # 1.0+ tags build pwm-agent-core; agents topped up below
+      SPEC="$(_src "$TAG_URL")"; NEED_AGENTS=1 ;;
+  esac
+  "$VENV/bin/pip" install --quiet "$SPEC" \
+    || die "could not install v$VERSION (does that tag exist? e.g. v0.6.21, v1.0.0)"
+  ok "Installed v$VERSION from GitHub"
 else
   pre=""; [ "$CHANNEL" = rc ] && pre="--pre"
   ok_install=0
-  # 3a. PyPI (stable/rc only; dev is never published to PyPI).
+  # 3a. PyPI (stable/rc only; dev is never published to PyPI). The meta pulls
+  #     core + all agents. (No [claude] extra on the meta — SDK added below.)
   if [ "$CHANNEL" != dev ]; then
     say "Installing the [$CHANNEL] channel from PyPI…"
-    if "$VENV/bin/pip" install --quiet $pre "${PKG}${extra}" 2>/dev/null; then
+    if "$VENV/bin/pip" install --quiet $pre "${PKG}" 2>/dev/null; then
       ok "Installed $PKG ([$CHANNEL] channel) from PyPI"; ok_install=1
     fi
   fi
@@ -152,16 +175,31 @@ else
   if [ "$ok_install" = 0 ]; then
     say "Installing [$CHANNEL] from the $BRANCH branch zip…"
     if "$VENV/bin/pip" install --quiet "$(_src "$ZIP_URL")" 2>/dev/null; then
-      ok "Installed $PKG ([$CHANNEL] channel) from GitHub"; ok_install=1
+      ok "Installed $CORE_PKG ([$CHANNEL] channel) from GitHub"; ok_install=1; NEED_AGENTS=1
     elif [ "$BRANCH" != main ]; then
       # stable/rc branch absent (before first cut) → fall back to dev (main).
       say "[$CHANNEL] not published yet — falling back to dev (main)."
       CHANNEL=dev
       "$VENV/bin/pip" install --quiet "$(_src "$GH/main.zip")" \
-        && ok_install=1 || die "install failed — check network access to github.com"
+        && { ok_install=1; NEED_AGENTS=1; } || die "install failed — check network access to github.com"
     fi
   fi
   [ "$ok_install" = 1 ] || die "install failed — check network access"
+fi
+
+# 3c. Agent packages — required after any core-only (zip) install. The editable
+#     core already satisfies their pwm-agent-core>=1,<2 pin.
+if [ "$NEED_AGENTS" = 1 ]; then
+  say "Installing the first-party agent packages…"
+  # shellcheck disable=SC2086
+  "$VENV/bin/pip" install --quiet $AGENT_PKGS \
+    && ok "Installed agent packages" \
+    || printf '\033[33m⚠ agent packages failed to install — run:\n    %s/bin/pip install %s\033[0m\n' "$VENV" "$AGENT_PKGS"
+fi
+# 3d. Claude chat extra (default on): the SDK behind `--mode claude`. The PyPI
+#     meta has no [claude] extra, so install it explicitly; best-effort.
+if [ "$WITH_CLAUDE" = "1" ]; then
+  "$VENV/bin/pip" install --quiet "claude-agent-sdk>=0.1" >/dev/null 2>&1 || true
 fi
 
 # Record the channel so `ai4science update` keeps the user on this line.
