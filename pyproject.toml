@@ -11,7 +11,7 @@ build-backend = "setuptools.build_meta"
 # separately. The dist version tracks the pwm_agent_core CONTRACT_VERSION major
 # (1.x); the internal code version is `ai4science.__version__`.
 name = "pwm-agent-core"
-version = "1.0.0"
+version = "1.0.1"
 description = "PWM agent runtime (core): the AI4Science harness + pwm_agent_core facade that standalone PWM agent packages run on."
 readme = "README.md"
 # Runtime contract for standalone agent packages: they import the runtime ONLY
