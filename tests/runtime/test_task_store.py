@@ -31,3 +31,18 @@ def test_open_or_resume_resumes_existing(tmp_path):
     store.record(st, kind="step", payload={"plan": "s"})
     st_again = store.open_or_resume("t3", c)   # must resume, not clobber
     assert any(j["plan"] == "s" for j in st_again.journal)
+
+def test_resume_tolerates_torn_final_line(tmp_path):
+    store = TaskStore(Path(tmp_path))
+    c = compile_contract(objective="x", capability_profile="A1")
+    st = store.open_or_resume("t5", c)
+    store.record(st, kind="step", payload={"plan": "s1"})
+    store.record(st, kind="step", payload={"plan": "s2"})
+    p = Path(tmp_path) / "t5.jsonl"
+    lines = p.read_text().splitlines()
+    lines[-1] = lines[-1][: max(1, len(lines[-1]) // 2)]  # simulate a torn final append
+    p.write_text("\n".join(lines) + "\n")
+    recovered = TaskStore(Path(tmp_path)).resume("t5")   # must NOT raise
+    assert recovered is not None
+    assert recovered.contract.hash() == c.hash()
+    assert any(j["plan"] == "s1" for j in recovered.journal)  # recoverable prefix intact

@@ -43,10 +43,20 @@ class TaskStore:
         if not path.exists():
             return None
         state: TaskState | None = None
-        for line in path.read_text().splitlines():
+        lines = path.read_text().splitlines()
+        for i, line in enumerate(lines):
             if not line.strip():
                 continue
-            rec = json.loads(line)
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                # A crash mid-append leaves a torn trailing line; treat it as EOF
+                # and return the recoverable prefix. An interior corrupt line is
+                # unexpected in an append-only log — skip it but keep replaying so
+                # recoverable history is never lost.
+                if i == len(lines) - 1:
+                    break
+                continue
             kind = rec.get("kind")
             if kind == "open":
                 state = TaskState(task_id=task_id,
