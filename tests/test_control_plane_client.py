@@ -10,6 +10,8 @@ def _serve(tmp_path):
     from pwm_control_plane.audit import AuditLog
     from pwm_control_plane.governor import ResourceGovernor
     from pwm_control_plane.policy import PolicyEngine, generate_keypair, sign_bundle
+    from pwm_control_plane.credentials import CredentialBroker, generate_fernet_key
+    from pwm_control_plane.sandbox import SandboxExecutor
     from pwm_control_plane.service import build_app
     import os
     os.environ["PWM_CP_STATE_DIR"] = str(tmp_path)
@@ -20,7 +22,9 @@ def _serve(tmp_path):
               "rules": {"allow_action_targets": {"sandbox_exec": ["workspace/*"]}}}
     (cfg.policy_dir / "rules.signed.json").write_text(json.dumps(sign_bundle(bundle, priv)))
     policy = PolicyEngine(cfg.policy_dir, pub); policy.load()
-    app = build_app(cfg, policy, ResourceGovernor(), AuditLog(cfg.audit_path))
+    broker = CredentialBroker(generate_fernet_key())
+    executor = SandboxExecutor()
+    app = build_app(cfg, policy, ResourceGovernor(), AuditLog(cfg.audit_path), broker, executor)
     uds = tmp_path / "cp.sock"
     server = uvicorn.Server(uvicorn.Config(app, uds=str(uds), log_level="warning"))
     threading.Thread(target=server.run, daemon=True).start()
@@ -47,3 +51,10 @@ def test_fail_closed_on_dead_socket(tmp_path):
     assert d["allowed"] is False
     assert "unreachable" in d["reason"].lower()
     assert c.healthz() is False
+
+def test_sandbox_execute_fail_closed_on_dead_socket(tmp_path):
+    c = ControlPlaneClient(str(tmp_path / "nope.sock"), timeout=0.5)
+    r = c.sandbox_execute("run", ["true"])
+    assert r["is_error"] is True and "unreachable" in r["reason"].lower()
+    lease = c.credential_lease("run", "llm")
+    assert lease["active"] is False and lease["lease_id"] is None

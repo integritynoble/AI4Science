@@ -39,3 +39,22 @@ class ControlPlaneClient:
                               json={"kind": kind, "run_id": run_id, "payload": payload})
         r.raise_for_status()
         return r.json()
+
+    def credential_lease(self, run_id: str, scope: str) -> dict:
+        try:
+            r = self._client.post("/credential_lease", json={"run_id": run_id, "scope": scope})
+            r.raise_for_status()
+            return r.json()
+        except Exception:
+            return {"lease_id": None, "active": False}
+
+    def sandbox_execute(self, run_id: str, command: list, *, scope=None,
+                        net_allowlist=None, workspace_target=None) -> dict:
+        try:
+            r = self._client.post("/sandbox_execute", json={
+                "run_id": run_id, "command": command, "scope": scope,
+                "net_allowlist": net_allowlist, "workspace_target": workspace_target})
+            r.raise_for_status()
+            return r.json()
+        except Exception:
+            return {"is_error": True, "reason": "control plane unreachable"}
