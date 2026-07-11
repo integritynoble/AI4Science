@@ -46,3 +46,22 @@ def test_resume_tolerates_torn_final_line(tmp_path):
     assert recovered is not None
     assert recovered.contract.hash() == c.hash()
     assert any(j["plan"] == "s1" for j in recovered.journal)  # recoverable prefix intact
+
+def test_append_repairs_torn_write_so_next_record_survives(tmp_path):
+    c = compile_contract(objective="x", capability_profile="A1")
+    store = TaskStore(Path(tmp_path))
+    st = store.open_or_resume("t6", c)
+    store.record(st, kind="step", payload={"plan": "s1"})
+    # simulate a real crash mid-append: truncate the file mid-last-line, NO trailing newline
+    p = Path(tmp_path) / "t6.jsonl"
+    raw = p.read_text()
+    p.write_text(raw[: len(raw) - 4])          # chops the trailing newline + part of the last record
+    assert not p.read_text().endswith("\n")     # confirm the torn shape (no trailing newline)
+    # a fresh process resumes and records a new COMMITTED step
+    store2 = TaskStore(Path(tmp_path))
+    st2 = store2.open_or_resume("t6", c)
+    store2.record(st2, kind="step", payload={"plan": "s2-redone"})
+    # a later resume must retain that post-crash committed step
+    st3 = TaskStore(Path(tmp_path)).resume("t6")
+    assert st3 is not None
+    assert any(j.get("plan") == "s2-redone" for j in st3.journal)  # committed step NOT dropped

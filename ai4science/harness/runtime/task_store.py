@@ -82,5 +82,17 @@ class TaskStore:
             state.final_status = payload.get("status")
 
     def _append(self, task_id: str, record: dict) -> None:
-        with self._path(task_id).open("a") as f:
+        path = self._path(task_id)
+        # Close off any torn trailing line left by a crashed prior append, so the
+        # new record lands on its own parseable line instead of being concatenated
+        # onto the truncated remnant. The remnant then becomes a skippable interior
+        # line that resume() tolerates. O(1): only the last byte is inspected.
+        if path.exists() and path.stat().st_size > 0:
+            with path.open("rb") as f:
+                f.seek(-1, 2)
+                last_byte = f.read(1)
+            if last_byte != b"\n":
+                with path.open("a") as f:
+                    f.write("\n")
+        with path.open("a") as f:
             f.write(json.dumps(record) + "\n")
