@@ -26,3 +26,7 @@ class AgentSpec:
     price_pwm: float = 0.0                      # per-use price set by the contributor (0 = free)
     mcp_servers: Tuple[Dict[str, Any], ...] = ()  # external MCP servers providing this agent's tools
     source: str = "builtin"                     # "builtin" | "plugin" (provenance)
+    # Interaction profiles (for agent mode/interaction specialization):
+    supported_profiles: Tuple[str, ...] = ("I0", "I1", "I2")  # list of profile IDs this agent supports
+    default_profile: str = "I1"                 # default interaction profile when user gives none
+    approval_required_for: Tuple[str, ...] = ()  # operations ("publish", "deploy", "spend") requiring approval
