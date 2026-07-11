@@ -58,3 +58,10 @@ def test_sandbox_execute_fail_closed_on_dead_socket(tmp_path):
     assert r["is_error"] is True and "unreachable" in r["reason"].lower()
     lease = c.credential_lease("run", "llm")
     assert lease["active"] is False and lease["lease_id"] is None
+
+def test_classify_fail_closed_on_dead_socket(tmp_path):
+    c = ControlPlaneClient(str(tmp_path / "nope.sock"), timeout=0.5)
+    r = c.classify("run", "routine")
+    assert r["decision"] == "ASK" and "unreachable" in r["reason"].lower()
+    s = c.set_interaction_profile("run", "I0")
+    assert s["ok"] is False

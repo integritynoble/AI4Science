@@ -18,10 +18,11 @@ class ControlPlaneClient:
         except Exception:
             return False
 
-    def open_run(self, goal: str, capability_profile: str, hard_limits: dict) -> dict:
+    def open_run(self, goal: str, capability_profile: str, hard_limits: dict,
+                 interaction_profile: str = "I1") -> dict:
         r = self._client.post("/open_run", json={
             "goal": goal, "capability_profile": capability_profile,
-            "hard_limits": hard_limits})
+            "hard_limits": hard_limits, "interaction_profile": interaction_profile})
         r.raise_for_status()
         return r.json()
 
@@ -58,3 +59,23 @@ class ControlPlaneClient:
             return r.json()
         except Exception:
             return {"is_error": True, "reason": "control plane unreachable"}
+
+    def classify(self, run_id: str, boundary_kind: str, *, step_summary: str = "",
+                 action_type=None) -> dict:
+        try:
+            r = self._client.post("/classify", json={
+                "run_id": run_id, "boundary_kind": boundary_kind,
+                "step_summary": step_summary, "action_type": action_type})
+            r.raise_for_status()
+            return r.json()
+        except Exception:
+            return {"decision": "ASK", "reason": "gateway unreachable"}
+
+    def set_interaction_profile(self, run_id: str, profile: str, approval_token=None) -> dict:
+        try:
+            r = self._client.post("/set_interaction_profile", json={
+                "run_id": run_id, "profile": profile, "approval_token": approval_token})
+            r.raise_for_status()
+            return r.json()
+        except Exception:
+            return {"ok": False, "reason": "control plane unreachable", "profile": profile}
