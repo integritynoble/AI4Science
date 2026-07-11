@@ -13,6 +13,7 @@ class TaskState:
     artifacts: list = field(default_factory=list)
     checklist: list = field(default_factory=list)
     finished: bool = False
+    final_status: str | None = None
     cursor: int = 0
 
 class TaskStore:
@@ -78,6 +79,7 @@ class TaskStore:
             state.checklist.append(payload)
         elif kind == "finish":
             state.finished = True
+            state.final_status = payload.get("status")
 
     def _append(self, task_id: str, record: dict) -> None:
         with self._path(task_id).open("a") as f:

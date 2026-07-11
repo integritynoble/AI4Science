@@ -5,6 +5,7 @@ from .task_store import TaskStore, TaskState
 from .verifier import Verdict
 
 _EXTERNAL = {"network_egress", "publish", "send", "delete", "spend", "deploy"}
+_SAFE_ACTIONS = {"sandbox_exec", "read"}
 MAX_STEPS = 50
 
 @dataclass
@@ -27,12 +28,17 @@ def detect_boundary(step: PlanStep, state: TaskState) -> str:
         return step.flagged_kind
     if state.journal and state.journal[-1].get("failed"):
         return "recoverable_failure"
-    return "routine"
+    if step.action_type in _SAFE_ACTIONS:
+        return "routine"
+    return "irreversible_or_external"   # unknown/None action_type -> fail safe (never routine)
 
 def run_task(*, run_id, contract, client, planner, verifier, store, task_id, on_ask=None) -> dict:
     state = store.open_or_resume(task_id, contract)
+    if state.finished:
+        return {"status": state.final_status or "delivered", "task_id": task_id, "resumed": True}
+    max_steps = int(state.contract.budget.get("tool_calls", MAX_STEPS))
     steps = 0
-    while not state.finished and steps < MAX_STEPS:
+    while not state.finished and steps < max_steps:
         steps += 1
         step = planner.next_step(state)
         if step.done:
@@ -46,9 +52,9 @@ def run_task(*, run_id, contract, client, planner, verifier, store, task_id, on_
             if on_ask:
                 on_ask(step, state)
             return {"status": "awaiting_owner", "task_id": task_id, "step": step.summary}
-        if decision == "DENY":
-            store.record(state, kind="finish", payload={"status": "blocked", "why": "denied"})
-            return {"status": "blocked", "task_id": task_id, "why": "denied"}
+        if decision != "ACT":   # DENY or ANY unexpected value -> fail closed, never execute
+            store.record(state, kind="finish", payload={"status": "blocked", "why": f"decision {decision}"})
+            return {"status": "blocked", "task_id": task_id, "why": f"decision {decision}"}
         result = client.sandbox_execute(run_id, step.command, scope=None,
                                         net_allowlist=None, workspace_target=None)
         verdict = verifier.check(result, contract)

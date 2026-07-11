@@ -60,3 +60,27 @@ def test_repair_then_blocker(tmp_path):
     out = run_task(run_id="r", contract=_contract(), client=FakeClient("ACT"), planner=OneStepPlanner(),
                    verifier=NeverCompleteVerifier(), store=TaskStore(Path(tmp_path)), task_id="t4")
     assert out["status"] == "blocked"
+
+def test_unknown_action_type_is_not_routine():
+    from ai4science.harness.runtime.task_store import TaskState
+    st = TaskState(task_id="t", contract=_contract())
+    assert detect_boundary(PlanStep(summary="wire funds", command=["x"], action_type="wire_transfer"), st) == "irreversible_or_external"
+    assert detect_boundary(PlanStep(summary="x", command=["x"], action_type=None), st) == "irreversible_or_external"
+    assert detect_boundary(PlanStep(summary="x", command=["x"]), st) == "routine"  # default sandbox_exec
+
+def test_unexpected_decision_fails_closed(tmp_path):
+    from pathlib import Path
+    client = FakeClient("WAT")   # not ACT/ASK/DENY
+    out = run_task(run_id="r", contract=_contract(), client=client, planner=OneStepPlanner(),
+                   verifier=CompleteVerifier(), store=TaskStore(Path(tmp_path)), task_id="tf")
+    assert out["status"] == "blocked" and client.executed == []
+
+def test_resume_finished_reports_final_status(tmp_path):
+    from pathlib import Path
+    store = TaskStore(Path(tmp_path))
+    args = dict(run_id="r", contract=_contract(), client=FakeClient("ACT"), planner=OneStepPlanner(),
+                verifier=CompleteVerifier(), store=store, task_id="tr")
+    first = run_task(**args)
+    assert first["status"] == "delivered"
+    again = run_task(**{**args, "planner": OneStepPlanner()})
+    assert again["status"] == "delivered" and again.get("resumed") is True
