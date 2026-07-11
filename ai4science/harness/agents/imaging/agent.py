@@ -9,11 +9,10 @@ from .planner import ReferenceImagingPlanner
 def run_imaging_task(*, workspace, client, store, task_id, interaction_mode: str = "I2",
                      capability_profile: str = "A1", seed: int = 42, max_repairs: int = 2,
                      on_ask=None) -> dict:
-    """Seed a CASSI benchmark, then drive the dual-mode runtime to a physics-verified
-    reconstruction (I2 autonomous / I0-I1 propose-then-approve)."""
+    """Seed a CASSI benchmark locally, stage it into the run's sandbox workspace, then drive
+    the dual-mode runtime to a physics-verified reconstruction (judged in the run workspace)."""
     workspace = Path(workspace)
     seed_cassi_workspace(workspace, seed=seed)
-    # Pull the agent's declared approval envelope from its manifest.
     from ai4science.harness.agents.specs.imaging import AGENT
     contract = compile_contract(
         objective="reconstruct the CASSI scene",
@@ -25,9 +24,14 @@ def run_imaging_task(*, workspace, client, store, task_id, interaction_mode: str
     )
     run = client.open_run("cassi reconstruction", capability_profile,
                           {"actions": max_repairs + 3}, interaction_profile=interaction_mode)
+    run_ws = Path(run["workspace_path"])
+    # Stage the seeded inputs into the run's confined sandbox workspace.
+    for p in sorted(workspace.rglob("*")):
+        if p.is_file():
+            client.stage_input(run["run_id"], p.relative_to(workspace).as_posix(), p.read_bytes())
     result = run_task(run_id=run["run_id"], contract=contract, client=client,
                       planner=ReferenceImagingPlanner(max_repairs=max_repairs),
-                      verifier=PhysicsJudgeVerifier(workspace), store=store, task_id=task_id,
+                      verifier=PhysicsJudgeVerifier(run_ws), store=store, task_id=task_id,
                       on_ask=on_ask)
-    result["judge_report"] = str(workspace / "reports" / "judge_report.json")
+    result["judge_report"] = str(run_ws / "reports" / "judge_report.json")
     return result
