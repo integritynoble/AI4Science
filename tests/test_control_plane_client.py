@@ -65,3 +65,8 @@ def test_classify_fail_closed_on_dead_socket(tmp_path):
     assert r["decision"] == "ASK" and "unreachable" in r["reason"].lower()
     s = c.set_interaction_profile("run", "I0")
     assert s["ok"] is False
+
+def test_stage_input_fail_closed_on_dead_socket(tmp_path):
+    c = ControlPlaneClient(str(tmp_path / "nope.sock"), timeout=0.5)
+    r = c.stage_input("run", "code/x.py", b"data")
+    assert r["ok"] is False and "unreachable" in r["reason"].lower()

@@ -79,3 +79,14 @@ class ControlPlaneClient:
             return r.json()
         except Exception:
             return {"ok": False, "reason": "control plane unreachable", "profile": profile}
+
+    def stage_input(self, run_id: str, rel_path: str, content: bytes) -> dict:
+        import base64
+        try:
+            r = self._client.post("/stage_input", json={
+                "run_id": run_id, "rel_path": rel_path,
+                "content_b64": base64.b64encode(content).decode()})
+            r.raise_for_status()
+            return r.json()
+        except Exception:
+            return {"ok": False, "reason": "control plane unreachable"}
