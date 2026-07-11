@@ -15,7 +15,8 @@ class ReferenceImagingPlanner:
             return PlanStep(summary="deliver", command=[], done=True)
         return PlanStep(
             summary=f"reconstruct with GAP-TV (iters={self._iters})",
-            command=["python3", "code/run_solver.py", "--workspace", ".", "--iters", str(self._iters)],
+            command=["python3", "code/run_solver.py", "--workspace", ".",
+                     "--iters", str(self._iters), "--tv-weight", "0.01"],
             action_type="sandbox_exec",
             flagged_kind="preference_fork",
         )

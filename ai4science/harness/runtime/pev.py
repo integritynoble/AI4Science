@@ -42,8 +42,10 @@ def run_task(*, run_id, contract, client, planner, verifier, store, task_id, on_
         steps += 1
         step = planner.next_step(state)
         if step.done:
-            store.record(state, kind="finish", payload={"status": "delivered"})
-            return {"status": "delivered", "task_id": task_id}
+            store.record(state, kind="finish", payload={"status": "blocked",
+                         "why": "planner exhausted without verified completion"})
+            return {"status": "blocked", "task_id": task_id,
+                    "why": "planner exhausted without verified completion"}
         kind = detect_boundary(step, state)
         decision = client.classify(run_id, kind, step_summary=step.summary,
                                    action_type=step.action_type)["decision"]

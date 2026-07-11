@@ -75,6 +75,17 @@ def test_unexpected_decision_fails_closed(tmp_path):
                    verifier=CompleteVerifier(), store=TaskStore(Path(tmp_path)), task_id="tf")
     assert out["status"] == "blocked" and client.executed == []
 
+def test_planner_done_without_completion_is_blocked(tmp_path):
+    from pathlib import Path
+    class GiveUpPlanner:
+        def next_step(self, state):
+            return PlanStep(summary="give up", command=[], done=True)
+        def replan(self, state, verdict): pass
+    out = run_task(run_id="r", contract=_contract(), client=FakeClient("ACT"),
+                   planner=GiveUpPlanner(), verifier=CompleteVerifier(),
+                   store=TaskStore(Path(tmp_path)), task_id="gu")
+    assert out["status"] == "blocked"
+
 def test_resume_finished_reports_final_status(tmp_path):
     from pathlib import Path
     store = TaskStore(Path(tmp_path))

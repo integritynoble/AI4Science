@@ -13,6 +13,7 @@ def test_first_step_is_flagged_reconstruction():
     assert step.action_type == "sandbox_exec"
     assert step.command[:3] == ["python3", "code/run_solver.py", "--workspace"]
     assert "--iters" in step.command and "80" in step.command
+    assert "--tv-weight" in step.command and "0.01" in step.command
     assert step.done is False
 
 def test_replan_repairable_bumps_iters():
