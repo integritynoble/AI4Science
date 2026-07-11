@@ -11,3 +11,8 @@ AGENT = AgentSpec(
     default_profile="I1",
     approval_required_for=("publish", "deploy", "spend"),
 )
+
+from ai4science.harness.agents.imaging.agent import run_imaging_task
+
+# Entry point the dispatcher uses to run this agent on the dual-mode runtime.
+RUNNER = run_imaging_task
