@@ -59,3 +59,24 @@ def test_validation_scores_best_and_incumbent():
     assert out["val_score"] == 5.0
     assert out["incumbent_val_score"] == 25.0
     assert out["val_score"] <= out["incumbent_val_score"]   # RSI-integrity: would NOT promote
+
+def test_all_none_round_does_not_crash():
+    # When all candidates in a round (and all prior rounds) score None, run_rsi_search
+    # must not crash; it degrades gracefully and returns best_config == seed_config.
+    def round_fn_all_none(*, client, held_out_scene_ids, candidates, seed_solver_ws, domain, **kw):
+        # Every candidate scores None for both search and validation domains
+        ranked = [(config_id(c), None) for c in candidates]
+        return {"ranked": ranked, "eval_ref": f"ref-{domain}"}
+
+    seed = {"iters": 80, "tv_weight": 0.01}
+    out = run_rsi_search(client=FakeClient(), seed_solver_ws="x",
+                         search_scene_ids=[0], val_scene_ids=[0],
+                         seed_config=seed,
+                         round_fn=round_fn_all_none, max_rounds=3, patience=2)
+    # Must return a dict without crashing
+    assert isinstance(out, dict)
+    # best_config should remain the seed since nothing beat it
+    assert out["best_config"] == seed
+    # search_score and val_score should be None (no valid scores)
+    assert out["search_score"] is None
+    assert out["val_score"] is None

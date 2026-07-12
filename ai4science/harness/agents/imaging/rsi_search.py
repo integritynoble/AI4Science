@@ -57,6 +57,16 @@ def run_rsi_search(*, client, seed_solver_ws, search_scene_ids, val_scene_ids,
                    search_domain="cassi_search", val_domain="cassi_val",
                    max_rounds=6, epsilon=0.25, patience=2,
                    seed_config=None, strategy=None, round_fn=None) -> dict:
+    """Coordinate-descent search over the bounded config space.
+
+    Iterates rounds of candidate proposal, scoring, and best-tracking. Stops on:
+    - Convergence: no_improve >= patience (rounds with <epsilon improvement)
+    - Budget: rounds >= max_rounds
+    - Exhausted proposal: strategy.propose returns empty (local optimum within domain)
+
+    After search concludes, runs one validation round scoring best vs incumbent on
+    the validation domain. Returns best config, search & validation scores, and metadata.
+    Promotion of best is owner-signed and gated on the validation score."""
     strategy = strategy or CoordinateDescentStrategy()
     round_fn = round_fn or run_rsi_round
     incumbent = _incumbent_config(client)
@@ -90,11 +100,15 @@ def run_rsi_search(*, client, seed_solver_ws, search_scene_ids, val_scene_ids,
         _score(cands, search_domain)
         rounds += 1
         scored = [(cid, m) for cid, m in history.items() if m is not None]
+        if not scored:
+            no_improve += 1
+            step = strategy.shrink(step)
+            continue
         cid, m = max(scored, key=lambda x: x[1])
         if best_mean is None or (m - best_mean) >= epsilon:
             best, best_id, best_mean, no_improve = cfgs[cid], cid, m, 0
         else:
-            if m > (best_mean or float("-inf")):
+            if m > best_mean:
                 best, best_id, best_mean = cfgs[cid], cid, m
             no_improve += 1
             step = strategy.shrink(step)
