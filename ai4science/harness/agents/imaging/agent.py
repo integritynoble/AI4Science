@@ -37,7 +37,22 @@ def run_imaging_task(*, workspace, client, store, task_id, interaction_mode: str
         if rel in _NEVER_STAGE:
             continue
         client.stage_input(run["run_id"], rel, p.read_bytes())
-    run_planner = planner if planner is not None else ReferenceImagingPlanner(max_repairs=max_repairs)
+    if planner is not None:
+        run_planner = planner
+    else:
+        meta = None
+        if governed:
+            try:
+                lkg = client.get_last_known_good("agent", "imaging")
+            except Exception:
+                lkg = None
+            meta = (lkg or {}).get("metadata") if lkg else None
+        if meta and "iters" in meta and "tv_weight" in meta:
+            run_planner = ReferenceImagingPlanner(base_iters=int(meta["iters"]),
+                                                  tv_weight=float(meta["tv_weight"]),
+                                                  max_repairs=max_repairs)
+        else:
+            run_planner = ReferenceImagingPlanner(max_repairs=max_repairs)
     verifier = (ExternalEvaluatorVerifier(client, run["run_id"]) if governed
                 else PhysicsJudgeVerifier(run_ws))
     result = run_task(run_id=run["run_id"], contract=contract, client=client,
