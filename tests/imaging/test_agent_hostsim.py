@@ -36,6 +36,8 @@ def test_i2_delivers_physics_verified_reconstruction(tmp_path):
     assert client.executed and client.executed[0][1] == "code/run_solver.py"
     assert (client.run_ws / "results" / "reconstruction_xhat.npy").exists()   # produced in the run ws
     assert (client.run_ws / "code" / "run_solver.py").exists()                # inputs were staged
+    assert not (client.run_ws / "data" / "ground_truth_x.npy").exists()       # answer key withheld from sandbox
+    assert (client.run_ws / "data" / "measurement_y.npy").exists()            # but the measurement was staged
 
 def test_i0_pauses_at_reconstruction_fork(tmp_path):
     client = HostSimClient(tmp_path / "runws", decision="ASK")

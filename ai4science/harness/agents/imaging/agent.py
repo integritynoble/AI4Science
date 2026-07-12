@@ -6,6 +6,10 @@ from ai4science.harness.runtime.pev import run_task
 from .benchmark import seed_cassi_workspace
 from .planner import ReferenceImagingPlanner
 
+# Security: answer key must never reach the untrusted sandbox where a compromised solver
+# could copy it to results/reconstruction_xhat.npy and pass the reference-free judge.
+_NEVER_STAGE = {"data/ground_truth_x.npy"}
+
 def run_imaging_task(*, workspace, client, store, task_id, interaction_mode: str = "I2",
                      capability_profile: str = "A1", seed: int = 42, max_repairs: int = 2,
                      on_ask=None) -> dict:
@@ -27,8 +31,12 @@ def run_imaging_task(*, workspace, client, store, task_id, interaction_mode: str
     run_ws = Path(run["workspace_path"])
     # Stage the seeded inputs into the run's confined sandbox workspace.
     for p in sorted(workspace.rglob("*")):
-        if p.is_file():
-            client.stage_input(run["run_id"], p.relative_to(workspace).as_posix(), p.read_bytes())
+        if not p.is_file():
+            continue
+        rel = p.relative_to(workspace).as_posix()
+        if rel in _NEVER_STAGE:
+            continue
+        client.stage_input(run["run_id"], rel, p.read_bytes())
     result = run_task(run_id=run["run_id"], contract=contract, client=client,
                       planner=ReferenceImagingPlanner(max_repairs=max_repairs),
                       verifier=PhysicsJudgeVerifier(run_ws), store=store, task_id=task_id,
