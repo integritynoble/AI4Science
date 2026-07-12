@@ -122,3 +122,12 @@ class ControlPlaneClient:
             r.raise_for_status(); return r.json()
         except Exception:
             return {"stopped": False, "reason": "control plane unreachable"}
+
+    def evaluate(self, run_id: str) -> dict:
+        try:
+            r = self._client.post("/evaluate", json={"run_id": run_id})
+            r.raise_for_status()
+            return r.json()
+        except Exception:
+            return {"decision": "fail", "score": 0.0,
+                    "feedback": {"error": "control plane unreachable"}}

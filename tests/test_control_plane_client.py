@@ -91,6 +91,13 @@ def test_tripwire_and_egress_fail_closed_on_dead_socket(tmp_path):
     assert c.tripwire_triggered("r") is True                            # fail-closed: assume stopped
     assert c.emergency_stop("r")["stopped"] is False
 
+def test_evaluate_fail_closed_on_transport_error(tmp_path):
+    from ai4science.harness.control_plane.client import ControlPlaneClient
+    c = ControlPlaneClient(str(tmp_path / "nope.sock"))   # nothing listening
+    r = c.evaluate("r1")
+    assert r["decision"] == "fail"
+    assert r["score"] == 0.0
+
 def test_tripwire_triggered_fail_closed_on_missing_active(monkeypatch, tmp_path):
     from ai4science.harness.control_plane.client import ControlPlaneClient
     c = ControlPlaneClient(str(tmp_path / "x.sock"))

@@ -35,3 +35,16 @@ class PhysicsJudgeVerifier:
         return Verdict(complete=(decision == "pass"),
                        repairable=(decision == "fail"),
                        evidence={"final_decision": decision, "report": report})
+
+class ExternalEvaluatorVerifier:
+    """Trust the control plane's /evaluate verdict, not an in-process judge."""
+    def __init__(self, client, run_id: str):
+        self._client = client
+        self._run_id = run_id
+
+    def check(self, result: dict, contract) -> Verdict:
+        verdict = self._client.evaluate(self._run_id)
+        decision = verdict.get("decision")
+        return Verdict(complete=(decision == "pass"),
+                       repairable=(decision == "fail"),
+                       evidence={"decision": decision, "feedback": verdict.get("feedback", {})})
