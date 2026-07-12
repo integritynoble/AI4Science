@@ -24,7 +24,7 @@ def _solver_command(iters: int, tv_weight: float) -> list:
 
 
 def run_rsi_round(*, client, held_out_scene_ids, candidates=DEFAULT_GRID,
-                  seed_solver_ws, capability_profile: str = "A1",
+                  seed_solver_ws, domain: str = "cassi", capability_profile: str = "A1",
                   interaction_mode: str = "I2") -> dict:
     """Score a deterministic grid of GAP-TV solver candidates against every held-out
     scene, letting the control plane compute PSNR, and rank candidates by mean PSNR.
@@ -56,9 +56,9 @@ def run_rsi_round(*, client, held_out_scene_ids, candidates=DEFAULT_GRID,
         cid = config_id(cfg)
         scores = []
         for scene_id in held_out_scene_ids:
-            client.stage_heldout(run_id, scene_id)
+            client.stage_heldout(run_id, scene_id, domain=domain)
             client.sandbox_execute(run_id, _solver_command(cfg["iters"], cfg["tv_weight"]))
-            score = client.score_heldout(run_id, scene_id, version=cid)
+            score = client.score_heldout(run_id, scene_id, version=cid, domain=domain)
             psnr = score.get("psnr") if score else None
             if psnr is not None:
                 scores.append(psnr)
@@ -68,7 +68,7 @@ def run_rsi_round(*, client, held_out_scene_ids, candidates=DEFAULT_GRID,
                                  "mean_psnr": mean_psnr})
         results.append({"version": cid, "mean_psnr": mean_psnr})
 
-    evaluation = client.evaluate_candidates(run_id, results=results)
+    evaluation = client.evaluate_candidates(run_id, results=results, domain=domain)
 
     ranked = sorted(
         ((r["version"], r["mean_psnr"]) for r in results),

@@ -31,7 +31,7 @@ def test_round_ranks_by_cp_scores(tmp_path):
         def sandbox_execute(self, *a, **k):
             return {"is_error": False, "exit_code": 0, "artifacts": []}
 
-        def score_heldout(self, run_id, scene_id, version=None):
+        def score_heldout(self, run_id, scene_id, version=None, domain="cassi"):
             # Record the call for coverage verification
             self.score_heldout_calls.append((run_id, scene_id, version))
             # Return per-version PSNR (higher for iters160_tv0.01 for deterministic ranking)
@@ -41,7 +41,7 @@ def test_round_ranks_by_cp_scores(tmp_path):
             self.registered.append(a)
             return {"ok": True}
 
-        def evaluate_candidates(self, run_id, results):
+        def evaluate_candidates(self, run_id, results, domain="cassi"):
             return {"ok": True, "eval_ref": run_id}
 
     client = Stub()
@@ -69,3 +69,25 @@ def test_round_ranks_by_cp_scores(tmp_path):
         assert cfg_id in scores_by_version, f"Candidate {cfg_id} not scored"
         assert scores_by_version[cfg_id] == set(held_out_scene_ids), \
             f"Candidate {cfg_id} scored scenes {scores_by_version[cfg_id]}, expected {set(held_out_scene_ids)}"
+
+
+def test_run_rsi_round_threads_domain(tmp_path):
+    from ai4science.harness.agents.imaging.rsi import run_rsi_round
+    seen = {"stage": set(), "score": set(), "eval": []}
+    class Stub:
+        def open_run(self, *a, **k): return {"run_id": "R", "workspace_path": str(tmp_path/"ws"),
+                                             "capability_profile": "A1", "limits": {}}
+        def stage_input(self, *a, **k): return {"ok": True}
+        def stage_heldout(self, run_id, scene_id, domain="cassi"): seen["stage"].add(domain); return {"ok": True}
+        def sandbox_execute(self, *a, **k): return {"is_error": False, "exit_code": 0, "artifacts": []}
+        def score_heldout(self, run_id, scene_id, version=None, domain="cassi"):
+            seen["score"].add(domain); return {"psnr": 20.0}
+        def register_version(self, *a, **k): return {"ok": True}
+        def evaluate_candidates(self, run_id, results, domain="cassi"):
+            seen["eval"].append(domain); return {"ok": True, "eval_ref": "R"}
+    run_rsi_round(client=Stub(), held_out_scene_ids=[0, 1],
+                  candidates=[{"iters": 80, "tv_weight": 0.01}],
+                  seed_solver_ws=tmp_path/"seed", domain="cassi_search")
+    assert seen["stage"] == {"cassi_search"}
+    assert seen["score"] == {"cassi_search"}
+    assert seen["eval"] == ["cassi_search"]
