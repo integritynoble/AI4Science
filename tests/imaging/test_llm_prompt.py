@@ -21,8 +21,12 @@ def test_messages_carry_menu_and_spec():
     assert "solver" in blob                                        # selection instruction
     assert "32" in blob                                            # spec text (real fixture)
 
-def test_includes_residual_feedback_after_failure():
-    journal = [{"plan": "recalled solver traditional_cpu", "failed": True,
-                "evidence": {"forward_residual": 0.12}}]
-    blob = "\n".join(m.content for m in build_selection_messages(_state(journal), SOLVERS))
+def test_includes_residual_feedback_when_given():
+    blob = "\n".join(m.content for m in build_selection_messages(_state(), SOLVERS, last_residual=0.12))
     assert "0.12" in blob and "residual" in blob.lower()
+
+def test_no_feedback_when_none():
+    # The system prompt legitimately mentions "forward residual" as domain framing (lam vs. residual
+    # trade-off), so we assert on the injected feedback sentence itself, not the bare word "residual".
+    blob = "\n".join(m.content for m in build_selection_messages(_state(), SOLVERS))
+    assert "your previous solver" not in blob.lower()

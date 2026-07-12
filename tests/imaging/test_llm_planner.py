@@ -50,3 +50,24 @@ def test_replan_counts_attempts_then_falls_back():
     p.next_step(_state())                                   # attempt 0 -> LLM step
     p.replan(_state(), Verdict(complete=False, repairable=True))  # -> _attempts=1
     assert p.next_step(_state()).summary == "GAP-TV fallback"
+
+def test_residual_from_verdict_reaches_next_prompt():
+    captured = []
+    class CapturingAdapter:
+        def __init__(self): self.i = 0
+        def stream(self, messages, tools, *, model, reasoning):
+            captured.append("\n".join(m.content for m in messages))
+            from ai4science.harness.events import TextDelta
+            key = "traditional_cpu" if self.i == 0 else "best_quality"; self.i += 1
+            yield TextDelta(text=f'```json\n{{"solver": "{key}"}}\n```')
+    p = LLMImagingPlanner(CapturingAdapter(), model="stub", solvers=SOLVERS, max_llm_attempts=2)
+    p.next_step(_state())                                  # attempt 0 -> traditional_cpu (prompt has NO residual)
+    verdict = Verdict(complete=False, repairable=True,
+                      evidence={"final_decision": "fail",
+                                "report": {"s4_checks": {"forward_residual": {"evidence": {"residual": 0.13}}}}})
+    p.replan(_state(), verdict)
+    p.next_step(_state())                                  # attempt 1 -> prompt MUST now carry the residual
+    # The system prompt legitimately mentions "forward residual" as domain framing, so assert on the
+    # injected feedback sentence itself, not the bare word "residual".
+    assert "your previous solver" not in captured[0].lower()
+    assert "0.13" in captured[1]                            # judge feedback reached the LLM
