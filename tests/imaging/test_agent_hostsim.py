@@ -31,7 +31,7 @@ def test_i2_delivers_physics_verified_reconstruction(tmp_path):
     client = HostSimClient(tmp_path / "runws", decision="ACT")
     out = run_imaging_task(workspace=tmp_path / "seed", client=client,
                            store=TaskStore(tmp_path / "tasks"), task_id="hs1",
-                           interaction_mode="I2", seed=42)
+                           interaction_mode="I2", seed=42, governed=False)
     assert out["status"] == "delivered", out
     assert client.executed and client.executed[0][1] == "code/run_solver.py"
     assert (client.run_ws / "results" / "reconstruction_xhat.npy").exists()   # produced in the run ws
@@ -44,7 +44,7 @@ def test_i0_pauses_at_reconstruction_fork(tmp_path):
     asked = {}
     out = run_imaging_task(workspace=tmp_path / "seed", client=client,
                            store=TaskStore(tmp_path / "tasks"), task_id="hs2",
-                           interaction_mode="I0", seed=42,
+                           interaction_mode="I0", seed=42, governed=False,
                            on_ask=lambda step, state: asked.setdefault("s", step.summary))
     assert out["status"] == "awaiting_owner"
     assert client.executed == []

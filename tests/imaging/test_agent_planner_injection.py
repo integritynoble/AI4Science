@@ -30,6 +30,6 @@ class MarkerPlanner:
 def test_injected_planner_is_used(tmp_path):
     client = HostSimClient(tmp_path / "runws")
     run_imaging_task(workspace=tmp_path / "seed", client=client, store=TaskStore(tmp_path / "t"),
-                     task_id="inj", interaction_mode="I2", planner=MarkerPlanner())
+                     task_id="inj", interaction_mode="I2", planner=MarkerPlanner(), governed=False)
     assert client.executed[0][:2] == ["python3", "-c"]          # the injected planner drove execution
     assert (client.run_ws / "marker.txt").exists()

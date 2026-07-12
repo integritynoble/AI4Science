@@ -27,7 +27,7 @@ def test_imaging_agent_delivers_end_to_end_i2(tmp_path):
         client = ControlPlaneClient(uds)
         out = run_imaging_task(workspace=tmp_path / "seed", client=client,
                                store=TaskStore(tmp_path / "tasks"), task_id="e2e-img-1",
-                               interaction_mode="I2", seed=42, max_repairs=2)
+                               interaction_mode="I2", seed=42, max_repairs=2, governed=False)
         assert out["status"] == "delivered", out
         # completion was gated by the REAL judge, run in a REAL container:
         report = json.loads(Path(out["judge_report"]).read_text())
@@ -43,7 +43,7 @@ def test_imaging_agent_interactive_pauses_i0(tmp_path):
         client = ControlPlaneClient(uds)
         out = run_imaging_task(workspace=tmp_path / "seed0", client=client,
                                store=TaskStore(tmp_path / "tasks0"), task_id="e2e-img-0",
-                               interaction_mode="I0", seed=42)
+                               interaction_mode="I0", seed=42, governed=False)
         assert out["status"] == "awaiting_owner"        # gateway ASKed at the reconstruction fork
     finally:
         server.should_exit = True

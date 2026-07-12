@@ -72,7 +72,7 @@ def test_recalled_solver_selection_delivers(tmp_path):
         planner = LLMImagingPlanner(_pick("best_quality"), model="stub", solvers=_SOLVERS, max_llm_attempts=2)
         out = run_imaging_task(workspace=tmp_path / "seed", client=client,
                                store=TaskStore(tmp_path / "tasks"), task_id="llm-sel",
-                               interaction_mode="I2", planner=planner)
+                               interaction_mode="I2", planner=planner, governed=False)
         assert _judge_pass(out), out          # best_quality (lam 0.01) reconstructs & passes the real judge
     finally:
         server.should_exit = True
@@ -86,7 +86,7 @@ def test_escalates_on_judge_feedback(tmp_path):
                                     solvers=_SOLVERS, max_llm_attempts=2)
         out = run_imaging_task(workspace=tmp_path / "seed2", client=client,
                                store=TaskStore(tmp_path / "tasks2"), task_id="llm-esc",
-                               interaction_mode="I2", planner=planner, max_repairs=2)
+                               interaction_mode="I2", planner=planner, max_repairs=2, governed=False)
         assert _judge_pass(out), out
     finally:
         server.should_exit = True
@@ -99,7 +99,7 @@ def test_fallback_delivers_on_invalid_selection(tmp_path):
                                     max_llm_attempts=1)
         out = run_imaging_task(workspace=tmp_path / "seed3", client=client,
                                store=TaskStore(tmp_path / "tasks3"), task_id="llm-fb",
-                               interaction_mode="I2", planner=planner)
+                               interaction_mode="I2", planner=planner, governed=False)
         assert _judge_pass(out), out          # GAP-TV fallback delivers
     finally:
         server.should_exit = True
@@ -113,7 +113,7 @@ def test_real_llm_selects_and_delivers(tmp_path):
         planner = LLMImagingPlanner(adapter_for("anthropic"), model="claude-sonnet-5", max_llm_attempts=3)
         out = run_imaging_task(workspace=tmp_path / "seedR", client=client,
                                store=TaskStore(tmp_path / "tasksR"), task_id="llm-real",
-                               interaction_mode="I2", planner=planner)
+                               interaction_mode="I2", planner=planner, governed=False)
         assert out["status"] == "delivered", out   # delivery guaranteed by fallback; LLM selection is the interest
     finally:
         server.should_exit = True
