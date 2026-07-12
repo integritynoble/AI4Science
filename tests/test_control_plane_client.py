@@ -117,3 +117,22 @@ def test_new_3c_methods_fail_closed(tmp_path):
     assert c.register_version("agent", "imaging", "v", {})["ok"] is False
     assert c.evaluate_candidates("r", [])["ok"] is False
     assert c.get_last_known_good("agent", "imaging") is None
+
+def test_heldout_methods_send_domain(monkeypatch, tmp_path):
+    from ai4science.harness.control_plane.client import ControlPlaneClient
+    sent = []
+    class FakeResp:
+        def raise_for_status(self): pass
+        def json(self): return {}
+    class FakeInner:
+        def post(self, path, json=None):
+            sent.append((path, json)); return FakeResp()
+    c = ControlPlaneClient(str(tmp_path / "x.sock"))
+    c._client = FakeInner()
+    c.stage_heldout("r", 0, domain="cassi_search")
+    c.score_heldout("r", 0, version="v1", domain="cassi_search")
+    c.evaluate_candidates("r", [{"version": "v1", "mean_psnr": 1.0}], domain="cassi_val")
+    bodies = {p: j for p, j in sent}
+    assert bodies["/stage_heldout"]["domain"] == "cassi_search"
+    assert bodies["/score_heldout"]["domain"] == "cassi_search"
+    assert bodies["/evaluate_candidates"]["domain"] == "cassi_val"

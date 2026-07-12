@@ -132,17 +132,19 @@ class ControlPlaneClient:
             return {"decision": "fail", "score": 0.0,
                     "feedback": {"error": "control plane unreachable"}}
 
-    def stage_heldout(self, run_id, scene_id):
+    def stage_heldout(self, run_id, scene_id, domain="cassi"):
         try:
-            r = self._client.post("/stage_heldout", json={"run_id": run_id, "scene_id": scene_id})
+            r = self._client.post("/stage_heldout",
+                                  json={"run_id": run_id, "scene_id": scene_id, "domain": domain})
             r.raise_for_status(); return r.json()
         except Exception:
             return {"ok": False, "reason": "control plane unreachable"}
 
-    def score_heldout(self, run_id, scene_id, version=None):
+    def score_heldout(self, run_id, scene_id, version=None, domain="cassi"):
         try:
             r = self._client.post("/score_heldout",
-                                  json={"run_id": run_id, "scene_id": scene_id, "version": version})
+                                  json={"run_id": run_id, "scene_id": scene_id,
+                                        "version": version, "domain": domain})
             r.raise_for_status(); return r.json()
         except Exception:
             return {"psnr": None}
@@ -155,9 +157,9 @@ class ControlPlaneClient:
         except Exception:
             return {"ok": False, "reason": "control plane unreachable"}
 
-    def evaluate_candidates(self, run_id, results):
+    def evaluate_candidates(self, run_id, results, domain="cassi"):
         try:
-            r = self._client.post("/evaluate_candidates", json={"run_id": run_id, "results": results})
+            r = self._client.post("/evaluate_candidates", json={"run_id": run_id, "results": results, "domain": domain})
             r.raise_for_status(); return r.json()
         except Exception:
             return {"ok": False, "reason": "control plane unreachable"}
