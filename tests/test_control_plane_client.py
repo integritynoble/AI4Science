@@ -70,3 +70,16 @@ def test_stage_input_fail_closed_on_dead_socket(tmp_path):
     c = ControlPlaneClient(str(tmp_path / "nope.sock"), timeout=0.5)
     r = c.stage_input("run", "code/x.py", b"data")
     assert r["ok"] is False and "unreachable" in r["reason"].lower()
+
+def test_sandbox_execute_uses_generous_timeout(tmp_path):
+    c = ControlPlaneClient(str(tmp_path / "x.sock"), timeout=5.0)
+    captured = {}
+    class FakePost:
+        def post(self, path, json=None, timeout=None):
+            captured["path"] = path; captured["timeout"] = timeout
+            raise RuntimeError("stop here")   # we only care about the kwargs; fail-closed catches it
+    c._client = FakePost()
+    out = c.sandbox_execute("run", ["true"])
+    assert out["is_error"] is True                      # still fails closed on error
+    assert captured["path"] == "/sandbox_execute"
+    assert captured["timeout"] is not None and captured["timeout"] >= 120   # generous per-call timeout

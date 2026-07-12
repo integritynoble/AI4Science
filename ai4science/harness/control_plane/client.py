@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import Any
 import httpx
 
+SANDBOX_EXEC_TIMEOUT = 180.0  # generous per-call timeout for sandbox reconstruction (exceeds 60s server budget)
 _DENY = {"allowed": False, "reason": "control plane unreachable", "scope": {}}
 
 class ControlPlaneClient:
@@ -54,7 +55,8 @@ class ControlPlaneClient:
         try:
             r = self._client.post("/sandbox_execute", json={
                 "run_id": run_id, "command": command, "scope": scope,
-                "net_allowlist": net_allowlist, "workspace_target": workspace_target})
+                "net_allowlist": net_allowlist, "workspace_target": workspace_target},
+                timeout=SANDBOX_EXEC_TIMEOUT)
             r.raise_for_status()
             return r.json()
         except Exception:
