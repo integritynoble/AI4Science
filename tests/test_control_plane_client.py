@@ -83,3 +83,10 @@ def test_sandbox_execute_uses_generous_timeout(tmp_path):
     assert out["is_error"] is True                      # still fails closed on error
     assert captured["path"] == "/sandbox_execute"
     assert captured["timeout"] is not None and captured["timeout"] >= 120   # generous per-call timeout
+
+def test_tripwire_and_egress_fail_closed_on_dead_socket(tmp_path):
+    c = ControlPlaneClient(str(tmp_path / "nope.sock"), timeout=0.5)
+    assert c.llm_egress("r", {})["ok"] is False
+    assert c.inspect_for_tripwires("r", {}, {})["tripped"] is True     # fail-closed: assume tripped
+    assert c.tripwire_triggered("r") is True                            # fail-closed: assume stopped
+    assert c.emergency_stop("r")["stopped"] is False

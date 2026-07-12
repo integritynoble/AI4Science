@@ -92,3 +92,33 @@ class ControlPlaneClient:
             return r.json()
         except Exception:
             return {"ok": False, "reason": "control plane unreachable"}
+
+    def llm_egress(self, run_id: str, request: dict) -> dict:
+        try:
+            r = self._client.post("/llm_egress", json={"run_id": run_id, "request": request},
+                                  timeout=180.0)
+            r.raise_for_status(); return r.json()
+        except Exception:
+            return {"ok": False, "reason": "control plane unreachable"}
+
+    def inspect_for_tripwires(self, run_id: str, action: dict, result: dict) -> dict:
+        try:
+            r = self._client.post("/inspect_tripwires",
+                                  json={"run_id": run_id, "action": action, "result": result})
+            r.raise_for_status(); return r.json()
+        except Exception:
+            return {"tripped": True, "reason": "control plane unreachable"}
+
+    def tripwire_triggered(self, run_id: str) -> bool:
+        try:
+            r = self._client.get(f"/tripwire_status/{run_id}"); r.raise_for_status()
+            return r.json().get("active") is False
+        except Exception:
+            return True
+
+    def emergency_stop(self, run_id: str, reason: str = "client") -> dict:
+        try:
+            r = self._client.post("/emergency_stop", json={"run_id": run_id, "reason": reason})
+            r.raise_for_status(); return r.json()
+        except Exception:
+            return {"stopped": False, "reason": "control plane unreachable"}
