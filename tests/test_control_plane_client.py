@@ -109,3 +109,11 @@ def test_tripwire_triggered_fail_closed_on_missing_active(monkeypatch, tmp_path)
         def get(self, path): return FakeResp()
     c._client = FakeInner()
     assert c.tripwire_triggered("r") is True       # fail closed on ambiguous response
+
+def test_new_3c_methods_fail_closed(tmp_path):
+    c = ControlPlaneClient(str(tmp_path / "dead.sock"))
+    assert c.stage_heldout("r", 0)["ok"] is False
+    assert c.score_heldout("r", 0)["psnr"] is None
+    assert c.register_version("agent", "imaging", "v", {})["ok"] is False
+    assert c.evaluate_candidates("r", [])["ok"] is False
+    assert c.get_last_known_good("agent", "imaging") is None

@@ -131,3 +131,40 @@ class ControlPlaneClient:
         except Exception:
             return {"decision": "fail", "score": 0.0,
                     "feedback": {"error": "control plane unreachable"}}
+
+    def stage_heldout(self, run_id, scene_id):
+        try:
+            r = self._client.post("/stage_heldout", json={"run_id": run_id, "scene_id": scene_id})
+            r.raise_for_status(); return r.json()
+        except Exception:
+            return {"ok": False, "reason": "control plane unreachable"}
+
+    def score_heldout(self, run_id, scene_id, version=None):
+        try:
+            r = self._client.post("/score_heldout",
+                                  json={"run_id": run_id, "scene_id": scene_id, "version": version})
+            r.raise_for_status(); return r.json()
+        except Exception:
+            return {"psnr": None}
+
+    def register_version(self, kind, name, version, metadata):
+        try:
+            r = self._client.post("/register_version",
+                                  json={"kind": kind, "name": name, "version": version, "metadata": metadata})
+            r.raise_for_status(); return r.json()
+        except Exception:
+            return {"ok": False, "reason": "control plane unreachable"}
+
+    def evaluate_candidates(self, run_id, results):
+        try:
+            r = self._client.post("/evaluate_candidates", json={"run_id": run_id, "results": results})
+            r.raise_for_status(); return r.json()
+        except Exception:
+            return {"ok": False, "reason": "control plane unreachable"}
+
+    def get_last_known_good(self, kind, name):
+        try:
+            r = self._client.get(f"/last_known_good/{kind}/{name}"); r.raise_for_status()
+            return r.json()
+        except Exception:
+            return None
