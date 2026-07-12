@@ -12,7 +12,7 @@ _NEVER_STAGE = {"data/ground_truth_x.npy"}
 
 def run_imaging_task(*, workspace, client, store, task_id, interaction_mode: str = "I2",
                      capability_profile: str = "A1", seed: int = 42, max_repairs: int = 2,
-                     on_ask=None) -> dict:
+                     on_ask=None, planner=None) -> dict:
     """Seed a CASSI benchmark locally, stage it into the run's sandbox workspace, then drive
     the dual-mode runtime to a physics-verified reconstruction (judged in the run workspace)."""
     workspace = Path(workspace)
@@ -37,8 +37,9 @@ def run_imaging_task(*, workspace, client, store, task_id, interaction_mode: str
         if rel in _NEVER_STAGE:
             continue
         client.stage_input(run["run_id"], rel, p.read_bytes())
+    run_planner = planner if planner is not None else ReferenceImagingPlanner(max_repairs=max_repairs)
     result = run_task(run_id=run["run_id"], contract=contract, client=client,
-                      planner=ReferenceImagingPlanner(max_repairs=max_repairs),
+                      planner=run_planner,
                       verifier=PhysicsJudgeVerifier(run_ws), store=store, task_id=task_id,
                       on_ask=on_ask)
     result["judge_report"] = str(run_ws / "reports" / "judge_report.json")
