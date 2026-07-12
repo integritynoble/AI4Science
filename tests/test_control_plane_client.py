@@ -90,3 +90,15 @@ def test_tripwire_and_egress_fail_closed_on_dead_socket(tmp_path):
     assert c.inspect_for_tripwires("r", {}, {})["tripped"] is True     # fail-closed: assume tripped
     assert c.tripwire_triggered("r") is True                            # fail-closed: assume stopped
     assert c.emergency_stop("r")["stopped"] is False
+
+def test_tripwire_triggered_fail_closed_on_missing_active(monkeypatch, tmp_path):
+    from ai4science.harness.control_plane.client import ControlPlaneClient
+    c = ControlPlaneClient(str(tmp_path / "x.sock"))
+    class FakeResp:
+        status_code = 200
+        def raise_for_status(self): pass
+        def json(self): return {}                 # server omitted "active"
+    class FakeInner:
+        def get(self, path): return FakeResp()
+    c._client = FakeInner()
+    assert c.tripwire_triggered("r") is True       # fail closed on ambiguous response

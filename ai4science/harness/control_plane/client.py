@@ -112,7 +112,7 @@ class ControlPlaneClient:
     def tripwire_triggered(self, run_id: str) -> bool:
         try:
             r = self._client.get(f"/tripwire_status/{run_id}"); r.raise_for_status()
-            return r.json().get("active") is False
+            return r.json().get("active") is not True
         except Exception:
             return True
 
