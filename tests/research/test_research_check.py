@@ -82,6 +82,29 @@ def test_missing_report_fails(tmp_path):
     cfg = {"report": "report.md", "sources": {}, "coverage_points": []}
     assert check_research(tmp_path, cfg)["ok"] is False
 
+def test_hash_prefixed_long_paragraph_needs_citation(tmp_path):
+    # A fabricated long paragraph prefixed with '#' must NOT be exempt as a
+    # "heading" -- only a true short single-line heading (<= 8 words) is exempt.
+    bad = GOOD.replace(
+        "## References",
+        "# This is not a real heading it is a long fabricated claim paragraph "
+        "smuggled in behind a hash mark to dodge the citation checker entirely\n\n"
+        "## References")
+    ws, cfg = _ws(tmp_path, bad, SRC, ["Rayleigh scattering", "water boils"])
+    r = check_research(ws, cfg)
+    assert r["ok"] is False and "citation" in r["reason"].lower()
+
+def test_short_fabricated_claim_needs_citation(tmp_path):
+    # A 7-10 word uncited claim paragraph must fail now that the floor is 6
+    # words (previously the floor was 12, letting it slip through).
+    bad = GOOD.replace(
+        "## References",
+        "Mercury boils at a much lower temperature than water does.\n\n"
+        "## References")
+    ws, cfg = _ws(tmp_path, bad, SRC, ["Rayleigh scattering", "water boils"])
+    r = check_research(ws, cfg)
+    assert r["ok"] is False and "citation" in r["reason"].lower()
+
 def test_sha256_file_helper(tmp_path):
     p = tmp_path / "x.txt"; p.write_text("hello\n")
     import hashlib

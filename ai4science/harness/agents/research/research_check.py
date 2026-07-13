@@ -11,8 +11,12 @@ grounded against. Stdlib only; NO ai4science import.
 Gates delivery on:
   * integrity -- each source's on-disk SHA-256 matches the config (anti-tamper);
   * format    -- report exists, non-empty, has a `## References` section;
-  * citation  -- every substantial body paragraph carries a [S<n>] marker,
-                 every marker resolves to a References entry (no dangling);
+  * citation  -- every substantial body paragraph (>= 6 words, not a short
+                 heading) carries a [S<n>] marker and every marker resolves to
+                 a References entry. This is a per-paragraph density heuristic:
+                 the HARD anti-hallucination guarantees are source-integrity
+                 and that every CITED span is verbatim in its source; fine-
+                 grained per-sentence semantic support is the deferred LLM-judge.
   * grounding -- each References entry's quoted span appears VERBATIM
                  (whitespace-normalized) in its integrity-verified source;
   * coverage  -- every required coverage point is addressed.
@@ -28,11 +32,17 @@ from pathlib import Path
 _MARKER = re.compile(r"\[S(\d+)\]")
 # References entry: `S<n>: <file> — "<span>"`  (em-dash or hyphen)
 _REF = re.compile(r'^S(\d+):\s*(\S+)\s*[—-]\s*"(.+)"\s*$')
-_MIN_CLAIM_WORDS = 12
+_MIN_CLAIM_WORDS = 6
 
 
 def _norm(text: str) -> str:
     return " ".join(text.split())
+
+
+def _is_heading(line: str) -> bool:
+    """A TRUE short markdown heading line (not a long paragraph prefixed with #)."""
+    s = line.strip()
+    return bool(re.match(r"^#{1,6}\s+\S", s)) and "\n" not in s and len(s.split()) <= 8
 
 
 def sha256_file(path) -> str:
@@ -77,7 +87,9 @@ def check_research(workspace, config: dict) -> dict:
     # --- citation completeness on the body ---
     for para in re.split(r"\n\s*\n", body):
         p = para.strip()
-        if not p or p.startswith("#"):
+        if not p:
+            continue
+        if _is_heading(p):          # true short heading line only
             continue
         if len(p.split()) < _MIN_CLAIM_WORDS:
             continue
