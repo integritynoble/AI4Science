@@ -20,10 +20,13 @@ class ControlPlaneClient:
             return False
 
     def open_run(self, goal: str, capability_profile: str, hard_limits: dict,
-                 interaction_profile: str = "I1") -> dict:
-        r = self._client.post("/open_run", json={
+                 interaction_profile: str = "I1", agent_id: str | None = None) -> dict:
+        body = {
             "goal": goal, "capability_profile": capability_profile,
-            "hard_limits": hard_limits, "interaction_profile": interaction_profile})
+            "hard_limits": hard_limits, "interaction_profile": interaction_profile}
+        if agent_id is not None:
+            body["agent_id"] = agent_id
+        r = self._client.post("/open_run", json=body)
         r.raise_for_status()
         return r.json()
 
@@ -198,10 +201,13 @@ class ControlPlaneClient:
         except Exception:
             return None
 
-    def broker_send(self, sender_id, recipient_id, msg_type, payload):
+    def broker_send(self, sender_id, recipient_id, msg_type, payload, run_id=None):
         try:
-            r = self._client.post("/broker/send", json={"sender_id": sender_id,
-                "recipient_id": recipient_id, "msg_type": msg_type, "payload": payload})
+            body = {"sender_id": sender_id, "recipient_id": recipient_id,
+                    "msg_type": msg_type, "payload": payload}
+            if run_id is not None:
+                body["run_id"] = run_id
+            r = self._client.post("/broker/send", json=body)
             r.raise_for_status(); return r.json()
         except Exception:
             return {"ok": False, "reason": "control plane unreachable"}

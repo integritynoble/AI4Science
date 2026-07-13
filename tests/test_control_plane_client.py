@@ -143,3 +143,19 @@ def test_broker_methods_fail_closed(tmp_path):
     assert c.broker_send("a", "b", "note", {"subject": "s", "body": "b"})["ok"] is False
     assert c.broker_inbox("a")["messages"] == []
     assert c.broker_ack("a", 1)["ok"] is False
+
+def test_open_run_and_broker_send_pass_agent_binding(tmp_path):
+    from ai4science.harness.control_plane.client import ControlPlaneClient
+    sent = []
+    class R:
+        def raise_for_status(self): pass
+        def json(self): return {"run_id": "R"} if False else {"ok": True}
+    class Inner:
+        def post(self, path, json=None, **k): sent.append((path, json)); return R()
+        def get(self, *a, **k): return R()
+    c = ControlPlaneClient(str(tmp_path / "x.sock")); c._client = Inner()
+    c.open_run("g", "A1", {}, agent_id="agent-A")
+    c.broker_send("agent-A", "B", "note", {"subject": "s", "body": "b"}, run_id="R")
+    bodies = {p: j for p, j in sent}
+    assert bodies["/open_run"]["agent_id"] == "agent-A"
+    assert bodies["/broker/send"]["run_id"] == "R"
