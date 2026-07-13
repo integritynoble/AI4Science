@@ -1,10 +1,10 @@
 from ai4science.harness.agents.spec import AgentSpec
 
 AGENT = AgentSpec(
-    name="research",
+    name="research2",
     tier="science",
     category="core",
-    title="Research",
+    title="Research (governed)",
     description="Governed research agent: grounded synthesis over staged sources (A1).",
     keywords=("research", "synthesis", "citations", "sources", "grounding"),
     supported_profiles=("I0", "I1", "I2"),
