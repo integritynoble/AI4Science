@@ -29,7 +29,7 @@ def propose_coverage(client, run_id, topic, sources_index, model=DEFAULT_MODEL):
 def run_learning_task(*, demand, client, store, task_id, interaction_mode="I1",
                       capability_profile="A1", max_steps=30, model=DEFAULT_MODEL,
                       prompt_profile="terse", governed=True, on_ask=None,
-                      planner=None, propose=None) -> dict:
+                      planner=None, propose=None, agent_id: str | None = None) -> dict:
     """demand = {"topic": str, "material": {name: bytes|str},
                  "min_questions"?: int, "coverage_points"?: [str]}
     Stages topic + material + quiz_check.py; the grounding gate re-checks the
@@ -52,14 +52,17 @@ def run_learning_task(*, demand, client, store, task_id, interaction_mode="I1",
 
     from ai4science.harness.agents.specs.learning import AGENT
     source_rels = [f"material/{name}" for name in sorted(material)]
+    open_run_kwargs = {"agent_id": agent_id} if agent_id else {}
+    run = client.open_run(f"teach: {topic}", capability_profile,
+                          {"actions": max_steps + 5}, interaction_profile=interaction_mode,
+                          **open_run_kwargs)
+    run_id = run["run_id"]
+    contract_profile = run.get("capability_profile", capability_profile) if agent_id else capability_profile
     contract = compile_contract(
-        objective=f"teach: {topic}", capability_profile=capability_profile,
+        objective=f"teach: {topic}", capability_profile=contract_profile,
         interaction_mode=interaction_mode, deliverables=list(_DELIVERABLES),
         budget={"tool_calls": max_steps, "runtime_minutes": 90},
         approval_required_for=list(AGENT.approval_required_for))
-    run = client.open_run(f"teach: {topic}", capability_profile,
-                          {"actions": max_steps + 5}, interaction_profile=interaction_mode)
-    run_id = run["run_id"]
 
     def _stage(rel, content):
         data = content if isinstance(content, bytes) else str(content).encode()
