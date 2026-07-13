@@ -25,7 +25,8 @@ def run_work_task(*, demand: dict, client, store, task_id: str,
                   interaction_mode: str = "I1", capability_profile: str = "A1",
                   max_steps: int = 20, model: str = DEFAULT_MODEL,
                   prompt_profile: str = "terse", governed: bool = True,
-                  on_ask=None, planner=None, propose=None) -> dict:
+                  on_ask=None, planner=None, propose=None,
+                  agent_id: str | None = None) -> dict:
     """demand = {"objective": str, "input_files": {rel_path: bytes|str}?,
                  "verify_commands": [[argv]]?, "required_artifacts": [paths]?}
 
@@ -50,17 +51,20 @@ def run_work_task(*, demand: dict, client, store, task_id: str,
     supplied = {"verify_commands": demand.get("verify_commands") or [],
                 "required_artifacts": demand.get("required_artifacts") or []}
     has_supplied = bool(supplied["verify_commands"] or supplied["required_artifacts"])
+    open_run_kwargs = {"agent_id": agent_id} if agent_id else {}
+    run = client.open_run(objective, capability_profile,
+                          {"actions": max_steps + 5}, interaction_profile=interaction_mode,
+                          **open_run_kwargs)
+    run_id = run["run_id"]
+    contract_profile = run.get("capability_profile", capability_profile) if agent_id else capability_profile
     contract = compile_contract(
-        objective=objective, capability_profile=capability_profile,
+        objective=objective, capability_profile=contract_profile,
         interaction_mode=interaction_mode,
         deliverables=list(supplied["required_artifacts"]),
         constraints=list(demand.get("constraints") or []),
         success_criteria=[json.dumps(supplied, sort_keys=True)] if has_supplied else [],
         budget={"tool_calls": max_steps, "runtime_minutes": 90},
         approval_required_for=list(AGENT.approval_required_for))
-    run = client.open_run(objective, capability_profile,
-                          {"actions": max_steps + 5}, interaction_profile=interaction_mode)
-    run_id = run["run_id"]
     for rel, content in input_files.items():
         data = content if isinstance(content, bytes) else str(content).encode()
         staged = client.stage_input(run_id, rel, data)
