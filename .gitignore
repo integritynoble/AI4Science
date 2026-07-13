@@ -43,3 +43,5 @@ ai4science_submission_*.zip
 reports/
 data/measurement_*.npy
 results/
+
+zmx_read_lens.log
