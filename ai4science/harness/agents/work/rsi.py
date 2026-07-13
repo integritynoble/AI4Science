@@ -93,3 +93,42 @@ def run_work_rsi_round(*, client, held_out_task_ids, candidates=DEFAULT_WORK_GRI
     ranked = sorted(((r["version"], r["mean_psnr"], r["total_steps"]) for r in results),
                     key=lambda item: (-(item[1] or 0.0), item[2]))
     return {"ranked": ranked, "eval_ref": evaluation.get("eval_ref")}
+
+
+def _incumbent_work_config(client) -> dict:
+    try:
+        lkg = client.get_last_known_good("agent", "work")
+    except Exception:
+        lkg = None
+    meta = (lkg or {}).get("metadata") if lkg else None
+    if meta and "prompt_profile" in meta and "max_steps" in meta:
+        return {"prompt_profile": str(meta["prompt_profile"]), "max_steps": int(meta["max_steps"])}
+    return {"prompt_profile": "terse", "max_steps": 20}
+
+
+def run_work_rsi_search(*, client, planner_factory, store_factory,
+                        search_task_ids, val_task_ids, candidates=DEFAULT_WORK_GRID,
+                        search_domain="work_search", val_domain="work_val",
+                        round_fn=None) -> dict:
+    """v1: score the fixed grid on the search set, rank, then run a validation
+    round scoring the best config + the incumbent on the untouched val set.
+    Promotion (owner-signed, Gate B) is gated on val_pass vs incumbent_val_pass."""
+    round_fn = round_fn or run_work_rsi_round
+    incumbent = _incumbent_work_config(client)
+
+    search = round_fn(client=client, held_out_task_ids=search_task_ids,
+                      candidates=candidates, planner_factory=planner_factory,
+                      store_factory=store_factory, domain=search_domain)
+    ranked = search["ranked"]
+    best_id = ranked[0][0]
+    best = next(c for c in candidates if config_id(c) == best_id)
+
+    val_cands = [best] if config_id(best) == config_id(incumbent) else [best, incumbent]
+    val = round_fn(client=client, held_out_task_ids=val_task_ids,
+                   candidates=val_cands, planner_factory=planner_factory,
+                   store_factory=store_factory, domain=val_domain)
+    val_scores = {cid: p for cid, p, _ in val["ranked"]}
+    return {"best_config": best, "search_pass": ranked[0][1],
+            "val_pass": val_scores.get(config_id(best)),
+            "incumbent_val_pass": val_scores.get(config_id(incumbent)),
+            "ranked": ranked, "val_eval_ref": val["eval_ref"]}
