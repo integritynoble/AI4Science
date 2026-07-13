@@ -39,7 +39,7 @@ def run_research_task(*, demand, client, store, task_id, interaction_mode="I1",
     report_name = demand.get("deliverable", "report.md")
     if governed:
         try:
-            lkg = client.get_last_known_good("agent", "research")
+            lkg = client.get_last_known_good("agent", "research2")
         except Exception:
             lkg = None
         meta = (lkg or {}).get("metadata") if lkg else None
