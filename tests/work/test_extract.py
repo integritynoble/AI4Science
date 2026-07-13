@@ -47,3 +47,27 @@ def test_first_valid_block_wins():
             "```json\n{\"action\": \"verify\"}\n```\n"
             "```json\n{\"action\": \"blocked\", \"reason\": \"later\"}\n```")
     assert parse_work_action(text).action == "verify"
+
+def test_falsy_wrong_type_fields_rejected_not_coerced():
+    # A present-but-wrong-type falsy value (0, false) must be rejected, not
+    # silently coerced to the empty default via `data.get(field) or default`.
+    assert parse_work_action(_fenced(
+        '{"action": "step", "summary": "s", "stage_files": 0, "command": ["ls"]}')) is None
+    assert parse_work_action(_fenced(
+        '{"action": "step", "summary": "s", "stage_files": {"a.txt": "hi"}, "command": false}')) is None
+    assert parse_work_action(_fenced(
+        '{"action": "propose_criteria", "verify_commands": 0, "required_artifacts": ["out.csv"]}')) is None
+
+def test_propose_criteria_both_fields_absent_returns_none():
+    assert parse_work_action(_fenced('{"action": "propose_criteria"}')) is None
+
+def test_step_still_allows_absent_field_defaulting():
+    # Field simply absent (not present-but-wrong-type) must still default and be valid.
+    files_only = parse_work_action(_fenced(
+        '{"action": "step", "summary": "write", "stage_files": {"a.txt": "hi"}}'))
+    assert files_only is not None
+    assert files_only.stage_files == {"a.txt": "hi"} and files_only.command == []
+    cmd_only = parse_work_action(_fenced(
+        '{"action": "step", "summary": "run", "command": ["true"]}'))
+    assert cmd_only is not None
+    assert cmd_only.command == ["true"] and cmd_only.stage_files == {}

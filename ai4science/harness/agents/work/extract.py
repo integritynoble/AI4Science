@@ -19,6 +19,10 @@ class WorkAction:
 
 def _valid_step(data: dict) -> WorkAction | None:
     summary = data.get("summary")
+    if "stage_files" in data and not isinstance(data["stage_files"], dict):
+        return None
+    if "command" in data and not isinstance(data["command"], list):
+        return None
     stage_files = data.get("stage_files") or {}
     command = data.get("command") or []
     if not isinstance(summary, str) or not summary:
@@ -36,6 +40,10 @@ def _valid_step(data: dict) -> WorkAction | None:
 
 
 def _valid_propose(data: dict) -> WorkAction | None:
+    if "verify_commands" in data and not isinstance(data["verify_commands"], list):
+        return None
+    if "required_artifacts" in data and not isinstance(data["required_artifacts"], list):
+        return None
     vcs = data.get("verify_commands") or []
     arts = data.get("required_artifacts") or []
     if not isinstance(vcs, list) or not all(
