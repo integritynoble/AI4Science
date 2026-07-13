@@ -123,14 +123,24 @@ class ControlPlaneClient:
         except Exception:
             return {"stopped": False, "reason": "control plane unreachable"}
 
-    def evaluate(self, run_id: str) -> dict:
+    def evaluate(self, run_id: str, domain: str = "cassi") -> dict:
         try:
-            r = self._client.post("/evaluate", json={"run_id": run_id})
+            r = self._client.post("/evaluate", json={"run_id": run_id, "domain": domain})
             r.raise_for_status()
             return r.json()
         except Exception:
             return {"decision": "fail", "score": 0.0,
                     "feedback": {"error": "control plane unreachable"}}
+
+    def set_criteria(self, run_id: str, verify_commands: list, required_artifacts: list) -> dict:
+        try:
+            r = self._client.post("/set_criteria", json={
+                "run_id": run_id, "verify_commands": verify_commands,
+                "required_artifacts": required_artifacts})
+            r.raise_for_status()
+            return r.json()
+        except Exception:
+            return {"ok": False, "reason": "control plane unreachable"}
 
     def stage_heldout(self, run_id, scene_id, domain="cassi"):
         try:

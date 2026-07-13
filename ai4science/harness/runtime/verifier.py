@@ -48,3 +48,19 @@ class ExternalEvaluatorVerifier:
         return Verdict(complete=(decision == "pass"),
                        repairable=(decision == "fail"),
                        evidence={"decision": decision, "feedback": verdict.get("feedback", {})})
+
+class ExternalCommandVerifier:
+    """Trust the control plane's command-domain /evaluate verdict (the CP
+    re-runs the registered verify commands itself; the agent cannot forge
+    a pass)."""
+    def __init__(self, client, run_id: str):
+        self._client = client
+        self._run_id = run_id
+
+    def check(self, result: dict, contract) -> Verdict:
+        verdict = self._client.evaluate(self._run_id, domain="command")
+        decision = verdict.get("decision")
+        return Verdict(complete=(decision == "pass"),
+                       repairable=(decision == "fail"),
+                       evidence={"decision": decision,
+                                 "feedback": verdict.get("feedback", {})})
