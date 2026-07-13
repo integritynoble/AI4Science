@@ -26,7 +26,7 @@ def test_search_picks_best_and_validates(tmp_path):
               "checklist_s20": (0.9, 9)}
     val = {"checklist_s20": (0.85, 9), "terse_s20": (0.5, 9)}
     stub = SearchStub(search, val)
-    res = run_work_rsi_search(client=stub, planner_factory=lambda c: (lambda: None),
+    res = run_work_rsi_search(client=stub, planner_factory=lambda c, r, cr: None,
                               store_factory=lambda: None,
                               search_task_ids=[0, 1], val_task_ids=[0, 1],
                               round_fn=stub.round)
@@ -44,7 +44,7 @@ def test_rsi_integrity_val_gate_resists_overfit(tmp_path):
               "checklist_s20": (0.7, 9)}
     val = {"checklist_s8": (0.4, 6), "terse_s20": (0.8, 9)}   # incumbent terse_s20 better on val
     stub = SearchStub(search, val)
-    res = run_work_rsi_search(client=stub, planner_factory=lambda c: (lambda: None),
+    res = run_work_rsi_search(client=stub, planner_factory=lambda c, r, cr: None,
                               store_factory=lambda: None,
                               search_task_ids=[0, 1], val_task_ids=[0, 1],
                               round_fn=stub.round)

@@ -22,7 +22,8 @@ class StubClient:
         return {"run_id": f"r{self.run}", "workspace_path": "/tmp/x", "limits": limits,
                 "capability_profile": cap, "interaction_profile": interaction_profile}
     def stage_worktask(self, run_id, task_id, domain="work_search"):
-        self._cur_task = task_id; return {"ok": True}
+        self._cur_task = task_id
+        return {"ok": True, "criteria": {"verify_commands": [["true"]], "required_artifacts": []}}
     def sandbox_execute(self, run_id, command, **kw):
         return {"exit_code": 0, "is_error": False, "stdout": "", "stderr": ""}
     def classify(self, run_id, boundary_kind, *, step_summary="", action_type=None):
@@ -39,8 +40,8 @@ class StubClient:
     def evaluate_candidates(self, run_id, results, domain="work_search"):
         return {"ok": True, "eval_ref": run_id}
 
-def _planner_factory(cfg):
-    return lambda: ScriptedWorkPlanner(cfg)
+def _planner_factory(cfg, run_id, criteria):
+    return ScriptedWorkPlanner(cfg)
 
 def test_round_ranks_by_pass_then_steps(tmp_path):
     client = StubClient()
@@ -73,23 +74,34 @@ def test_round_opens_exactly_one_run(tmp_path):
     assert client.open_run_count == 1, \
         f"Expected exactly 1 open_run call for the whole round, got {client.open_run_count}"
 
-def test_planner_maker_called_fresh_per_task(tmp_path):
-    """Guard fresh-planner-per-task invariant: planner_factory(cfg) returns a maker
-    that is invoked fresh per held-out task, so each task gets a distinct planner
+def test_planner_created_fresh_per_task(tmp_path):
+    """Guard fresh-planner-per-task invariant: planner_factory(cfg, run_id, criteria)
+    is invoked fresh per held-out task, so each task gets a distinct planner
     instance with reset internal state."""
     created = []
-    def factory(cfg):
-        def make():
-            p = ScriptedWorkPlanner(cfg)
-            created.append(p)
-            return p
-        return make
+    def factory(cfg, run_id, criteria):
+        p = ScriptedWorkPlanner(cfg); created.append(p); return p
     client = StubClient()
     run_work_rsi_round(client=client, held_out_task_ids=[0, 1, 2],
-                       candidates=[DEFAULT_WORK_GRID[0]],
-                       planner_factory=factory,
+                       candidates=[DEFAULT_WORK_GRID[0]], planner_factory=factory,
                        store_factory=lambda: TaskStore(tmp_path / str(len(created))))
     assert len(created) == 3, \
         f"Expected one fresh planner per task (3 tasks), got {len(created)} planners"
     assert len({id(p) for p in created}) == 3, \
         f"Expected all planners to be distinct instances, got duplicates"
+
+
+def test_repeats_runs_each_task_n_times(tmp_path):
+    class CountingStub(StubClient):
+        def __init__(self):
+            super().__init__()
+            self.score_calls = 0
+        def score_worktask(self, run_id, task_id, domain="work_search", version=None):
+            self.score_calls += 1
+            return super().score_worktask(run_id, task_id, domain=domain, version=version)
+    client = CountingStub()
+    run_work_rsi_round(client=client, held_out_task_ids=[0, 1],
+                       candidates=[DEFAULT_WORK_GRID[0]], planner_factory=_planner_factory,
+                       store_factory=lambda: TaskStore(tmp_path / str(id(object()))),
+                       repeats=3)
+    assert client.score_calls == 2 * 3          # 2 tasks x 3 repeats

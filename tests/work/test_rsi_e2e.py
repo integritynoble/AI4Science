@@ -40,12 +40,12 @@ class TaskAwarePlanner:
         pass
 
 
-def _planner_factory(cfg):
-    # run_work_rsi_round/run_work_rsi_search expect planner_factory to be
-    # cfg -> (zero-arg maker); the maker is invoked fresh per held-out task_id
-    # so each task's PEV loop starts with clean planner state (_emitted reset)
-    # rather than reusing one TaskAwarePlanner instance across tasks.
-    return lambda: TaskAwarePlanner(cfg)
+def _planner_factory(cfg, run_id, criteria):
+    # run_work_rsi_round/run_work_rsi_search expect planner_factory(cfg, run_id,
+    # criteria) to return a fresh planner per (candidate, task, repeat) so each
+    # task's PEV loop starts with clean planner state (_emitted reset) rather
+    # than reusing one TaskAwarePlanner instance across tasks.
+    return TaskAwarePlanner(cfg)
 
 
 def _seed(cfg_state_dir):
