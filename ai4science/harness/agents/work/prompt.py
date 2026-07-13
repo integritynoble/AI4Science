@@ -31,15 +31,20 @@ Reply with EXACTLY ONE fenced json block choosing your next action:
 """
 
 
+_CHECKLIST = ("\nBefore requesting verify, explicitly walk a checklist: (1) does each "
+              "required artifact exist? (2) does each verify command's expected output "
+              "match what you produced? Fix any gap before you verify.\n")
+
+
 def _criteria_text(criteria: dict) -> str:
     return ("SUCCESS CRITERIA (delivery gate, verified by the control plane):\n"
             f"verify_commands: {json.dumps(criteria.get('verify_commands', []))}\n"
             f"required_artifacts: {json.dumps(criteria.get('required_artifacts', []))}\n")
 
 
-def build_work_messages(state, criteria: dict, last_feedback=None):
+def build_work_messages(state, criteria: dict, last_feedback=None, prompt_profile="terse"):
     """-> (system, messages) for an Anthropic Messages request via /llm_egress."""
-    system = _PROTOCOL + "\n" + _criteria_text(criteria)
+    system = _PROTOCOL + (_CHECKLIST if prompt_profile == "checklist" else "") + "\n" + _criteria_text(criteria)
     lines = [f"OBJECTIVE: {state.contract.objective}"]
     if state.contract.constraints:
         lines.append("CONSTRAINTS: " + "; ".join(state.contract.constraints))

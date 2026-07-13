@@ -23,7 +23,8 @@ def propose_criteria(client, run_id: str, objective: str, input_files: list,
 
 def run_work_task(*, demand: dict, client, store, task_id: str,
                   interaction_mode: str = "I1", capability_profile: str = "A1",
-                  max_steps: int = 30, model: str = DEFAULT_MODEL,
+                  max_steps: int = 20, model: str = DEFAULT_MODEL,
+                  prompt_profile: str = "terse", governed: bool = True,
                   on_ask=None, planner=None, propose=None) -> dict:
     """demand = {"objective": str, "input_files": {rel_path: bytes|str}?,
                  "verify_commands": [[argv]]?, "required_artifacts": [paths]?}
@@ -33,6 +34,17 @@ def run_work_task(*, demand: dict, client, store, task_id: str,
     with a recorded assumption) -> PEV loop with the freeform LLM planner ->
     delivery gated by the CP-side command judge."""
     objective = demand["objective"]
+    if governed:
+        try:
+            lkg = client.get_last_known_good("agent", "work")
+        except Exception:
+            lkg = None
+        meta = (lkg or {}).get("metadata") if lkg else None
+        if meta:
+            if "max_steps" in meta:
+                max_steps = int(meta["max_steps"])
+            if "prompt_profile" in meta:
+                prompt_profile = str(meta["prompt_profile"])
     input_files = demand.get("input_files") or {}
     from ai4science.harness.agents.specs.work import AGENT
     supplied = {"verify_commands": demand.get("verify_commands") or [],
@@ -86,7 +98,7 @@ def run_work_task(*, demand: dict, client, store, task_id: str,
         return {"status": "blocked", "task_id": task_id,
                 "why": f"set_criteria refused: {reg.get('reason', 'unknown')}"}
     run_planner = planner if planner is not None else LLMWorkPlanner(
-        client, run_id, criteria=criteria, model=model)
+        client, run_id, criteria=criteria, model=model, prompt_profile=prompt_profile)
     verifier = ExternalCommandVerifier(client, run_id)
     return run_task(run_id=run_id, contract=contract, client=client,
                     planner=run_planner, verifier=verifier, store=store,

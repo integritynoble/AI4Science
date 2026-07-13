@@ -23,17 +23,20 @@ class LLMWorkPlanner:
     unusable LLM output produces an honest blocker, never a fabricated step."""
 
     def __init__(self, client, run_id: str, *, criteria: dict,
-                 model: str = DEFAULT_MODEL, max_parse_retries: int = 2):
+                 model: str = DEFAULT_MODEL, max_parse_retries: int = 2,
+                 prompt_profile: str = "terse"):
         self.client = client
         self.run_id = run_id
         self.model = model
         self._criteria = criteria
         self._max_parse_retries = max_parse_retries
         self._last_feedback = None
+        self._prompt_profile = prompt_profile
 
     def _call(self, state):
         system, messages = build_work_messages(state, self._criteria,
-                                               last_feedback=self._last_feedback)
+                                               last_feedback=self._last_feedback,
+                                               prompt_profile=self._prompt_profile)
         resp = self.client.llm_egress(self.run_id, {
             "model": self.model, "max_tokens": MAX_LLM_TOKENS,
             "system": system, "messages": messages})
