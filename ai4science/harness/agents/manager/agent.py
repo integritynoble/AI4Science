@@ -7,7 +7,7 @@ from ai4science.harness.agents.work.planner import DEFAULT_MODEL
 from .scope import route
 from .monitor import registry_view
 
-_AGENT_SPEC_MODULES = ("work", "imaging", "research", "learning", "process_learning")
+_AGENT_SPEC_MODULES = ("work", "imaging", "research", "learning", "process_learning", "pocket")
 
 
 def builtin_specs() -> list:
