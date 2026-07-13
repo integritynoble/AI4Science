@@ -52,7 +52,7 @@ def _parse_stdout(res: dict) -> Any:
 def run_social_task(*, client, store, task_id, mastodon_host: str,
                      scope: str = "mastodon", interaction_mode: str = "I2",
                      approve: Optional[Callable[[str], bool]] = None,
-                     seed=None) -> dict:
+                     seed=None, agent_id: str | None = None) -> dict:
     """Read a Mastodon home timeline, draft a summary, and post it only if approved.
 
     Args:
@@ -85,7 +85,7 @@ def run_social_task(*, client, store, task_id, mastodon_host: str,
     from .draft import draft_post
 
     run = client.open_run("social: read+draft", "A2", {"actions": 4},
-                          interaction_profile=interaction_mode)
+                          interaction_profile=interaction_mode, agent_id=agent_id)
     run_id = run["run_id"]
 
     # 1. Read — governed sandbox execution, confined to the declared host.
