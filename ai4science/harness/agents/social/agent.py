@@ -101,10 +101,16 @@ def run_social_task(*, client, store, task_id, mastodon_host: str,
     # 3. Owner gate — posting is an external write, so it is always
     #    approval-required. Consult the mode gateway (mirrors run_task's
     #    boundary-decision pattern in pev.py) as well as the owner callback;
-    #    either one refusing means the run stops at the draft.
+    #    either one refusing means the run stops at the draft. No
+    #    action_type is passed here: action_type only participates in the
+    #    gateway's capability-CEILING override (real ceiling action types
+    #    like "network_egress"/"sandbox_exec" -- see policy.CEILINGS),
+    #    which "external_post" is not a member of for any profile; passing
+    #    it would make every call DENY regardless of interaction mode. The
+    #    boundary_kind "irreversible_or_external" alone already guarantees
+    #    ASK (never ACT) for every profile, which is what this gate needs.
     decision = client.classify(run_id, "irreversible_or_external",
-                               step_summary="post status to mastodon",
-                               action_type="external_post").get("decision")
+                               step_summary="post status to mastodon").get("decision")
     approved = bool(approve and approve(draft))
     if decision == "DENY" or not approved:
         return {"status": "drafted", "draft": draft, "timeline_count": len(timeline)}
