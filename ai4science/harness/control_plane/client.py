@@ -197,3 +197,25 @@ class ControlPlaneClient:
             return r.json()
         except Exception:
             return None
+
+    def broker_send(self, sender_id, recipient_id, msg_type, payload):
+        try:
+            r = self._client.post("/broker/send", json={"sender_id": sender_id,
+                "recipient_id": recipient_id, "msg_type": msg_type, "payload": payload})
+            r.raise_for_status(); return r.json()
+        except Exception:
+            return {"ok": False, "reason": "control plane unreachable"}
+
+    def broker_inbox(self, agent_id, unread_only=False):
+        try:
+            r = self._client.get(f"/broker/inbox/{agent_id}", params={"unread_only": unread_only})
+            r.raise_for_status(); return r.json()
+        except Exception:
+            return {"messages": []}
+
+    def broker_ack(self, agent_id, msg_id):
+        try:
+            r = self._client.post("/broker/ack", json={"agent_id": agent_id, "msg_id": msg_id})
+            r.raise_for_status(); return r.json()
+        except Exception:
+            return {"ok": False, "reason": "control plane unreachable"}

@@ -136,3 +136,10 @@ def test_heldout_methods_send_domain(monkeypatch, tmp_path):
     assert bodies["/stage_heldout"]["domain"] == "cassi_search"
     assert bodies["/score_heldout"]["domain"] == "cassi_search"
     assert bodies["/evaluate_candidates"]["domain"] == "cassi_val"
+
+def test_broker_methods_fail_closed(tmp_path):
+    from ai4science.harness.control_plane.client import ControlPlaneClient
+    c = ControlPlaneClient(str(tmp_path / "dead.sock"))
+    assert c.broker_send("a", "b", "note", {"subject": "s", "body": "b"})["ok"] is False
+    assert c.broker_inbox("a")["messages"] == []
+    assert c.broker_ack("a", 1)["ok"] is False
