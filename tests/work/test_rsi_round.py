@@ -14,9 +14,11 @@ class StubClient:
     checklist). Records per-(version,task) pass so evaluate_candidates can bind."""
     def __init__(self):
         self.run = 0
+        self.open_run_count = 0
         self.scored = {}     # (version, task) -> pass
     def open_run(self, goal, cap, limits, interaction_profile="I2"):
         self.run += 1
+        self.open_run_count += 1
         return {"run_id": f"r{self.run}", "workspace_path": "/tmp/x", "limits": limits,
                 "capability_profile": cap, "interaction_profile": interaction_profile}
     def stage_worktask(self, run_id, task_id, domain="work_search"):
@@ -60,3 +62,34 @@ def test_scripted_planner_produces_artifact_step():
                     capability_profile="A1", interaction_mode="I2"))
     step = p.next_step(st)
     assert step.request_verify in (True, False)          # emits a real PlanStep
+
+def test_round_opens_exactly_one_run(tmp_path):
+    """Guard single-run binding invariant: the round opens exactly ONE control-plane
+    run for the whole round (all candidates × all tasks under one run_id)."""
+    client = StubClient()
+    run_work_rsi_round(client=client, held_out_task_ids=[0, 1],
+                       planner_factory=_planner_factory,
+                       store_factory=lambda: TaskStore(tmp_path / str(id(object()))))
+    assert client.open_run_count == 1, \
+        f"Expected exactly 1 open_run call for the whole round, got {client.open_run_count}"
+
+def test_planner_maker_called_fresh_per_task(tmp_path):
+    """Guard fresh-planner-per-task invariant: planner_factory(cfg) returns a maker
+    that is invoked fresh per held-out task, so each task gets a distinct planner
+    instance with reset internal state."""
+    created = []
+    def factory(cfg):
+        def make():
+            p = ScriptedWorkPlanner(cfg)
+            created.append(p)
+            return p
+        return make
+    client = StubClient()
+    run_work_rsi_round(client=client, held_out_task_ids=[0, 1, 2],
+                       candidates=[DEFAULT_WORK_GRID[0]],
+                       planner_factory=factory,
+                       store_factory=lambda: TaskStore(tmp_path / str(len(created))))
+    assert len(created) == 3, \
+        f"Expected one fresh planner per task (3 tasks), got {len(created)} planners"
+    assert len({id(p) for p in created}) == 3, \
+        f"Expected all planners to be distinct instances, got duplicates"
