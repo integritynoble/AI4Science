@@ -70,6 +70,9 @@ def test_full_work_rsi_loop(tmp_path):
         # every candidate produced a mean pass in [0,1] -- real CP-computed scores
         # from real podman sandboxes, not a stubbed/fabricated result
         assert all(0.0 <= p <= 1.0 for _, p, _ in res["ranked"])
+        # strengthen: genuine passes, not silent all-fail
+        assert res["search_pass"] > 0.0         # CP command-judge pass occurred in search round
+        assert res["val_pass"] > 0.0            # validation round also genuinely passed
     finally:
         server.should_exit = True
 
