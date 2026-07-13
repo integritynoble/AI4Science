@@ -212,6 +212,13 @@ class ControlPlaneClient:
         except Exception:
             return {"ok": False, "reason": "control plane unreachable"}
 
+    def foundry_agent(self, agent_id):
+        try:
+            r = self._client.get(f"/foundry/agent/{agent_id}")
+            r.raise_for_status(); return r.json()
+        except Exception:
+            return {}
+
     def broker_inbox(self, agent_id, unread_only=False):
         try:
             r = self._client.get(f"/broker/inbox/{agent_id}", params={"unread_only": unread_only})

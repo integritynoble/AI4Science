@@ -12,22 +12,26 @@ _NEVER_STAGE = {"data/ground_truth_x.npy"}
 
 def run_imaging_task(*, workspace, client, store, task_id, interaction_mode: str = "I2",
                      capability_profile: str = "A1", seed: int = 42, max_repairs: int = 2,
-                     on_ask=None, planner=None, governed: bool = True) -> dict:
+                     on_ask=None, planner=None, governed: bool = True, agent_id: str | None = None) -> dict:
     """Seed a CASSI benchmark locally, stage it into the run's sandbox workspace, then drive
-    the dual-mode runtime to a physics-verified reconstruction (judged in the run workspace)."""
+    the dual-mode runtime to a physics-verified reconstruction (judged in the run workspace).
+    When agent_id is set, the run binds to that foundry agent and its CP-derived ceiling
+    (not the caller-passed capability_profile) governs the run + contract."""
     workspace = Path(workspace)
     seed_cassi_workspace(workspace, seed=seed)
     from ai4science.harness.agents.specs.imaging import AGENT
+    run = client.open_run("cassi reconstruction", capability_profile,
+                          {"actions": max_repairs + 3}, interaction_profile=interaction_mode,
+                          agent_id=agent_id)
+    contract_profile = run.get("capability_profile", capability_profile) if agent_id else capability_profile
     contract = compile_contract(
         objective="reconstruct the CASSI scene",
-        capability_profile=capability_profile,
+        capability_profile=contract_profile,
         interaction_mode=interaction_mode,
         deliverables=["results/reconstruction_xhat.npy"],
         success_criteria=["judge final_decision == pass"],
         approval_required_for=list(AGENT.approval_required_for),
     )
-    run = client.open_run("cassi reconstruction", capability_profile,
-                          {"actions": max_repairs + 3}, interaction_profile=interaction_mode)
     run_ws = Path(run["workspace_path"])
     # Stage the seeded inputs into the run's confined sandbox workspace.
     for p in sorted(workspace.rglob("*")):

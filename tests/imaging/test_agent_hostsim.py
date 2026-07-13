@@ -9,7 +9,7 @@ class HostSimClient:
     def __init__(self, run_ws: Path, decision="ACT"):
         self.run_ws = Path(run_ws); self.run_ws.mkdir(parents=True, exist_ok=True)
         self.decision = decision; self.executed = []
-    def open_run(self, goal, capability_profile, hard_limits, interaction_profile="I1"):
+    def open_run(self, goal, capability_profile, hard_limits, interaction_profile="I1", agent_id=None):
         return {"run_id": "hostsim", "capability_profile": capability_profile,
                 "interaction_profile": interaction_profile, "limits": hard_limits,
                 "workspace_path": str(self.run_ws)}

@@ -35,7 +35,7 @@ class HostSimEvalClient:
         self._verdict = verdict
         self.executed = []
 
-    def open_run(self, goal, capability_profile, hard_limits, interaction_profile="I1"):
+    def open_run(self, goal, capability_profile, hard_limits, interaction_profile="I1", agent_id=None):
         return {"run_id": "hostsim-eval", "capability_profile": capability_profile,
                 "interaction_profile": interaction_profile, "limits": hard_limits,
                 "workspace_path": str(self.run_ws)}

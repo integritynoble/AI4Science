@@ -6,7 +6,7 @@ from ai4science.harness.runtime.pev import PlanStep
 
 class HostSimClient:
     def __init__(self, run_ws): self.run_ws = Path(run_ws); self.run_ws.mkdir(parents=True, exist_ok=True); self.executed = []
-    def open_run(self, goal, cap, limits, interaction_profile="I1"):
+    def open_run(self, goal, cap, limits, interaction_profile="I1", agent_id=None):
         return {"run_id": "hs", "capability_profile": cap, "interaction_profile": interaction_profile,
                 "limits": limits, "workspace_path": str(self.run_ws)}
     def stage_input(self, run_id, rel_path, content):
