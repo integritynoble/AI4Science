@@ -159,6 +159,23 @@ class ControlPlaneClient:
         except Exception:
             return {"psnr": None}
 
+    def stage_worktask(self, run_id, task_id, domain="work_search"):
+        try:
+            r = self._client.post("/stage_worktask",
+                                  json={"run_id": run_id, "task_id": task_id, "domain": domain})
+            r.raise_for_status(); return r.json()
+        except Exception:
+            return {"ok": False, "reason": "control plane unreachable"}
+
+    def score_worktask(self, run_id, task_id, domain="work_search", version=None):
+        try:
+            r = self._client.post("/score_worktask",
+                                  json={"run_id": run_id, "task_id": task_id,
+                                        "domain": domain, "version": version})
+            r.raise_for_status(); return r.json()
+        except Exception:
+            return {"pass": 0.0, "steps": 0}
+
     def register_version(self, kind, name, version, metadata):
         try:
             r = self._client.post("/register_version",
