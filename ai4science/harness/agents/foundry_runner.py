@@ -12,6 +12,7 @@ from typing import Callable
 from ai4science.harness.agents.imaging.agent import run_imaging_task
 from ai4science.harness.agents.social.agent import run_social_task
 from ai4science.harness.agents.work.agent import run_work_task
+from ai4science.harness.agents.research.agent import run_research_task
 
 _RANK = {"A0": 0, "A1": 1, "A2": 2, "A3": 3, "A4": 4}
 
@@ -38,11 +39,16 @@ def _run_work(*, client, store, agent_id, task_id, **kw) -> dict:
     return run_work_task(client=client, store=store, task_id=task_id, agent_id=agent_id, **kw)
 
 
+def _run_research(*, client, store, agent_id, task_id, **kw) -> dict:
+    return run_research_task(client=client, store=store, task_id=task_id, agent_id=agent_id, **kw)
+
+
 # One real entry today; a second domain is just another key (the seam is generic).
 DOMAIN_SPECS: dict[str, DomainEntry] = {
     "imaging": DomainEntry(min_profile="A1", run=_run_imaging),
     "social": DomainEntry(min_profile="A2", run=_run_social),
     "work": DomainEntry(min_profile="A1", run=_run_work),
+    "research": DomainEntry(min_profile="A1", run=_run_research),
 }
 
 
