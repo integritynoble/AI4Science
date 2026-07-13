@@ -1,5 +1,5 @@
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol
 from .task_store import TaskStore, TaskState
 from .verifier import Verdict
@@ -15,6 +15,8 @@ class PlanStep:
     action_type: str = "sandbox_exec"
     flagged_kind: str | None = None
     done: bool = False
+    stage_files: dict = field(default_factory=dict)   # {rel_path: text} staged via /stage_input
+    request_verify: bool = True                       # False -> skip verifier, keep looping
 
 class Planner(Protocol):
     def next_step(self, state: TaskState) -> PlanStep: ...
@@ -57,13 +59,29 @@ def run_task(*, run_id, contract, client, planner, verifier, store, task_id, on_
         if decision != "ACT":   # DENY or ANY unexpected value -> fail closed, never execute
             store.record(state, kind="finish", payload={"status": "blocked", "why": f"decision {decision}"})
             return {"status": "blocked", "task_id": task_id, "why": f"decision {decision}"}
-        result = client.sandbox_execute(run_id, step.command, scope=None,
-                                        net_allowlist=None, workspace_target=None)
-        verdict = verifier.check(result, contract)
-        store.record(state, kind="step", payload={"plan": step.summary,
-                                                  "failed": bool(result.get("is_error")),
-                                                  "complete": verdict.complete})
+        for rel_path, content in (step.stage_files or {}).items():
+            staged = client.stage_input(run_id, rel_path, content.encode())
+            if not staged.get("ok"):
+                why = f"stage_input refused for {rel_path!r}"
+                store.record(state, kind="finish", payload={"status": "blocked", "why": why})
+                return {"status": "blocked", "task_id": task_id, "why": why}
+        if step.command:
+            result = client.sandbox_execute(run_id, step.command, scope=None,
+                                            net_allowlist=None, workspace_target=None)
+        else:
+            result = {"exit_code": 0, "is_error": False, "skipped": True}
+        verdict = verifier.check(result, contract) if step.request_verify else None
+        store.record(state, kind="step", payload={
+            "plan": step.summary,
+            "failed": bool(result.get("is_error")),
+            "complete": bool(verdict and verdict.complete),
+            "exit_code": result.get("exit_code"),
+            "stdout_tail": (result.get("stdout") or "")[-2000:],
+            "stderr_tail": (result.get("stderr") or "")[-2000:],
+        })
         store.checkpoint(state)
+        if verdict is None:
+            continue
         if verdict.complete:
             store.record(state, kind="finish", payload={"status": "delivered"})
             return {"status": "delivered", "task_id": task_id}
