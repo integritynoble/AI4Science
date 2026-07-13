@@ -1,4 +1,3 @@
-import json
 from ai4science.harness.runtime.contract import compile_contract
 from ai4science.harness.runtime.task_store import TaskState
 from ai4science.harness.runtime.verifier import Verdict
@@ -78,3 +77,15 @@ def test_request_shape_is_anthropic_messages():
     assert isinstance(request["max_tokens"], int)
     assert isinstance(request["system"], str)
     assert request["messages"][0]["role"] == "user"
+
+def test_midrun_propose_criteria_is_unusable_then_blocks():
+    propose_criteria_payload = '{"action": "propose_criteria", "verify_commands": [["python3", "check.py"]], "required_artifacts": []}'
+    client = StubClient([
+        _resp(_fenced(propose_criteria_payload)),
+        _resp(_fenced(propose_criteria_payload)),
+        _resp(_fenced(propose_criteria_payload)),
+    ])
+    planner = LLMWorkPlanner(client, "r1", criteria=CRITERIA, max_parse_retries=2)
+    step = planner.next_step(_state())
+    assert step.done is True
+    assert len(client.requests) == 3
