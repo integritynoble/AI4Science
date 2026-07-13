@@ -78,3 +78,33 @@ def test_missing_quiz_file_fails(tmp_path):
 def test_sha256_file_helper(tmp_path):
     p = tmp_path / "x.txt"; p.write_text("hi\n")
     assert sha256_file(p) == hashlib.sha256(b"hi\n").hexdigest()
+
+def test_mcq_answer_not_in_grounding_fails(tmp_path):
+    # grounding is a REAL span present verbatim in the source, but it does not
+    # support option B ("chloroplast") -- it supports mitochondria instead.
+    bad = json.loads(json.dumps(QUIZ))
+    bad["questions"][0]["grounding"] = "The mitochondria is the powerhouse of the cell"
+    ws, cfg = _ws(tmp_path, MATERIAL, GUIDE, bad, ["photosynthesis", "mitochondria"])
+    r = check_quiz(ws, cfg)
+    assert r["ok"] is False and "grounding" in r["reason"].lower()
+
+def test_short_answer_not_in_grounding_fails(tmp_path):
+    # grounding is a REAL span present verbatim in the source, but it does not
+    # contain the answer "mitochondria" -- it's about photosynthesis instead.
+    bad = json.loads(json.dumps(QUIZ))
+    bad["questions"][1]["grounding"] = "Photosynthesis occurs in the chloroplast"
+    ws, cfg = _ws(tmp_path, MATERIAL, GUIDE, bad, ["photosynthesis", "mitochondria"])
+    r = check_quiz(ws, cfg)
+    assert r["ok"] is False and "grounding" in r["reason"].lower()
+
+def test_non_utf8_source_returns_dict(tmp_path):
+    (tmp_path / "material").mkdir(exist_ok=True)
+    raw = b"\xff\xfe binary"
+    (tmp_path / "material" / "m.bin").write_bytes(raw)
+    (tmp_path / "study_guide.md").write_text(GUIDE)
+    (tmp_path / "quiz.json").write_text(json.dumps(QUIZ))
+    cfg = {"study_guide": "study_guide.md", "quiz": "quiz.json",
+           "sources": {"material/m.bin": hashlib.sha256(raw).hexdigest()},
+           "min_questions": 2, "coverage_points": []}
+    r = check_quiz(tmp_path, cfg)
+    assert isinstance(r, dict) and r["ok"] is False

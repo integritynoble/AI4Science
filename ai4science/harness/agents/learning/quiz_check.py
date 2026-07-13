@@ -61,6 +61,16 @@ def _valid_question(q, sources_norm) -> str | None:
     span = _norm(grounding)
     if not any(span in body for body in sources_norm.values()):
         return f"question {qid!r} grounding not found verbatim in any source"
+    # grounding must actually support the answer (not just be a real-but-irrelevant span)
+    if q["type"] == "mcq":
+        options = q.get("options", {})
+        option_text = _norm(str(options.get(answer, "")))
+        if not option_text or option_text not in span:
+            return f"question {qid!r} answer not supported by grounding"
+    else:  # short
+        answer_text = _norm(answer)
+        if not answer_text or answer_text not in span:
+            return f"question {qid!r} answer not supported by grounding"
     return None
 
 
@@ -79,14 +89,19 @@ def check_quiz(workspace, config: dict) -> dict:
             if sha256_file(ws / rel) != expected:
                 return {"ok": False, "reason": f"integrity: source {rel!r} was tampered with"}
             sources_norm[rel] = _norm((ws / rel).read_text())
-        except OSError:
+        except (OSError, UnicodeDecodeError):
             return {"ok": False, "reason": f"integrity: source {rel!r} unreadable"}
 
     # study guide
     guide_path = ws / guide_name
-    if not guide_path.is_file() or not guide_path.read_text().strip():
+    if not guide_path.is_file():
         return {"ok": False, "reason": f"missing or empty {guide_name!r}"}
-    guide = guide_path.read_text()
+    try:
+        guide = guide_path.read_text()
+    except (OSError, UnicodeDecodeError):
+        return {"ok": False, "reason": f"{guide_name!r} unreadable"}
+    if not guide.strip():
+        return {"ok": False, "reason": f"missing or empty {guide_name!r}"}
 
     # quiz structure
     quiz_path = ws / quiz_name
@@ -94,7 +109,7 @@ def check_quiz(workspace, config: dict) -> dict:
         return {"ok": False, "reason": f"missing {quiz_name!r}"}
     try:
         quiz = json.loads(quiz_path.read_text())
-    except (OSError, json.JSONDecodeError):
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return {"ok": False, "reason": "quiz.json is not valid JSON"}
     questions = quiz.get("questions") if isinstance(quiz, dict) else None
     if not isinstance(questions, list) or len(questions) < min_q:
