@@ -54,6 +54,16 @@ def check_research(workspace, config: dict) -> dict:
     report_name = config.get("report", "report.md")
     sources = dict(config.get("sources", {}))        # {rel: expected_sha256}
     coverage = list(config.get("coverage_points", []))
+    # Tunable strictness (the RSI harness knob): a body paragraph with >= this
+    # many words must carry a citation. Owner-configured via the CP-private config
+    # argv; defaults to the shipped constant. Fails safe to the default on a bad
+    # value, and never drops below 1 (a <1 value would disable the citation gate).
+    try:
+        min_claim = int(config.get("min_claim_words", _MIN_CLAIM_WORDS))
+    except (TypeError, ValueError):
+        min_claim = _MIN_CLAIM_WORDS
+    if min_claim < 1:
+        min_claim = _MIN_CLAIM_WORDS
 
     # --- source integrity (anti-tamper): on-disk SHA must match the config ---
     for rel, expected in sources.items():
@@ -91,7 +101,7 @@ def check_research(workspace, config: dict) -> dict:
             continue
         if _is_heading(p):          # true short heading line only
             continue
-        if len(p.split()) < _MIN_CLAIM_WORDS:
+        if len(p.split()) < min_claim:
             continue
         if not _MARKER.search(p):
             return {"ok": False, "reason": f"citation: uncited claim paragraph: {p[:60]!r}"}
