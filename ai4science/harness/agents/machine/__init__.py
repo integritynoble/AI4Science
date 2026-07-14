@@ -14,6 +14,11 @@ from ai4science.harness.agents.machine.operations import (
     CONSEQUENTIAL_SIDE_EFFECTS,
 )
 from ai4science.harness.agents.machine.agent import run_machine
+from ai4science.harness.agents.machine.session import (
+    classify_command,
+    decide_tool_call,
+    SessionDriver,
+)
 
 __all__ = [
     "detect_machine",
@@ -21,4 +26,7 @@ __all__ = [
     "default_operations",
     "CONSEQUENTIAL_SIDE_EFFECTS",
     "run_machine",
+    "classify_command",
+    "decide_tool_call",
+    "SessionDriver",
 ]
