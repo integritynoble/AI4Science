@@ -17,6 +17,7 @@ from ai4science.harness.agents.learning.agent import run_learning_task
 from ai4science.harness.agents.manager.agent import run_manager
 from ai4science.harness.agents.process_learning.agent import run_process_learning_task
 from ai4science.harness.agents.pocket.agent import run_pocket
+from ai4science.harness.agents.machine.agent import run_machine
 
 _RANK = {"A0": 0, "A1": 1, "A2": 2, "A3": 3, "A4": 4}
 
@@ -80,6 +81,31 @@ def _run_pocket(*, client, store, agent_id, task_id, **kw) -> dict:
     )
 
 
+def _run_machine(*, client, store, agent_id, task_id, **kw) -> dict:
+    # Advisory, self-governing: machine opens NO CP run and executes host-side
+    # operations under its OWN closed-registry + owner-approve + broker model
+    # (see spec caveat). run_machine's result already carries a self-describing
+    # status -> return it directly.
+    audit = kw.get("audit")
+    if audit is None and client is not None and hasattr(client, "audit_append"):
+        # Machine's `audit` silently no-ops if omitted, but machine executes
+        # consequential side effects -> a foundry-dispatched op must never run
+        # unaudited. Default the paper trail to the CP audit log (agent_id for
+        # provenance). A caller-supplied audit is respected above.
+        def audit(event):
+            client.audit_append("machine_op", None, {"agent_id": agent_id, **event})
+    return run_machine(
+        intent=kw["intent"],
+        caps=kw.get("caps"),
+        registry=kw.get("registry"),
+        approve=kw.get("approve"),
+        broker=kw.get("broker"),
+        audit=audit,
+        execute=kw.get("execute"),
+        select=kw.get("select"),
+    )
+
+
 # One real entry today; a second domain is just another key (the seam is generic).
 DOMAIN_SPECS: dict[str, DomainEntry] = {
     "imaging": DomainEntry(min_profile="A1", run=_run_imaging),
@@ -90,6 +116,7 @@ DOMAIN_SPECS: dict[str, DomainEntry] = {
     "manager": DomainEntry(min_profile="A0", run=_run_manager),   # advisory: no bound run
     "process_learning": DomainEntry(min_profile="A1", run=_run_process_learning),
     "pocket": DomainEntry(min_profile="A0", run=_run_pocket),   # advisory, on-device, no bound run
+    "machine": DomainEntry(min_profile="A0", run=_run_machine),   # advisory, self-governing, no bound run
 }
 
 
