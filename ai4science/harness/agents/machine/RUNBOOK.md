@@ -107,6 +107,31 @@ The decision engine records each `{tool, verdict}` when driven through
 (`pwm_control_plane.audit.AuditLog`), or tee the hook's stdin/stdout. Every
 `deny`/`ask` should be explainable from the `permissionDecisionReason`.
 
+## 6b. Approve from your phone (Telegram)
+
+Instead of an `ask` blocking (headless) or prompting in the terminal, have it send
+an **Approve / Deny** button to your Telegram. The tap resolves the tool call to
+allow or deny. Owner-locked and fail-safe (no tap ⇒ deny).
+
+1. In Telegram, message **@BotFather** → `/newbot` → copy the **bot token**.
+2. Send your new bot any message, then read your numeric **chat/user id**:
+   ```sh
+   curl -s "https://api.telegram.org/bot<TOKEN>/getUpdates" | grep -o '"id":[0-9]*' | head -1
+   ```
+3. Export these in the hook's environment (add to the hook `command`, or your shell):
+   ```sh
+   export PWM_TELEGRAM_BOT_TOKEN="<token>"
+   export PWM_TELEGRAM_CHAT_ID="<your chat id>"
+   export PWM_TELEGRAM_OWNER_ID="<your user id>"   # defaults to CHAT_ID; only this id may decide
+   export PWM_TELEGRAM_TIMEOUT="55"                # seconds to wait for your tap (then deny)
+   ```
+   Because the hook runs briefly, also raise the Claude Code hook timeout so it can
+   wait for your tap.
+
+Now a consequential tool call (e.g. `git push`) pings your phone: **✅ Approve**
+runs it, **⛔ Deny** (or no tap) blocks it. A tap from any other Telegram account is
+ignored (owner-lock). Unset these vars to fall back to terminal/headless behavior.
+
 ## 7. Troubleshooting
 
 - **Hook never fires:** confirm the JSON is valid (a stray comma disables the

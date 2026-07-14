@@ -72,10 +72,39 @@ def main(argv=None) -> int:
         ceiling=os.environ.get("PWM_CEILING", "A1"),
         project_dir=os.environ.get("CLAUDE_PROJECT_DIR") or data.get("cwd"),
     )
+    # remote approval channel: escalate an 'ask' to the owner's Telegram if configured
+    if verdict.get("decision") == "ask":
+        verdict = _maybe_telegram(verdict, data)
     if verdict.get("tripwire"):
         _set_tripped(session_id, verdict.get("reason", ""))
     print(json.dumps(verdict_to_hook_output(verdict)))
     return 0
+
+
+def _maybe_telegram(verdict: Dict[str, Any], data: Dict[str, Any]) -> Dict[str, Any]:
+    """When Telegram is configured, turn an 'ask' into an owner Approve/Deny tap.
+    Any error or timeout fails safe to deny; unconfigured leaves 'ask' as-is."""
+    from ai4science.harness.agents.machine.telegram import telegram_config, request_approval
+    cfg = telegram_config()
+    if not cfg:
+        return verdict
+    token, chat_id, owner_id = cfg
+    tool = data.get("tool_name", "?")
+    detail = json.dumps(data.get("tool_input", {}))[:300]
+    text = (f"Claude Code wants to run:\n{tool}: {detail}\n"
+            f"Reason: {verdict.get('reason', '')}\nApprove?")
+    request_id = str(data.get("tool_use_id") or data.get("session_id") or "req")
+    try:
+        timeout = float(os.environ.get("PWM_TELEGRAM_TIMEOUT", "55"))
+        approved = request_approval(text, token=token, chat_id=chat_id, owner_id=owner_id,
+                                    request_id=request_id, timeout=timeout)
+    except Exception:
+        approved = None
+    if approved is True:
+        return {"decision": "allow", "reason": "approved by owner via Telegram", "tripwire": False}
+    return {"decision": "deny",
+            "reason": "denied/timeout via Telegram" if approved is False else "no Telegram approval (timeout/error)",
+            "tripwire": False}
 
 
 if __name__ == "__main__":

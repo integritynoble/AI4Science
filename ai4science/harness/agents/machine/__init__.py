@@ -19,6 +19,7 @@ from ai4science.harness.agents.machine.session import (
     decide_tool_call,
     SessionDriver,
 )
+from ai4science.harness.agents.machine.telegram import request_approval, telegram_config
 
 __all__ = [
     "detect_machine",
@@ -29,4 +30,6 @@ __all__ = [
     "classify_command",
     "decide_tool_call",
     "SessionDriver",
+    "request_approval",
+    "telegram_config",
 ]
