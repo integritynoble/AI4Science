@@ -31,10 +31,14 @@ class GovernedExecutor:
     in it can be executed from the console."""
 
     def __init__(self, *, client, store=None, agent_ids: Optional[Dict[str, str]] = None,
-                 run_foundry=run_foundry_agent):
+                 default_sources: Optional[Dict[str, dict]] = None, run_foundry=run_foundry_agent):
         self.client = client
         self.store = store
         self.agent_ids = dict(agent_ids or {})
+        # owner-configured default inputs per agent (e.g. imaging -> the current
+        # scene) so an input agent can run from a chat demand that carries no files;
+        # explicit sources override these.
+        self.default_sources = dict(default_sources or {})
         self.run_foundry = run_foundry
 
     def run(self, agent_name: str, demand, sources: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -45,7 +49,8 @@ class GovernedExecutor:
             return {"ok": False,
                     "reason": f"agent {agent_name!r} is not enabled for execution "
                               f"(owner must attest+activate it in the foundry and allowlist it)"}
-        prep = prepare_run_kwargs(agent_name, demand, sources)
+        merged = {**self.default_sources.get(agent_name, {}), **(sources or {})}
+        prep = prepare_run_kwargs(agent_name, demand, merged)
         if not prep["ok"]:                      # required input missing -> no run
             return {"ok": False, "reason": prep["reason"], "missing": prep.get("missing", [])}
         return execute_demand(agent_id=agent_id, client=self.client, store=self.store,

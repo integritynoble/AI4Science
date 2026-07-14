@@ -61,3 +61,22 @@ def test_executor_input_agent_runs_with_workspace():
 def test_executor_fail_closed_without_client():
     ex = GovernedExecutor(client=None, agent_ids={"imaging": "I1"})
     assert ex.run("imaging", "x", sources={"workspace": "/w"})["ok"] is False
+
+
+def test_executor_default_sources_enable_input_agent_from_chat():
+    # owner pre-configures imaging's workspace so a source-less chat demand can run
+    _fake_foundry.calls.clear()
+    ex = GovernedExecutor(client=FakeClient(), agent_ids={"imaging": "I1"},
+                          default_sources={"imaging": {"workspace": "/scene/current"}},
+                          run_foundry=_fake_foundry)
+    out = ex.run("imaging", "reconstruct")            # no explicit sources
+    assert out["ok"] is True and _fake_foundry.calls[0]["workspace"] == "/scene/current"
+
+
+def test_explicit_sources_override_defaults():
+    _fake_foundry.calls.clear()
+    ex = GovernedExecutor(client=FakeClient(), agent_ids={"imaging": "I1"},
+                          default_sources={"imaging": {"workspace": "/scene/default"}},
+                          run_foundry=_fake_foundry)
+    ex.run("imaging", "reconstruct", sources={"workspace": "/scene/override"})
+    assert _fake_foundry.calls[0]["workspace"] == "/scene/override"
