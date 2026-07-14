@@ -17,8 +17,16 @@ def _advisory_kwargs(demand, sources) -> Dict[str, Any]:
     return {"demand": {"intent": demand} if isinstance(demand, str) else demand}
 
 
+# owner-providable run parameters passed through to the runner when present
+_PASSTHROUGH = ("interaction_mode", "seed", "max_repairs", "governed")
+
+
 def _workspace_kwargs(demand, sources) -> Dict[str, Any]:
-    return {"workspace": sources["workspace"]}
+    kw = {"workspace": sources["workspace"]}
+    for k in _PASSTHROUGH:
+        if k in sources:
+            kw[k] = sources[k]
+    return kw
 
 
 @dataclass(frozen=True)

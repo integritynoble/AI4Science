@@ -61,3 +61,8 @@ def test_stage_workspace_needs_a_stage_or_client():
 def test_stage_workspace_rejects_non_directory(tmp_path):
     f = tmp_path / "not_a_dir"; f.write_text("x")
     assert stage_workspace(str(f), run_id="r1", stage=lambda *a: None)["ok"] is False
+
+
+def test_workspace_passthrough_run_params():
+    out = prepare_run_kwargs("imaging", "recon", {"workspace": "/d", "seed": 7, "governed": False})
+    assert out["kwargs"] == {"workspace": "/d", "seed": 7, "governed": False}
