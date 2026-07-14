@@ -103,7 +103,8 @@ def _maybe_telegram(verdict: Dict[str, Any], data: Dict[str, Any]) -> Dict[str, 
     if approved is True:
         return {"decision": "allow", "reason": "approved by owner via Telegram", "tripwire": False}
     return {"decision": "deny",
-            "reason": "denied/timeout via Telegram" if approved is False else "no Telegram approval (timeout/error)",
+            "reason": "denied by owner via Telegram" if approved is False
+                      else "no Telegram approval (timeout/error) — fail-safe deny",
             "tripwire": False}
 
 
