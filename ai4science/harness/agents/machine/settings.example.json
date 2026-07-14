@@ -1,0 +1,19 @@
+{
+  "//": "Governed Claude Code session driver. Copy the 'hooks' block into your",
+  "//1": "~/.claude/settings.json (user-wide) or .claude/settings.json (per-project).",
+  "//2": "Set PWM_CEILING to A0 (advisory), A1 (local writes/exec ok, network asks),",
+  "//3": "or A2 (allowlisted network ok). Remove these // keys when you paste it in.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PWM_CEILING=A1 python3 -m ai4science.harness.agents.machine.hook"
+          }
+        ]
+      }
+    ]
+  }
+}
