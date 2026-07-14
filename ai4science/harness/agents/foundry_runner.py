@@ -15,6 +15,7 @@ from ai4science.harness.agents.work.agent import run_work_task
 from ai4science.harness.agents.research.agent import run_research_task
 from ai4science.harness.agents.learning.agent import run_learning_task
 from ai4science.harness.agents.manager.agent import run_manager
+from ai4science.harness.agents.process_learning.agent import run_process_learning_task
 
 _RANK = {"A0": 0, "A1": 1, "A2": 2, "A3": 3, "A4": 4}
 
@@ -49,6 +50,10 @@ def _run_learning(*, client, store, agent_id, task_id, **kw) -> dict:
     return run_learning_task(client=client, store=store, task_id=task_id, agent_id=agent_id, **kw)
 
 
+def _run_process_learning(*, client, store, agent_id, task_id, **kw) -> dict:
+    return run_process_learning_task(client=client, store=store, task_id=task_id, agent_id=agent_id, **kw)
+
+
 def _run_manager(*, client, store, agent_id, task_id, **kw) -> dict:
     # Advisory domain: the manager console opens NO run and executes nothing
     # (no sandbox, no set_criteria). store/task_id carry no bound run here; the
@@ -66,6 +71,7 @@ DOMAIN_SPECS: dict[str, DomainEntry] = {
     "research": DomainEntry(min_profile="A1", run=_run_research),
     "learning": DomainEntry(min_profile="A1", run=_run_learning),
     "manager": DomainEntry(min_profile="A0", run=_run_manager),   # advisory: no bound run
+    "process_learning": DomainEntry(min_profile="A1", run=_run_process_learning),
 }
 
 

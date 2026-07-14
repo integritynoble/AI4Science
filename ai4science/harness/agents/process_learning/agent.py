@@ -33,7 +33,7 @@ def propose_coverage(client, run_id, run_label, trace_index, model=DEFAULT_MODEL
 def run_process_learning_task(*, demand, client, store, task_id, interaction_mode="I1",
                               capability_profile="A1", max_steps=25, model=DEFAULT_MODEL,
                               prompt_profile="terse", governed=True, on_ask=None,
-                              planner=None, propose=None) -> dict:
+                              planner=None, propose=None, agent_id: str | None = None) -> dict:
     """demand = {"run_label": str, "trace": {name: bytes|str},
                  "coverage_points"?: [str], "deliverable"?: str}
     Stages the verified trace + the (reused) grounding checker; every claim in
@@ -56,14 +56,17 @@ def run_process_learning_task(*, demand, client, store, task_id, interaction_mod
 
     from ai4science.harness.agents.specs.process_learning import AGENT
     trace_rels = [f"trace/{name}" for name in sorted(trace)]
+    open_run_kwargs = {"agent_id": agent_id} if agent_id else {}
+    run = client.open_run(f"explain trace: {run_label}", capability_profile,
+                          {"actions": max_steps + 5}, interaction_profile=interaction_mode,
+                          **open_run_kwargs)
+    run_id = run["run_id"]
+    contract_profile = run.get("capability_profile", capability_profile) if agent_id else capability_profile
     contract = compile_contract(
-        objective=f"explain trace: {run_label}", capability_profile=capability_profile,
+        objective=f"explain trace: {run_label}", capability_profile=contract_profile,
         interaction_mode=interaction_mode, deliverables=[deliverable],
         budget={"tool_calls": max_steps, "runtime_minutes": 90},
         approval_required_for=list(AGENT.approval_required_for))
-    run = client.open_run(f"explain trace: {run_label}", capability_profile,
-                          {"actions": max_steps + 5}, interaction_profile=interaction_mode)
-    run_id = run["run_id"]
 
     def _stage(rel, content):
         data = content if isinstance(content, bytes) else str(content).encode()
