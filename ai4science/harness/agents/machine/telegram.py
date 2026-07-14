@@ -39,6 +39,30 @@ def telegram_config() -> Optional[Tuple[str, str, str]]:
     return None
 
 
+def send_message(token: str, chat_id: str, text: str, *,
+                 keyboard: Optional[list] = None,
+                 urlopen: Callable = _default_urlopen) -> dict:
+    """Send a message, optionally with an inline_keyboard (list of button rows)."""
+    params = {"chat_id": chat_id, "text": text}
+    if keyboard is not None:
+        params["reply_markup"] = json.dumps({"inline_keyboard": keyboard})
+    return _call(token, "sendMessage", params, urlopen=urlopen)
+
+
+def get_updates(token: str, offset: Optional[int] = None, *, timeout: int = 0,
+                urlopen: Callable = _default_urlopen) -> list:
+    params: dict = {"timeout": timeout}
+    if offset is not None:
+        params["offset"] = offset
+    return _call(token, "getUpdates", params, urlopen=urlopen).get("result", [])
+
+
+def answer_callback(token: str, callback_query_id: str, *,
+                    urlopen: Callable = _default_urlopen) -> dict:
+    return _call(token, "answerCallbackQuery", {"callback_query_id": callback_query_id},
+                 urlopen=urlopen)
+
+
 def send_approval(text: str, request_id: str, *, token: str, chat_id: str,
                   urlopen: Callable = _default_urlopen) -> dict:
     keyboard = {"inline_keyboard": [[
