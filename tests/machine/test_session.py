@@ -110,3 +110,25 @@ def test_hook_main_failsafe_on_garbage():
                           input="not json", capture_output=True, text=True)
     out = json.loads(proc.stdout)
     assert out["hookSpecificOutput"]["permissionDecision"] == "ask"
+
+
+def test_hook_session_tripwire_halts_subsequent_calls(tmp_path):
+    import os
+    env = {**os.environ, "PWM_CP_STATE_DIR": str(tmp_path), "PWM_CEILING": "A1"}
+    sid = "sess-123"
+
+    def hook(cmd):
+        payload = json.dumps({"session_id": sid, "tool_name": "Bash", "tool_input": {"command": cmd}})
+        p = subprocess.run([sys.executable, "-m", "ai4science.harness.agents.machine.hook"],
+                           input=payload, capture_output=True, text=True, env=env)
+        return json.loads(p.stdout)["hookSpecificOutput"]["permissionDecision"]
+
+    # a forbidden call denies AND trips the session
+    assert hook("rm -rf /") == "deny"
+    # everything after the trip is denied — even a safe read
+    assert hook("ls -la") == "deny"
+    # a different session is unaffected
+    other = json.dumps({"session_id": "sess-other", "tool_name": "Bash", "tool_input": {"command": "ls -la"}})
+    p = subprocess.run([sys.executable, "-m", "ai4science.harness.agents.machine.hook"],
+                       input=other, capture_output=True, text=True, env=env)
+    assert json.loads(p.stdout)["hookSpecificOutput"]["permissionDecision"] == "allow"

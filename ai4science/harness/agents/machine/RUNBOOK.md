@@ -66,7 +66,11 @@ outbound network.
   unattended.
 - **deny** — the call is blocked. A **forbidden** call (e.g. `rm -rf /`, fork bomb,
   `mkfs`, writing `/etc`, reading `.ssh`/shadow) also **trips the session**: every
-  later call is denied until you start a new session (the kill switch).
+  later call — even a safe read — is denied (the kill switch). The trip is recorded
+  in a per-session flag at `$PWM_CP_STATE_DIR/pwm-cc-tripwires/<session_id>`
+  (defaults under the system temp dir). **Reset** by starting a new Claude Code
+  session (new `session_id`), or delete that flag file. *Verified live:* a
+  `cat /etc/shadow` denial halted the session so the next `ls` was refused too.
 
 Quick reference of what each maps to:
 
