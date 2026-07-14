@@ -14,6 +14,12 @@ from ai4science.harness.agents.pocket.tools import (
     consequential_kind,
 )
 from ai4science.harness.agents.pocket.agent import run_pocket
+from ai4science.harness.agents.pocket.policy import KeywordPolicy, incumbent_policy
+from ai4science.harness.agents.pocket.rsi_search import (
+    score_policy,
+    propose_candidates,
+    run_pocket_rsi_search,
+)
 
 __all__ = [
     "Tool",
@@ -21,4 +27,9 @@ __all__ = [
     "CONSEQUENTIAL_KINDS",
     "consequential_kind",
     "run_pocket",
+    "KeywordPolicy",
+    "incumbent_policy",
+    "score_policy",
+    "propose_candidates",
+    "run_pocket_rsi_search",
 ]
