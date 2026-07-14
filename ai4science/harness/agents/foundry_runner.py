@@ -16,6 +16,7 @@ from ai4science.harness.agents.research.agent import run_research_task
 from ai4science.harness.agents.learning.agent import run_learning_task
 from ai4science.harness.agents.manager.agent import run_manager
 from ai4science.harness.agents.process_learning.agent import run_process_learning_task
+from ai4science.harness.agents.pocket.agent import run_pocket
 
 _RANK = {"A0": 0, "A1": 1, "A2": 2, "A3": 3, "A4": 4}
 
@@ -63,6 +64,22 @@ def _run_manager(*, client, store, agent_id, task_id, **kw) -> dict:
     return {"status": "proposed", **proposal}
 
 
+def _run_pocket(*, client, store, agent_id, task_id, **kw) -> dict:
+    # Advisory, on-device: pocket opens NO CP run and executes host-side tools
+    # under its OWN permission/risk model (see spec caveat). store/task_id/agent_id
+    # carry no bound run; the attested identity+ceiling are surfaced by
+    # run_foundry_agent's wrapper. run_pocket's result already carries a
+    # self-describing status -> return it directly.
+    return run_pocket(
+        intent=kw["intent"],
+        registry=kw.get("registry"),
+        granted=kw.get("granted", ()),
+        ctx=kw.get("ctx"),
+        select=kw.get("select"),
+        advise=kw.get("advise"),
+    )
+
+
 # One real entry today; a second domain is just another key (the seam is generic).
 DOMAIN_SPECS: dict[str, DomainEntry] = {
     "imaging": DomainEntry(min_profile="A1", run=_run_imaging),
@@ -72,6 +89,7 @@ DOMAIN_SPECS: dict[str, DomainEntry] = {
     "learning": DomainEntry(min_profile="A1", run=_run_learning),
     "manager": DomainEntry(min_profile="A0", run=_run_manager),   # advisory: no bound run
     "process_learning": DomainEntry(min_profile="A1", run=_run_process_learning),
+    "pocket": DomainEntry(min_profile="A0", run=_run_pocket),   # advisory, on-device, no bound run
 }
 
 
