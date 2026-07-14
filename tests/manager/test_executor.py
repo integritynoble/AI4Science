@@ -2,48 +2,62 @@ from ai4science.harness.agents.manager.executor import execute_demand, GovernedE
 
 
 class FakeClient:
-    """A stand-in control-plane client (its presence just means 'governed runtime up')."""
+    """Stand-in control-plane client (its presence means 'governed runtime up')."""
 
 
 def _fake_foundry(**kw):
     _fake_foundry.calls.append(kw)
     return {"ok": True, "agent_id": kw["agent_id"], "ceiling": "A1",
-            "result": {"status": "done", "echo": kw.get("demand")}}
+            "result": {"status": "done", "kw": kw}}
 _fake_foundry.calls = []
 
 
 def test_execute_demand_fail_closed_without_client():
     _fake_foundry.calls.clear()
-    out = execute_demand(agent_id="A1", demand="do it", client=None, run_foundry=_fake_foundry)
+    out = execute_demand(agent_id="A1", client=None, run_kwargs={"demand": {"intent": "x"}},
+                         run_foundry=_fake_foundry)
     assert out["ok"] is False and "control plane" in out["reason"]
     assert _fake_foundry.calls == []            # no run attempted
 
 
-def test_execute_demand_delegates_to_foundry_and_forwards_demand():
+def test_execute_demand_forwards_run_kwargs():
     _fake_foundry.calls.clear()
-    out = execute_demand(agent_id="A9", demand="reconstruct", client=FakeClient(),
-                         run_foundry=_fake_foundry)
-    assert out["ok"] is True and out["agent_id"] == "A9"
+    execute_demand(agent_id="A9", client=FakeClient(), run_kwargs={"workspace": "/tmp/ws"},
+                   run_foundry=_fake_foundry)
     call = _fake_foundry.calls[0]
-    assert call["agent_id"] == "A9" and call["demand"] == {"intent": "reconstruct"}
+    assert call["agent_id"] == "A9" and call["workspace"] == "/tmp/ws"
 
 
-def test_governed_executor_refuses_unregistered_agent():
-    ex = GovernedExecutor(client=FakeClient(), agent_ids={"imaging": "A9"},
-                          run_foundry=_fake_foundry)
+def test_executor_refuses_unregistered_agent():
+    ex = GovernedExecutor(client=FakeClient(), agent_ids={"imaging": "A9"}, run_foundry=_fake_foundry)
     out = ex.run("work", "do coding")
     assert out["ok"] is False and "not enabled for execution" in out["reason"]
 
 
-def test_governed_executor_runs_registered_agent():
+def test_executor_advisory_agent_runs_with_demand_kwargs():
     _fake_foundry.calls.clear()
-    ex = GovernedExecutor(client=FakeClient(), agent_ids={"imaging": "A9"},
-                          run_foundry=_fake_foundry)
-    out = ex.run("imaging", "reconstruct the cassi scene")
-    assert out["ok"] is True and out["result"]["status"] == "done"
-    assert _fake_foundry.calls[0]["agent_id"] == "A9"
+    ex = GovernedExecutor(client=FakeClient(), agent_ids={"manager": "M1"}, run_foundry=_fake_foundry)
+    out = ex.run("manager", "route this demand")
+    assert out["ok"] is True
+    assert _fake_foundry.calls[0]["demand"] == {"intent": "route this demand"}
 
 
-def test_governed_executor_fail_closed_without_client():
-    ex = GovernedExecutor(client=None, agent_ids={"imaging": "A9"})
-    assert ex.run("imaging", "x")["ok"] is False
+def test_executor_input_agent_needs_input_without_sources():
+    _fake_foundry.calls.clear()
+    ex = GovernedExecutor(client=FakeClient(), agent_ids={"imaging": "I1"}, run_foundry=_fake_foundry)
+    out = ex.run("imaging", "reconstruct the cassi scene")     # no sources
+    assert out["ok"] is False and "needs input" in out["reason"] and out["missing"] == ["workspace"]
+    assert _fake_foundry.calls == []            # fail-closed: no run
+
+
+def test_executor_input_agent_runs_with_workspace():
+    _fake_foundry.calls.clear()
+    ex = GovernedExecutor(client=FakeClient(), agent_ids={"imaging": "I1"}, run_foundry=_fake_foundry)
+    out = ex.run("imaging", "reconstruct", sources={"workspace": "/data/scene1"})
+    assert out["ok"] is True
+    assert _fake_foundry.calls[0]["workspace"] == "/data/scene1"
+
+
+def test_executor_fail_closed_without_client():
+    ex = GovernedExecutor(client=None, agent_ids={"imaging": "I1"})
+    assert ex.run("imaging", "x", sources={"workspace": "/w"})["ok"] is False
