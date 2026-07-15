@@ -20,9 +20,11 @@ console = Console()
 
 
 def _login_pwm(base: Optional[str]) -> None:
-    """Device-flow login to a physicsworldmodel.org account (token only —
-    the wallet private key is never requested or stored)."""
-    target = (base or pwm_account.DEFAULT_BASE).rstrip("/")
+    """Device-flow login. Base precedence: explicit arg (`/login <url>`) >
+    PWM_LOGIN_BASE env (e.g. token.comparegpt.io, set by `singularity`) >
+    physicsworldmodel.org. Token only — the wallet private key is never stored."""
+    import os
+    target = (base or os.environ.get("PWM_LOGIN_BASE") or pwm_account.DEFAULT_BASE).rstrip("/")
     try:
         acct = pwm_account.login_device_flow(target, echo=console.print)
     except Exception as e:
