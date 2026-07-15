@@ -91,14 +91,32 @@ def _finish_own(provider: str, auth: str, api_key: Optional[str]) -> None:
                       "(stored as your preference).[/yellow]")
 
 
+def _greet_with_manager() -> None:
+    """The Manager greets on login (product directive: "ai4science uses the manager
+    agent when users login"). It shows the fleet it can route to on the active plane
+    and reminds the user it only proposes — nothing runs without their say-so.
+
+    Fail-safe: a greeting problem (import, registry, plane) must NEVER block a
+    successful login, so any exception is swallowed."""
+    try:
+        from ai4science.harness.agents.manager.login_console import greet, render_greeting
+        text = render_greeting(greet())
+    except Exception:
+        return
+    console.print()
+    console.print(text, markup=False, highlight=False)  # plain: it isn't rich markup
+
+
 def _enter_chat_if_interactive(no_chat: bool) -> None:
-    """After a successful login, drop the user straight into a chat session —
-    so `ai4science login` is a one-step start, not "login then type ai4science".
+    """After a successful login, greet with the Manager and drop the user straight
+    into a chat session — so `ai4science login` is a one-step start, not "login then
+    type ai4science".
 
     Skipped when --no-chat, or when stdin/stdout isn't a TTY (scripted/piped/CI
     runs shouldn't be ambushed by an interactive REPL)."""
     if no_chat:
         return
+    _greet_with_manager()
     if not (sys.stdin.isatty() and sys.stdout.isatty()):
         console.print("\n[dim]Run [/dim][cyan]ai4science[/cyan]"
                       "[dim] to start chatting.[/dim]")
