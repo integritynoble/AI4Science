@@ -15,7 +15,6 @@ import datetime
 import getpass
 import json
 import os
-import tempfile
 import time
 from pathlib import Path
 from typing import Any, Callable, Dict
@@ -24,8 +23,8 @@ _OUTCOME_FIELD = {"approve": "approvals", "deny": "denials", "forbidden": "forbi
 
 
 def _trust_dir() -> Path:
-    base = os.environ.get("PWM_CP_STATE_DIR") or tempfile.gettempdir()
-    return Path(base) / "pwm-cc-trust"
+    from ai4science.harness.agents.machine.state import state_dir
+    return state_dir() / "pwm-cc-trust"
 
 
 def _owner() -> str:

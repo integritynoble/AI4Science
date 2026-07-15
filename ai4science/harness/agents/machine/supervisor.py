@@ -15,15 +15,14 @@ import datetime
 import json
 import os
 import re
-import tempfile
 import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 
 def _sessions_dir() -> Path:
-    base = os.environ.get("PWM_CP_STATE_DIR") or tempfile.gettempdir()
-    return Path(base) / "pwm-cc-sessions"
+    from ai4science.harness.agents.machine.state import state_dir
+    return state_dir() / "pwm-cc-sessions"
 
 
 def _record_path(name: str) -> Path:

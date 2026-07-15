@@ -11,22 +11,23 @@ from __future__ import annotations
 import json
 import os
 import pathlib
-import tempfile
 from typing import Any, Dict, Optional
 import sys
 
 from ai4science.harness.agents.machine.session import decide_tool_call
 
 
-def _tripwire_path(session_id: Optional[str]) -> pathlib.Path:
+def _tripwire_path(session_id: str) -> pathlib.Path:
     """Per-session flag file. A stateless hook runs once per tool call, so the
     'halt the whole session after a forbidden call' behavior is carried across
     invocations by this file (keyed on Claude Code's session_id)."""
-    base = os.environ.get("PWM_CP_STATE_DIR") or tempfile.gettempdir()
-    return pathlib.Path(base) / "pwm-cc-tripwires" / (session_id or "no-session")
+    from ai4science.harness.agents.machine.state import state_dir
+    return state_dir() / "pwm-cc-tripwires" / session_id
 
 
 def _is_tripped(session_id: Optional[str]) -> bool:
+    if not session_id:                       # no id → no persistent per-session halt to inherit
+        return False
     try:
         return _tripwire_path(session_id).exists()
     except Exception:
@@ -34,6 +35,8 @@ def _is_tripped(session_id: Optional[str]) -> bool:
 
 
 def _set_tripped(session_id: Optional[str], reason: str) -> None:
+    if not session_id:                       # don't persist a halt under a shared/absent key
+        return
     try:
         p = _tripwire_path(session_id)
         p.parent.mkdir(parents=True, exist_ok=True)

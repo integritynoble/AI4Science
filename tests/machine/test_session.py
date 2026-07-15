@@ -163,6 +163,30 @@ def test_hook_caps_a3_until_unlocked(tmp_path, monkeypatch):
     assert _hook_decision("some_random_tool --go", {**os.environ}) == "allow"
 
 
+def _hook_decision_nosid(payload_dict, env):
+    p = subprocess.run([sys.executable, "-m", "ai4science.harness.agents.machine.hook"],
+                       input=json.dumps(payload_dict), capture_output=True, text=True, env=env)
+    return json.loads(p.stdout)["hookSpecificOutput"]["permissionDecision"]
+
+
+def test_hook_no_session_id_is_not_halted_by_stale_flag(tmp_path, monkeypatch):
+    import os
+    monkeypatch.setenv("PWM_CP_STATE_DIR", str(tmp_path))
+    # a legacy shared 'no-session' flag must NOT halt a payload that has no session_id
+    (tmp_path / "pwm-cc-tripwires").mkdir(parents=True)
+    (tmp_path / "pwm-cc-tripwires" / "no-session").write_text("stale")
+    dec = _hook_decision_nosid({"tool_name": "Bash", "tool_input": {"command": "ls -la"}}, {**os.environ})
+    assert dec == "allow"
+
+
+def test_hook_no_session_id_forbidden_denies_without_persisting(tmp_path, monkeypatch):
+    import os
+    monkeypatch.setenv("PWM_CP_STATE_DIR", str(tmp_path))
+    dec = _hook_decision_nosid({"tool_name": "Bash", "tool_input": {"command": "rm -rf /"}}, {**os.environ})
+    assert dec == "deny"                                    # denied per-call...
+    assert not (tmp_path / "pwm-cc-tripwires" / "no-session").exists()   # ...but no shared flag written
+
+
 def test_hook_session_tripwire_halts_subsequent_calls(tmp_path):
     import os
     env = {**os.environ, "PWM_CP_STATE_DIR": str(tmp_path), "PWM_CEILING": "A1"}
