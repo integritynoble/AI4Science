@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -288,6 +289,40 @@ def core_agents() -> List[AgentSpec]:
 
 def specific_agents() -> List[AgentSpec]:
     return [s for s in AGENT_REGISTRY.values() if s.category == "specific"]
+
+
+# --- Two planes: platform (ai4science) vs product (singularity) --------------------
+# Every agent is built and recursively self-improved in the ai4science PLATFORM, which
+# holds ALL agents and releases frequently. Only agents that have matured (spec.matured)
+# ship in the singularity PRODUCT, which is kept stable and released rarely. The active
+# plane is chosen by the PWM_PLANE env var (default "ai4science"); nothing else changes
+# the runtime — the plane only narrows which agents are exposed.
+_SINGULARITY = "singularity"
+_AI4SCIENCE = "ai4science"
+
+
+def current_plane() -> str:
+    """The active product plane: "singularity" (mature agents only) or "ai4science"
+    (the full platform, default). Read from the PWM_PLANE environment variable."""
+    plane = (os.environ.get("PWM_PLANE") or _AI4SCIENCE).strip().lower()
+    return _SINGULARITY if plane == _SINGULARITY else _AI4SCIENCE
+
+
+def platform_agents() -> List[AgentSpec]:
+    """Every registered agent — the ai4science platform view (the factory)."""
+    return list(AGENT_REGISTRY.values())
+
+
+def mature_agents() -> List[AgentSpec]:
+    """Only agents promoted into the stable product — the singularity view."""
+    return [s for s in AGENT_REGISTRY.values() if s.matured]
+
+
+def agents_for_plane(plane: Optional[str] = None) -> List[AgentSpec]:
+    """The agents exposed on `plane` (defaults to current_plane()): mature-only on
+    singularity, the full fleet on ai4science."""
+    plane = (plane or current_plane()).strip().lower()
+    return mature_agents() if plane == _SINGULARITY else platform_agents()
 
 
 def search(query: str) -> List[AgentSpec]:

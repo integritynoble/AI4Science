@@ -30,3 +30,7 @@ class AgentSpec:
     supported_profiles: Tuple[str, ...] = ("I0", "I1", "I2")  # list of profile IDs this agent supports
     default_profile: str = "I1"                 # default interaction profile when user gives none
     approval_required_for: Tuple[str, ...] = ()  # operations ("publish", "deploy", "spend") requiring approval
+    # Product/platform plane: has this agent matured into the STABLE product (singularity)?
+    # Every agent is built + recursively self-improved in the ai4science platform; only mature
+    # ones ship in singularity, via owner-signed promotion. Manager + Machine mature first.
+    matured: bool = False

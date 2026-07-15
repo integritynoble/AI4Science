@@ -13,6 +13,7 @@ AGENT = AgentSpec(
     approval_required_for=("install", "login", "grant-permission", "deploy", "spend"),
     system_prompt=MACHINE_SYSTEM_PROMPT,      # steer it to the real tools, not file search
     extra_tools=machine_tools,                # find_claude_sessions / detect_machine as tools
+    matured=True,   # host-governor — matures first; ships in singularity alongside the manager
 )
 
 from ai4science.harness.agents.machine.agent import run_machine

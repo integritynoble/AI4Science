@@ -11,6 +11,7 @@ AGENT = AgentSpec(
     default_profile="I0",
     approval_required_for=("create-agent", "run-agent", "promote", "publish", "deploy", "spend"),
     allow_as_subagent=False,
+    matured=True,   # console — matures first; greets the owner on login, ships in singularity
 )
 
 from ai4science.harness.agents.manager.agent import run_manager
