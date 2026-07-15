@@ -13,7 +13,7 @@ import re
 import shlex
 from typing import Any, Callable, Dict, List, Optional
 
-_CEILING_ORDER = {"A0": 0, "A1": 1, "A2": 2}
+_CEILING_ORDER = {"A0": 0, "A1": 1, "A2": 2, "A3": 3}
 
 READ_ONLY_TOOLS = {"Read", "Grep", "Glob", "LS", "NotebookRead"}
 WRITE_TOOLS = {"Edit", "Write", "NotebookEdit", "MultiEdit"}
@@ -111,25 +111,29 @@ def decide_tool_call(call: Dict[str, Any], *, ceiling: str = "A1",
     if tool in READ_ONLY_TOOLS:
         return _allow("read-only tool")
 
-    if tool in NETWORK_TOOLS:
-        return _allow("allowlisted network at A2") if lvl >= 2 else _ask("network requires owner approval below A2")
+    if tool in NETWORK_TOOLS:                                    # network: >= A1
+        return _allow("network (A1+)") if lvl >= 1 else _ask("A0 is advisory; network requires approval")
 
     if tool in WRITE_TOOLS:
         path = inp.get("file_path") or inp.get("path") or inp.get("notebook_path") or ""
-        if _write_is_sensitive(path, project_dir):
-            return _ask(f"write to a sensitive/out-of-project path: {path!r}")
+        if _write_is_sensitive(path, project_dir):              # sensitive/out-of-project write: >= A2
+            return (_allow("sensitive/out-of-project write (A2+)") if lvl >= 2
+                    else _ask(f"write to a sensitive/out-of-project path: {path!r}"))
         return _allow("in-project write") if lvl >= 1 else _ask("A0 is advisory; writes require approval")
 
     if tool == "Bash":
         c = classify_command(inp.get("command", ""))
-        if c["kind"] == "forbidden":
+        if c["kind"] == "forbidden":                            # catastrophe backstop: every tier
             return _deny("forbidden command", tripwire=True)
-        if c["kind"] in ("consequential", "unknown"):
-            return _ask(c["reason"])
+        if c["kind"] == "consequential":                       # push/install/sudo/…: >= A2
+            return _allow("consequential command (A2+)") if lvl >= 2 else _ask(c["reason"])
+        if c["kind"] == "unknown":                             # unclassifiable: >= A3
+            return _allow("unclassified command (A3)") if lvl >= 3 else _ask(c["reason"])
         return _allow("read-only command") if lvl >= 1 else _ask("A0 is advisory; commands require approval")
 
-    # unknown / unmapped tool -> fail-safe ask
-    return _ask(f"unrecognized tool {tool!r}; defaulting to owner approval")
+    # unmapped tool: >= A3, else fail-safe ask
+    return (_allow(f"unmapped tool (A3): {tool!r}") if lvl >= 3
+            else _ask(f"unrecognized tool {tool!r}; defaulting to owner approval"))
 
 
 class SessionDriver:

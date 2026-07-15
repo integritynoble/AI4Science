@@ -64,14 +64,33 @@ def test_write_in_project_allowed_sensitive_asked():
     assert sshkey["decision"] == "ask"
 
 
-def test_network_gated_by_ceiling():
+def test_network_allowed_from_a1():
     call = {"tool_name": "WebFetch", "tool_input": {"url": "https://x"}}
-    assert decide_tool_call(call, ceiling="A1")["decision"] == "ask"
-    assert decide_tool_call(call, ceiling="A2")["decision"] == "allow"
+    assert decide_tool_call(call, ceiling="A0")["decision"] == "ask"
+    assert decide_tool_call(call, ceiling="A1")["decision"] == "allow"
 
 
-def test_unknown_tool_asks():
-    assert decide_tool_call({"tool_name": "SomeMcpTool", "tool_input": {}})["decision"] == "ask"
+def test_unknown_tool_asks_below_a3():
+    assert decide_tool_call({"tool_name": "SomeMcpTool", "tool_input": {}}, ceiling="A2")["decision"] == "ask"
+
+
+def test_a2_allows_consequential_and_sensitive_writes():
+    push = {"tool_name": "Bash", "tool_input": {"command": "git push origin main"}}
+    assert decide_tool_call(push, ceiling="A1")["decision"] == "ask"
+    assert decide_tool_call(push, ceiling="A2")["decision"] == "allow"
+    sysfile = {"tool_name": "Write", "tool_input": {"file_path": "/etc/hosts"}}
+    assert decide_tool_call(sysfile, ceiling="A1")["decision"] == "ask"
+    assert decide_tool_call(sysfile, ceiling="A2")["decision"] == "allow"
+
+
+def test_a3_allows_unknown_but_forbidden_still_trips():
+    unknown = {"tool_name": "Bash", "tool_input": {"command": "some_random_tool --go"}}
+    assert decide_tool_call(unknown, ceiling="A2")["decision"] == "ask"
+    assert decide_tool_call(unknown, ceiling="A3")["decision"] == "allow"
+    assert decide_tool_call({"tool_name": "SomeMcpTool", "tool_input": {}}, ceiling="A3")["decision"] == "allow"
+    # catastrophe backstop stays even at A3
+    trip = decide_tool_call({"tool_name": "Bash", "tool_input": {"command": "rm -rf /"}}, ceiling="A3")
+    assert trip["decision"] == "deny" and trip["tripwire"] is True
 
 
 # --- SessionDriver -----------------------------------------------------------
@@ -110,6 +129,38 @@ def test_hook_main_failsafe_on_garbage():
                           input="not json", capture_output=True, text=True)
     out = json.loads(proc.stdout)
     assert out["hookSpecificOutput"]["permissionDecision"] == "ask"
+
+
+def _hook_decision(cmd, env, session_id="x"):
+    payload = json.dumps({"session_id": session_id, "tool_name": "Bash",
+                          "tool_input": {"command": cmd}})
+    p = subprocess.run([sys.executable, "-m", "ai4science.harness.agents.machine.hook"],
+                       input=payload, capture_output=True, text=True, env=env)
+    return json.loads(p.stdout)["hookSpecificOutput"]["permissionDecision"]
+
+
+def test_hook_forbidden_records_trust_trip(tmp_path, monkeypatch):
+    import os
+    monkeypatch.setenv("PWM_CP_STATE_DIR", str(tmp_path))
+    monkeypatch.setenv("PWM_TRUST_OWNER", "t")
+    assert _hook_decision("rm -rf /", {**os.environ}, session_id="s1") == "deny"
+    from ai4science.harness.agents.machine import trust
+    assert trust.status()["forbidden_trips"] == 1 and trust.is_a3_eligible() is False
+
+
+def test_hook_caps_a3_until_unlocked(tmp_path, monkeypatch):
+    import os
+    monkeypatch.setenv("PWM_CP_STATE_DIR", str(tmp_path))
+    monkeypatch.setenv("PWM_TRUST_OWNER", "t")
+    monkeypatch.setenv("PWM_CEILING", "A3")
+    monkeypatch.setenv("PWM_A3_THRESHOLD", "1")
+    # an unknown command: A3 would allow, but locked A3 is capped to A2 → ask
+    assert _hook_decision("some_random_tool --go", {**os.environ}) == "ask"
+    from ai4science.harness.agents.machine import trust
+    trust.record("approve")
+    assert trust.unlock_a3()["ok"] is True
+    # now A3 is honored → the unclassifiable command runs
+    assert _hook_decision("some_random_tool --go", {**os.environ}) == "allow"
 
 
 def test_hook_session_tripwire_halts_subsequent_calls(tmp_path):

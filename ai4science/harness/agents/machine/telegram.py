@@ -142,4 +142,10 @@ def owner_gate(action: str, detail: str, *, request_id: str) -> Optional[bool]:
                                     request_id=request_id, timeout=timeout)
     except Exception:
         approved = None
+    try:                              # feed the trust ledger with the owner's decision
+        if approved in (True, False):
+            from ai4science.harness.agents.machine import trust as _trust
+            _trust.record("approve" if approved is True else "deny")
+    except Exception:
+        pass
     return bool(approved)              # None (timeout) / False → deny (fail-safe)

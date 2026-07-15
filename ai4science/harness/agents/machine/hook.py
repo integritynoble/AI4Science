@@ -71,19 +71,36 @@ def main(argv=None) -> int:
     # the supervisor record owns this session's ceiling (resolved by project dir);
     # fall back to the env ceiling when no record is attached.
     ceiling = os.environ.get("PWM_CEILING", "A1")
+    rec = None
     try:
         from ai4science.harness.agents.machine import supervisor as _sup
         rec = _sup.get_by_cwd(project_dir) if project_dir else None
         if rec and rec.get("ceiling"):
             ceiling = rec["ceiling"]
     except Exception:
-        pass
+        _sup = None
+    # A3 is honored only when earned + unlocked; otherwise capped to A2.
+    try:
+        from ai4science.harness.agents.machine import trust as _trust
+        ceiling = _trust.effective_ceiling(ceiling)
+    except Exception:
+        _trust = None
     verdict = decide_tool_call(call, ceiling=ceiling, project_dir=project_dir)
     # remote approval channel: escalate an 'ask' to the owner's Telegram if configured
     if verdict.get("decision") == "ask":
         verdict = _maybe_telegram(verdict, data)
     if verdict.get("tripwire"):
         _set_tripped(session_id, verdict.get("reason", ""))
+        if _trust is not None:
+            try:
+                _trust.record("forbidden")           # a catastrophe attempt voids A3 eligibility
+            except Exception:
+                pass
+        if _sup is not None and rec is not None:     # reflect into the record so `session ls` shows TRIPPED
+            try:
+                _sup.update(rec["name"], tripwire=True, tripwire_reason=verdict.get("reason", ""))
+            except Exception:
+                pass
     print(json.dumps(verdict_to_hook_output(verdict)))
     return 0
 
@@ -107,6 +124,12 @@ def _maybe_telegram(verdict: Dict[str, Any], data: Dict[str, Any]) -> Dict[str, 
                                     request_id=request_id, timeout=timeout)
     except Exception:
         approved = None
+    try:                                             # a resolved owner decision feeds the trust ledger
+        if approved in (True, False):
+            from ai4science.harness.agents.machine import trust as _trust
+            _trust.record("approve" if approved is True else "deny")
+    except Exception:
+        pass
     if approved is True:
         return {"decision": "allow", "reason": "approved by owner via Telegram", "tripwire": False}
     return {"decision": "deny",
