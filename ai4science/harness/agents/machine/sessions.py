@@ -200,6 +200,22 @@ def _session_activity(cwd: str) -> Optional[str]:
     return None
 
 
+def _session_state(cwd: str, *, idle_after: float = 45.0):
+    """('working'|'idle', seconds_quiet) from how recently the transcript was
+    written. Claude appends to the transcript as it generates and runs tools, so a
+    recently-touched transcript means an active task; a quiet one means the session
+    is idle, waiting for the next request. None if the transcript is unreadable."""
+    path = _transcript_path(cwd)
+    if not path:
+        return None
+    try:
+        import time
+        quiet = max(0.0, time.time() - os.path.getmtime(path))
+    except Exception:
+        return None
+    return ("working" if quiet < idle_after else "idle", quiet)
+
+
 def continuation_task(cwd: str) -> Optional[str]:
     """Build a task that resumes a session's work, seeded from its transcript —
     its recent user requests plus where the assistant left off. None if there's
@@ -243,6 +259,10 @@ def describe_session(cwd: Optional[str], args: Optional[List[str]], pid=None) ->
         activity = _session_activity(cwd)                # what is it actually working on?
         if activity:
             parts.append(f'doing: "{activity}"')
+    state = _session_state(cwd)                          # working (in a task) vs idle
+    if state:
+        label, quiet = state
+        parts.append("⏵ WORKING" if label == "working" else f"⏸ idle {_ago(quiet)}")
     ago = _ago(_proc_start_ago(pid)) if pid is not None else None
     if ago:
         parts.append(f"started {ago} ago")
@@ -271,6 +291,7 @@ def find_claude_sessions(*, list_procs: Optional[Callable[[], List[Dict[str, Any
         entry = {"pid": p["pid"], "cwd": cwd,
                  "cmd": " ".join(p.get("args", []))[:120],
                  "intro": describe_session(cwd, p.get("args"), p.get("pid")),
+                 "state": (_session_state(cwd) or (None,))[0] if cwd else None,
                  "name": rec["name"] if rec else None,
                  "supervised": rec is not None,
                  "ceiling": (rec.get("ceiling") if rec else gov.get("ceiling")),

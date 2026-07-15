@@ -169,6 +169,25 @@ def test_continuation_task_none_without_transcript(tmp_path, monkeypatch):
     assert continuation_task("/work/empty") is None
 
 
+def test_session_state_working_vs_idle(tmp_path, monkeypatch):
+    import os, time
+    monkeypatch.setenv("HOME", str(tmp_path))
+    from ai4science.harness.agents.machine.sessions import _session_state, describe_session
+    cwd = "/work/live"
+    proj = tmp_path / ".claude" / "projects" / cwd.replace("/", "-")
+    proj.mkdir(parents=True)
+    tr = proj / "s.jsonl"
+    tr.write_text(json.dumps({"type": "user", "message": {"content": "go"}}) + "\n")
+    # just-written transcript → working
+    assert _session_state(cwd)[0] == "working"
+    assert "WORKING" in describe_session(cwd, ["claude"], None)
+    # backdate the transcript → idle
+    old = time.time() - 3600
+    os.utime(tr, (old, old))
+    assert _session_state(cwd)[0] == "idle"
+    assert "idle" in describe_session(cwd, ["claude"], None)
+
+
 def test_machine_agent_routes_find_sessions():
     caps = {"os": "linux", "installed": {}, "supported": True}
     out = run_machine(intent="find running claude sessions", caps=caps)
