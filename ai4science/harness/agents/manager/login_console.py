@@ -79,11 +79,13 @@ def render_greeting(g: Greeting) -> str:
         f"  Tell me what you need and I'll route it to the accountable agent.",
         "",
         f"  Agents I can route to on this plane ({len(g.fleet)}):",
-        f"    {'agent':<16}{'tier':<7}{'category':<10}what it's for",
+        f"    {'agent':<18}{'tier':<9}{'category':<10}what it's for",
     ]
     for a in sorted(g.fleet, key=lambda r: r["name"]):
-        kw = ", ".join(a["keywords"][:4]) if a["keywords"] else a["title"]
-        lines.append(f"    {a['name']:<16}{a['tier']:<7}{a['category']:<10}{kw}")
+        kw = ", ".join(a["keywords"][:3]) if a["keywords"] else (a["title"] or "")
+        if len(kw) > 40:
+            kw = kw[:37] + "…"
+        lines.append(f"    {a['name']:<18}{a['tier']:<9}{a['category']:<10}{kw}")
     return "\n".join(lines)
 
 
