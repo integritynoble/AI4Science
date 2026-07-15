@@ -162,7 +162,7 @@ def create(*, pid, cwd, name: Optional[str] = None, ceiling: str = "A1",
     base = _slug(name) if name else default_name(cwd)
     rec = {"name": _unique_name(base, taken=taken), "pid": int(pid), "cwd": str(cwd),
            "session_id": session_id, "ceiling": ceiling, "started_at": _iso(now()),
-           "status": "live", "tripwire": False, "tripwire_reason": None,
+           "status": "live", "goal": None, "tripwire": False, "tripwire_reason": None,
            "approvals": 0, "denials": 0, "forbidden_trips": 0}
     _write(rec)
     return rec

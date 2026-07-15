@@ -58,3 +58,39 @@ def test_approval_mode_reflects_telegram_config(monkeypatch):
     monkeypatch.setenv("PWM_TELEGRAM_BOT_TOKEN", "t")
     monkeypatch.setenv("PWM_TELEGRAM_CHAT_ID", "1")
     assert approval_mode() == "telegram"
+
+
+def test_guide_needs_goal_when_empty():
+    from ai4science.harness.agents.machine.claude_driver import guide_session
+    r = guide_session(project_dir="/x", goal="")
+    assert r["needs_goal"] is True and "goal" in r["question"].lower()
+
+
+def test_guide_loops_until_goal_met(tmp_path):
+    from ai4science.harness.agents.machine.claude_driver import guide_session
+    calls = []
+    outputs = ["working on it... GOAL_NOT_MET: still need to tune",
+               "tuned and verified. GOAL_MET"]
+    def fake_drive(task, **kw):
+        calls.append(task)
+        return {"ok": True, "output": outputs[len(calls) - 1]}
+    r = guide_session(project_dir=str(tmp_path), goal="make PSNR > 25", ceiling="A2",
+                      max_rounds=5, seed_from_transcript=False, drive=fake_drive)
+    assert r["met"] is True and r["rounds"] == 2
+    assert "make PSNR > 25" in calls[0]                       # goal injected
+    assert "Continue from exactly there" in calls[1]         # round 2 fed the prior output
+
+
+def test_guide_stops_at_round_limit_unmet(tmp_path):
+    from ai4science.harness.agents.machine.claude_driver import guide_session
+    r = guide_session(project_dir=str(tmp_path), goal="impossible", max_rounds=2,
+                      seed_from_transcript=False,
+                      drive=lambda task, **kw: {"ok": True, "output": "GOAL_NOT_MET: nope"})
+    assert r["met"] is False and r["rounds"] == 2 and "round limit" in r["note"]
+
+
+def test_guide_aborts_on_drive_failure(tmp_path):
+    from ai4science.harness.agents.machine.claude_driver import guide_session
+    r = guide_session(project_dir=str(tmp_path), goal="x", seed_from_transcript=False,
+                      drive=lambda task, **kw: {"ok": False, "reason": "claude timed out"})
+    assert r["ok"] is False and r["reason"] == "claude timed out" and r["rounds"] == 1

@@ -129,3 +129,69 @@ def drive_claude(task: str, *, project_dir=".", ceiling: str = "A1", name: Optio
     result.setdefault("ceiling", ceiling)
     result.setdefault("approval_mode", approval_mode())
     return result
+
+
+# --- goal-driven guidance ----------------------------------------------------
+
+def _goal_met(output: str) -> bool:
+    """True if the LAST goal signal in the output is GOAL_MET (not GOAL_NOT_MET).
+    'GOAL_MET' is not a substring of 'GOAL_NOT_MET', so the two never collide."""
+    return output.rfind("GOAL_MET") > output.rfind("GOAL_NOT_MET")
+
+
+def _guide_prompt(goal: str, *, context: Optional[str] = None, previous: Optional[str] = None) -> str:
+    parts = [
+        f"GOAL: {goal}",
+        "You are working in this directory to achieve the GOAL above. Take whatever "
+        "steps are needed — read, edit, run, test, verify — and do NOT stop until the "
+        "goal is genuinely met or you are truly blocked.",
+        "End your reply with exactly one of these lines:",
+        "  GOAL_MET",
+        "  GOAL_NOT_MET: <what still remains>",
+    ]
+    if context:
+        parts.append("Context carried over from the session so far:\n" + context)
+    if previous:
+        parts.append("Your previous round ended with:\n" + previous[-1200:] +
+                     "\nContinue from exactly there — do not repeat work already done.")
+    return "\n\n".join(parts)
+
+
+def guide_session(*, project_dir, goal: Optional[str], ceiling: str = "A1",
+                  max_rounds: int = 3, timeout: float = 300.0,
+                  seed_from_transcript: bool = True,
+                  drive: Optional[Callable] = None) -> Dict[str, Any]:
+    """Guide a Claude session toward `goal`, round by round, re-driving it (even
+    when it has gone idle) until it reports the goal met (GOAL_MET) or `max_rounds`
+    is reached. One goal for one session at a time.
+
+    If `goal` is empty, returns {needs_goal: True, question: ...} so the caller can
+    ask the user to clarify before guiding. The user is the final judge — the loop
+    stops at GOAL_MET and hands the result back for acceptance."""
+    if not goal or not str(goal).strip():
+        return {"ok": False, "needs_goal": True,
+                "question": ("What outcome would satisfy you for this session? Describe the "
+                             "goal / done-criteria and I'll guide Claude Code there.")}
+    goal = str(goal).strip()
+    drive = drive or drive_claude
+    log, last = [], ""
+    for rnd in range(1, int(max_rounds) + 1):
+        ctx = None
+        if rnd == 1 and seed_from_transcript:
+            try:
+                from ai4science.harness.agents.machine.sessions import continuation_task
+                ctx = continuation_task(project_dir)
+            except Exception:
+                ctx = None
+        task = _guide_prompt(goal, context=ctx, previous=(last if rnd > 1 else None))
+        out = drive(task, project_dir=project_dir, ceiling=ceiling, timeout=timeout)
+        last = out.get("output", "") or ""
+        met = bool(out.get("ok")) and _goal_met(last)
+        log.append({"round": rnd, "ok": bool(out.get("ok")), "met": met, "reason": out.get("reason")})
+        if not out.get("ok"):
+            return {"ok": False, "met": False, "goal": goal, "rounds": rnd,
+                    "reason": out.get("reason"), "output": last, "log": log}
+        if met:
+            return {"ok": True, "met": True, "goal": goal, "rounds": rnd, "output": last, "log": log}
+    return {"ok": True, "met": False, "goal": goal, "rounds": int(max_rounds), "output": last,
+            "log": log, "note": "goal not confirmed within the round limit — review and re-run to continue"}
