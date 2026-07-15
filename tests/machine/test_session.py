@@ -33,6 +33,26 @@ def test_classify_unknown_is_not_read():
     assert classify_command('echo "unterminated')["kind"] == "unknown"  # unparseable
 
 
+def test_awk_sed_and_find_exec_are_not_safe_reads():
+    # awk/sed can execute arbitrary code (system(), GNU sed `e`) — no longer 'read'
+    assert classify_command('awk \'BEGIN{system("id")}\'')["kind"] == "unknown"
+    assert classify_command("sed 's/a/b/' f")["kind"] == "unknown"
+    # find -exec / -delete gated; plain find still read
+    assert classify_command("find . -delete")["kind"] == "unknown"
+    assert classify_command("find /x -exec rm {} +")["kind"] == "unknown"
+    assert classify_command("find . -name '*.py'")["kind"] == "read"
+    assert classify_command("ls -la && git status")["kind"] == "read"      # unaffected
+
+
+def test_bash_write_to_governance_config_is_denied():
+    for cmd in ("echo '{}' > /proj/.claude/settings.json",
+                "rm /proj/.claude/settings.json",
+                "tee /home/u/.local/share/pwm-cp/pwm-cc-trust/u.json"):
+        assert classify_command(cmd)["kind"] == "protected", cmd
+    # reading the same files is still fine
+    assert classify_command("cat /proj/.claude/settings.json")["kind"] == "read"
+
+
 # --- decide_tool_call --------------------------------------------------------
 
 def test_readonly_tool_allowed():
@@ -53,6 +73,26 @@ def test_bash_forbidden_denies_and_trips():
 def test_bash_consequential_asks():
     v = decide_tool_call({"tool_name": "Bash", "tool_input": {"command": "sudo rm -rf project"}})
     assert v["decision"] == "ask"
+
+
+def test_protected_writes_denied_at_every_ceiling():
+    # the governed agent must never rewrite its own hook config or the trust ledger
+    for ceiling in ("A0", "A1", "A2", "A3"):
+        hook = decide_tool_call({"tool_name": "Write", "tool_input": {"file_path": "/proj/.claude/settings.json"}},
+                                ceiling=ceiling, project_dir="/proj")
+        assert hook["decision"] == "deny", ceiling
+        ledger = decide_tool_call({"tool_name": "Edit", "tool_input": {"file_path": "/home/u/.local/share/pwm-cp/pwm-cc-trust/u.json"}},
+                                  ceiling=ceiling, project_dir="/home/u")
+        assert ledger["decision"] == "deny", ceiling
+    # a normal in-project write is unaffected
+    assert decide_tool_call({"tool_name": "Write", "tool_input": {"file_path": "/proj/notes.txt"}},
+                            ceiling="A1", project_dir="/proj")["decision"] == "allow"
+
+
+def test_bash_write_to_protected_path_denied_at_a3():
+    d = decide_tool_call({"tool_name": "Bash", "tool_input": {"command": "echo x > /p/.claude/settings.json"}},
+                         ceiling="A3", project_dir="/p")
+    assert d["decision"] == "deny"        # even at A3, the agent can't rewrite its governor
 
 
 def test_write_in_project_allowed_sensitive_asked():

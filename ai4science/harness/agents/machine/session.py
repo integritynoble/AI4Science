@@ -37,15 +37,38 @@ _CONSEQUENTIAL = [
     r"\bexport\b[^=]*(KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL)", r"\bdeploy\b",
     r"\bcat\b[^|;&]*(\.env\b|id_rsa|id_ed25519|\.aws/credentials|/etc/passwd)",
 ]
+# `sed`/`awk` are NOT here: both can execute arbitrary code (awk system()/getline,
+# GNU sed `e`), so they are gated as unknown (A3) rather than treated as read-only.
 _SAFE_HEADS = {
     "ls", "cat", "head", "tail", "grep", "rg", "egrep", "fgrep", "find", "pwd",
     "echo", "printf", "wc", "which", "type", "date", "whoami", "id", "uname",
     "hostname", "file", "stat", "du", "df", "tree", "basename", "dirname",
-    "true", "false", "test", "sort", "uniq", "cut", "sed", "awk", "diff",
+    "true", "false", "test", "sort", "uniq", "cut", "diff",
     "cd", "sleep", "seq", "cmp", "realpath", "readlink", "git",
 }
 _SAFE_GIT = {"status", "log", "diff", "show", "branch", "remote", "config",
              "rev-parse", "ls-files", "describe", "blame", "tag", "stash"}
+_FIND_EXEC = {"-exec", "-execdir", "-ok", "-okdir", "-delete", "-fprintf",
+              "-fprint", "-fprint0", "-fls"}
+
+# Governance config + owner state the governed agent must never rewrite — writing
+# any of these lets it remove its own hook or lift its own ceiling, so they are
+# DENIED at every ceiling (reads are unaffected).
+_PROTECTED_WRITE = (".claude/settings.json", ".claude/settings.local.json",
+                    "pwm-cc-trust", "pwm-cc-tripwires", "pwm-cc-sessions", "/pwm-cp/")
+_WRITE_VERB = re.compile(r">|\btee\b|\bdd\b|\brm\b|\bmv\b|\bcp\b|\bln\b|\btruncate\b|\bchmod\b|\bchown\b")
+
+
+def _write_is_protected(path: str) -> bool:
+    return any(s in (path or "") for s in _PROTECTED_WRITE)
+
+
+def _bash_writes_protected(cmd: str) -> bool:
+    """A bash command that WRITES (redirect / tee / rm / mv …) to a protected path.
+    Reading a protected file (cat/grep) is fine and not flagged."""
+    if not any(s in cmd for s in _PROTECTED_WRITE):
+        return False
+    return bool(_WRITE_VERB.search(cmd))
 
 
 def classify_command(cmd: str) -> Dict[str, Any]:
@@ -56,6 +79,9 @@ def classify_command(cmd: str) -> Dict[str, Any]:
     for pat in _CONSEQUENTIAL:
         if re.search(pat, low):
             return {"kind": "consequential", "consequential": True, "reason": "matched a consequential pattern"}
+    if _bash_writes_protected(low):
+        return {"kind": "protected", "consequential": True,
+                "reason": "writes a protected governance/state path"}
     # allowlist: every pipeline/sequence segment must head a read-only command
     segments = re.split(r"[;|]|&&|\|\|", cmd or "")
     for seg in segments:
@@ -73,6 +99,8 @@ def classify_command(cmd: str) -> Dict[str, Any]:
             return {"kind": "unknown", "consequential": False, "reason": f"unrecognized command {head!r}"}
         if head == "git" and len(toks) > 1 and toks[1] not in _SAFE_GIT:
             return {"kind": "unknown", "consequential": False, "reason": f"non-read-only git: {toks[1]!r}"}
+        if head == "find" and any(t in _FIND_EXEC for t in toks[1:]):
+            return {"kind": "unknown", "consequential": False, "reason": "find with -exec/-delete"}
     return {"kind": "read", "consequential": False, "reason": "read-only allowlisted command"}
 
 
@@ -116,6 +144,8 @@ def decide_tool_call(call: Dict[str, Any], *, ceiling: str = "A1",
 
     if tool in WRITE_TOOLS:
         path = inp.get("file_path") or inp.get("path") or inp.get("notebook_path") or ""
+        if _write_is_protected(path):                          # governor config / owner state: never
+            return _deny("writing a governance/state path (hook config or trust ledger) is not permitted")
         if _write_is_sensitive(path, project_dir):              # sensitive/out-of-project write: >= A2
             return (_allow("sensitive/out-of-project write (A2+)") if lvl >= 2
                     else _ask(f"write to a sensitive/out-of-project path: {path!r}"))
@@ -125,6 +155,8 @@ def decide_tool_call(call: Dict[str, Any], *, ceiling: str = "A1",
         c = classify_command(inp.get("command", ""))
         if c["kind"] == "forbidden":                            # catastrophe backstop: every tier
             return _deny("forbidden command", tripwire=True)
+        if c["kind"] == "protected":                           # governor config / owner state: never
+            return _deny("command writes a governance/state path — not permitted")
         if c["kind"] == "consequential":                       # push/install/sudo/…: >= A2
             return _allow("consequential command (A2+)") if lvl >= 2 else _ask(c["reason"])
         if c["kind"] == "unknown":                             # unclassifiable: >= A3
