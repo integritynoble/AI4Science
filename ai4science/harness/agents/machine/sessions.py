@@ -85,6 +85,85 @@ def _ceiling_of(cmd: str) -> Optional[str]:
     return None
 
 
+# --- session introductions (help a human recognize which session is which) ---
+
+def _git_context(cwd: str):
+    """Walk up from cwd to find a repo; return (repo_name, branch) or (None, None)."""
+    d = cwd
+    for _ in range(8):
+        g = os.path.join(d, ".git")
+        if os.path.isdir(g):
+            branch = None
+            try:
+                head = open(os.path.join(g, "HEAD")).read().strip()
+                branch = head.split("/")[-1] if head.startswith("ref:") else head[:7]
+            except Exception:
+                pass
+            return (os.path.basename(d.rstrip("/")) or d, branch)
+        if os.path.isfile(g):                          # worktree / submodule pointer
+            return (os.path.basename(d.rstrip("/")) or d, None)
+        parent = os.path.dirname(d.rstrip("/"))
+        if not parent or parent == d:
+            break
+        d = parent
+    return (None, None)
+
+
+def _proc_start_ago(pid) -> Optional[float]:
+    """Seconds since the process started (from /proc/<pid>/stat), or None."""
+    try:
+        import time
+        with open(f"/proc/{int(pid)}/stat") as f:
+            after_comm = f.read().rsplit(")", 1)[1].split()
+        starttime_ticks = int(after_comm[19])          # field 22 overall, index 19 post-comm
+        hz = os.sysconf("SC_CLK_TCK")
+        with open("/proc/uptime") as f:
+            uptime = float(f.read().split()[0])
+        boot = time.time() - uptime
+        return max(0.0, time.time() - (boot + starttime_ticks / hz))
+    except Exception:
+        return None
+
+
+def _ago(seconds: Optional[float]) -> Optional[str]:
+    if seconds is None:
+        return None
+    s = int(seconds)
+    if s < 90:
+        return f"{s}s"
+    if s < 5400:
+        return f"{s // 60}m"
+    if s < 172800:
+        return f"{s // 3600}h"
+    return f"{s // 86400}d"
+
+
+def describe_session(cwd: Optional[str], args: Optional[List[str]], pid=None) -> str:
+    """A short human introduction to a session — project/repo + branch, whether
+    it's interactive or running a headless task, and how long it's been running —
+    so a user can tell sessions apart and pick the right one."""
+    if not cwd:
+        return "owned by another user (details hidden)"
+    parts = []
+    repo, branch = _git_context(cwd)
+    if repo:
+        parts.append(f"{repo} repo" + (f" @ {branch}" if branch else ""))
+    else:
+        parts.append(f"in {os.path.basename(cwd.rstrip('/')) or cwd}")
+    args = args or []
+    if "-p" in args:
+        try:
+            parts.append(f'task: "{args[args.index("-p") + 1][:48]}"')
+        except Exception:
+            parts.append("headless")
+    else:
+        parts.append("interactive")
+    ago = _ago(_proc_start_ago(pid)) if pid is not None else None
+    if ago:
+        parts.append(f"started {ago} ago")
+    return " · ".join(parts)
+
+
 def find_claude_sessions(*, list_procs: Optional[Callable[[], List[Dict[str, Any]]]] = None) -> Dict[str, Any]:
     """Return the running Claude Code sessions this user can see. Each has pid,
     cwd, governance status, and `mine` (True when the cwd is readable — i.e. the
@@ -106,6 +185,7 @@ def find_claude_sessions(*, list_procs: Optional[Callable[[], List[Dict[str, Any
                 rec = None
         entry = {"pid": p["pid"], "cwd": cwd,
                  "cmd": " ".join(p.get("args", []))[:120],
+                 "intro": describe_session(cwd, p.get("args"), p.get("pid")),
                  "name": rec["name"] if rec else None,
                  "supervised": rec is not None,
                  "ceiling": (rec.get("ceiling") if rec else gov.get("ceiling")),
@@ -191,6 +271,8 @@ def summarize(mine: List[Dict[str, Any]], others_count: int) -> str:
             ceil = s.get("ceiling") or "--"
             state = "TRIPPED" if s.get("tripwire") else ("governed" if s.get("governed") else "NOT governed")
             lines.append(f"  {name:<12} pid {s['pid']}  {s['cwd']}  {ceil}  [{state}]")
+            if s.get("intro"):
+                lines.append(f"               ↳ {s['intro']}")
     else:
         lines.append("No Claude sessions owned by you (nothing to manage here).")
     if others_count:

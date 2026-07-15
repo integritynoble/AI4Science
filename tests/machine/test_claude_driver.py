@@ -12,6 +12,11 @@ def test_ensure_governance_hook_writes_pretooluse(tmp_path):
     cfg = json.loads(p.read_text())
     hook = cfg["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
     assert "PWM_CEILING=A1" in hook and "ai4science.harness.agents.machine.hook" in hook
+    # self-sufficient: embeds a PYTHONPATH that can import ai4science
+    assert "PYTHONPATH=" in hook
+    import ai4science, os
+    root = os.path.dirname(os.path.dirname(os.path.abspath(ai4science.__file__)))
+    assert root in hook
 
 
 def test_drive_claude_wires_hook_and_runs(tmp_path):

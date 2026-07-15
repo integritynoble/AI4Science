@@ -15,12 +15,34 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
 
+def _hook_pythonpath() -> Optional[str]:
+    """Where the hook (a bare `python -m` subprocess spawned by Claude Code) must
+    look to import ai4science — so governance works even when the platform is run
+    from source rather than pip-installed. Prepends the ai4science package root to
+    any inherited PYTHONPATH."""
+    try:
+        import ai4science
+        root = os.path.dirname(os.path.dirname(os.path.abspath(ai4science.__file__)))
+    except Exception:
+        return None
+    existing = os.environ.get("PYTHONPATH") or ""
+    parts = [p for p in existing.split(":") if p]
+    if root not in parts:
+        parts.insert(0, root)
+    return ":".join(parts)
+
+
 def ensure_governance_hook(project_dir, *, ceiling: str = "A1") -> Path:
     """Write a project .claude/settings.json wiring the PreToolUse governance hook.
-    Uses THIS interpreter (so the hook resolves ai4science from the same env)."""
+    Uses THIS interpreter and embeds PYTHONPATH so the hook resolves ai4science even
+    when Claude Code spawns it from an environment without the platform installed."""
     d = Path(project_dir) / ".claude"
     d.mkdir(parents=True, exist_ok=True)
-    cmd = f"PWM_CEILING={ceiling} {sys.executable} -m ai4science.harness.agents.machine.hook"
+    prefix = f"PWM_CEILING={ceiling}"
+    pp = _hook_pythonpath()
+    if pp:
+        prefix += f" PYTHONPATH={pp}"
+    cmd = f"{prefix} {sys.executable} -m ai4science.harness.agents.machine.hook"
     settings = {"hooks": {"PreToolUse": [
         {"matcher": "*", "hooks": [{"type": "command", "command": cmd, "timeout": 60}]}]}}
     path = d / "settings.json"

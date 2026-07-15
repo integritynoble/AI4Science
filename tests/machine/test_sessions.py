@@ -108,6 +108,24 @@ def test_find_sessions_join_shows_supervisor_name(tmp_path, monkeypatch):
     assert "exporter" in out["summary"] and "pid 777" in out["summary"]
 
 
+def test_find_sessions_includes_intro(tmp_path):
+    repo = tmp_path / "myproj"
+    (repo / ".git").mkdir(parents=True)
+    (repo / ".git" / "HEAD").write_text("ref: refs/heads/feature-x\n")
+
+    def procs():
+        return [{"pid": 4242, "args": ["claude", "-p", "build the exporter"], "cwd": str(repo)},
+                {"pid": 4243, "args": ["claude"], "cwd": str(tmp_path / "plain")}]
+    (tmp_path / "plain").mkdir()
+
+    out = find_claude_sessions(list_procs=procs)
+    by_pid = {s["pid"]: s for s in out["manageable"]}
+    assert "myproj repo @ feature-x" in by_pid[4242]["intro"]
+    assert "task:" in by_pid[4242]["intro"] and "build the exporter" in by_pid[4242]["intro"]
+    assert "interactive" in by_pid[4243]["intro"]
+    assert "myproj repo @ feature-x" in out["summary"]      # the intro reaches the rendered list
+
+
 def test_machine_agent_routes_find_sessions():
     caps = {"os": "linux", "installed": {}, "supported": True}
     out = run_machine(intent="find running claude sessions", caps=caps)
