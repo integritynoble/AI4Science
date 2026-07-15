@@ -2,7 +2,10 @@
 
 Lets the machine agent "manage the claude code process": discover live `claude`
 processes, their working directory, and whether each is under governance (a
-PreToolUse hook wired to the session driver). No mutation.
+PreToolUse hook wired to the session driver). Finding is read-only; the two
+consequential actions — `stop_session` (terminate a runaway) and
+`govern_session` (wire the governance hook into a session's project dir) — are
+owner-gated at the call site (harness permission gate / owner approval).
 """
 from __future__ import annotations
 
@@ -98,6 +101,56 @@ def find_claude_sessions(*, list_procs: Optional[Callable[[], List[Dict[str, Any
             "manageable_count": len(mine),
             "others_count": len(others),              # owned by other users (cwd hidden)
             "summary": summarize(mine, len(others))}
+
+
+def _cwd_of(pid) -> Optional[str]:
+    try:
+        return os.readlink(f"/proc/{int(pid)}/cwd")
+    except (OSError, PermissionError, ValueError):
+        return None
+
+
+def stop_session(pid, *, sig: Optional[int] = None, kill: Optional[Callable] = None) -> Dict[str, Any]:
+    """Send a stop signal to a running Claude session (SIGTERM = graceful). Only
+    processes you own. Fail-safe: reports rather than raises. `kill` injectable."""
+    import signal as _signal
+    kill = kill or os.kill
+    sig = _signal.SIGTERM if sig is None else sig
+    try:
+        kill(int(pid), sig)
+    except ProcessLookupError:
+        return {"ok": False, "reason": f"no running process {pid}"}
+    except PermissionError:
+        return {"ok": False, "reason": f"process {pid} is not owned by you — run as its owner to stop it"}
+    except (ValueError, TypeError):
+        return {"ok": False, "reason": f"invalid pid {pid!r}"}
+    except Exception as e:
+        return {"ok": False, "reason": f"{type(e).__name__}"}
+    return {"ok": True, "pid": int(pid), "signal": "SIGTERM", "note": "stop signal sent"}
+
+
+def govern_session(pid, *, ceiling: str = "A1", cwd_of: Optional[Callable] = None,
+                   wire: Optional[Callable] = None) -> Dict[str, Any]:
+    """Wire the governance hook into a running session's project dir. A Claude
+    already running there must RESTART to pick it up (hooks load at start); new /
+    restarted sessions in that dir are governed. `cwd_of`/`wire` injectable."""
+    cwd_of = cwd_of or _cwd_of
+    cwd = cwd_of(pid)
+    if not cwd:
+        return {"ok": False, "reason": f"can't read the project dir of process {pid} "
+                                       f"(not owned by you, or it exited)"}
+    if wire is None:
+        from ai4science.harness.agents.machine.claude_driver import ensure_governance_hook
+        wire = ensure_governance_hook
+    try:
+        path = wire(cwd, ceiling=ceiling)
+    except Exception as e:
+        return {"ok": False, "reason": f"could not wire hook: {type(e).__name__}"}
+    return {"ok": True, "pid": int(pid), "project_dir": cwd, "settings": str(path),
+            "ceiling": ceiling,
+            "note": "governance hook wired in the session's project dir. The session "
+                    "already running there must be RESTARTED to pick it up; new Claude "
+                    "sessions in this directory are governed."}
 
 
 def summarize(mine: List[Dict[str, Any]], others_count: int) -> str:

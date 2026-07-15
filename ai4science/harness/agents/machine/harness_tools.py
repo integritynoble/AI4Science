@@ -24,10 +24,29 @@ def _claude_permissions(workspace) -> str:
     return "Claude Code needs these specific permissions: " + ", ".join(CLAUDE_PERMISSIONS)
 
 
+def _stop_claude_session(workspace, pid) -> str:
+    from ai4science.harness.agents.machine.sessions import stop_session
+    r = stop_session(pid)
+    if r["ok"]:
+        return f"Sent SIGTERM to Claude session pid {r['pid']} — {r['note']}."
+    return f"Could not stop pid {pid}: {r['reason']}."
+
+
+def _govern_claude_session(workspace, pid, ceiling="A1") -> str:
+    from ai4science.harness.agents.machine.sessions import govern_session
+    r = govern_session(pid, ceiling=ceiling)
+    if r["ok"]:
+        return (f"Wired governance @ {r['ceiling']} into {r['project_dir']} "
+                f"({r['settings']}). {r['note']}")
+    return f"Could not govern pid {pid}: {r['reason']}."
+
+
 def machine_tools(ctx) -> list:
-    """Read-only machine operations as tools. Consequential ops (install /
-    permission / login) stay behind the governed `singularity machine "..."`
-    command, which prompts for owner approval — the agent points the user there."""
+    """Machine operations as tools. Read-only discovery (find_claude_sessions /
+    detect_machine) plus two owner-gated actions on a running session —
+    govern_claude_session and stop_claude_session (mutating=True → the REPL asks
+    the owner before they run). Install / permission / login stay behind the
+    governed `singularity machine "..."` command; the agent points the user there."""
     return [
         Tool(
             name="find_claude_sessions",
@@ -50,6 +69,29 @@ def machine_tools(ctx) -> list:
             parameters={"type": "object", "properties": {}, "required": []},
             func=_claude_permissions, mutating=False,
         ),
+        Tool(
+            name="govern_claude_session",
+            description=("Wire the governance hook into a RUNNING Claude session's project dir "
+                         "(given its pid, from find_claude_sessions). Takes effect on the next / "
+                         "restarted session there — a session already running must be restarted "
+                         "to pick it up. Owner-approved."),
+            parameters={"type": "object", "properties": {
+                "pid": {"type": "integer", "description": "pid of the Claude session to govern"},
+                "ceiling": {"type": "string", "enum": ["A0", "A1", "A2"],
+                            "description": "capability ceiling to enforce (default A1)"},
+            }, "required": ["pid"]},
+            func=_govern_claude_session, mutating=True,
+        ),
+        Tool(
+            name="stop_claude_session",
+            description=("Stop (terminate, SIGTERM) a RUNNING Claude session by pid — for a "
+                         "runaway. Only sessions you own. Consequential and owner-approved: use "
+                         "only when asked to stop/kill a session."),
+            parameters={"type": "object", "properties": {
+                "pid": {"type": "integer", "description": "pid of the Claude session to stop"},
+            }, "required": ["pid"]},
+            func=_stop_claude_session, mutating=True,
+        ),
     ]
 
 
@@ -58,6 +100,12 @@ MACHINE_SYSTEM_PROMPT = (
     "Code process, safely.\n"
     "- To find RUNNING Claude Code sessions, call the `find_claude_sessions` tool "
     "(never search for *session* files — that finds config, not the live process).\n"
+    "- To act on a running session, first `find_claude_sessions` to get its pid, then:\n"
+    "  • `govern_claude_session(pid)` to wire governance into its project dir — this takes "
+    "effect on the next/restarted session there; tell the user the running one must be "
+    "restarted to be governed.\n"
+    "  • `stop_claude_session(pid)` to terminate a runaway (only sessions the user owns). Use "
+    "stop only when the user asks to stop/kill a session — both are owner-approved before they run.\n"
     "- To inspect the machine, call `detect_machine`.\n"
     "- Consequential operations (install Claude Code, grant permissions, log in) are "
     "governed and owner-approved: tell the user to run `singularity machine \"install "
