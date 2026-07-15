@@ -138,46 +138,85 @@ def _ago(seconds: Optional[float]) -> Optional[str]:
     return f"{s // 86400}d"
 
 
-def _session_activity(cwd: str) -> Optional[str]:
-    """Peek at the Claude Code transcript for this project dir to say what the
-    session is actually doing — its most recent user request. Claude stores
-    transcripts at ~/.claude/projects/<cwd-with-slashes-as-dashes>/<id>.jsonl;
-    we read the tail of the most-recently-touched one. Own-user only, fail-safe."""
+def _transcript_path(cwd: str) -> Optional[str]:
+    """The newest Claude Code transcript for this project dir, or None. Claude
+    stores them at ~/.claude/projects/<cwd-with-slashes-as-dashes>/<id>.jsonl."""
     try:
         import glob
         enc = str(cwd).replace("/", "-")
         base = os.path.expanduser(os.path.join("~", ".claude", "projects", enc))
         files = glob.glob(os.path.join(base, "*.jsonl"))
-        if not files:
-            return None
-        newest = max(files, key=os.path.getmtime)
-        with open(newest, "rb") as f:                    # read only the tail (transcripts get big)
-            f.seek(0, 2)
-            f.seek(max(0, f.tell() - 65536))
-            lines = f.read().decode(errors="replace").splitlines()
-        for line in reversed(lines):                     # most-recent real user request wins
-            try:
-                obj = json.loads(line)
-            except Exception:
-                continue
-            if obj.get("type") != "user":
-                continue
-            content = (obj.get("message") or {}).get("content")
-            text = content if isinstance(content, str) else None
-            if isinstance(content, list):
-                for part in content:
-                    if isinstance(part, str):
-                        text = part
-                        break
-                    if isinstance(part, dict) and part.get("type") == "text":
-                        text = part.get("text")
-                        break
-            text = (text or "").strip().replace("\n", " ")
-            if text and not text.startswith("<"):        # skip tool-result / system-injected turns
-                return text[:60]
-        return None
+        return max(files, key=os.path.getmtime) if files else None
     except Exception:
         return None
+
+
+def _text_of(content) -> Optional[str]:
+    if isinstance(content, str):
+        return content.strip().replace("\n", " ")
+    if isinstance(content, list):
+        for part in content:
+            if isinstance(part, str):
+                return part.strip().replace("\n", " ")
+            if isinstance(part, dict) and part.get("type") == "text":
+                return (part.get("text") or "").strip().replace("\n", " ")
+    return None
+
+
+def _transcript_messages(cwd: str, *, limit: int = 12, tail_bytes: int = 131072):
+    """Recent (role, text) pairs from the session's transcript tail — user and
+    assistant text turns only (tool results / system-injected turns skipped).
+    Own-user only, fail-safe."""
+    path = _transcript_path(cwd)
+    if not path:
+        return []
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, 2)
+            f.seek(max(0, f.tell() - tail_bytes))
+            lines = f.read().decode(errors="replace").splitlines()
+    except Exception:
+        return []
+    out = []
+    for line in lines:
+        try:
+            obj = json.loads(line)
+        except Exception:
+            continue
+        role = obj.get("type")
+        if role not in ("user", "assistant"):
+            continue
+        text = _text_of((obj.get("message") or {}).get("content"))
+        if text and not text.startswith("<"):            # skip tool-result / system turns
+            out.append((role, text))
+    return out[-limit:]
+
+
+def _session_activity(cwd: str) -> Optional[str]:
+    """What the session is currently working on — its most recent user request."""
+    for role, text in reversed(_transcript_messages(cwd, limit=20)):
+        if role == "user":
+            return text[:60]
+    return None
+
+
+def continuation_task(cwd: str) -> Optional[str]:
+    """Build a task that resumes a session's work, seeded from its transcript —
+    its recent user requests plus where the assistant left off. None if there's
+    no readable transcript."""
+    msgs = _transcript_messages(cwd, limit=12)
+    users = [t for r, t in msgs if r == "user"][-3:]
+    if not users:
+        return None
+    last_assistant = next((t for r, t in reversed(msgs) if r == "assistant"), None)
+    parts = ["You are resuming an earlier Claude Code session in THIS directory to finish "
+             "its work. Continue autonomously and complete the task.",
+             "Recent requests from that session:"]
+    parts += [f"  - {u[:220]}" for u in users]
+    if last_assistant:
+        parts.append(f"Where it left off (last assistant message): {last_assistant[:320]}")
+    parts.append("Resume from there and finish the work.")
+    return "\n".join(parts)
 
 
 def describe_session(cwd: Optional[str], args: Optional[List[str]], pid=None) -> str:

@@ -148,6 +148,27 @@ def test_intro_activity_absent_when_no_transcript(tmp_path, monkeypatch):
     assert "interactive" in intro and "doing:" not in intro
 
 
+def test_continuation_task_seeds_from_transcript(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    from ai4science.harness.agents.machine.sessions import continuation_task
+    cwd = "/work/cassi"
+    proj = tmp_path / ".claude" / "projects" / cwd.replace("/", "-")
+    proj.mkdir(parents=True)
+    (proj / "s.jsonl").write_text(
+        json.dumps({"type": "user", "message": {"content": "implement gap-tv"}}) + "\n" +
+        json.dumps({"type": "assistant", "message": {"content": "tv_weight 12.0 was 100x too strong; optimum ~0.05"}}) + "\n" +
+        json.dumps({"type": "user", "message": {"content": "please continue the gap-tv tuning"}}) + "\n")
+    task = continuation_task(cwd)
+    assert "please continue the gap-tv tuning" in task
+    assert "tv_weight 12.0" in task and "Resume" in task
+
+
+def test_continuation_task_none_without_transcript(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    from ai4science.harness.agents.machine.sessions import continuation_task
+    assert continuation_task("/work/empty") is None
+
+
 def test_machine_agent_routes_find_sessions():
     caps = {"os": "linux", "installed": {}, "supported": True}
     out = run_machine(intent="find running claude sessions", caps=caps)
