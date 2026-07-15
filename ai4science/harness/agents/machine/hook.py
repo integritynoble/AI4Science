@@ -67,11 +67,18 @@ def main(argv=None) -> int:
             {"decision": "deny", "reason": "session halted by an earlier tripwire", "tripwire": True})))
         return 0
     call = {"tool_name": data.get("tool_name"), "tool_input": data.get("tool_input", {})}
-    verdict = decide_tool_call(
-        call,
-        ceiling=os.environ.get("PWM_CEILING", "A1"),
-        project_dir=os.environ.get("CLAUDE_PROJECT_DIR") or data.get("cwd"),
-    )
+    project_dir = os.environ.get("CLAUDE_PROJECT_DIR") or data.get("cwd")
+    # the supervisor record owns this session's ceiling (resolved by project dir);
+    # fall back to the env ceiling when no record is attached.
+    ceiling = os.environ.get("PWM_CEILING", "A1")
+    try:
+        from ai4science.harness.agents.machine import supervisor as _sup
+        rec = _sup.get_by_cwd(project_dir) if project_dir else None
+        if rec and rec.get("ceiling"):
+            ceiling = rec["ceiling"]
+    except Exception:
+        pass
+    verdict = decide_tool_call(call, ceiling=ceiling, project_dir=project_dir)
     # remote approval channel: escalate an 'ask' to the owner's Telegram if configured
     if verdict.get("decision") == "ask":
         verdict = _maybe_telegram(verdict, data)

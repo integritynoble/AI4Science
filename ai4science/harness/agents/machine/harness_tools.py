@@ -24,21 +24,47 @@ def _claude_permissions(workspace) -> str:
     return "Claude Code needs these specific permissions: " + ", ".join(CLAUDE_PERMISSIONS)
 
 
-def _stop_claude_session(workspace, pid) -> str:
+def _denied_via_telegram(action: str, detail: str, request_id: str) -> bool:
+    """True if Telegram is configured AND the owner denied (or it timed out) —
+    the action must NOT run. False means proceed: either the owner approved on
+    Telegram, or Telegram isn't configured and the REPL already gated locally."""
+    from ai4science.harness.agents.machine.telegram import owner_gate
+    return owner_gate(action, detail, request_id=request_id) is False
+
+
+def _resolve(session):
+    """Turn a name-or-pid into a pid, or None if no such session."""
+    from ai4science.harness.agents.machine.supervisor import resolve_pid
+    return resolve_pid(session)
+
+
+def _stop_claude_session(workspace, session) -> str:
     from ai4science.harness.agents.machine.sessions import stop_session
+    pid = _resolve(session)
+    if pid is None:
+        return f"No session '{session}' — run `session ls` (or find_claude_sessions) for names and pids."
+    if _denied_via_telegram("STOP (SIGTERM) a running Claude Code session",
+                            f"session '{session}' (pid {pid})", f"stop-{pid}"):
+        return f"Owner denied via Telegram — session '{session}' (pid {pid}) was NOT stopped."
     r = stop_session(pid)
     if r["ok"]:
-        return f"Sent SIGTERM to Claude session pid {r['pid']} — {r['note']}."
-    return f"Could not stop pid {pid}: {r['reason']}."
+        return f"Sent SIGTERM to session '{session}' (pid {r['pid']}) — {r['note']}."
+    return f"Could not stop '{session}' (pid {pid}): {r['reason']}."
 
 
-def _govern_claude_session(workspace, pid, ceiling="A1") -> str:
+def _govern_claude_session(workspace, session, ceiling="A1") -> str:
     from ai4science.harness.agents.machine.sessions import govern_session
+    pid = _resolve(session)
+    if pid is None:
+        return f"No session '{session}' — run `session ls` (or find_claude_sessions) for names and pids."
+    if _denied_via_telegram(f"GOVERN (wire the hook @ {ceiling}) a running Claude Code session",
+                            f"session '{session}' (pid {pid})", f"govern-{pid}"):
+        return f"Owner denied via Telegram — session '{session}' (pid {pid}) was NOT governed."
     r = govern_session(pid, ceiling=ceiling)
     if r["ok"]:
-        return (f"Wired governance @ {r['ceiling']} into {r['project_dir']} "
-                f"({r['settings']}). {r['note']}")
-    return f"Could not govern pid {pid}: {r['reason']}."
+        return (f"Adopted session '{r.get('name')}' @ {r['ceiling']} in {r['project_dir']}. "
+                f"{r['note']}")
+    return f"Could not govern '{session}' (pid {pid}): {r['reason']}."
 
 
 def machine_tools(ctx) -> list:
@@ -47,6 +73,11 @@ def machine_tools(ctx) -> list:
     govern_claude_session and stop_claude_session (mutating=True → the REPL asks
     the owner before they run). Install / permission / login stay behind the
     governed `singularity machine "..."` command; the agent points the user there."""
+    # When Telegram is configured, stop/govern approve on the phone (inside the
+    # tool). Mark them non-mutating so the REPL's local gate doesn't ALSO prompt;
+    # without Telegram they stay mutating so the REPL prompts the owner locally.
+    from ai4science.harness.agents.machine.telegram import telegram_config
+    local_gate = telegram_config() is None
     return [
         Tool(
             name="find_claude_sessions",
@@ -71,26 +102,26 @@ def machine_tools(ctx) -> list:
         ),
         Tool(
             name="govern_claude_session",
-            description=("Wire the governance hook into a RUNNING Claude session's project dir "
-                         "(given its pid, from find_claude_sessions). Takes effect on the next / "
-                         "restarted session there — a session already running must be restarted "
-                         "to pick it up. Owner-approved."),
+            description=("Adopt a RUNNING Claude session (by name or pid, from find_claude_sessions): "
+                         "attach a durable supervisor + wire the governance hook into its project "
+                         "dir. Takes effect on the next/restarted session there — one already "
+                         "running must be restarted to pick it up. Owner-approved."),
             parameters={"type": "object", "properties": {
-                "pid": {"type": "integer", "description": "pid of the Claude session to govern"},
+                "session": {"type": "string", "description": "name or pid of the Claude session"},
                 "ceiling": {"type": "string", "enum": ["A0", "A1", "A2"],
                             "description": "capability ceiling to enforce (default A1)"},
-            }, "required": ["pid"]},
-            func=_govern_claude_session, mutating=True,
+            }, "required": ["session"]},
+            func=_govern_claude_session, mutating=local_gate,
         ),
         Tool(
             name="stop_claude_session",
-            description=("Stop (terminate, SIGTERM) a RUNNING Claude session by pid — for a "
+            description=("Stop (terminate, SIGTERM) a RUNNING Claude session by name or pid — for a "
                          "runaway. Only sessions you own. Consequential and owner-approved: use "
                          "only when asked to stop/kill a session."),
             parameters={"type": "object", "properties": {
-                "pid": {"type": "integer", "description": "pid of the Claude session to stop"},
-            }, "required": ["pid"]},
-            func=_stop_claude_session, mutating=True,
+                "session": {"type": "string", "description": "name or pid of the Claude session"},
+            }, "required": ["session"]},
+            func=_stop_claude_session, mutating=local_gate,
         ),
     ]
 
@@ -100,11 +131,13 @@ MACHINE_SYSTEM_PROMPT = (
     "Code process, safely.\n"
     "- To find RUNNING Claude Code sessions, call the `find_claude_sessions` tool "
     "(never search for *session* files — that finds config, not the live process).\n"
-    "- To act on a running session, first `find_claude_sessions` to get its pid, then:\n"
-    "  • `govern_claude_session(pid)` to wire governance into its project dir — this takes "
+    "- Sessions are addressed by NAME (find_claude_sessions lists each session's name "
+    "beside its pid); a pid also works anywhere a name does.\n"
+    "- To act on a running session, first `find_claude_sessions`, then:\n"
+    "  • `govern_claude_session(session)` to adopt it (supervisor + hook) — this takes "
     "effect on the next/restarted session there; tell the user the running one must be "
     "restarted to be governed.\n"
-    "  • `stop_claude_session(pid)` to terminate a runaway (only sessions the user owns). Use "
+    "  • `stop_claude_session(session)` to terminate a runaway (only sessions the user owns). Use "
     "stop only when the user asks to stop/kill a session — both are owner-approved before they run.\n"
     "- To inspect the machine, call `detect_machine`.\n"
     "- Consequential operations (install Claude Code, grant permissions, log in) are "

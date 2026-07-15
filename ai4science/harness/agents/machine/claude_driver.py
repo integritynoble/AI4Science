@@ -28,19 +28,48 @@ def ensure_governance_hook(project_dir, *, ceiling: str = "A1") -> Path:
     return path
 
 
-def _default_run(claude_bin: str, task: str, project_dir: str, timeout: float) -> Dict[str, Any]:
+def _default_run(claude_bin: str, task: str, project_dir: str, timeout: float,
+                 *, name: Optional[str] = None, ceiling: str = "A1") -> Dict[str, Any]:
+    """Launch Claude Code headless, registering a durable supervisor record for the
+    child process while it runs (so `session ls` shows the driven session), and
+    releasing it on exit."""
+    from ai4science.harness.agents.machine import supervisor as _sup
     try:
-        p = subprocess.run([claude_bin, "-p", task], cwd=project_dir, stdin=subprocess.DEVNULL,
-                           capture_output=True, text=True, timeout=timeout)
-        return {"ok": p.returncode == 0, "exit_code": p.returncode,
-                "output": (p.stdout or "")[-4000:], "stderr": (p.stderr or "")[-500:]}
+        proc = subprocess.Popen([claude_bin, "-p", task], cwd=project_dir,
+                                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE, text=True)
     except FileNotFoundError:
         return {"ok": False, "reason": "claude not installed — run: "
                                        "singularity machine \"install claude code\""}
-    except subprocess.TimeoutExpired:
-        return {"ok": False, "reason": f"claude timed out after {timeout}s"}
     except Exception as e:                       # never let it escape
         return {"ok": False, "reason": f"{type(e).__name__}: {str(e)[:120]}"}
+    rec = None
+    try:
+        rec = _sup.create(pid=proc.pid, cwd=project_dir, name=name, ceiling=ceiling)
+    except Exception:
+        rec = None
+    try:
+        out, err = proc.communicate(timeout=timeout)
+        result = {"ok": proc.returncode == 0, "exit_code": proc.returncode,
+                  "output": (out or "")[-4000:], "stderr": (err or "")[-500:]}
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        try:
+            proc.communicate(timeout=5)
+        except Exception:
+            pass
+        result = {"ok": False, "reason": f"claude timed out after {timeout}s"}
+    except Exception as e:
+        result = {"ok": False, "reason": f"{type(e).__name__}: {str(e)[:120]}"}
+    finally:
+        if rec is not None:
+            try:
+                _sup.close(rec["name"])           # session ended → release the record
+            except Exception:
+                pass
+    if rec is not None:
+        result.setdefault("name", rec["name"])
+    return result
 
 
 def approval_mode() -> str:
@@ -55,7 +84,7 @@ def approval_mode() -> str:
         return "local"
 
 
-def drive_claude(task: str, *, project_dir=".", ceiling: str = "A1",
+def drive_claude(task: str, *, project_dir=".", ceiling: str = "A1", name: Optional[str] = None,
                  claude_bin: str = "claude", timeout: float = 300.0,
                  ensure_hook: bool = True,
                  run: Optional[Callable[[str, str, str, float], Dict[str, Any]]] = None) -> Dict[str, Any]:
@@ -72,7 +101,7 @@ def drive_claude(task: str, *, project_dir=".", ceiling: str = "A1",
             ensure_governance_hook(project_dir, ceiling=ceiling)
         except Exception as e:
             return {"ok": False, "reason": f"could not wire governance hook: {type(e).__name__}"}
-    runner = run or _default_run
+    runner = run or (lambda cb, tk, pd, to: _default_run(cb, tk, pd, to, name=name, ceiling=ceiling))
     result = runner(claude_bin, task, project_dir, timeout)
     result.setdefault("governed", True)
     result.setdefault("ceiling", ceiling)

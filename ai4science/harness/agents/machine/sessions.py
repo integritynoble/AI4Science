@@ -90,11 +90,28 @@ def find_claude_sessions(*, list_procs: Optional[Callable[[], List[Dict[str, Any
     cwd, governance status, and `mine` (True when the cwd is readable — i.e. the
     process is owned by this user and therefore manageable). Fail-safe."""
     list_procs = list_procs or _default_list_procs
+    try:
+        from ai4science.harness.agents.machine import supervisor as _sup
+    except Exception:                                # supervisor optional; degrade gracefully
+        _sup = None
     mine, others = [], []
     for p in list_procs():
         cwd = p.get("cwd")
+        gov = _governed(cwd)
+        rec = None
+        if _sup is not None:
+            try:
+                rec = _sup.get_by_pid(p["pid"])       # join /proc with the supervisor record
+            except Exception:
+                rec = None
         entry = {"pid": p["pid"], "cwd": cwd,
-                 "cmd": " ".join(p.get("args", []))[:120], **_governed(cwd)}
+                 "cmd": " ".join(p.get("args", []))[:120],
+                 "name": rec["name"] if rec else None,
+                 "supervised": rec is not None,
+                 "ceiling": (rec.get("ceiling") if rec else gov.get("ceiling")),
+                 "governed": bool(rec) or gov.get("governed", False),
+                 "via": gov.get("via"),
+                 "tripwire": bool(rec and rec.get("tripwire"))}
         (mine if cwd else others).append(entry)      # readable cwd => same-user => manageable
     return {"count": len(mine) + len(others),
             "manageable": mine,                       # the sessions you can act on
@@ -129,11 +146,13 @@ def stop_session(pid, *, sig: Optional[int] = None, kill: Optional[Callable] = N
     return {"ok": True, "pid": int(pid), "signal": "SIGTERM", "note": "stop signal sent"}
 
 
-def govern_session(pid, *, ceiling: str = "A1", cwd_of: Optional[Callable] = None,
-                   wire: Optional[Callable] = None) -> Dict[str, Any]:
-    """Wire the governance hook into a running session's project dir. A Claude
-    already running there must RESTART to pick it up (hooks load at start); new /
-    restarted sessions in that dir are governed. `cwd_of`/`wire` injectable."""
+def govern_session(pid, *, ceiling: str = "A1", name: Optional[str] = None,
+                   cwd_of: Optional[Callable] = None, wire: Optional[Callable] = None,
+                   adopt: Optional[Callable] = None) -> Dict[str, Any]:
+    """Adopt a running session: create a durable supervisor record (name, ceiling)
+    and wire the governance hook into its project dir. A Claude already running
+    there must RESTART to pick it up (hooks load at start); new/restarted sessions
+    in that dir are governed. `cwd_of`/`wire`/`adopt` injectable."""
     cwd_of = cwd_of or _cwd_of
     cwd = cwd_of(pid)
     if not cwd:
@@ -146,11 +165,19 @@ def govern_session(pid, *, ceiling: str = "A1", cwd_of: Optional[Callable] = Non
         path = wire(cwd, ceiling=ceiling)
     except Exception as e:
         return {"ok": False, "reason": f"could not wire hook: {type(e).__name__}"}
+    if adopt is None:
+        from ai4science.harness.agents.machine import supervisor as _sup
+        adopt = _sup.create
+    rec = None
+    try:                                             # record is best-effort; hook is the gate
+        rec = adopt(pid=int(pid), cwd=cwd, name=name, ceiling=ceiling)
+    except Exception:
+        rec = None
     return {"ok": True, "pid": int(pid), "project_dir": cwd, "settings": str(path),
-            "ceiling": ceiling,
-            "note": "governance hook wired in the session's project dir. The session "
-                    "already running there must be RESTARTED to pick it up; new Claude "
-                    "sessions in this directory are governed."}
+            "ceiling": ceiling, "name": (rec or {}).get("name"),
+            "note": "supervisor attached; governance hook wired in the session's project "
+                    "dir. The session already running there must be RESTARTED to pick it "
+                    "up; new Claude sessions in this directory are governed."}
 
 
 def summarize(mine: List[Dict[str, Any]], others_count: int) -> str:
@@ -158,10 +185,12 @@ def summarize(mine: List[Dict[str, Any]], others_count: int) -> str:
         return "No running Claude Code sessions found."
     lines = []
     if mine:
-        lines.append(f"{len(mine)} manageable Claude session(s) (yours):")
+        lines.append(f"{len(mine)} session(s) (yours):")
         for s in mine:
-            gov = f"governed @ {s.get('ceiling')}" if s.get("governed") else "NOT governed"
-            lines.append(f"  • pid {s['pid']}  in {s['cwd']}  [{gov}]")
+            name = s.get("name") or "-"
+            ceil = s.get("ceiling") or "--"
+            state = "TRIPPED" if s.get("tripwire") else ("governed" if s.get("governed") else "NOT governed")
+            lines.append(f"  {name:<12} pid {s['pid']}  {s['cwd']}  {ceil}  [{state}]")
     else:
         lines.append("No Claude sessions owned by you (nothing to manage here).")
     if others_count:

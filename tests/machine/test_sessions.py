@@ -64,20 +64,48 @@ def test_stop_session_reports_gone_and_foreign_and_bad_pid():
     assert stop_session("notapid", kill=lambda *a: None)["ok"] is False
 
 
-def test_govern_session_wires_hook_in_session_cwd():
+def test_govern_session_wires_hook_and_adopts():
     calls = {}
     def wire(cwd, *, ceiling):
         calls["cwd"], calls["ceiling"] = cwd, ceiling
         return f"{cwd}/.claude/settings.json"
-    r = govern_session(999, ceiling="A2", cwd_of=lambda pid: "/home/me/proj", wire=wire)
+    def adopt(*, pid, cwd, name, ceiling):
+        calls["adopt"] = (pid, cwd, name, ceiling)
+        return {"name": "proj"}
+    r = govern_session(999, ceiling="A2", name="proj",
+                       cwd_of=lambda pid: "/home/me/proj", wire=wire, adopt=adopt)
     assert r["ok"] and r["project_dir"] == "/home/me/proj" and r["ceiling"] == "A2"
-    assert calls["cwd"] == "/home/me/proj" and calls["ceiling"] == "A2"
-    assert "RESTARTED" in r["note"]
+    assert r["name"] == "proj" and "RESTARTED" in r["note"]
+    assert calls["adopt"] == (999, "/home/me/proj", "proj", "A2")
+
+
+def test_govern_session_creates_real_record(tmp_path, monkeypatch):
+    monkeypatch.setenv("PWM_CP_STATE_DIR", str(tmp_path))
+    from ai4science.harness.agents.machine import supervisor as sup
+    r = govern_session(4242, ceiling="A1", cwd_of=lambda pid: "/home/me/scratch",
+                       wire=lambda *a, **k: "settings.json")
+    assert r["ok"] and r["name"] == "scratch"
+    assert sup.get_by_pid(4242)["ceiling"] == "A1"
 
 
 def test_govern_session_fails_when_cwd_unreadable():
     r = govern_session(999, cwd_of=lambda pid: None, wire=lambda *a, **k: "x")
     assert r["ok"] is False and "can't read" in r["reason"]
+
+
+def test_find_sessions_join_shows_supervisor_name(tmp_path, monkeypatch):
+    monkeypatch.setenv("PWM_CP_STATE_DIR", str(tmp_path))
+    from ai4science.harness.agents.machine import supervisor as sup
+    sup.create(pid=777, cwd="/home/me/proj", name="exporter", ceiling="A2", alive=lambda p: True)
+
+    out = find_claude_sessions(list_procs=lambda: [
+        {"pid": 777, "args": ["claude"], "cwd": "/home/me/proj"},
+        {"pid": 888, "args": ["claude"], "cwd": "/home/me/plain"}])
+    by_pid = {s["pid"]: s for s in out["manageable"]}
+    assert by_pid[777]["name"] == "exporter" and by_pid[777]["supervised"] is True
+    assert by_pid[777]["ceiling"] == "A2" and by_pid[777]["governed"] is True
+    assert by_pid[888]["name"] is None and by_pid[888]["supervised"] is False
+    assert "exporter" in out["summary"] and "pid 777" in out["summary"]
 
 
 def test_machine_agent_routes_find_sessions():
