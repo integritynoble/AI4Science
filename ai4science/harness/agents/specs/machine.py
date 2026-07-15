@@ -1,4 +1,5 @@
 from ai4science.harness.agents.spec import AgentSpec
+from ai4science.harness.agents.machine.harness_tools import machine_tools, MACHINE_SYSTEM_PROMPT
 
 AGENT = AgentSpec(
     name="machine",
@@ -10,6 +11,8 @@ AGENT = AgentSpec(
     supported_profiles=("I0", "I1", "I2"),
     default_profile="I1",
     approval_required_for=("install", "login", "grant-permission", "deploy", "spend"),
+    system_prompt=MACHINE_SYSTEM_PROMPT,      # steer it to the real tools, not file search
+    extra_tools=machine_tools,                # find_claude_sessions / detect_machine as tools
 )
 
 from ai4science.harness.agents.machine.agent import run_machine
