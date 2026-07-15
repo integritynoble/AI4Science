@@ -122,3 +122,24 @@ def request_approval(text: str, *, token: str, chat_id: str, owner_id: str,
     send_approval(text, request_id, token=token, chat_id=chat_id, urlopen=urlopen)
     return wait_decision(request_id, token=token, owner_id=owner_id, timeout=timeout,
                          urlopen=urlopen, now=now, sleep=sleep)
+
+
+def owner_gate(action: str, detail: str, *, request_id: str) -> Optional[bool]:
+    """Owner approval for a consequential machine action, over Telegram.
+
+    Returns True (owner approved) or False (owner denied, or timeout/error →
+    fail-safe deny) when Telegram is configured; returns None when it is NOT —
+    the caller then falls back to its local approval gate. Mirrors the Claude
+    driver's Telegram escalation so `stop`/`govern` approve the same way."""
+    cfg = telegram_config()
+    if not cfg:
+        return None
+    token, chat_id, owner_id = cfg
+    text = f"Machine agent wants to:\n{action}\n{detail}\nApprove?"
+    try:
+        timeout = float(os.environ.get("PWM_TELEGRAM_TIMEOUT", "55"))
+        approved = request_approval(text, token=token, chat_id=chat_id, owner_id=owner_id,
+                                    request_id=request_id, timeout=timeout)
+    except Exception:
+        approved = None
+    return bool(approved)              # None (timeout) / False → deny (fail-safe)
