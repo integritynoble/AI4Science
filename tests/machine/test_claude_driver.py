@@ -66,19 +66,44 @@ def test_guide_needs_goal_when_empty():
     assert r["needs_goal"] is True and "goal" in r["question"].lower()
 
 
-def test_guide_loops_until_goal_met(tmp_path):
+def test_guide_loops_until_goal_met_and_verified(tmp_path):
     from ai4science.harness.agents.machine.claude_driver import guide_session
-    calls = []
-    outputs = ["working on it... GOAL_NOT_MET: still need to tune",
-               "tuned and verified. GOAL_MET"]
+    st = {"work": 0, "verify": 0}
     def fake_drive(task, **kw):
-        calls.append(task)
-        return {"ok": True, "output": outputs[len(calls) - 1]}
+        if "GOAL TO VERIFY" in task:
+            st["verify"] += 1
+            return {"ok": True, "output": "checked the file. VERDICT_PASS"}
+        st["work"] += 1
+        return {"ok": True, "output": "GOAL_NOT_MET: tune more" if st["work"] == 1 else "done. GOAL_MET"}
     r = guide_session(project_dir=str(tmp_path), goal="make PSNR > 25", ceiling="A2",
                       max_rounds=5, seed_from_transcript=False, drive=fake_drive)
-    assert r["met"] is True and r["rounds"] == 2
-    assert "make PSNR > 25" in calls[0]                       # goal injected
-    assert "Continue from exactly there" in calls[1]         # round 2 fed the prior output
+    assert r["met"] is True and r["verified"] is True and r["rounds"] == 2
+    assert st["work"] == 2 and st["verify"] == 1             # verifier ran once, on the claim
+
+
+def test_guide_verifier_rejects_false_claim_then_confirms(tmp_path):
+    from ai4science.harness.agents.machine.claude_driver import guide_session
+    st = {"verify": 0}
+    def fake_drive(task, **kw):
+        if "GOAL TO VERIFY" in task:
+            st["verify"] += 1
+            return {"ok": True, "output": "VERDICT_FAIL: result.txt missing" if st["verify"] == 1 else "VERDICT_PASS"}
+        return {"ok": True, "output": "I'm done. GOAL_MET"}   # worker always claims done
+    r = guide_session(project_dir=str(tmp_path), goal="x", max_rounds=4,
+                      seed_from_transcript=False, drive=fake_drive)
+    assert r["met"] is True and r["verified"] is True and r["rounds"] == 2   # first claim rejected
+    assert st["verify"] == 2
+
+
+def test_guide_skip_verify(tmp_path):
+    from ai4science.harness.agents.machine.claude_driver import guide_session
+    calls = []
+    def fake_drive(task, **kw):
+        calls.append(task)
+        return {"ok": True, "output": "GOAL_MET"}
+    r = guide_session(project_dir=str(tmp_path), goal="x", verify=False,
+                      seed_from_transcript=False, drive=fake_drive)
+    assert r["met"] is True and r["verified"] is False and len(calls) == 1   # no verifier call
 
 
 def test_guide_stops_at_round_limit_unmet(tmp_path):

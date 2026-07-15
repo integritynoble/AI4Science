@@ -139,6 +139,25 @@ def _goal_met(output: str) -> bool:
     return output.rfind("GOAL_MET") > output.rfind("GOAL_NOT_MET")
 
 
+def _goal_verified(output: str) -> bool:
+    """True if an independent verifier passed. VERDICT_PASS / VERDICT_FAIL are
+    chosen so neither is a substring of the other."""
+    return output.rfind("VERDICT_PASS") > output.rfind("VERDICT_FAIL")
+
+
+def _verify_prompt(goal: str) -> str:
+    return "\n\n".join([
+        f"GOAL TO VERIFY: {goal}",
+        "You are an INDEPENDENT verifier. Another agent claims this goal is met in this "
+        "directory. Determine whether it is ACTUALLY met: inspect files, read outputs, and "
+        "run read-only checks or the project's own tests. Do NOT do the work and do NOT "
+        "modify anything — only verify.",
+        "End your reply with exactly one of these lines:",
+        "  VERDICT_PASS",
+        "  VERDICT_FAIL: <what is missing, wrong, or unverifiable>",
+    ])
+
+
 def _guide_prompt(goal: str, *, context: Optional[str] = None, previous: Optional[str] = None) -> str:
     parts = [
         f"GOAL: {goal}",
@@ -159,21 +178,25 @@ def _guide_prompt(goal: str, *, context: Optional[str] = None, previous: Optiona
 
 def guide_session(*, project_dir, goal: Optional[str], ceiling: str = "A1",
                   max_rounds: int = 3, timeout: float = 300.0,
-                  seed_from_transcript: bool = True,
+                  seed_from_transcript: bool = True, verify: bool = True,
+                  judge_ceiling: Optional[str] = None,
                   drive: Optional[Callable] = None) -> Dict[str, Any]:
     """Guide a Claude session toward `goal`, round by round, re-driving it (even
-    when it has gone idle) until it reports the goal met (GOAL_MET) or `max_rounds`
-    is reached. One goal for one session at a time.
+    when it has gone idle) until the goal is met — and, when `verify` is on,
+    CONFIRMED by an independent verifier — or `max_rounds` is reached. One goal for
+    one session at a time.
 
-    If `goal` is empty, returns {needs_goal: True, question: ...} so the caller can
-    ask the user to clarify before guiding. The user is the final judge — the loop
-    stops at GOAL_MET and hands the result back for acceptance."""
+    Each round: the worker Claude works and claims GOAL_MET / GOAL_NOT_MET. On a
+    claim, a SEPARATE fresh Claude independently checks the result (VERDICT_PASS /
+    VERDICT_FAIL) — only VERDICT_PASS ends the loop; a VERDICT_FAIL's reasons are
+    fed back into the next round. If `goal` is empty, returns {needs_goal: True}."""
     if not goal or not str(goal).strip():
         return {"ok": False, "needs_goal": True,
                 "question": ("What outcome would satisfy you for this session? Describe the "
                              "goal / done-criteria and I'll guide Claude Code there.")}
     goal = str(goal).strip()
     drive = drive or drive_claude
+    judge_ceiling = judge_ceiling or ceiling
     log, last = [], ""
     for rnd in range(1, int(max_rounds) + 1):
         ctx = None
@@ -186,12 +209,27 @@ def guide_session(*, project_dir, goal: Optional[str], ceiling: str = "A1",
         task = _guide_prompt(goal, context=ctx, previous=(last if rnd > 1 else None))
         out = drive(task, project_dir=project_dir, ceiling=ceiling, timeout=timeout)
         last = out.get("output", "") or ""
-        met = bool(out.get("ok")) and _goal_met(last)
-        log.append({"round": rnd, "ok": bool(out.get("ok")), "met": met, "reason": out.get("reason")})
+        entry = {"round": rnd, "ok": bool(out.get("ok")), "claimed": _goal_met(last),
+                 "reason": out.get("reason")}
         if not out.get("ok"):
+            log.append(entry)
             return {"ok": False, "met": False, "goal": goal, "rounds": rnd,
                     "reason": out.get("reason"), "output": last, "log": log}
-        if met:
-            return {"ok": True, "met": True, "goal": goal, "rounds": rnd, "output": last, "log": log}
+        if entry["claimed"]:
+            if not verify:
+                log.append({**entry, "verified": None})
+                return {"ok": True, "met": True, "verified": False, "goal": goal,
+                        "rounds": rnd, "output": last, "log": log}
+            v = drive(_verify_prompt(goal), project_dir=project_dir, ceiling=judge_ceiling, timeout=timeout)
+            vout = v.get("output", "") or ""
+            passed = bool(v.get("ok")) and _goal_verified(vout)
+            entry["verified"] = passed
+            log.append(entry)
+            if passed:
+                return {"ok": True, "met": True, "verified": True, "goal": goal,
+                        "rounds": rnd, "output": last, "verifier": vout[-600:], "log": log}
+            last = (last + "\n\n[INDEPENDENT VERIFIER — GOAL NOT CONFIRMED]:\n" + vout[-1000:])
+        else:
+            log.append(entry)
     return {"ok": True, "met": False, "goal": goal, "rounds": int(max_rounds), "output": last,
             "log": log, "note": "goal not confirmed within the round limit — review and re-run to continue"}
