@@ -24,19 +24,30 @@ def test_find_sessions_reports_governance(tmp_path):
                 {"pid": 222, "args": ["/x/claude", "chat"], "cwd": str(ungov)}]
 
     out = find_claude_sessions(list_procs=fake_procs)
-    assert out["count"] == 2
-    by_pid = {s["pid"]: s for s in out["sessions"]}
+    assert out["count"] == 2 and out["manageable_count"] == 2
+    by_pid = {s["pid"]: s for s in out["manageable"]}
     assert by_pid[111]["governed"] is True and by_pid[111]["ceiling"] == "A1"
     assert by_pid[222]["governed"] is False
+    assert "pid 111" in out["summary"] and "governed" in out["summary"]
+
+
+def test_find_sessions_splits_mine_vs_others():
+    def procs():
+        return [{"pid": 1, "args": ["claude"], "cwd": "/home/me/proj"},   # mine
+                {"pid": 2, "args": ["claude"], "cwd": None}]              # other user
+    out = find_claude_sessions(list_procs=procs)
+    assert out["manageable_count"] == 1 and out["others_count"] == 1
+    assert "other users" in out["summary"]
 
 
 def test_find_sessions_empty_when_none():
     out = find_claude_sessions(list_procs=lambda: [])
-    assert out["count"] == 0 and out["sessions"] == []
+    assert out["count"] == 0 and out["manageable"] == []
+    assert "No running Claude Code sessions" in out["summary"]
 
 
 def test_machine_agent_routes_find_sessions():
     caps = {"os": "linux", "installed": {}, "supported": True}
     out = run_machine(intent="find running claude sessions", caps=caps)
     assert out["status"] == "done" and out["op"] == "find_sessions"
-    assert "sessions" in out["result"] and "count" in out["result"]
+    assert "manageable" in out["result"] and "summary" in out["result"]

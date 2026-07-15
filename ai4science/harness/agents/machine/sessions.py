@@ -83,17 +83,35 @@ def _ceiling_of(cmd: str) -> Optional[str]:
 
 
 def find_claude_sessions(*, list_procs: Optional[Callable[[], List[Dict[str, Any]]]] = None) -> Dict[str, Any]:
-    """Return the running Claude Code sessions this user can see, each with its
-    pid, cwd, and governance status. Fail-safe: unreadable procs are skipped."""
+    """Return the running Claude Code sessions this user can see. Each has pid,
+    cwd, governance status, and `mine` (True when the cwd is readable — i.e. the
+    process is owned by this user and therefore manageable). Fail-safe."""
     list_procs = list_procs or _default_list_procs
-    sessions = []
+    mine, others = [], []
     for p in list_procs():
-        gov = _governed(p.get("cwd"))
-        sessions.append({
-            "pid": p["pid"],
-            "cwd": p.get("cwd"),
-            "cmd": " ".join(p.get("args", []))[:160],
-            **gov,
-        })
-    return {"count": len(sessions), "sessions": sessions,
-            "note": "processes not owned by this user are not visible without elevated privileges"}
+        cwd = p.get("cwd")
+        entry = {"pid": p["pid"], "cwd": cwd,
+                 "cmd": " ".join(p.get("args", []))[:120], **_governed(cwd)}
+        (mine if cwd else others).append(entry)      # readable cwd => same-user => manageable
+    return {"count": len(mine) + len(others),
+            "manageable": mine,                       # the sessions you can act on
+            "manageable_count": len(mine),
+            "others_count": len(others),              # owned by other users (cwd hidden)
+            "summary": summarize(mine, len(others))}
+
+
+def summarize(mine: List[Dict[str, Any]], others_count: int) -> str:
+    if not mine and not others_count:
+        return "No running Claude Code sessions found."
+    lines = []
+    if mine:
+        lines.append(f"{len(mine)} manageable Claude session(s) (yours):")
+        for s in mine:
+            gov = f"governed @ {s.get('ceiling')}" if s.get("governed") else "NOT governed"
+            lines.append(f"  • pid {s['pid']}  in {s['cwd']}  [{gov}]")
+    else:
+        lines.append("No Claude sessions owned by you (nothing to manage here).")
+    if others_count:
+        lines.append(f"({others_count} more claude process(es) owned by other users — "
+                     f"run as that user or with privileges to inspect them.)")
+    return "\n".join(lines)
