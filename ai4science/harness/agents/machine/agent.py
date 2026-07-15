@@ -124,4 +124,7 @@ def _read_op(op: Operation, caps: Dict) -> Dict:
                 "installed": caps.get("installed", {})}
     if op.name == "required_permissions":
         return {"claude_permissions": list(CLAUDE_PERMISSIONS)}
+    if op.name == "find_sessions":
+        from ai4science.harness.agents.machine.sessions import find_claude_sessions
+        return find_claude_sessions()
     return {}
