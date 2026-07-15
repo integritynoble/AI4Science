@@ -24,12 +24,26 @@ def _login_pwm(base: Optional[str]) -> None:
     PWM_LOGIN_BASE env (e.g. token.comparegpt.io, set by `singularity`) >
     physicsworldmodel.org. Token only — the wallet private key is never stored."""
     import os
-    target = (base or os.environ.get("PWM_LOGIN_BASE") or pwm_account.DEFAULT_BASE).rstrip("/")
+    default = pwm_account.DEFAULT_BASE.rstrip("/")
+    target = (base or os.environ.get("PWM_LOGIN_BASE") or default).rstrip("/")
     try:
         acct = pwm_account.login_device_flow(target, echo=console.print)
     except Exception as e:
-        console.print(f"[red]login failed:[/red] {e}")
-        raise typer.Exit(2)
+        # A preferred base (e.g. token.comparegpt.io via PWM_LOGIN_BASE) that does
+        # not offer the CLI device-flow yet -> fall back to physicsworldmodel.org.
+        # An explicitly pinned base (`/login <url>`) is respected, no fallback.
+        if base is None and target != default:
+            console.print(f"[yellow]{target} has no CLI login yet ({type(e).__name__}); "
+                          f"using {default}.[/yellow]")
+            try:
+                acct = pwm_account.login_device_flow(default, echo=console.print)
+                target = default
+            except Exception as e2:
+                console.print(f"[red]login failed:[/red] {e2}")
+                raise typer.Exit(2)
+        else:
+            console.print(f"[red]login failed:[/red] {e}")
+            raise typer.Exit(2)
     who = acct.get("email") or f"user #{acct.get('user_id')}"
     console.print(f"[green]✓ Logged in to {target}[/green] as [bold]{who}[/bold]"
                   + (f"  wallet [magenta]{acct['wallet']}[/magenta]" if acct.get("wallet") else ""))
