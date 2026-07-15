@@ -247,3 +247,22 @@ def test_hook_session_tripwire_halts_subsequent_calls(tmp_path):
     p = subprocess.run([sys.executable, "-m", "ai4science.harness.agents.machine.hook"],
                        input=other, capture_output=True, text=True, env=env)
     assert json.loads(p.stdout)["hookSpecificOutput"]["permissionDecision"] == "allow"
+
+
+def test_session_ceiling_prefers_pid_record_over_cwd():
+    from ai4science.harness.agents.machine.hook import _session_ceiling
+    class Sup:
+        def get_by_pid(self, p): return {"name": "driven", "ceiling": "A3"} if p == 999 else None
+        def get_by_cwd(self, c): return {"name": "idle", "ceiling": "A1"}
+    # a driven session's own pid-record wins over an idle A1 session in the same cwd
+    c, rec = _session_ceiling(999, "/home/tina2", "A1", Sup())
+    assert c == "A3" and rec["name"] == "driven"
+    # no pid-record -> fall back to the cwd record
+    c, rec = _session_ceiling(None, "/home/tina2", "A1", Sup())
+    assert c == "A1" and rec["name"] == "idle"
+    # neither -> env ceiling
+    class Empty:
+        def get_by_pid(self, p): return None
+        def get_by_cwd(self, c): return None
+    c, rec = _session_ceiling(1, "/x", "A2", Empty())
+    assert c == "A2" and rec is None

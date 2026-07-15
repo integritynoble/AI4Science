@@ -45,6 +45,41 @@ def _set_tripped(session_id: Optional[str], reason: str) -> None:
         pass
 
 
+def _proc_comm_ppid(pid: int):
+    with open(f"/proc/{int(pid)}/stat") as f:
+        s = f.read()
+    comm = s[s.find("(") + 1:s.rfind(")")]
+    ppid = int(s[s.rfind(")") + 1:].split()[1])          # field 4 overall (index 1 after comm)
+    return comm, ppid
+
+
+def _ancestor_claude_pid(start=None) -> Optional[int]:
+    """Walk up from this hook process to the Claude process that spawned it, so its
+    ceiling comes from ITS session's record — not another session sharing the cwd."""
+    try:
+        pid = int(start) if start is not None else os.getppid()
+        for _ in range(16):
+            comm, ppid = _proc_comm_ppid(pid)
+            if "claude" in comm:
+                return pid
+            if ppid <= 1 or ppid == pid:
+                return None
+            pid = ppid
+    except Exception:
+        return None
+    return None
+
+
+def _session_ceiling(claude_pid, project_dir, env_ceiling, sup):
+    """The ceiling for this session: the record for its Claude pid wins, then a
+    record for the cwd, then the env ceiling. Returns (ceiling, record)."""
+    for rec in (sup.get_by_pid(claude_pid) if claude_pid else None,
+                sup.get_by_cwd(project_dir) if project_dir else None):
+        if rec and rec.get("ceiling"):
+            return rec["ceiling"], rec
+    return env_ceiling, None
+
+
 def verdict_to_hook_output(verdict: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "hookSpecificOutput": {
@@ -71,15 +106,15 @@ def main(argv=None) -> int:
         return 0
     call = {"tool_name": data.get("tool_name"), "tool_input": data.get("tool_input", {})}
     project_dir = os.environ.get("CLAUDE_PROJECT_DIR") or data.get("cwd")
-    # the supervisor record owns this session's ceiling (resolved by project dir);
-    # fall back to the env ceiling when no record is attached.
+    # Resolve THIS session's ceiling from its supervisor record. The hook is a
+    # child of the Claude process making the call, so match by that ancestor pid
+    # first (precise when several sessions share a cwd), then fall back to cwd,
+    # then the env ceiling.
     ceiling = os.environ.get("PWM_CEILING", "A1")
     rec = None
     try:
         from ai4science.harness.agents.machine import supervisor as _sup
-        rec = _sup.get_by_cwd(project_dir) if project_dir else None
-        if rec and rec.get("ceiling"):
-            ceiling = rec["ceiling"]
+        ceiling, rec = _session_ceiling(_ancestor_claude_pid(), project_dir, ceiling, _sup)
     except Exception:
         _sup = None
     # A3 is honored only when earned + unlocked; otherwise capped to A2.
