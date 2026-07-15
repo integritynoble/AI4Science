@@ -43,13 +43,27 @@ def _default_run(claude_bin: str, task: str, project_dir: str, timeout: float) -
         return {"ok": False, "reason": f"{type(e).__name__}: {str(e)[:120]}"}
 
 
+def approval_mode() -> str:
+    """How consequential actions get approved during a drive:
+    'telegram' when PWM_TELEGRAM_* is configured (Approve/Deny on the owner's
+    phone — tasks finish after a tap), else 'local' (terminal prompt, or a
+    fail-safe block when unattended)."""
+    try:
+        from ai4science.harness.agents.machine.telegram import telegram_config
+        return "telegram" if telegram_config() else "local"
+    except Exception:
+        return "local"
+
+
 def drive_claude(task: str, *, project_dir=".", ceiling: str = "A1",
                  claude_bin: str = "claude", timeout: float = 300.0,
                  ensure_hook: bool = True,
                  run: Optional[Callable[[str, str, str, float], Dict[str, Any]]] = None) -> Dict[str, Any]:
     """Have the machine agent drive Claude Code on `task`, governed. Wires the hook
     (unless ensure_hook=False), runs Claude headless in project_dir, returns the
-    result. `run`/`claude_bin` injectable for tests."""
+    result. Consequential actions are approved via Telegram by default when
+    PWM_TELEGRAM_* is set (the hook + Claude inherit this process's env), so a task
+    finishes after your tap. `run`/`claude_bin` injectable for tests."""
     project_dir = os.path.abspath(str(project_dir))
     if not task or not task.strip():
         return {"ok": False, "reason": "empty task"}
@@ -62,4 +76,5 @@ def drive_claude(task: str, *, project_dir=".", ceiling: str = "A1",
     result = runner(claude_bin, task, project_dir, timeout)
     result.setdefault("governed", True)
     result.setdefault("ceiling", ceiling)
+    result.setdefault("approval_mode", approval_mode())
     return result

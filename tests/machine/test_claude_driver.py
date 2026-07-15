@@ -43,3 +43,13 @@ def test_drive_claude_can_skip_hook(tmp_path):
                        run=lambda *a: {"ok": True})
     assert out["ok"] is True
     assert not (tmp_path / ".claude").exists()      # hook not wired when disabled
+
+
+def test_approval_mode_reflects_telegram_config(monkeypatch):
+    from ai4science.harness.agents.machine.claude_driver import approval_mode
+    monkeypatch.delenv("PWM_TELEGRAM_BOT_TOKEN", raising=False)
+    monkeypatch.delenv("PWM_TELEGRAM_CHAT_ID", raising=False)
+    assert approval_mode() == "local"
+    monkeypatch.setenv("PWM_TELEGRAM_BOT_TOKEN", "t")
+    monkeypatch.setenv("PWM_TELEGRAM_CHAT_ID", "1")
+    assert approval_mode() == "telegram"
