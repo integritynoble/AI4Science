@@ -138,10 +138,53 @@ def _ago(seconds: Optional[float]) -> Optional[str]:
     return f"{s // 86400}d"
 
 
+def _session_activity(cwd: str) -> Optional[str]:
+    """Peek at the Claude Code transcript for this project dir to say what the
+    session is actually doing — its most recent user request. Claude stores
+    transcripts at ~/.claude/projects/<cwd-with-slashes-as-dashes>/<id>.jsonl;
+    we read the tail of the most-recently-touched one. Own-user only, fail-safe."""
+    try:
+        import glob
+        enc = str(cwd).replace("/", "-")
+        base = os.path.expanduser(os.path.join("~", ".claude", "projects", enc))
+        files = glob.glob(os.path.join(base, "*.jsonl"))
+        if not files:
+            return None
+        newest = max(files, key=os.path.getmtime)
+        with open(newest, "rb") as f:                    # read only the tail (transcripts get big)
+            f.seek(0, 2)
+            f.seek(max(0, f.tell() - 65536))
+            lines = f.read().decode(errors="replace").splitlines()
+        for line in reversed(lines):                     # most-recent real user request wins
+            try:
+                obj = json.loads(line)
+            except Exception:
+                continue
+            if obj.get("type") != "user":
+                continue
+            content = (obj.get("message") or {}).get("content")
+            text = content if isinstance(content, str) else None
+            if isinstance(content, list):
+                for part in content:
+                    if isinstance(part, str):
+                        text = part
+                        break
+                    if isinstance(part, dict) and part.get("type") == "text":
+                        text = part.get("text")
+                        break
+            text = (text or "").strip().replace("\n", " ")
+            if text and not text.startswith("<"):        # skip tool-result / system-injected turns
+                return text[:60]
+        return None
+    except Exception:
+        return None
+
+
 def describe_session(cwd: Optional[str], args: Optional[List[str]], pid=None) -> str:
     """A short human introduction to a session — project/repo + branch, whether
-    it's interactive or running a headless task, and how long it's been running —
-    so a user can tell sessions apart and pick the right one."""
+    it's interactive (and what it's currently working on) or running a headless
+    task, and how long it's been running — so a user can tell sessions apart and
+    pick the right one."""
     if not cwd:
         return "owned by another user (details hidden)"
     parts = []
@@ -158,6 +201,9 @@ def describe_session(cwd: Optional[str], args: Optional[List[str]], pid=None) ->
             parts.append("headless")
     else:
         parts.append("interactive")
+        activity = _session_activity(cwd)                # what is it actually working on?
+        if activity:
+            parts.append(f'doing: "{activity}"')
     ago = _ago(_proc_start_ago(pid)) if pid is not None else None
     if ago:
         parts.append(f"started {ago} ago")

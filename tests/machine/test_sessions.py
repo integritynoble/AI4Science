@@ -126,6 +126,28 @@ def test_find_sessions_includes_intro(tmp_path):
     assert "myproj repo @ feature-x" in out["summary"]      # the intro reaches the rendered list
 
 
+def test_intro_reads_transcript_activity(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    from ai4science.harness.agents.machine.sessions import describe_session
+    cwd = "/work/myproj"
+    proj = tmp_path / ".claude" / "projects" / cwd.replace("/", "-")
+    proj.mkdir(parents=True)
+    (proj / "sess.jsonl").write_text(
+        json.dumps({"type": "user", "message": {"role": "user", "content": "old request"}}) + "\n" +
+        json.dumps({"type": "assistant", "message": {"content": "working..."}}) + "\n" +
+        json.dumps({"type": "user", "message": {"role": "user",
+                    "content": [{"type": "text", "text": "tune the GAP-TV weights"}]}}) + "\n")
+    intro = describe_session(cwd, ["claude"], None)      # interactive → peeks the transcript
+    assert "interactive" in intro and 'doing: "tune the GAP-TV weights"' in intro
+
+
+def test_intro_activity_absent_when_no_transcript(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))            # empty home, no transcripts
+    from ai4science.harness.agents.machine.sessions import describe_session
+    intro = describe_session("/work/other", ["claude"], None)
+    assert "interactive" in intro and "doing:" not in intro
+
+
 def test_machine_agent_routes_find_sessions():
     caps = {"os": "linux", "installed": {}, "supported": True}
     out = run_machine(intent="find running claude sessions", caps=caps)
