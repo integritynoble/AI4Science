@@ -67,6 +67,20 @@ def _govern_claude_session(workspace, session, ceiling="A1") -> str:
     return f"Could not govern '{session}' (pid {pid}): {r['reason']}."
 
 
+def _pause_machine(workspace) -> str:
+    from ai4science.harness.agents.machine.pause import pause, is_paused
+    pause()
+    return ("Paused — governed drives will hold every action, and a running `--guide` waits "
+            "between rounds. Resume when you're done."
+            if is_paused() else "Could not pause (state dir not writable).")
+
+
+def _resume_machine(workspace) -> str:
+    from ai4science.harness.agents.machine.pause import resume, is_paused
+    resume()
+    return "Resumed — governed drives may act again." if not is_paused() else "Could not resume."
+
+
 def _send_to_session(workspace, session, text=None, key=None, enter=True) -> str:
     from ai4science.harness.agents.machine.sessions import send_to_session
     r = send_to_session(session, text=text, key=key, enter=bool(enter))
@@ -145,6 +159,21 @@ def machine_tools(ctx) -> list:
             }, "required": ["session"]},
             func=_send_to_session, mutating=local_gate,
         ),
+        Tool(
+            name="pause_machine",
+            description=("PAUSE the machine's governed drives — while paused, every governed "
+                         "action is held (denied) and a running `singularity claude --guide` waits "
+                         "between rounds. Use when the owner wants the autonomous work to stop and "
+                         "hold. Immediate; reverse with resume_machine."),
+            parameters={"type": "object", "properties": {}, "required": []},
+            func=_pause_machine, mutating=False,
+        ),
+        Tool(
+            name="resume_machine",
+            description="RESUME after a pause — governed drives may act again.",
+            parameters={"type": "object", "properties": {}, "required": []},
+            func=_resume_machine, mutating=False,
+        ),
     ]
 
 
@@ -167,6 +196,8 @@ MACHINE_SYSTEM_PROMPT = (
     "  • `send_to_session(session, text=..., key=...)` to OPERATE a live tmux-hosted session — type "
     "into it or answer its prompt (e.g. text=\"1\" to answer Yes). Only works if the session runs in "
     "tmux; if it reports 'not in tmux', tell the user to start it with `tmux new -s <name> claude`.\n"
+    "  • `pause_machine()` / `resume_machine()` to hold or release the machine's governed drives — "
+    "while paused, every governed action is denied and a running `--guide` waits between rounds.\n"
     "- To inspect the machine, call `detect_machine`.\n"
     "- Consequential operations (install Claude Code, grant permissions, log in) are "
     "governed and owner-approved: tell the user to run `singularity machine \"install "

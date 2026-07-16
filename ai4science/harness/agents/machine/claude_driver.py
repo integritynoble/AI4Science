@@ -179,8 +179,9 @@ def _guide_prompt(goal: str, *, context: Optional[str] = None, previous: Optiona
 def guide_session(*, project_dir, goal: Optional[str], ceiling: str = "A1",
                   max_rounds: int = 3, timeout: float = 300.0,
                   seed_from_transcript: bool = True, verify: bool = True,
-                  judge_ceiling: Optional[str] = None,
-                  drive: Optional[Callable] = None) -> Dict[str, Any]:
+                  judge_ceiling: Optional[str] = None, drive: Optional[Callable] = None,
+                  is_paused: Optional[Callable] = None, sleep: Optional[Callable] = None,
+                  notify: Optional[Callable] = None, pause_poll: float = 3.0) -> Dict[str, Any]:
     """Guide a Claude session toward `goal`, round by round, re-driving it (even
     when it has gone idle) until the goal is met — and, when `verify` is on,
     CONFIRMED by an independent verifier — or `max_rounds` is reached. One goal for
@@ -197,8 +198,27 @@ def guide_session(*, project_dir, goal: Optional[str], ceiling: str = "A1",
     goal = str(goal).strip()
     drive = drive or drive_claude
     judge_ceiling = judge_ceiling or ceiling
+    if is_paused is None:
+        try:
+            from ai4science.harness.agents.machine.pause import is_paused as _ip
+            is_paused = _ip
+        except Exception:
+            is_paused = lambda: False
+    if sleep is None:
+        import time as _t
+        sleep = _t.sleep
+    notify = notify or (lambda m: None)
     log, last = [], ""
     for rnd in range(1, int(max_rounds) + 1):
+        waited = False                                    # owner pause: hold before each round
+        while is_paused():
+            if not waited:
+                notify(f"⏸ paused by owner — holding before round {rnd}; "
+                       f"resume with `singularity session resume`")
+                waited = True
+            sleep(pause_poll)
+        if waited:
+            notify("▶ resumed")
         ctx = None
         if rnd == 1 and seed_from_transcript:
             try:

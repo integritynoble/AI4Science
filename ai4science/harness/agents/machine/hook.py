@@ -104,6 +104,16 @@ def main(argv=None) -> int:
         print(json.dumps(verdict_to_hook_output(
             {"decision": "deny", "reason": "session halted by an earlier tripwire", "tripwire": True})))
         return 0
+    # owner pause: hold every action while the machine is paused (not a tripwire — reversible)
+    try:
+        from ai4science.harness.agents.machine.pause import is_paused
+        if is_paused():
+            print(json.dumps(verdict_to_hook_output(
+                {"decision": "deny", "reason": "paused by owner — resume with `singularity session resume`",
+                 "tripwire": False})))
+            return 0
+    except Exception:
+        pass
     call = {"tool_name": data.get("tool_name"), "tool_input": data.get("tool_input", {})}
     project_dir = os.environ.get("CLAUDE_PROJECT_DIR") or data.get("cwd")
     # Resolve THIS session's ceiling from its supervisor record. The hook is a
