@@ -366,6 +366,97 @@ def govern_session(pid, *, ceiling: str = "A1", name: Optional[str] = None,
                     "up; new Claude sessions in this directory are governed."}
 
 
+def _proc_ancestors(pid) -> set:
+    """The pids from `pid` up to init — the process's ancestry."""
+    out = set()
+    try:
+        p = int(pid)
+        for _ in range(24):
+            out.add(p)
+            with open(f"/proc/{p}/stat") as f:
+                s = f.read()
+            ppid = int(s[s.rfind(")") + 1:].split()[1])
+            if ppid <= 1 or ppid == p:
+                break
+            p = ppid
+    except Exception:
+        pass
+    return out
+
+
+def tmux_target_for_pid(pid, *, run: Optional[Callable] = None) -> Optional[str]:
+    """If `pid` runs inside a tmux pane, return its tmux target (session:win.pane),
+    else None. `run(args) -> (stdout, rc)` injectable for tests."""
+    run = run or _tmux_list_panes
+    try:
+        stdout, rc = run(["tmux", "list-panes", "-a", "-F",
+                          "#{pane_pid} #{session_name}:#{window_index}.#{pane_index}"])
+        if rc != 0:
+            return None
+        anc = _proc_ancestors(pid)
+        for line in stdout.splitlines():
+            parts = line.split(None, 1)
+            if len(parts) == 2 and parts[0].isdigit() and int(parts[0]) in anc:
+                return parts[1]
+    except Exception:
+        return None
+    return None
+
+
+def _tmux_list_panes(args):
+    import subprocess
+    p = subprocess.run(args, capture_output=True, text=True, timeout=5)
+    return p.stdout, p.returncode
+
+
+def _tmux_send(args):
+    import subprocess
+    p = subprocess.run(args, capture_output=True, text=True, timeout=5)
+    return p.returncode, (p.stderr or "")
+
+
+def send_to_session(name_or_pid, text: Optional[str] = None, *, enter: bool = True,
+                    key: Optional[str] = None, target: Optional[str] = None,
+                    resolve: Optional[Callable] = None, run: Optional[Callable] = None) -> Dict[str, Any]:
+    """Send keystrokes into a RUNNING tmux-hosted Claude session — answer a native
+    prompt or type a task. Resolves name-or-pid to its tmux pane, then runs
+    `tmux send-keys`. tmux-only (a bare terminal can't be typed into). Fail-safe.
+    `resolve`/`run`/`target` injectable for tests."""
+    if resolve is None:
+        from ai4science.harness.agents.machine.supervisor import resolve_pid
+        resolve = resolve_pid
+    pid = resolve(name_or_pid)
+    if pid is None:
+        s = str(name_or_pid)
+        if not s.isdigit():
+            return {"ok": False, "reason": f"no session '{name_or_pid}'"}
+        pid = int(s)
+    if target is None:
+        target = tmux_target_for_pid(pid)
+    if not target:
+        return {"ok": False, "reason": f"session (pid {pid}) is not in tmux — start it with "
+                                       f"`tmux new -s <name> claude` to make it drivable"}
+    run = run or _tmux_send
+    calls = []
+    if text:
+        calls.append(["tmux", "send-keys", "-t", target, "-l", "--", text])   # literal string
+    if key:
+        calls.append(["tmux", "send-keys", "-t", target, key])
+    if enter:
+        calls.append(["tmux", "send-keys", "-t", target, "Enter"])
+    if not calls:
+        return {"ok": False, "reason": "nothing to send (give text, --key, or Enter)"}
+    for a in calls:
+        try:
+            rc, err = run(a)
+        except Exception as e:
+            return {"ok": False, "reason": f"{type(e).__name__}"}
+        if rc != 0:
+            return {"ok": False, "reason": f"tmux send-keys failed: {err[:120]}"}
+    sent = (text or "") + (f" {key}" if key else "") + (" ⏎" if enter else "")
+    return {"ok": True, "target": target, "pid": pid, "sent": sent.strip()}
+
+
 def summarize(mine: List[Dict[str, Any]], others_count: int) -> str:
     if not mine and not others_count:
         return "No running Claude Code sessions found."

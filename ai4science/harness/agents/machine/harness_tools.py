@@ -67,6 +67,14 @@ def _govern_claude_session(workspace, session, ceiling="A1") -> str:
     return f"Could not govern '{session}' (pid {pid}): {r['reason']}."
 
 
+def _send_to_session(workspace, session, text=None, key=None, enter=True) -> str:
+    from ai4science.harness.agents.machine.sessions import send_to_session
+    r = send_to_session(session, text=text, key=key, enter=bool(enter))
+    if r["ok"]:
+        return f"Sent to session '{session}' (tmux {r['target']}): {r['sent'] or '⏎'}"
+    return f"Could not send to '{session}': {r['reason']}"
+
+
 def machine_tools(ctx) -> list:
     """Machine operations as tools. Read-only discovery (find_claude_sessions /
     detect_machine) plus two owner-gated actions on a running session —
@@ -123,6 +131,20 @@ def machine_tools(ctx) -> list:
             }, "required": ["session"]},
             func=_stop_claude_session, mutating=local_gate,
         ),
+        Tool(
+            name="send_to_session",
+            description=("Type keystrokes into a RUNNING, tmux-hosted Claude session (by name or "
+                         "pid) — answer its native permission prompt (e.g. send \"1\" for Yes), or "
+                         "give it a task to type. tmux-only (a bare terminal can't be driven). "
+                         "Owner-approved. Use this to OPERATE a live interactive session."),
+            parameters={"type": "object", "properties": {
+                "session": {"type": "string", "description": "name or pid of the tmux session"},
+                "text": {"type": "string", "description": "text to type (e.g. \"1\", or a task)"},
+                "key": {"type": "string", "description": "a named key instead of/after text: Enter, Escape, C-c"},
+                "enter": {"type": "boolean", "description": "press Enter after the text (default true)"},
+            }, "required": ["session"]},
+            func=_send_to_session, mutating=local_gate,
+        ),
     ]
 
 
@@ -142,6 +164,9 @@ MACHINE_SYSTEM_PROMPT = (
     "restarted to be governed.\n"
     "  • `stop_claude_session(session)` to terminate a runaway (only sessions the user owns). Use "
     "stop only when the user asks to stop/kill a session — both are owner-approved before they run.\n"
+    "  • `send_to_session(session, text=..., key=...)` to OPERATE a live tmux-hosted session — type "
+    "into it or answer its prompt (e.g. text=\"1\" to answer Yes). Only works if the session runs in "
+    "tmux; if it reports 'not in tmux', tell the user to start it with `tmux new -s <name> claude`.\n"
     "- To inspect the machine, call `detect_machine`.\n"
     "- Consequential operations (install Claude Code, grant permissions, log in) are "
     "governed and owner-approved: tell the user to run `singularity machine \"install "

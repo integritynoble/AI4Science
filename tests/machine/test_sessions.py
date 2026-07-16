@@ -193,3 +193,35 @@ def test_machine_agent_routes_find_sessions():
     out = run_machine(intent="find running claude sessions", caps=caps)
     assert out["status"] == "done" and out["op"] == "find_sessions"
     assert "manageable" in out["result"] and "summary" in out["result"]
+
+
+def test_send_to_session_sends_text_and_enter():
+    from ai4science.harness.agents.machine.sessions import send_to_session
+    sent = []
+    r = send_to_session("work", text="1", enter=True,
+                        resolve=lambda s: 4242, target="work:0.0",
+                        run=lambda a: (sent.append(a) or (0, "")))
+    assert r["ok"] and r["target"] == "work:0.0"
+    assert sent[0] == ["tmux", "send-keys", "-t", "work:0.0", "-l", "--", "1"]   # literal text
+    assert sent[1] == ["tmux", "send-keys", "-t", "work:0.0", "Enter"]           # then Enter
+
+
+def test_send_to_session_refuses_non_tmux():
+    from ai4science.harness.agents.machine.sessions import send_to_session
+    r = send_to_session("work", text="hi", resolve=lambda s: 4242, target=None,
+                        run=lambda a: (0, ""))
+    assert r["ok"] is False and "not in tmux" in r["reason"]
+
+
+def test_send_to_session_unknown_name():
+    from ai4science.harness.agents.machine.sessions import send_to_session
+    r = send_to_session("nope", text="x", resolve=lambda s: None, run=lambda a: (0, ""))
+    assert r["ok"] is False and "no session" in r["reason"]
+
+
+def test_tmux_target_for_pid_matches_ancestor_pane(monkeypatch):
+    from ai4science.harness.agents.machine import sessions as S
+    monkeypatch.setattr(S, "_proc_ancestors", lambda pid: {pid, 5000, 6000})
+    panes = "6000 work:0.0\n7777 other:1.0\n"
+    assert S.tmux_target_for_pid(4242, run=lambda a: (panes, 0)) == "work:0.0"
+    assert S.tmux_target_for_pid(4242, run=lambda a: ("9999 x:0.0\n", 0)) is None
