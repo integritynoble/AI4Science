@@ -344,6 +344,7 @@ def run_common_repl(
     session_id: Optional[str] = None,
     system_prompt: Optional[str] = None,
     mode_label: str = "unified-LLM",
+    intro: Optional[str] = None,
 ) -> None:
     """Run the native-harness REPL until EOF or /exit.
 
@@ -372,6 +373,9 @@ def run_common_repl(
     system_prompt:
         Optional system prompt string seeded as the leading system Message in
         history.  None → no system turn added.
+    intro:
+        Optional plain-text block printed once after the session banner, before
+        the first prompt (e.g. the Manager's login greeting).  None → nothing.
     """
     from ai4science.harness import persistence
 
@@ -570,6 +574,10 @@ def run_common_repl(
         print(f"  {_yellow}⚠ not signed in{_rst} {_dim}— run {_rst}{_coral}/login{_rst}"
               f"{_dim} (or `ai4science login`); {_why}.{_rst}", flush=True)
     print("", flush=True)
+    # A one-time intro inside the session — the Manager greets the owner on login.
+    if intro:
+        print(intro, flush=True)
+        print("", flush=True)
 
     from ai4science.harness import lineedit
     lineedit.enable(mode_label or "chat")     # ↑/↓ history, ←/→ cursor

@@ -225,6 +225,11 @@ def chat(
              "'specific' domain agent. Defaults to AI4SCIENCE_MODE, else research. "
              "Switch live with /agent.",
     ),
+    intro: Optional[str] = typer.Option(
+        None, "--intro", hidden=True,
+        help="Plain-text block shown once inside the session after the banner "
+             "(used by `ai4science login` for the Manager greeting).",
+    ),
 ) -> None:
     """Open a persistent chat session with the agent."""
     import os
@@ -238,6 +243,7 @@ def chat(
     plan, no_subagents, no_mcp, model = _d(plan), _d(no_subagents), _d(no_mcp), _d(model)
     backend, continue_session, resume, mode = (
         _d(backend), _d(continue_session), _d(resume), _d(mode))
+    intro = _d(intro)
     model = model or os.environ.get("AI4SCIENCE_MODEL")
     if agent.lower() != "claude":
         console.print(
@@ -340,6 +346,7 @@ def chat(
             session_id=sid,
             system_prompt=spec.system_prompt,
             mode_label=spec.name,
+            intro=intro,
         )
         if not _tui.run_full(spec.name, _run_native):
             _run_native()

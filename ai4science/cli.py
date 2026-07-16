@@ -599,7 +599,8 @@ def _agent_powered() -> bool:
 
 def _bare_launch(read_only: bool, auto_yes: bool, plan_mode: bool,
                  model: Optional[str] = None, continue_session: bool = False,
-                 resume: Optional[str] = None, mode: Optional[str] = None) -> None:
+                 resume: Optional[str] = None, mode: Optional[str] = None,
+                 intro: Optional[str] = None) -> None:
     """Bare `ai4science` (no subcommand/prompt) → interactive chat, like `claude`.
 
     If the chat agent isn't installed/authed yet, show a short getting-started
@@ -625,6 +626,7 @@ def _bare_launch(read_only: bool, auto_yes: bool, plan_mode: bool,
                 no_subagents=False, no_mcp=False,
                 continue_session=continue_session,
                 model=model, backend=None, resume=resume, mode=mode,
+                intro=intro,
             )
         except typer.Exit as e:
             sys.exit(e.exit_code or 0)
