@@ -10,6 +10,7 @@ owner-gated at the call site (harness permission gate / owner approval).
 from __future__ import annotations
 
 import json
+import re
 import os
 from typing import Any, Callable, Dict, List, Optional
 
@@ -455,6 +456,99 @@ def send_to_session(name_or_pid, text: Optional[str] = None, *, enter: bool = Tr
             return {"ok": False, "reason": f"tmux send-keys failed: {err[:120]}"}
     sent = (text or "") + (f" {key}" if key else "") + (" ⏎" if enter else "")
     return {"ok": True, "target": target, "pid": pid, "sent": sent.strip()}
+
+
+_ANSWER_PROMPT_RE = re.compile(r"(❯\s*\d+\.\s|do you want to)", re.I)
+
+
+def _pane_wants_answer(pane: str) -> bool:
+    """True if the pane is showing a Claude Code permission menu awaiting a choice
+    (a 'Do you want to…?' or a ❯ numbered menu, with Yes/No options)."""
+    tail = "\n".join((pane or "").splitlines()[-18:]).lower()
+    return bool(_ANSWER_PROMPT_RE.search(tail)) and "no" in tail and ("yes" in tail or "1." in tail)
+
+
+def _session_name_of(target: str) -> str:
+    return (target or "").split(":", 1)[0]
+
+
+def _tmux_capture(target):
+    import subprocess
+    p = subprocess.run(["tmux", "capture-pane", "-p", "-t", target], capture_output=True, text=True, timeout=5)
+    return p.stdout if p.returncode == 0 else ""
+
+
+def _tmux_clients(session):
+    import subprocess
+    p = subprocess.run(["tmux", "list-clients", "-t", session], capture_output=True, text=True, timeout=5)
+    return [l for l in (p.stdout.splitlines() if p.returncode == 0 else []) if l.strip()]
+
+
+def operate_session(name_or_pid, *, answer: str = "1", press_enter: bool = False,
+                    max_answers: int = 20, poll: float = 2.0, idle_exit: float = 120.0,
+                    max_iters: int = 100000, target: Optional[str] = None,
+                    resolve: Optional[Callable] = None, capture: Optional[Callable] = None,
+                    clients: Optional[Callable] = None, send: Optional[Callable] = None,
+                    sleep: Optional[Callable] = None, log: Optional[Callable] = None) -> Dict[str, Any]:
+    """Watch a tmux-hosted Claude session and auto-answer its permission prompts,
+    **yielding (pausing) whenever a human is attached** to the tmux session and
+    resuming when they detach. Stops after `max_answers`, or when the pane goes
+    quiet for `idle_exit`. tmux-only. All tmux ops injectable for tests."""
+    if resolve is None:
+        from ai4science.harness.agents.machine.supervisor import resolve_pid
+        resolve = resolve_pid
+    pid = resolve(name_or_pid)
+    if pid is None and str(name_or_pid).isdigit():
+        pid = int(name_or_pid)
+    if pid is None:
+        return {"ok": False, "reason": f"no session '{name_or_pid}'"}
+    if target is None:
+        target = tmux_target_for_pid(pid)
+    if not target:
+        return {"ok": False, "reason": f"session (pid {pid}) is not in tmux — "
+                                       f"start it with `tmux new -s <name> claude`"}
+    session = _session_name_of(target)
+    capture = capture or _tmux_capture
+    clients = clients or _tmux_clients
+    if send is None:
+        def send(t, keys, en):
+            return send_to_session(pid, text=keys, enter=en, target=t)
+    if sleep is None:
+        import time as _t
+        sleep = _t.sleep
+    log = log or (lambda m: None)
+
+    answers = 0
+    idle = 0.0
+    last = None
+    paused = False
+    iters = 0
+    while answers < max_answers and idle < idle_exit and iters < max_iters:
+        iters += 1
+        if clients(session):                              # a human is attached → yield
+            if not paused:
+                log("⏸ paused — you're attached (not sending)")
+                paused = True
+            idle = 0.0
+            sleep(poll)
+            continue
+        if paused:
+            log("▶ resumed — you detached")
+            paused = False
+        pane = capture(target)
+        if _pane_wants_answer(pane):
+            send(target, answer, press_enter)
+            answers += 1
+            idle = 0.0
+            log(f"answered prompt #{answers} with '{answer}'")
+            sleep(poll)
+            continue
+        idle = idle + poll if pane == last else 0.0       # unchanged pane ⇒ idle accrues
+        last = pane
+        sleep(poll)
+    stopped = ("max-answers" if answers >= max_answers
+               else "idle" if idle >= idle_exit else "iter-cap")
+    return {"ok": True, "answers": answers, "stopped": stopped, "target": target}
 
 
 def summarize(mine: List[Dict[str, Any]], others_count: int) -> str:

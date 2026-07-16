@@ -225,3 +225,39 @@ def test_tmux_target_for_pid_matches_ancestor_pane(monkeypatch):
     panes = "6000 work:0.0\n7777 other:1.0\n"
     assert S.tmux_target_for_pid(4242, run=lambda a: (panes, 0)) == "work:0.0"
     assert S.tmux_target_for_pid(4242, run=lambda a: ("9999 x:0.0\n", 0)) is None
+
+
+def test_operate_answers_prompts_then_exits_on_idle():
+    from ai4science.harness.agents.machine.sessions import operate_session
+    panes = ["❯ 1. Yes\n  3. No\nDo you want to X?",   # prompt → answer
+             "❯ 1. Yes\n  3. No",                       # prompt → answer
+             "idle >", "idle >", "idle >", "idle >"]    # quiet → idle-exit
+    it = iter(panes)
+    sent = []
+    r = operate_session("work", target="work:0.0", resolve=lambda s: 4242,
+                        clients=lambda s: [],                       # nobody attached
+                        capture=lambda t: next(it, "idle >"),
+                        send=lambda t, k, en: sent.append((t, k, en)),
+                        sleep=lambda s: None, log=lambda m: None,
+                        poll=1.0, idle_exit=3.0, max_answers=10)
+    assert r["ok"] and r["answers"] == 2 and r["stopped"] == "idle"
+    assert sent[0] == ("work:0.0", "1", False)           # answered with the default choice
+
+
+def test_operate_yields_while_you_are_attached():
+    from ai4science.harness.agents.machine.sessions import operate_session
+    sent = []
+    r = operate_session("work", target="work:0.0", resolve=lambda s: 1,
+                        clients=lambda s: ["client x"],             # a human is attached the whole time
+                        capture=lambda t: "❯ 1. Yes\n3. No",        # a prompt is showing…
+                        send=lambda t, k, en: sent.append(k),
+                        sleep=lambda s: None, log=lambda m: None,
+                        poll=1.0, idle_exit=100, max_answers=10, max_iters=5)
+    assert r["stopped"] == "iter-cap" and r["answers"] == 0 and sent == []   # …but it never sent while you're attached
+
+
+def test_pane_wants_answer_detection():
+    from ai4science.harness.agents.machine.sessions import _pane_wants_answer
+    assert _pane_wants_answer("Do you want to create tune.py?\n❯ 1. Yes\n  3. No")
+    assert not _pane_wants_answer("● Running the sweep…")
+    assert not _pane_wants_answer("$ ")
