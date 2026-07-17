@@ -10,6 +10,7 @@ AGENT = AgentSpec(
     keywords=("machine", "install", "claude", "bootstrap", "permission", "login", "setup", "manage"),
     supported_profiles=("I0", "I1", "I2"),
     default_profile="I1",
+    default_backend="anthropic",   # govern with Opus 4.8 by default (first in the anthropic menu)
     approval_required_for=("install", "login", "grant-permission", "deploy", "spend"),
     system_prompt=MACHINE_SYSTEM_PROMPT,      # steer it to the real tools, not file search
     extra_tools=machine_tools,                # find_claude_sessions / detect_machine as tools
