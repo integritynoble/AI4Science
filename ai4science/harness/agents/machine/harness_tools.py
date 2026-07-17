@@ -74,14 +74,30 @@ def _start_session(workspace, name, dir=None, govern=False, ceiling="A1") -> str
     return r["note"] if r["ok"] else f"could not start session '{name}': {r['reason']}"
 
 
-def _operate_session_tool(workspace, session, answer="1", max_answers=5, idle_exit=15.0) -> str:
-    from ai4science.harness.agents.machine.sessions import operate_session
-    r = operate_session(session, answer=answer, press_enter=True,
-                        max_answers=int(max_answers), poll=1.5, idle_exit=float(idle_exit))
-    if not r.get("ok"):
-        return f"could not operate '{session}': {r['reason']}"
-    return (f"Operated '{session}': answered {r['answers']} prompt(s), stopped ({r['stopped']}). "
-            f"It pauses automatically if you attach the tmux session.")
+def _operate_session_tool(workspace, session, answer="1", max_answers=200, idle_exit=1800.0) -> str:
+    # Run the watch-and-answer loop in a DETACHED background process so it never
+    # blocks the interface (a busy session's spinner would otherwise never idle-out).
+    from ai4science.harness.agents.machine.sessions import tmux_target_for_pid
+    from ai4science.harness.agents.machine.supervisor import resolve_pid
+    pid = resolve_pid(session)
+    if pid is None and not str(session).isdigit():
+        return f"No session '{session}' — run find_claude_sessions for names/pids."
+    pid = pid if pid is not None else int(session)
+    if not tmux_target_for_pid(pid):
+        return (f"Session '{session}' isn't in a tmux session, so it can't be operated. Start it "
+                f"with start_session (tmux) first, or the user runs `tmux new -s {session} claude`.")
+    import subprocess, sys
+    code = ("from ai4science.harness.agents.machine.sessions import operate_session;"
+            "operate_session(%r, answer=%r, press_enter=True, max_answers=%d, idle_exit=%f)"
+            % (pid, str(answer), int(max_answers), float(idle_exit)))
+    try:
+        subprocess.Popen([sys.executable, "-c", code], start_new_session=True,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception as e:
+        return f"could not start the operate loop: {type(e).__name__}"
+    return (f"Operating '{session}' in the BACKGROUND — auto-answering its permission prompts. "
+            f"It pauses automatically if you `tmux attach -t {session}`; `singularity session pause` "
+            f"holds everything. (This returns immediately; the loop keeps running.)")
 
 
 def _pause_machine(workspace) -> str:
