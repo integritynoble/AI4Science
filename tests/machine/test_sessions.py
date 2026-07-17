@@ -261,3 +261,37 @@ def test_pane_wants_answer_detection():
     assert _pane_wants_answer("Do you want to create tune.py?\n❯ 1. Yes\n  3. No")
     assert not _pane_wants_answer("● Running the sweep…")
     assert not _pane_wants_answer("$ ")
+
+
+def test_start_session_creates_tmux_and_record():
+    from ai4science.harness.agents.machine.sessions import start_session
+    calls = []
+    def fake_run(args):
+        calls.append(args)
+        if args[:2] == ["tmux", "list-panes"]:
+            return (0, "55123\n", "")
+        return (0, "", "")                                    # new-session ok
+    reg = {}
+    r = start_session("work", cwd="/home/me/proj", run=fake_run,
+                      register=lambda **kw: reg.update(kw) or {"name": "work"})
+    assert r["ok"] and r["name"] == "work" and r["pid"] == 55123 and r["target"] == "work:0.0"
+    assert calls[0][:3] == ["tmux", "new-session", "-d"] and "/home/me/proj" in calls[0]
+    assert reg["pid"] == 55123 and reg["cwd"] == "/home/me/proj"
+
+
+def test_start_session_govern_wires_hook_before_start():
+    from ai4science.harness.agents.machine.sessions import start_session
+    order = []
+    start_session("g", cwd="/p", govern=True, ceiling="A2",
+                  wire=lambda cwd, *, ceiling: order.append(("wire", cwd, ceiling)),
+                  run=lambda a: order.append(("run", a[1])) or (0, "9\n" if a[1] == "list-panes" else "", ""),
+                  register=lambda **kw: {"name": "g"})
+    assert order[0][0] == "wire"                              # hook wired BEFORE new-session
+    assert any(o[0] == "run" and o[1] == "new-session" for o in order)
+
+
+def test_start_session_reports_tmux_failure():
+    from ai4science.harness.agents.machine.sessions import start_session
+    r = start_session("x", cwd="/p", run=lambda a: (1, "", "no server running"),
+                      register=lambda **kw: {})
+    assert r["ok"] is False and "could not start" in r["reason"]

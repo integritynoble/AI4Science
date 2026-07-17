@@ -67,6 +67,23 @@ def _govern_claude_session(workspace, session, ceiling="A1") -> str:
     return f"Could not govern '{session}' (pid {pid}): {r['reason']}."
 
 
+def _start_session(workspace, name, dir=None, govern=False, ceiling="A1") -> str:
+    from ai4science.harness.agents.machine.sessions import start_session
+    import os
+    r = start_session(name, cwd=(dir or os.getcwd()), govern=bool(govern), ceiling=ceiling)
+    return r["note"] if r["ok"] else f"could not start session '{name}': {r['reason']}"
+
+
+def _operate_session_tool(workspace, session, answer="1", max_answers=5, idle_exit=15.0) -> str:
+    from ai4science.harness.agents.machine.sessions import operate_session
+    r = operate_session(session, answer=answer, press_enter=True,
+                        max_answers=int(max_answers), poll=1.5, idle_exit=float(idle_exit))
+    if not r.get("ok"):
+        return f"could not operate '{session}': {r['reason']}"
+    return (f"Operated '{session}': answered {r['answers']} prompt(s), stopped ({r['stopped']}). "
+            f"It pauses automatically if you attach the tmux session.")
+
+
 def _pause_machine(workspace) -> str:
     from ai4science.harness.agents.machine.pause import pause, is_paused
     pause()
@@ -160,6 +177,33 @@ def machine_tools(ctx) -> list:
             func=_send_to_session, mutating=local_gate,
         ),
         Tool(
+            name="start_session",
+            description=("Start a NEW interactive Claude Code session in a fresh tmux session, so "
+                         "the machine can drive it (send_to_session / operate) AND the user can "
+                         "attach to it. Use when the user asks to start/open/restart a session in a "
+                         "directory. Optionally governs it (wires the hook)."),
+            parameters={"type": "object", "properties": {
+                "name": {"type": "string", "description": "a short name for the session (also the tmux name)"},
+                "dir": {"type": "string", "description": "directory to start it in (default: current)"},
+                "govern": {"type": "boolean", "description": "wire the governance hook into the new session"},
+                "ceiling": {"type": "string", "enum": ["A0", "A1", "A2"], "description": "ceiling if governed"},
+            }, "required": ["name"]},
+            func=_start_session, mutating=local_gate,
+        ),
+        Tool(
+            name="operate_session",
+            description=("DRIVE a tmux-hosted session for a burst — auto-answer its permission "
+                         "prompts (default Yes). Returns after a few answers or when idle. It pauses "
+                         "automatically if the user attaches. For a long unattended run use the shell "
+                         "`singularity session operate`."),
+            parameters={"type": "object", "properties": {
+                "session": {"type": "string", "description": "name or pid of the tmux session"},
+                "answer": {"type": "string", "description": "keys to answer a prompt with (default '1' = Yes)"},
+                "max_answers": {"type": "integer", "description": "stop after this many answers (default 5)"},
+            }, "required": ["session"]},
+            func=_operate_session_tool, mutating=local_gate,
+        ),
+        Tool(
             name="pause_machine",
             description=("PAUSE the machine's governed drives — while paused, every governed "
                          "action is held (denied) and a running `singularity claude --guide` waits "
@@ -193,6 +237,10 @@ MACHINE_SYSTEM_PROMPT = (
     "restarted to be governed.\n"
     "  • `stop_claude_session(session)` to terminate a runaway (only sessions the user owns). Use "
     "stop only when the user asks to stop/kill a session — both are owner-approved before they run.\n"
+    "  • `start_session(name, dir=..., govern=...)` to START a NEW Claude session in tmux — do this "
+    "yourself when the user asks to start/open/restart a session in a directory (don't tell them to run "
+    "it). Then you can drive it.\n"
+    "  • `operate_session(session)` to auto-answer a tmux session's prompts for a burst, or "
     "  • `send_to_session(session, text=..., key=...)` to OPERATE a live tmux-hosted session — type "
     "into it or answer its prompt (e.g. text=\"1\" to answer Yes). Only works if the session runs in "
     "tmux; if it reports 'not in tmux', tell the user to start it with `tmux new -s <name> claude`.\n"

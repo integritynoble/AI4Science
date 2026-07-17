@@ -458,6 +458,59 @@ def send_to_session(name_or_pid, text: Optional[str] = None, *, enter: bool = Tr
     return {"ok": True, "target": target, "pid": pid, "sent": sent.strip()}
 
 
+def _tmux_run(args):
+    import subprocess
+    p = subprocess.run(args, capture_output=True, text=True, timeout=8)
+    return p.returncode, p.stdout, (p.stderr or "")
+
+
+def start_session(name, cwd=".", *, claude_bin: str = "claude", govern: bool = False,
+                  ceiling: str = "A1", run: Optional[Callable] = None,
+                  register: Optional[Callable] = None, wire: Optional[Callable] = None) -> Dict[str, Any]:
+    """Start a NEW interactive Claude session inside a fresh tmux session, so the
+    machine can drive it (send/operate) AND you can attach to it. Optionally wires
+    the governance hook first (so the new session is governed). Registers a
+    supervisor record so `session ls`/operate/send resolve it by name. Fail-safe."""
+    import os
+    from ai4science.harness.agents.machine.supervisor import _slug
+    cwd = os.path.abspath(str(cwd))
+    tname = _slug(str(name))
+    run = run or _tmux_run
+    if govern:                                           # wire BEFORE start (hooks load at launch)
+        try:
+            if wire is None:
+                from ai4science.harness.agents.machine.claude_driver import ensure_governance_hook
+                wire = ensure_governance_hook
+            wire(cwd, ceiling=ceiling)
+        except Exception:
+            pass
+    rc, out, err = run(["tmux", "new-session", "-d", "-s", tname, "-c", cwd, claude_bin])
+    if rc != 0:
+        return {"ok": False, "reason": f"could not start tmux session '{tname}': "
+                                       f"{(err or out or '').strip()[:140]}"}
+    pid = None
+    rc2, out2, _ = run(["tmux", "list-panes", "-t", tname, "-F", "#{pane_pid}"])
+    if rc2 == 0 and out2.strip():
+        try:
+            pid = int(out2.split()[0])
+        except Exception:
+            pid = None
+    rec = None
+    if pid is not None:
+        try:
+            if register is None:
+                from ai4science.harness.agents.machine import supervisor as _sup
+                register = _sup.create
+            rec = register(pid=pid, cwd=cwd, name=tname, ceiling=ceiling)
+        except Exception:
+            rec = None
+    return {"ok": True, "name": (rec or {}).get("name", tname), "target": f"{tname}:0.0",
+            "pid": pid, "cwd": cwd, "governed": bool(govern),
+            "note": f"started Claude in tmux '{tname}' in {cwd}. Drive it: `singularity session "
+                    f"operate {tname}` or `send {tname} \"…\"`; take it yourself: "
+                    f"`singularity session takeover {tname}` (or `tmux attach -t {tname}`)."}
+
+
 _ANSWER_PROMPT_RE = re.compile(r"(❯\s*\d+\.\s|do you want to)", re.I)
 
 
