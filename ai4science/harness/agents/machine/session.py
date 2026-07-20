@@ -15,7 +15,13 @@ from typing import Any, Callable, Dict, List, Optional
 
 _CEILING_ORDER = {"A0": 0, "A1": 1, "A2": 2, "A3": 3}
 
-READ_ONLY_TOOLS = {"Read", "Grep", "Glob", "LS", "NotebookRead"}
+READ_ONLY_TOOLS = {"Read", "Grep", "Glob", "LS", "NotebookRead",
+                   # Claude Code's own bookkeeping (its internal todo/task list
+                   # + planning) — no side effects outside the session; without
+                   # these, plan-mode re-prompts the owner on EVERY step
+                   "TodoWrite", "TaskCreate", "TaskUpdate", "TaskGet", "TaskList",
+                   "TaskOutput", "TaskStop", "ToolSearch", "EnterPlanMode",
+                   "ExitPlanMode", "AskUserQuestion", "Skill"}
 WRITE_TOOLS = {"Edit", "Write", "NotebookEdit", "MultiEdit"}
 NETWORK_TOOLS = {"WebFetch", "WebSearch"}
 
