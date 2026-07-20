@@ -52,6 +52,12 @@ _SAFE_HEADS = {
     "true", "false", "test", "sort", "uniq", "cut", "diff",
     "cd", "sleep", "seq", "cmp", "realpath", "readlink", "git",
 }
+
+# in-project WORK commands — running the project (interpreters, tests, builds).
+# Same trust tier as the Write tool: A1 = in-project autonomy. Forbidden /
+# consequential / protected patterns are checked BEFORE this, so installs,
+# sudo, pushes etc. stay gated regardless of the interpreter head.
+_WORK_HEADS = {"python", "python3", "pytest", "uv", "node", "npm", "npx", "make"}
 _SAFE_GIT = {"status", "log", "diff", "show", "branch", "remote", "config",
              "rev-parse", "ls-files", "describe", "blame", "tag", "stash"}
 _FIND_EXEC = {"-exec", "-execdir", "-ok", "-okdir", "-delete", "-fprintf",
@@ -88,7 +94,8 @@ def classify_command(cmd: str) -> Dict[str, Any]:
     if _bash_writes_protected(low):
         return {"kind": "protected", "consequential": True,
                 "reason": "writes a protected governance/state path"}
-    # allowlist: every pipeline/sequence segment must head a read-only command
+    # allowlist: every pipeline/sequence segment must head a read-only or work command
+    work_seen = False
     segments = re.split(r"[;|]|&&|\|\|", cmd or "")
     for seg in segments:
         seg = seg.strip()
@@ -101,12 +108,16 @@ def classify_command(cmd: str) -> Dict[str, Any]:
         if not toks:
             continue
         head = toks[0]
-        if head not in _SAFE_HEADS:
+        if head not in _SAFE_HEADS and head not in _WORK_HEADS:
             return {"kind": "unknown", "consequential": False, "reason": f"unrecognized command {head!r}"}
+        if head in _WORK_HEADS:
+            work_seen = True
         if head == "git" and len(toks) > 1 and toks[1] not in _SAFE_GIT:
             return {"kind": "unknown", "consequential": False, "reason": f"non-read-only git: {toks[1]!r}"}
         if head == "find" and any(t in _FIND_EXEC for t in toks[1:]):
             return {"kind": "unknown", "consequential": False, "reason": "find with -exec/-delete"}
+    if work_seen:
+        return {"kind": "work", "consequential": False, "reason": "in-project work command (run/test/build)"}
     return {"kind": "read", "consequential": False, "reason": "read-only allowlisted command"}
 
 
@@ -165,6 +176,8 @@ def decide_tool_call(call: Dict[str, Any], *, ceiling: str = "A1",
             return _deny("command writes a governance/state path — not permitted")
         if c["kind"] == "consequential":                       # push/install/sudo/…: >= A2
             return _allow("consequential command (A2+)") if lvl >= 2 else _ask(c["reason"])
+        if c["kind"] == "work":                                # run/test/build: >= A1
+            return _allow("in-project work command (A1+)") if lvl >= 1 else _ask("A0 is advisory; running the project requires approval")
         if c["kind"] == "unknown":                             # unclassifiable: >= A3
             return _allow("unclassified command (A3)") if lvl >= 3 else _ask(c["reason"])
         return _allow("read-only command") if lvl >= 1 else _ask("A0 is advisory; commands require approval")
