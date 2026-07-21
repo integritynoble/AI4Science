@@ -447,6 +447,7 @@ def send_to_session(name_or_pid, text: Optional[str] = None, *, enter: bool = Tr
         calls.append(["tmux", "send-keys", "-t", target, "Enter"])
     if not calls:
         return {"ok": False, "reason": "nothing to send (give text, --key, or Enter)"}
+    import time as _time
     for a in calls:
         try:
             rc, err = run(a)
@@ -454,6 +455,34 @@ def send_to_session(name_or_pid, text: Optional[str] = None, *, enter: bool = Tr
             return {"ok": False, "reason": f"{type(e).__name__}"}
         if rc != 0:
             return {"ok": False, "reason": f"tmux send-keys failed: {err[:120]}"}
+        if a[-1] != "Enter":
+            # let the TUI ingest the typed text before Enter — sent back-to-back
+            # the submit keypress can be dropped, leaving the prompt unsent
+            _time.sleep(0.4)
+    if text and enter and run is _tmux_send:
+        # verify the submit actually took: if the input line still shows the
+        # text, the TUI swallowed the keypress. Retry Enter (CR), and if that
+        # still doesn't take, C-j (LF) — some sessions' extended-keyboard state
+        # ignores CR but submits on LF (observed live on a real session).
+        import subprocess as _sp
+
+        def _unsent() -> bool:
+            try:
+                pane = _sp.run(["tmux", "capture-pane", "-pt", target],
+                               capture_output=True, text=True, timeout=8).stdout
+                tail = "\n".join(pane.rstrip().splitlines()[-8:])
+                probe = text.strip()[:40]
+                return bool(probe) and probe in tail and "❯" in tail
+            except Exception:  # noqa: BLE001
+                return False
+        try:
+            for retry_key in ("Enter", "C-j"):
+                _time.sleep(0.6)
+                if not _unsent():
+                    break
+                _sp.run(["tmux", "send-keys", "-t", target, retry_key], timeout=8)
+        except Exception:  # noqa: BLE001 — verification is best-effort
+            pass
     sent = (text or "") + (f" {key}" if key else "") + (" ⏎" if enter else "")
     return {"ok": True, "target": target, "pid": pid, "sent": sent.strip()}
 
