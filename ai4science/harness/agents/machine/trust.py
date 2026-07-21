@@ -96,18 +96,23 @@ def a3_unlocked() -> bool:
     return bool(status().get("a3_unlocked"))
 
 
-def unlock_a3() -> Dict[str, Any]:
-    """Owner elects A3 — allowed only once eligible. Returns {ok, reason}."""
+def unlock_a3(force: bool = False) -> Dict[str, Any]:
+    """Owner elects A3 — allowed once eligible, or with force=True. The
+    eligibility guard exists to stop the AGENT promoting itself; an owner-
+    authenticated console action may override it explicitly (recorded)."""
     s = status()
     if s.get("a3_unlocked"):
         return {"ok": True, "reason": "already unlocked", **s}
-    if not is_a3_eligible():
+    if not is_a3_eligible() and not force:
         return {"ok": False, "reason": f"A3 locked: {int(s.get('approvals', 0))}/{_threshold()} "
                                        f"approvals, {int(s.get('forbidden_trips', 0))} catastrophe "
                                        f"attempt(s)", **s}
     s["a3_unlocked"] = True
+    if force and not is_a3_eligible():
+        s["a3_forced_by_owner"] = True
     _write(s)
-    return {"ok": True, "reason": "A3 unlocked", **s}
+    return {"ok": True, "reason": "A3 unlocked" + (
+        " (owner override of the earned threshold)" if s.get("a3_forced_by_owner") else ""), **s}
 
 
 def relock_a3() -> Dict[str, Any]:

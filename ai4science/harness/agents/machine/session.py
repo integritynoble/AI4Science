@@ -94,17 +94,26 @@ def classify_command(cmd: str) -> Dict[str, Any]:
     if _bash_writes_protected(low):
         return {"kind": "protected", "consequential": True,
                 "reason": "writes a protected governance/state path"}
-    # allowlist: every pipeline/sequence segment must head a read-only or work command
+    # allowlist: every pipeline/sequence segment must head a read-only or work
+    # command. Split QUOTE-AWARE — a | inside quotes (grep "a|b") is data, not a
+    # pipe; the old regex split broke quoting and mis-flagged such commands as
+    # unparseable.
     work_seen = False
-    segments = re.split(r"[;|]|&&|\|\|", cmd or "")
-    for seg in segments:
-        seg = seg.strip()
-        if not seg:
+    try:
+        lex = shlex.shlex(cmd or "", posix=True, punctuation_chars="|&;<>")
+        lex.whitespace_split = True
+        tokens = list(lex)
+    except ValueError:
+        return {"kind": "unknown", "consequential": False, "reason": "unparseable command"}
+    segments: List[List[str]] = [[]]
+    for t in tokens:
+        if t and all(c in "|&;" for c in t):        # pipe/sequence operator
+            segments.append([])
+        elif t and all(c in "<>&" for c in t):      # redirection — not a new segment
             continue
-        try:
-            toks = shlex.split(seg)
-        except ValueError:
-            return {"kind": "unknown", "consequential": False, "reason": "unparseable command"}
+        else:
+            segments[-1].append(t)
+    for toks in segments:
         if not toks:
             continue
         head = toks[0]
