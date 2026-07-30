@@ -77,10 +77,27 @@ def _write_is_protected(path: str) -> bool:
 
 def _bash_writes_protected(cmd: str) -> bool:
     """A bash command that WRITES (redirect / tee / rm / mv …) to a protected path.
-    Reading a protected file (cat/grep) is fine and not flagged."""
+    Reading a protected file (cat/grep) is fine and not flagged.
+
+    A protected-path substring and a write-verb match ANYWHERE in the command
+    used to be enough — but `2>/dev/null` on an unrelated read contains a bare
+    '>' too, so a plain `cat .../.claude/settings.json 2>/dev/null` was flagged
+    as writing to it. Only a write-verb match on the SAME SIDE of (before) a
+    protected-path mention counts: a verb that appears after the path can't be
+    the thing writing to it.
+    """
     if not any(s in cmd for s in _PROTECTED_WRITE):
         return False
-    return bool(_WRITE_VERB.search(cmd))
+    for s in _PROTECTED_WRITE:
+        start = 0
+        while True:
+            idx = cmd.find(s, start)
+            if idx == -1:
+                break
+            if _WRITE_VERB.search(cmd[:idx]):
+                return True
+            start = idx + 1
+    return False
 
 
 def classify_command(cmd: str) -> Dict[str, Any]:
@@ -114,6 +131,15 @@ def classify_command(cmd: str) -> Dict[str, Any]:
         else:
             segments[-1].append(t)
     for toks in segments:
+        if not toks:
+            continue
+        # `VAR=value cmd ...` is a shell prefix, not the command itself — strip
+        # leading assignments so e.g. `D=/tmp grep ...` classifies on `grep`,
+        # not on the assignment token (which matches no known head).
+        i = 0
+        while i < len(toks) and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", toks[i]):
+            i += 1
+        toks = toks[i:]
         if not toks:
             continue
         head = toks[0]

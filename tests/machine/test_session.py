@@ -53,6 +53,25 @@ def test_bash_write_to_governance_config_is_denied():
     assert classify_command("cat /proj/.claude/settings.json")["kind"] == "read"
 
 
+def test_reading_a_protected_path_with_redirected_stderr_is_still_a_read():
+    # `2>/dev/null` contains a bare '>' — merely co-occurring with a protected
+    # path elsewhere in the command must not be read as writing TO it.
+    assert classify_command(
+        "cat /proj/.claude/settings.json 2>/dev/null")["kind"] == "read"
+    # a real write redirect into the protected path must still be caught
+    assert classify_command(
+        "echo x > /proj/.claude/settings.json 2>/dev/null")["kind"] == "protected"
+
+
+def test_var_assignment_prefix_is_stripped_before_classifying_the_head():
+    # `VAR=value cmd ...` is a shell prefix, not the command itself — the real
+    # head (grep, here) still governs classification.
+    assert classify_command(
+        "D=/tmp/foo grep -c '\\bibitem' $D/main.bbl")["kind"] == "read"
+    assert classify_command("A=1 B=2 ls -la")["kind"] == "read"
+    assert classify_command("FOO=bar rm -rf /")["kind"] == "forbidden"
+
+
 # --- decide_tool_call --------------------------------------------------------
 
 def test_readonly_tool_allowed():
