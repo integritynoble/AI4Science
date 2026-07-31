@@ -119,3 +119,34 @@ def test_guide_aborts_on_drive_failure(tmp_path):
     r = guide_session(project_dir=str(tmp_path), goal="x", seed_from_transcript=False,
                       drive=lambda task, **kw: {"ok": False, "reason": "claude timed out"})
     assert r["ok"] is False and r["reason"] == "claude timed out" and r["rounds"] == 1
+
+
+def test_ensure_governance_hook_also_wires_the_stop_check(tmp_path):
+    """The console's Stop-hook check has to be installed HERE, not by hand.
+
+    This function rewrites the whole settings file, so a Stop hook added
+    manually to a governed project is wiped the next time a ceiling is set.
+    Installing it alongside governance is also the only path the governed
+    agent itself cannot take: that file is a protected write at every
+    ceiling, because an agent able to edit its own hook config can remove
+    its own governor.
+    """
+    p = ensure_governance_hook(tmp_path, ceiling="A1")
+    cfg = json.loads(p.read_text())
+    stop = cfg["hooks"]["Stop"][0]["hooks"][0]
+    assert stop["type"] == "command"
+    assert "claude_stop_hook.py" in stop["command"]
+    # governance itself must survive beside it
+    assert cfg["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+
+
+def test_the_stop_hook_is_skipped_when_the_console_is_not_installed(tmp_path,
+                                                                    monkeypatch):
+    """Advisory, and optional. A machine running the governed harness without
+    the web console must still get GOVERNANCE -- wiring a Stop hook to a
+    script that is not there would make every turn pay a failed subprocess."""
+    from ai4science.harness.agents.machine import claude_driver as cd
+    monkeypatch.setattr(cd, "_stop_hook_script", lambda: None)
+    cfg = json.loads(ensure_governance_hook(tmp_path, ceiling="A1").read_text())
+    assert "Stop" not in cfg["hooks"]
+    assert cfg["hooks"]["PreToolUse"]                    # governance unaffected

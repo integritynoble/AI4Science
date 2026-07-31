@@ -32,10 +32,43 @@ def _hook_pythonpath() -> Optional[str]:
     return ":".join(parts)
 
 
+#: Where the console's Stop-hook relay lives, if the console is installed on
+#: this machine at all. Kept as a list rather than one path because the console
+#: is a git worktree set: the dev tree is the one that is always present, and a
+#: deploy worktree may be checked out at an older commit that predates it.
+_STOP_HOOK_CANDIDATES = (
+    os.path.expanduser("~/pwm/singularity/web/hooks/claude_stop_hook.py"),
+)
+
+
+def _stop_hook_script() -> Optional[str]:
+    """The Stop-hook relay script, or None when the console is not installed."""
+    for p in _STOP_HOOK_CANDIDATES:
+        if os.path.exists(p):
+            return p
+    return None
+
+
 def ensure_governance_hook(project_dir, *, ceiling: str = "A1") -> Path:
-    """Write a project .claude/settings.json wiring the PreToolUse governance hook.
-    Uses THIS interpreter and embeds PYTHONPATH so the hook resolves ai4science even
-    when Claude Code spawns it from an environment without the platform installed."""
+    """Write a project settings file wiring the PreToolUse governance hook.
+
+    Uses THIS interpreter and embeds PYTHONPATH so the hook resolves ai4science
+    even when Claude Code spawns it from an environment without the platform
+    installed.
+
+    Also wires the console's **Stop** hook when the console is present. That
+    belongs here rather than in a hand-edited file for two reasons: this
+    function REWRITES the whole settings file, so anything added by hand is
+    wiped the next time a ceiling is set; and the governed agent is denied
+    writes to that file at every ceiling, including A3, because an agent able
+    to edit its own hook config can remove its own governor. The supervisor
+    installing it is the only path that is both durable and legitimate.
+
+    The Stop hook is advisory: it reports detected errors and the plan's
+    criteria back as context, never blocking a turn, and its relay fails open
+    if the console is down. Governance does not depend on it — a machine
+    without the console still gets the PreToolUse hook exactly as before.
+    """
     d = Path(project_dir) / ".claude"
     d.mkdir(parents=True, exist_ok=True)
     prefix = f"PWM_CEILING={ceiling}"
@@ -43,10 +76,17 @@ def ensure_governance_hook(project_dir, *, ceiling: str = "A1") -> Path:
     if pp:
         prefix += f" PYTHONPATH={pp}"
     cmd = f"{prefix} {sys.executable} -m ai4science.harness.agents.machine.hook"
-    settings = {"hooks": {"PreToolUse": [
-        {"matcher": "*", "hooks": [{"type": "command", "command": cmd, "timeout": 60}]}]}}
+    hooks = {"PreToolUse": [
+        {"matcher": "*", "hooks": [{"type": "command", "command": cmd, "timeout": 60}]}]}
+    stop = _stop_hook_script()
+    if stop:
+        # short timeout: an advisory check must never be what makes a turn feel
+        # slow, and the relay already fails open well inside this
+        hooks["Stop"] = [{"hooks": [{"type": "command",
+                                     "command": f"{sys.executable} {stop}",
+                                     "timeout": 20}]}]
     path = d / "settings.json"
-    path.write_text(json.dumps(settings, indent=2))
+    path.write_text(json.dumps({"hooks": hooks}, indent=2))
     return path
 
 
