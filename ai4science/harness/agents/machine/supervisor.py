@@ -105,22 +105,86 @@ def get_by_pid(pid) -> Optional[Dict[str, Any]]:
     return None
 
 
-def get_by_cwd(cwd) -> Optional[Dict[str, Any]]:
-    """Resolve a record by project dir — the key the stateless hook uses (it knows
-    cwd, not the record name). Prefers a live record on collision."""
+def _records_for_cwd(target: str, alive=None) -> list:
+    """Every record whose cwd resolves to `target`."""
+    out = []
+    for r in list_all():
+        try:
+            if os.path.realpath(r.get("cwd", "")) == target:
+                out.append(r)
+        except Exception:
+            continue
+    return out
+
+
+def get_by_cwd(cwd, alive=None) -> Optional[Dict[str, Any]]:
+    """Resolve a record by project dir — the key the stateless hook uses (it
+    knows cwd, not the record name).
+
+    **Refuses to answer when live records for this directory disagree about
+    the ceiling.** Two sessions sharing a working directory is legitimate, and
+    this is the hook's fallback when its pid walk fails; picking one
+    arbitrarily hands a session an authority level nobody set for it, silently
+    and in either direction. Observed live: an A1 and an A2 record shared a
+    cwd, and this returned the A1 one.
+
+    Returning None is the safer failure. The hook then falls through to its
+    declared env ceiling, which is deterministic and inspectable, instead of
+    an arbitrary pick that looks authoritative. Only a genuine DISAGREEMENT is
+    unanswerable — records that agree still resolve, and dead records never
+    make a live one unresolvable.
+    """
     try:
         target = os.path.realpath(str(cwd))
     except Exception:
         return None
-    best = None
+    is_alive = alive or _pid_alive
+    rows = _records_for_cwd(target)
+    if not rows:
+        return None
+    live = [r for r in rows if is_alive(r.get("pid"))]
+    pool = live or rows
+    ceilings = {r.get("ceiling") for r in pool if r.get("ceiling")}
+    if len(ceilings) > 1:
+        return None                      # ambiguous — say nothing rather than guess
+    return pool[0]
+
+
+def ceiling_report(alive=None) -> list:
+    """What each record's ceiling is RECORDED as, beside what would actually be
+    RESOLVED for it — and by which path.
+
+    Nothing surfaced this before, which is how a drift between the two sat
+    unnoticed for days and was then misread as harmless. `by` names the rung of
+    the hook's own chain that answers: `pid` (exact), `cwd` (the shared-directory
+    fallback), or `none` (nothing resolves, so the declared env ceiling applies).
+
+    `cwd_ambiguous` marks a directory more than one live record claims — the
+    condition that makes the `cwd` rung unusable, and therefore the thing to fix
+    before a pid ever goes stale.
+    """
+    is_alive = alive or _pid_alive
+    rows = []
     for r in list_all():
+        pid, cwd = r.get("pid"), r.get("cwd") or ""
         try:
-            if os.path.realpath(r.get("cwd", "")) == target:
-                if best is None or _pid_alive(r.get("pid")):
-                    best = r
+            target = os.path.realpath(cwd)
         except Exception:
-            continue
-    return best
+            target = cwd
+        peers = [p for p in _records_for_cwd(target) if is_alive(p.get("pid"))]
+        ambiguous = len({p.get("ceiling") for p in peers if p.get("ceiling")}) > 1
+        pid_ok = bool(pid) and is_alive(pid)
+        if pid_ok:
+            by, resolved = "pid", r.get("ceiling")
+        else:
+            hit = get_by_cwd(cwd, alive=is_alive)
+            by, resolved = ("cwd", hit.get("ceiling")) if hit else ("none", None)
+        rows.append({"name": r.get("name"), "cwd": cwd, "pid": pid,
+                     "pid_alive": pid_ok, "recorded": r.get("ceiling"),
+                     "resolved": resolved, "by": by,
+                     "agrees": resolved == r.get("ceiling"),
+                     "cwd_ambiguous": ambiguous})
+    return rows
 
 
 def get(name_or_pid) -> Optional[Dict[str, Any]]:
