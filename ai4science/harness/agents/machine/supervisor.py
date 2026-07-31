@@ -29,6 +29,50 @@ def _record_path(name: str) -> Path:
     return _sessions_dir() / f"{name}.json"
 
 
+def pid_start(pid) -> Optional[str]:
+    """The kernel's start time for a pid — field 22 of /proc/<pid>/stat.
+
+    Fixed for the life of a process and never reused, so `(pid, pid_start)` is
+    a real identity where a bare pid is not: the OS recycles pid numbers, and
+    the hook trusts `get_by_pid` above every other rung, which makes a WRONG
+    pid match the single most dangerous failure in the chain.
+    """
+    try:
+        with open("/proc/%d/stat" % int(pid)) as f:
+            s = f.read()
+        return s[s.rfind(")") + 1:].split()[19]      # field 22 overall
+    except Exception:
+        return None
+
+
+def pid_is_ours(rec) -> bool:
+    """Is this record's pid still the process it was created for?
+
+    A record written before start times were stamped is RE-STAMPED rather than
+    rejected: calling every legacy record an impostor would push all of them
+    onto the ambiguous cwd fallback at once, which is the failure this whole
+    change exists to avoid.
+    """
+    if not rec:
+        return False
+    pid = rec.get("pid")
+    if not pid or not _pid_alive(pid):
+        return False
+    now = pid_start(pid)
+    if now is None:
+        return False
+    was = rec.get("pid_start")
+    if not was:                                     # legacy record: adopt + stamp
+        try:
+            d = dict(rec)
+            d["pid_start"] = now
+            _write(d)
+        except Exception:
+            pass
+        return True
+    return str(was) == str(now)
+
+
 def _pid_alive(pid) -> bool:
     """True if the process exists. A PermissionError means it exists but is owned
     by another user — still alive for our purposes."""
@@ -173,7 +217,10 @@ def ceiling_report(alive=None) -> list:
             target = cwd
         peers = [p for p in _records_for_cwd(target) if is_alive(p.get("pid"))]
         ambiguous = len({p.get("ceiling") for p in peers if p.get("ceiling")}) > 1
-        pid_ok = bool(pid) and is_alive(pid)
+        # identity, not bare liveness: a recycled pid IS alive in the os.kill
+        # sense, and reporting that as a healthy exact match is the specific
+        # thing this column exists to catch
+        pid_ok = bool(pid) and is_alive(pid) and pid_is_ours(r)
         if pid_ok:
             by, resolved = "pid", r.get("ceiling")
         else:
@@ -226,6 +273,8 @@ def create(*, pid, cwd, name: Optional[str] = None, ceiling: str = "A1",
     base = _slug(name) if name else default_name(cwd)
     rec = {"name": _unique_name(base, taken=taken), "pid": int(pid), "cwd": str(cwd),
            "session_id": session_id, "ceiling": ceiling, "started_at": _iso(now()),
+           # (pid, pid_start) is the identity; a pid alone gets recycled
+           "pid_start": pid_start(pid),
            "status": "live", "goal": None, "tripwire": False, "tripwire_reason": None,
            "approvals": 0, "denials": 0, "forbidden_trips": 0}
     _write(rec)

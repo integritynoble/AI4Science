@@ -49,6 +49,44 @@ def _stop_hook_script() -> Optional[str]:
     return None
 
 
+#: Ceiling order, lowest authority first. An unrecognised value sorts BELOW
+#: everything known, so a typo or a future name can only ever under-grant.
+_CEILING_ORDER = ("A0", "A1", "A2", "A3")
+
+
+def _peer_ceilings(project_dir) -> list:
+    """Ceilings other LIVE records claim for this same directory."""
+    try:
+        from ai4science.harness.agents.machine import supervisor as _sup
+        target = os.path.realpath(str(project_dir))
+        return [r.get("ceiling") for r in _sup.list_all()
+                if r.get("ceiling")
+                and os.path.realpath(r.get("cwd", "")) == target
+                and _sup.pid_is_ours(r)]
+    except Exception:
+        return []
+
+
+def _fallback_ceiling(project_dir, ceiling: str) -> str:
+    """The ceiling to BAKE into the file: the most restrictive claimed here.
+
+    The baked `PWM_CEILING` is only ever a fallback -- the hook prefers the
+    supervisor record by pid, then by cwd, and reaches this value only when
+    both fail. That is precisely when the truth is least knowable, so it must
+    under-grant rather than over-grant. Without this, two sessions sharing a
+    directory leave whichever set a ceiling LAST baked in for the other to
+    inherit, which is how an A1 session could fall back to an A3 file.
+    """
+    claims = [c for c in ([ceiling] + list(_peer_ceilings(project_dir))) if c]
+    # An unrecognised value is not a comparable claim -- a typo or a future
+    # name. Ranking it would let it WIN as "most restrictive" and get baked
+    # verbatim; ignoring it leaves the decision to the values we understand.
+    known = [c for c in claims if c in _CEILING_ORDER]
+    if not known:
+        return ceiling
+    return min(known, key=_CEILING_ORDER.index)
+
+
 def ensure_governance_hook(project_dir, *, ceiling: str = "A1") -> Path:
     """Write a project settings file wiring the PreToolUse governance hook.
 
@@ -71,7 +109,7 @@ def ensure_governance_hook(project_dir, *, ceiling: str = "A1") -> Path:
     """
     d = Path(project_dir) / ".claude"
     d.mkdir(parents=True, exist_ok=True)
-    prefix = f"PWM_CEILING={ceiling}"
+    prefix = f"PWM_CEILING={_fallback_ceiling(project_dir, ceiling)}"
     pp = _hook_pythonpath()
     if pp:
         prefix += f" PYTHONPATH={pp}"

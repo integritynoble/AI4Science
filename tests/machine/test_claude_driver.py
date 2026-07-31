@@ -140,6 +140,38 @@ def test_ensure_governance_hook_also_wires_the_stop_check(tmp_path):
     assert cfg["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
 
 
+def test_the_baked_ceiling_is_the_most_restrictive_for_a_shared_dir(tmp_path,
+                                                                     monkeypatch):
+    """#2: the baked PWM_CEILING is a FALLBACK, used only when both record
+    lookups fail -- which is exactly when the truth is least knowable. Two
+    sessions can share a directory, and whichever set a ceiling last would
+    otherwise leave its own level baked in for the other to inherit. A
+    fallback must under-grant, never over-grant."""
+    from ai4science.harness.agents.machine import claude_driver as cd
+    monkeypatch.setattr(cd, "_peer_ceilings",
+                        lambda d: ["A1", "A3"])          # a peer sits at A1
+    cfg = json.loads(ensure_governance_hook(tmp_path, ceiling="A3").read_text())
+    cmd = cfg["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+    assert "PWM_CEILING=A1" in cmd, cmd
+
+
+def test_an_unshared_dir_bakes_exactly_what_was_asked_for(tmp_path, monkeypatch):
+    from ai4science.harness.agents.machine import claude_driver as cd
+    monkeypatch.setattr(cd, "_peer_ceilings", lambda d: [])
+    cfg = json.loads(ensure_governance_hook(tmp_path, ceiling="A3").read_text())
+    cmd = cfg["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+    assert "PWM_CEILING=A3" in cmd, cmd
+
+
+def test_an_unknown_ceiling_never_widens_the_fallback(tmp_path, monkeypatch):
+    """An unrecognised value must not sort as 'highest' and win."""
+    from ai4science.harness.agents.machine import claude_driver as cd
+    monkeypatch.setattr(cd, "_peer_ceilings", lambda d: ["A1", "banana"])
+    cfg = json.loads(ensure_governance_hook(tmp_path, ceiling="A2").read_text())
+    cmd = cfg["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+    assert "PWM_CEILING=A1" in cmd, cmd
+
+
 def test_the_stop_hook_is_skipped_when_the_console_is_not_installed(tmp_path,
                                                                     monkeypatch):
     """Advisory, and optional. A machine running the governed harness without

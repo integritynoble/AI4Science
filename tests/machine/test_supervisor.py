@@ -1,3 +1,5 @@
+import os
+
 import pytest
 
 from ai4science.harness.agents.machine import supervisor as sup
@@ -141,3 +143,56 @@ def test_ceiling_report_flags_a_record_whose_pid_is_gone():
     g = rows["gone"]
     assert g["pid_alive"] is False
     assert g["by"] in ("cwd", "none")
+
+
+# ---- #3: a pid alone is not an identity ------------------------------------
+#
+# The hook trusts get_by_pid above everything else, so a WRONG pid match is
+# the most dangerous failure in the chain: the OS recycles pids, and a
+# recycled one could hand a record's ceiling to an unrelated process -- or to
+# a different session entirely. Identity is (pid, start time): the kernel's
+# starttime is fixed for the life of a process, so the pair cannot be reused.
+
+def test_create_stamps_the_process_start_time():
+    r = sup.create(pid=os.getpid(), cwd="/home/me/ident", alive=ALIVE)
+    assert r.get("pid_start") is not None, "identity needs more than a pid"
+
+
+def test_a_recycled_pid_is_not_mistaken_for_the_original():
+    """Same pid, different process. Trusting the pid alone would apply this
+    record's ceiling to whatever now holds that number."""
+    r = sup.create(pid=os.getpid(), cwd="/home/me/recycled", ceiling="A3",
+                   alive=ALIVE)
+    d = dict(r)
+    d["pid_start"] = str(int(r["pid_start"]) + 12345)   # a different process
+    sup._write(d)
+    assert sup.pid_is_ours(sup.get_by_name("recycled")) is False
+
+
+def test_the_live_process_is_recognised_as_itself():
+    sup.create(pid=os.getpid(), cwd="/home/me/self", alive=ALIVE)
+    assert sup.pid_is_ours(sup.get_by_name("self")) is True
+
+
+def test_a_legacy_record_without_a_start_time_is_restamped_not_rejected():
+    """Records written before this existed must not all read as impostors --
+    that would push every one of them onto the ambiguous cwd fallback at
+    once."""
+    r = sup.create(pid=os.getpid(), cwd="/home/me/legacy", alive=ALIVE)
+    d = dict(r)
+    d.pop("pid_start", None)
+    sup._write(d)
+    assert sup.pid_is_ours(sup.get_by_name("legacy")) is True
+    assert sup.get_by_name("legacy").get("pid_start"), "should be re-stamped"
+
+
+def test_ceiling_report_uses_identity_not_bare_liveness():
+    """A recycled pid is 'alive' in the os.kill sense. The report must not
+    call that a healthy exact match."""
+    r = sup.create(pid=os.getpid(), cwd="/home/me/rep", ceiling="A2", alive=ALIVE)
+    d = dict(r)
+    d["pid_start"] = str(int(r["pid_start"]) + 999)
+    sup._write(d)
+    row = {x["name"]: x for x in sup.ceiling_report(alive=ALIVE)}["rep"]
+    assert row["pid_alive"] is False, "liveness must mean OUR process"
+    assert row["by"] in ("cwd", "none")
