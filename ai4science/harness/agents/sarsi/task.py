@@ -20,7 +20,7 @@ from __future__ import annotations
 import json
 import time
 import uuid
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace as dataclasses_replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -59,6 +59,12 @@ class Task:
     blocked_by: Optional[str] = None
     verdict: Optional[Dict[str, Any]] = None
     session: Optional[Dict[str, Any]] = None
+    #: the owner has the wheel — the worker must not type over them
+    steering_paused: bool = False
+    #: the plan no longer matches what is being done; its criteria are withheld
+    plan_stale: bool = False
+    #: the owner rewrote it; polish may propose a successor, never replace it
+    plan_owner_edited: bool = False
     created_at: str = ""
     updated_at: str = ""
 
@@ -128,7 +134,13 @@ def read_plan(config: Config, agent: Agent, task: Task) -> Optional[pl.Plan]:
     path = dir_of(agent, task.id) / f"{task.plan_version}.md"
     if not path.exists():
         return None
-    return pl.parse(path.read_text())
+    parsed = pl.parse(path.read_text())
+    # The markdown holds the content; the task record holds whether it is stale
+    # and whether the owner rewrote it. Without this the flags are lost on every
+    # read, and a polish round would quietly replace an owner-edited plan.
+    return dataclasses_replace(parsed, version=task.plan_version,
+                               stale=task.plan_stale,
+                               owner_edited=task.plan_owner_edited)
 
 
 # ── grants ────────────────────────────────────────────────────────────

@@ -117,6 +117,16 @@ def test_an_admitted_turn_is_recorded_too(config):
     assert ledger.count(config, "inbound", agent="work", accepted=True) == 1
 
 
+def test_the_board_is_reachable_from_telegram(config):
+    """Same board, same records, whichever door the owner used."""
+    from ai4science.harness.agents.sarsi import task as tsk, worker
+    agent = config.agents["work"]
+    tsk.create(config, agent, worker.Directive(agent_id="work", goal="finish the export"))
+    fake = FakeTelegram({"tok-work": [_msg(1, OWNER, "/tasks")]})
+    gw.Gateway(config, transport=fake).poll_once()          # the DEFAULT handler
+    assert "finish the export" in fake.sent[0][2]
+
+
 def test_an_admitted_turn_reaches_the_agents_owner_log(config):
     """So the CLI can see what was said on Telegram, and not re-ask it."""
     from ai4science.harness.agents.sarsi import ownerlog

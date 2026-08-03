@@ -81,7 +81,7 @@ def ask(agent_id: str = typer.Argument(..., help="Agent id, e.g. work"),
         raise typer.Exit(code=2)
     agent = decision.agent
     ownerlog.append(config, agent, text, surface=router.CLI_CHANNEL)
-    reply = gateway.handle(agent=agent, text=text, surface=router.CLI_CHANNEL, chat_id="")
+    reply = gateway.handle(config, agent=agent, text=text, surface=router.CLI_CHANNEL)
     # markup off: an agent's reply is data. `[abraham]` is a name, not a style.
     console.print(reply or "(no reply)", markup=False, highlight=False)
 

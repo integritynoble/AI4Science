@@ -51,7 +51,7 @@ class Gateway:
                  now: Callable[[], float] = time.time) -> None:
         self.config = config
         self.transport = transport or TelegramTransport()
-        self.handler = handler or handle
+        self.handler = handler or self._board
         self.now = now
         self._offsets: Dict[str, int] = _load_offsets(config)
 
@@ -76,6 +76,10 @@ class Gateway:
                     continue
         _save_offsets(self.config, self._offsets)
         return handled
+
+    def _board(self, *, agent: Agent, text: str, surface: str, chat_id: str) -> str:
+        return handle(self.config, agent=agent, text=text, surface=surface,
+                      chat_id=chat_id)
 
     def run(self, *, interval: float = 2.0, passes: Optional[int] = None,
             sleep: Callable[[float], None] = time.sleep) -> None:
@@ -129,14 +133,15 @@ class Gateway:
         return 1
 
 
-def handle(*, agent: Agent, text: str, surface: str, chat_id: str) -> str:
-    """The stand-in handler until the worker plane lands: it proves the routing
-    and says, honestly, that it cannot yet do the work."""
-    role = "manager — I route and answer; I do not drive sessions" if not agent.is_worker \
-        else "worker — I can hold tasks and drive sarsi-claude"
-    return (f"[{agent.id}] {role}.\n"
-            f"heard on {surface}: {text[:200]}\n"
-            f"the worker plane is not built yet, so nothing was done.")
+def handle(config: Config, *, agent: Agent, text: str, surface: str,
+           chat_id: str = "") -> str:
+    """The default handler for both doors: the board.
+
+    Kept here so the Telegram loop and the CLI reach the same code — an agent
+    has one set of tasks regardless of which surface asked about them.
+    """
+    from ai4science.harness.agents.sarsi import chat
+    return chat.handle(config, agent, text, surface=surface)
 
 
 # ── accounts and offsets ──────────────────────────────────────────────
