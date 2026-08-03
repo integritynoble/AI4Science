@@ -253,6 +253,12 @@ def planning_kickoff(config: Config, agent: Agent, task: tsk.Task) -> str:
         "",
         "Keep the headings and the `Verified when:` lines: a phase without one "
         "cannot be judged by anyone but you.",
+        "",
+        "While planning you are at ceiling A0: reading files is allowed, and "
+        "every shell command stops for the owner. Look around with your file "
+        "tools rather than with `ls`/`cat`, or you will be waiting on an "
+        "approval instead of planning. The ceiling rises when the owner "
+        "releases the task.",
     ]
     if scope:
         lines += ["", "Scope you may touch: " + ", ".join(scope)]
@@ -282,21 +288,50 @@ def _seed_plan(config: Config, agent: Agent, task: tsk.Task) -> str:
     return text
 
 
-def deliver_kickoff(config: Config, agent: Agent, task: tsk.Task, *,
-                    runtime: Optional[Any] = None, now=time.time) -> tsk.Task:
-    """Hand the session its first instruction, once it can receive one.
+#: How many times the first instruction is typed before the owner is told it is
+#: not landing. Beyond this a loop is just filling a transcript with copies.
+MAX_KICKOFF_TRIES = 3
 
-    `assign` no longer types it: a session started microseconds ago is still
-    booting, the text is dropped, and the worker is left believing it has said
-    something the session never heard. So it waits here until the supervision
-    pass finds the session idle.
+
+def deliver_kickoff(config: Config, agent: Agent, task: tsk.Task, *,
+                    runtime: Optional[Any] = None, screen: str = "",
+                    now=time.time) -> tsk.Task:
+    """Hand the session its first instruction, and confirm it actually landed.
+
+    `assign` does not type it: a session started microseconds ago is still
+    booting and the text is dropped. But *sending* is not *delivering* either —
+    grace's run typed the kickoff while Claude Code was still showing its
+    startup banner, the text went nowhere, and the worker spent the rest of the
+    run believing the session had been told.
+
+    So it stays pending until a distinctive piece of it is **seen on screen**,
+    and is retyped up to `MAX_KICKOFF_TRIES` before the owner is told.
     """
     pending = task.kickoff_pending
     if not pending:
         return task
+
+    marker = _kickoff_marker(pending)
+    if marker and marker in (screen or ""):
+        task.kickoff_pending = None
+        return tsk._touch(agent, task, now)
+
+    if task.kickoff_tries >= MAX_KICKOFF_TRIES:
+        task.kickoff_undelivered = True
+        return tsk._touch(agent, task, now)
+
     (runtime or MachineRuntime()).send((task.session or {}).get("name", ""), pending)
-    task.kickoff_pending = None
+    task.kickoff_tries += 1
     return tsk._touch(agent, task, now)
+
+
+def _kickoff_marker(text: str) -> str:
+    """A fragment distinctive enough that seeing it means the session has it."""
+    for line in (text or "").splitlines():
+        line = line.strip()
+        if len(line) > 20:
+            return line[:40]
+    return (text or "")[:40]
 
 
 def collect_plan(config: Config, agent: Agent, task: tsk.Task, *,

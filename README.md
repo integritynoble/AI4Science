@@ -71,6 +71,22 @@ Useful feedback is rewarded **instantly** (an LLM scores its quality). You can a
 
 ---
 
+## The sarsi agents
+
+Seven agents that hold tasks, plan them with a `sarsi-claude` session, drive
+Claude Code, and stop at you before anything leaves the machine.
+
+> **[`docs/SARSI_AGENTS_GUIDE.md`](docs/SARSI_AGENTS_GUIDE.md)** — how to use
+> them: designing a task, writing a criterion the verifier can check, the plan
+> handshake, the three modes, the gates, and the honest limits.
+
+```bash
+ai4science sarsi init --owner-id <your telegram user id>
+ai4science sarsi do   work "<goal>"
+ai4science sarsi run  work <task-id>          # plans at A0, stops for you
+ai4science sarsi supervise work <task-id>     # to a verified result
+```
+
 ## 1. What is AI4Science CLI?
 
 `ai4science` is a session-style command-line tool (in the spirit of `claude` or `codex`) that helps you contribute reproducible scientific work to the **Physics World Model (PWM)** protocol. It's the user-facing product layer; PWM is the protocol, registry, and verification layer underneath.

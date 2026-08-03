@@ -331,19 +331,20 @@ def test_the_pending_kickoff_is_the_planning_one(config, agent):
     assert "improve" in t.kickoff_pending.lower()
 
 
-def test_delivering_it_types_it_and_clears_it(config, agent):
+def test_delivering_it_types_it(config, agent):
     rt = FakeRuntime()
     t = ses.assign(config, agent, _task(config, agent), runtime=rt)
-    t = ses.deliver_kickoff(config, agent, t, runtime=rt)
-    assert rt.sent and "plan0.md" in rt.sent[0]
-    assert tsk.get(config, agent, t.id).kickoff_pending is None
-
-
-def test_it_is_delivered_once(config, agent):
-    rt = FakeRuntime()
-    t = ses.assign(config, agent, _task(config, agent), runtime=rt)
-    t = ses.deliver_kickoff(config, agent, t, runtime=rt)
     ses.deliver_kickoff(config, agent, t, runtime=rt)
+    assert rt.sent and "plan0.md" in rt.sent[0]
+
+
+def test_it_is_not_retyped_once_it_has_been_seen(config, agent):
+    rt = FakeRuntime()
+    t = ses.assign(config, agent, _task(config, agent), runtime=rt)
+    t = ses.deliver_kickoff(config, agent, t, runtime=rt)
+    seen = ses._kickoff_marker(rt.sent[0])          # what the session shows back
+    t = ses.deliver_kickoff(config, agent, t, runtime=rt, screen=seen)
+    ses.deliver_kickoff(config, agent, t, runtime=rt, screen=seen)
     assert len(rt.sent) == 1
 
 
@@ -366,3 +367,54 @@ def test_the_owner_may_accept_the_seed_deliberately(config, agent):
     t = ses.assign(config, agent, _task(config, agent), runtime=rt)
     after = ses.collect_plan(config, agent, t, runtime=rt, accept_seed=True)
     assert after.state in (tsk.READY, tsk.AWAITING_GRANT)
+
+
+# ── delivery is confirmed by SEEING it, not by having sent it ─────────
+
+def test_the_kickoff_stays_pending_until_it_is_seen_on_screen(config, agent):
+    """grace's run: the kickoff was typed while Claude Code was still showing
+    its startup banner, went nowhere, and the worker cleared `pending` anyway —
+    then spent the rest of the run believing the session had been told."""
+    rt = FakeRuntime()
+    t = ses.assign(config, agent, _task(config, agent), runtime=rt)
+    t = ses.deliver_kickoff(config, agent, t, runtime=rt, screen="")
+    assert tsk.get(config, agent, t.id).kickoff_pending is not None
+
+
+def test_seeing_it_clears_it(config, agent):
+    rt = FakeRuntime()
+    t = ses.assign(config, agent, _task(config, agent), runtime=rt)
+    marker = ses._kickoff_marker(t.kickoff_pending)
+    t = ses.deliver_kickoff(config, agent, t, runtime=rt, screen=f"❯ {marker}")
+    assert tsk.get(config, agent, t.id).kickoff_pending is None
+
+
+def test_it_is_resent_when_it_did_not_land(config, agent):
+    rt = FakeRuntime()
+    t = ses.assign(config, agent, _task(config, agent), runtime=rt)
+    for _ in range(2):
+        t = ses.deliver_kickoff(config, agent, t, runtime=rt, screen="")
+    assert len(rt.sent) == 2
+
+
+def test_it_gives_up_and_says_so_rather_than_typing_forever(config, agent):
+    """A loop that retypes the same instruction every pass is how a session
+    ends up with six copies of its own brief."""
+    rt = FakeRuntime()
+    t = ses.assign(config, agent, _task(config, agent), runtime=rt)
+    for _ in range(6):
+        t = ses.deliver_kickoff(config, agent, t, runtime=rt, screen="")
+    assert len(rt.sent) <= ses.MAX_KICKOFF_TRIES
+    assert t.kickoff_undelivered is True
+
+
+def test_the_planning_brief_says_how_to_look_around_at_a0(config, agent):
+    """grace's run stopped on `ls -la`, because planning runs at A0 and a shell
+    command is not a read. Widening the allowlist to let a loop approve shell
+    commands would undo the drop; telling the session which tools it HAS at A0
+    costs nothing and keeps the authority model intact."""
+    t = _task(config, agent)
+    brief = ses.planning_kickoff(config, agent, t)
+    assert "A0" in brief
+    assert "shell" in brief.lower() or "command" in brief.lower()
+    assert "read" in brief.lower()

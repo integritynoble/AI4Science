@@ -119,8 +119,10 @@ def tick(config: Config, agent: Agent, task: tsk.Task, *, pane: Any,
     if task.kickoff_pending and not planning:
         from ai4science.harness.agents.sarsi import session as ses
         if not _busy(screen) and _gate(screen) is None:
-            ses.deliver_kickoff(config, agent, task, runtime=_Sender(pane), now=now)
-            return Action("briefed", "the session has been told what to work")
+            after = ses.deliver_kickoff(config, agent, task, runtime=_Sender(pane),
+                                        screen=screen, now=now)
+            if after.kickoff_pending:
+                return Action("briefing", "waiting to see the brief land")
 
     if verifier is not None and not planning:
         from ai4science.harness.agents.sarsi import evidence as evd, session as ses
@@ -185,8 +187,14 @@ def tick(config: Config, agent: Agent, task: tsk.Task, *, pane: Any,
         # not given one at assign, because a session started moments earlier is
         # still booting and the text is simply lost.
         if task.kickoff_pending:
-            ses.deliver_kickoff(config, agent, task, runtime=_Sender(pane), now=now)
-            return Action("briefed", "the session has been told what to plan")
+            after = ses.deliver_kickoff(config, agent, task, runtime=_Sender(pane),
+                                        screen=screen, now=now)
+            if after.kickoff_undelivered:
+                return Action("undelivered",
+                              "the session is not taking its brief — attach and "
+                              "look: tmux attach -t " + session)
+            if after.kickoff_pending:
+                return Action("briefing", "waiting to see the brief land")
         after = ses.collect_plan(config, agent, task, runtime=_Sender(pane),
                                  now=now)
         if after.state != tsk.PLANNING:

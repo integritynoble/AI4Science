@@ -69,6 +69,11 @@ class Task:
     #: it. Typing into a session that is still booting loses the text, and the
     #: worker then believes it has told the session something it never heard.
     kickoff_pending: Optional[str] = None
+    #: how many times it has been typed without being seen to land
+    kickoff_tries: int = 0
+    #: it was typed repeatedly and never appeared. The owner is told rather than
+    #: the loop typing forever.
+    kickoff_undelivered: bool = False
     #: the last text `SP` pressed Enter on. Text still sitting at the prompt
     #: after that was never input — it is Claude Code's dimmed suggestion, which
     #: a captured pane renders identically to something typed.
