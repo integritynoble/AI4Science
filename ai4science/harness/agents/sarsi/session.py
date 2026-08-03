@@ -30,6 +30,9 @@ from ai4science.harness.agents.sarsi.worker import NotAWorker
 
 PASS = "PASS"
 FAIL = "FAIL"
+PLAN_FILE = "plan0.md"
+#: A copy of the worker's seed, so "did the session engage?" is answerable.
+SEED_FILE = ".plan-seed.md"
 
 
 class NotReady(Exception):
@@ -38,6 +41,10 @@ class NotReady(Exception):
 
 class CouldNotStart(Exception):
     """The session would not start. Reported, never pretended around."""
+
+
+class OwnerHasTheWheel(Exception):
+    """The owner is driving. The worker stands down — top of the ladder."""
 
 
 class MachineRuntime:
@@ -74,9 +81,11 @@ def assign(config: Config, agent: Agent, task: tsk.Task, *,
     if task.session:
         return task                          # one task, one session
 
-    # VLT sits here: between the owner's grant and the session starting. A
-    # denied secret stops the task before any session exists, and the denial
-    # names the secret so the owner can grant it if they meant to.
+    # VLT for the secrets the DIRECTIVE declared. It has to be here rather than
+    # at release: a secret reaches the session through the environment its tmux
+    # process is created with, and a value decided after that process exists
+    # cannot be injected into it. A secret the PLAN later discovers is handled
+    # at `release`, honestly, by refusing rather than pretending.
     secrets = _unlock(config, agent, task, vault_prompt)
 
     runtime = runtime or MachineRuntime()
@@ -111,8 +120,20 @@ def assign(config: Config, agent: Agent, task: tsk.Task, *,
     task.state = tsk.RUNNING
     task = tsk._touch(agent, task, now)
 
+    # The plan is made BETWEEN the worker and the session: if this task has no
+    # plan yet, the session is guided to write one and told to stop. Only a task
+    # that already has a granted plan is kicked off to do the work.
     plan = tsk.read_plan(config, agent, task)
-    runtime.send(task.session["name"], kickoff(task, plan))
+    if not task.plan_agreed:
+        # A plan exists or is seeded, but the session has not had its say. The
+        # worker's version goes down as a starting point — anchored to what the
+        # owner asked for — and the session is asked to improve it, then stop.
+        _seed_plan(config, agent, task)
+        task.state = tsk.PLANNING
+        task = tsk._touch(agent, task, now)
+        runtime.send(task.session["name"], planning_kickoff(config, agent, task))
+    else:
+        runtime.send(task.session["name"], kickoff(task, plan))
     ledger.append(config, "directives",
                   {"agent": agent.id, "task": task.id, "assigned": True,
                    "session": task.session["name"], "goal": task.goal}, now=now)
@@ -127,6 +148,23 @@ def _effective_ceiling(requested: str) -> str:
         return trust.effective_ceiling(requested)
     except Exception:
         return "A2" if str(requested).upper() == "A3" else requested
+
+
+def _late_secrets(config: Config, agent: Agent, task: tsk.Task) -> list:
+    """Secrets the PLAN asks for that the directive never declared."""
+    declared = {s.lower() for s in (task.directive or {}).get("requires_secrets") or []}
+    plan = tsk.read_plan(config, agent, task)
+    if plan is None:
+        return []
+    wanted = []
+    for permission in plan.permissions:
+        text = str(permission).lower()
+        if "secret" not in text:
+            continue
+        name = text.replace("read secret", "").replace("secret", "").strip()
+        if name and name not in declared:
+            wanted.append(name)
+    return wanted
 
 
 def _unlock(config: Config, agent: Agent, task: tsk.Task,
@@ -161,6 +199,181 @@ def _refuse_silently(**_: Any) -> None:
 
 def _env_key(name: str) -> str:
     return name.upper().replace(".", "_").replace("-", "_")
+
+
+def planning_kickoff(config: Config, agent: Agent, task: tsk.Task) -> str:
+    """Ask the session to **improve the worker's initial plan** — and stop.
+
+    The worker seeds it: the goal, the scope, and the tools and secrets the
+    directive declared, in the shape a plan has to take. That anchors the plan
+    to what the owner actually asked for, and leaves something usable if the
+    session produces nothing. The session has the model and the repo, so it
+    sharpens what the worker could only sketch.
+
+    It must stop afterwards. A session that drafts a plan and then does the work
+    has done work nobody granted — and what the plan declares is precisely what
+    the owner has not yet seen.
+    """
+    from ai4science.harness.agents.sarsi import workspace as ws
+
+    scope = (task.directive or {}).get("scope") or []
+    lines = [
+        f"Goal: {task.goal}",
+        "",
+        # The history, spliced in: a plan written without it repeats every
+        # mistake the history records — and asks again for a permission the
+        # owner already refused.
+        ws.render(config, agent, task),
+        "",
+        f"FIRST, PLAN — together. I have already written an initial "
+        f"{PLAN_FILE} in this folder: the goal, what I know it needs, and the "
+        f"shape a plan takes here. It is a sketch, not an instruction.",
+        "",
+        f"Read it, then improve it in place. Sharpen it with what you can see "
+        f"and I cannot:",
+        "  - split or reorder the phases so they match the real work;",
+        "  - rewrite each `Verified when:` line to name what an independent "
+        "verifier must SEE — a file, a count, an exit code — never an intention;",
+        "  - add to `## Permissions needed` anything beyond this folder you will "
+        "actually need: paths, accounts, network, credentials by name.",
+        "",
+        "Keep the headings and the `Verified when:` lines: a phase without one "
+        "cannot be judged by anyone but you.",
+    ]
+    if scope:
+        lines += ["", "Scope you may touch: " + ", ".join(scope)]
+    lines += ["", "Then STOP and say the plan is ready. The owner reviews it and "
+                  "grants what it declares before any of it runs."]
+    return "\n".join(lines)
+
+
+def _seed_plan(config: Config, agent: Agent, task: tsk.Task) -> str:
+    """Write the worker's initial plan and remember it, so we can tell later
+    whether the session actually engaged with it."""
+    from ai4science.harness.agents.sarsi.worker import Directive
+
+    d = task.directive or {}
+    directive = Directive(agent_id=agent.id, goal=task.goal,
+                          scope=list(d.get("scope") or []),
+                          criteria=list(d.get("criteria") or []),
+                          requires_secrets=list(d.get("requires_secrets") or []))
+    folder = tsk.dir_of(agent, task.id)
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / PLAN_FILE
+    # keep a plan the worker already wrote (`sarsi do` seeds one); only draft
+    # from scratch when there is nothing there at all
+    text = path.read_text() if path.exists() else pl.draft(directive).render()
+    path.write_text(text)
+    (folder / SEED_FILE).write_text(text)
+    return text
+
+
+def collect_plan(config: Config, agent: Agent, task: tsk.Task, *,
+                 runtime: Optional[Any] = None, session_idle: bool = False,
+                 now=time.time) -> tsk.Task:
+    """Read back the plan, once the session has had its say.
+
+    A plan identical to the worker's seed means the session has not engaged with
+    it yet, so it is left alone while the session is still working. When the
+    session has stopped, the seed is adopted anyway — flagged as untouched,
+    because a task that waits forever for a better plan is worse than one that
+    runs on an honest sketch the owner can see is a sketch.
+    """
+    if task.state != tsk.PLANNING:
+        return task
+    path = tsk.dir_of(agent, task.id) / PLAN_FILE
+    if not path.exists():
+        return task                       # still writing it
+
+    seed_path = tsk.dir_of(agent, task.id) / SEED_FILE
+    untouched = seed_path.exists() and seed_path.read_text() == path.read_text()
+    if untouched and not session_idle:
+        return task                       # give it its turn
+
+    try:
+        plan = pl.parse(path.read_text())
+    except pl.BadPlan as e:
+        # Not accepted quietly: a phase with no criterion leaves the agent that
+        # did the work as the only grader of it.
+        (runtime or MachineRuntime()).send(
+            (task.session or {}).get("name", ""),
+            f"That plan cannot be used: {e}\n"
+            f"Every phase must end in a `Verified when:` line naming what an "
+            f"independent verifier must see. Fix {PLAN_FILE} and stop again.")
+        ledger.append(config, "reports",
+                      {"agent": agent.id, "task": task.id, "state": "plan-rejected",
+                       "evidence": [str(e)]}, now=now)
+        return task
+
+    unchanged = untouched
+    task = tsk.adopt_plan(config, agent, task, plan, now=now)
+    ledger.append(config, "reports",
+                  {"agent": agent.id, "task": task.id, "state": "planned",
+                   # a thin seed must never be mistaken for a considered plan
+                   "unchanged": unchanged,
+                   "evidence": [f"{len(plan.phases)} phase(s)"
+                                + (" — still the worker's seed, the session did "
+                                   "not improve it" if unchanged else "")],
+                   "needed_and_missing": list(task.awaiting)}, now=now)
+    return task
+
+
+def release(config: Config, agent: Agent, task: tsk.Task, *,
+            runtime: Optional[Any] = None, vault_prompt: Optional[Callable] = None,
+            now=time.time) -> tsk.Task:
+    """Let the session work its plan — only once the owner has granted.
+
+    `VLT` sits here rather than at `assign`: the plan is what declares which
+    secrets are needed, so it has to exist and be granted first. A denied secret
+    stops the task before any work begins, and names the secret.
+    """
+    if task.awaiting:
+        raise NotReady("this task is still waiting on a grant: "
+                       + ", ".join(task.awaiting))
+    # A secret the plan declared that the directive did not: it cannot be
+    # delivered into a session that is already running, so say so rather than
+    # start work that will fail for a reason nobody can see.
+    late = _late_secrets(config, agent, task)
+    if late:
+        raise NotReady(
+            "the plan declares secrets the task was not started with: "
+            + ", ".join(late)
+            + f" — re-run it with --secret {late[0]} so the session is created "
+              f"with it, rather than having it pushed in afterwards")
+    plan = tsk.read_plan(config, agent, task)
+    task = tsk.start(config, agent, task, now=now)
+    if task.state != tsk.RUNNING:
+        return task
+    (runtime or MachineRuntime()).send((task.session or {}).get("name", ""),
+                                       kickoff(task, plan))
+    return task
+
+
+def who_drives(task: tsk.Task) -> str:
+    """The ladder, in one place. The owner is the top of it."""
+    return "owner" if task.steering_paused else "worker"
+
+
+def guide(config: Config, agent: Agent, task: tsk.Task, instruction: str, *,
+          runtime: Optional[Any] = None, by_owner: bool = False,
+          now=time.time) -> tsk.Task:
+    """Steer a session by hand — the worker guiding it, or the owner through it.
+
+    The owner's guidance always goes through, including while they hold the
+    wheel: it is their word arriving on their own session. The **worker's**
+    guidance stands down entirely when they do.
+    """
+    if not by_owner and who_drives(task) == "owner":
+        raise OwnerHasTheWheel(
+            f"you have the wheel on {task.id}; {agent.id} is standing by. "
+            f"Hand it back with /resume {task.id}.")
+    (runtime or MachineRuntime()).send((task.session or {}).get("name", ""),
+                                       instruction)
+    ledger.append(config, "reports",
+                  {"agent": agent.id, "task": task.id,
+                   "state": "guided-by-owner" if by_owner else "guided",
+                   "evidence": [instruction[:200]]}, now=now)
+    return task
 
 
 def kickoff(task: tsk.Task, plan: Optional[pl.Plan]) -> str:

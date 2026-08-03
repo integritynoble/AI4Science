@@ -180,6 +180,7 @@ def _edit(config, agent, t, tail, runtime):
     t.criteria = edited.criteria()
     t.plan_stale = False               # an edit is the mission restated
     t.plan_owner_edited = True
+    t.plan_agreed = True               # you have settled it; no more drafting
     tsk._touch(agent, t, __import__("time").time)
     return (f"{t.id} phase {number} now reads: {criterion}\n"
             f"that is the standard the verifier will apply.")

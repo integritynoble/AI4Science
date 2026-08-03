@@ -117,6 +117,19 @@ def tick(config: Config, agent: Agent, task: tsk.Task, *, pane: Any,
         if task.state == tsk.VERIFIED:
             return Action("verified", "the goal is met")
 
+    # Planning comes before anything else the loop would do: while the task is
+    # being planned there is no plan to steer against and no criteria to judge.
+    if task.state == tsk.PLANNING:
+        from ai4science.harness.agents.sarsi import session as ses
+        idle = not _busy(screen) and not _gate(screen)
+        after = ses.collect_plan(config, agent, task, runtime=_Sender(pane),
+                                 session_idle=idle, now=now)
+        if after.state != tsk.PLANNING:
+            return Action("planned",
+                          f"{len(after.criteria)} criterion(s); "
+                          + (", ".join(after.awaiting) or "nothing to grant"))
+        return Action("planning")
+
     gate = _gate(screen)
     if gate is not None:
         answer, why = gate

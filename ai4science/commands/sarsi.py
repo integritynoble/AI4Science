@@ -237,6 +237,10 @@ def run_cmd(agent_id: str = typer.Argument(..., help="Worker id"),
     name = (t.session or {}).get("name", "?")
     console.print(f"{t.id} — {t.state} in session {name}",
                   markup=False, highlight=False)
+    if t.state == "planning":
+        console.print("it is drafting the plan from my initial one; "
+                      "`sarsi supervise` collects it and shows what it needs",
+                      style="dim", markup=False, highlight=False)
     console.print(f"take the wheel yourself: tmux attach -t {name}   "
                   f"(Ctrl-b d hands it back)", style="dim",
                   markup=False, highlight=False)
@@ -551,6 +555,37 @@ def supervise_cmd(agent_id: str = typer.Argument(..., help="Worker id"),
         console.print("a gate is waiting for you: tmux attach -t "
                       f"{(final.session or {}).get('name', '?')}", style="yellow",
                       markup=False, highlight=False)
+
+
+@app.command("release", help="Let a planned, granted task start working its plan.")
+def release_cmd(agent_id: str = typer.Argument(..., help="Worker id"),
+                task_id: str = typer.Argument(..., help="Task id")) -> None:
+    from ai4science.harness.agents.sarsi import session as ses
+
+    config = _load()
+    agent = _worker_or_exit(config, agent_id)
+    t = _task_or_exit(config, agent, task_id)
+    try:
+        t = ses.release(config, agent, t)
+    except ses.NotReady as e:
+        console.print(str(e), style="yellow", markup=False, highlight=False)
+        raise typer.Exit(code=1)
+    console.print(f"{t.id} — {t.state}", markup=False, highlight=False)
+
+
+@app.command("guide", help="Steer a session by hand — your word goes in ahead of the worker's.")
+def guide_cmd(agent_id: str = typer.Argument(..., help="Worker id"),
+              task_id: str = typer.Argument(..., help="Task id"),
+              instruction: str = typer.Argument(..., help="What to say to the session")) -> None:
+    from ai4science.harness.agents.sarsi import session as ses
+
+    config = _load()
+    agent = _worker_or_exit(config, agent_id)
+    t = _task_or_exit(config, agent, task_id)
+    # by_owner: this is you, so it goes in even while you hold the wheel
+    ses.guide(config, agent, t, instruction, by_owner=True)
+    console.print(f"sent to {(t.session or {}).get('name', '?')}",
+                  markup=False, highlight=False)
 
 
 @app.command("check", help="Ask the independent verifier whether this task's goal is met.")

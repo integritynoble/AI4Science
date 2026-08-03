@@ -65,6 +65,10 @@ class Task:
     plan_stale: bool = False
     #: the owner rewrote it; polish may propose a successor, never replace it
     plan_owner_edited: bool = False
+    #: has this plan been settled between the worker and the session (or by the
+    #: owner)? A worker's seed is a starting point, not an agreed plan, and the
+    #: difference is whether the session has had its say.
+    plan_agreed: bool = False
     created_at: str = ""
     updated_at: str = ""
 
@@ -125,6 +129,22 @@ def attach_plan(config: Config, agent: Agent, task: Task, plan: pl.Plan, *,
     # asking here is the point of the plan step: the worst moment to request a
     # permission is halfway through unattended work
     task.state = AWAITING_GRANT if task.awaiting else READY
+    task.plan_agreed = False          # a seed: the session has not seen it yet
+    return _touch(agent, task, now)
+
+
+def adopt_plan(config: Config, agent: Agent, task: Task, plan: pl.Plan, *,
+               now=time.time) -> Task:
+    """Take a plan the SESSION wrote, without rewriting the file it wrote.
+
+    `attach_plan` renders a plan the worker composed; this takes one that
+    already exists on disk, so the session's own wording survives intact.
+    """
+    task.plan_version = plan.version
+    task.criteria = plan.criteria()
+    task.awaiting = [p for p in plan.permissions if p not in task.grants]
+    task.state = AWAITING_GRANT if task.awaiting else READY
+    task.plan_agreed = True           # the session has had its say
     return _touch(agent, task, now)
 
 

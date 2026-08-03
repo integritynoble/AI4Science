@@ -66,6 +66,13 @@ def _plan(permissions=(), phases=None):
                    permissions=list(permissions))
 
 
+def _agreed(config, agent, permissions=()):
+    """A task whose plan the worker and session have already settled."""
+    t = _task(config, agent, permissions)
+    t.plan_agreed = True
+    return tsk._touch(agent, t, __import__("time").time)
+
+
 def _task(config, agent, permissions=()):
     d = worker.Directive(agent_id=agent.id, goal="finish the export")
     t = tsk.attach_plan(config, agent, tsk.create(config, agent, d), _plan(permissions))
@@ -225,26 +232,39 @@ def test_a_task_needing_no_secret_never_asks(config, agent):
 
 def test_the_kickoff_names_the_plan_file(config, agent):
     rt = FakeRuntime()
-    t = ses.assign(config, agent, _task(config, agent), runtime=rt)
+    t = ses.assign(config, agent, _agreed(config, agent), runtime=rt)
     text = rt.sent[0][1]
     assert "plan0.md" in text
 
 
 def test_the_kickoff_names_the_earliest_incomplete_phase(config, agent):
+    """Once the plan is agreed. Before that the session is asked to plan."""
     rt = FakeRuntime()
-    ses.assign(config, agent, _task(config, agent), runtime=rt)
+    ses.assign(config, agent, _agreed(config, agent), runtime=rt)
     assert "drain the queue" in rt.sent[0][1]
 
 
-def test_the_kickoff_does_not_carry_the_conversation(config, agent):
-    """What crosses is what the session needs, never the transcript of how it
-    was asked — that is what keeps the session's context bounded."""
+def test_the_work_kickoff_does_not_carry_the_conversation(config, agent):
+    """Once the plan is agreed, what crosses is the plan and the phase — never
+    the transcript of how it was asked. That is what keeps the session's context
+    bounded independently of the chat's."""
     from ai4science.harness.agents.sarsi import ownerlog
     ownerlog.append(config, agent, "and by the way my cat is called Mildred",
                     surface="cli")
     rt = FakeRuntime()
-    ses.assign(config, agent, _task(config, agent), runtime=rt)
+    ses.assign(config, agent, _agreed(config, agent), runtime=rt)
     assert "Mildred" not in rt.sent[0][1]
+
+
+def test_the_planning_kickoff_does_carry_what_the_owner_said(config, agent):
+    """The other half of the same rule. Planning is exactly when the history
+    matters: a plan written without it asks again for what was already refused.
+    The window is bounded, which is the design's own answer to "how much"."""
+    from ai4science.harness.agents.sarsi import ownerlog
+    ownerlog.append(config, agent, "never touch production", surface="cli")
+    rt = FakeRuntime()
+    ses.assign(config, agent, _task(config, agent), runtime=rt)
+    assert "never touch production" in rt.sent[0][1]
 
 
 # ── the verdict comes from a verifier ─────────────────────────────────
