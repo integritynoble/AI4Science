@@ -676,7 +676,7 @@ def main() -> None:
         "init", "contribute", "validate", "judge", "overseer", "package",
         "submit", "status", "version", "agents", "chat", "compute", "llm",
         "stake", "plugins", "tools", "login", "whoami", "logout", "prefer", "update",
-        "register-agent", "feedback", "report-bug",
+        "register-agent", "feedback", "report-bug", "sarsi",
     }
     if any(tok in _subcommands for tok in argv_raw):
         app()
@@ -697,7 +697,7 @@ def main() -> None:
             "init", "contribute", "validate", "judge", "overseer",
             "package", "submit", "status", "version", "agents", "chat",
             "compute", "llm", "stake", "plugins", "tools", "login", "whoami", "logout",
-            "prefer", "update", "register-agent",
+            "prefer", "update", "register-agent", "sarsi",
         }
         if argv[0] not in registered:
             # A mistyped subcommand (e.g. `ai4science dispatch --provider …`,

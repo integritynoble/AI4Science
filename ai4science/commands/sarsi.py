@@ -68,6 +68,44 @@ def agents(bindings: bool = typer.Option(False, "--bindings",
             console.print(f"  {row['id']:<{width}}  {reached}", highlight=False)
 
 
+@app.command("ask", help="Say something to one agent from the CLI — the same door as its bot.")
+def ask(agent_id: str = typer.Argument(..., help="Agent id, e.g. work"),
+        text: str = typer.Argument(..., help="What to say")) -> None:
+    from ai4science.harness.agents.sarsi import gateway, ownerlog, router
+
+    config = _load()
+    decision = router.decide(config, channel=router.CLI_CHANNEL, account_id=agent_id)
+    if decision.dropped:
+        console.print(f"[red]no agent {agent_id!r}[/red] — known: "
+                      f"{', '.join(sorted(config.agents))}")
+        raise typer.Exit(code=2)
+    agent = decision.agent
+    ownerlog.append(config, agent, text, surface=router.CLI_CHANNEL)
+    reply = gateway.handle(agent=agent, text=text, surface=router.CLI_CHANNEL, chat_id="")
+    # markup off: an agent's reply is data. `[abraham]` is a name, not a style.
+    console.print(reply or "(no reply)", markup=False, highlight=False)
+
+
+@app.command("gateway", help="Run the local daemon: poll every agent's bot and route what arrives.")
+def gateway_cmd(passes: Optional[int] = typer.Option(None, "--passes",
+                                                     help="Stop after N polls (default: run forever)."),
+                interval: float = typer.Option(2.0, "--interval",
+                                               help="Seconds between polls.")) -> None:
+    from ai4science.harness.agents.sarsi import admin as _admin, gateway as gw
+
+    config = _load()
+    reachable = [r["id"] for r in _admin.agent_rows(config) if r["telegram"] == "configured"]
+    if not reachable:
+        console.print("[red]no agent has a bot token[/red] — nothing to poll.\n"
+                      "set one with: [cyan]ai4science sarsi set-token <agent> <token>[/cyan]")
+        raise typer.Exit(code=2)
+    console.print(f"polling {len(reachable)} bot(s): {', '.join(reachable)}")
+    try:
+        gw.Gateway(config).run(interval=interval, passes=passes)
+    except KeyboardInterrupt:
+        console.print("stopped")
+
+
 @app.command("set-token", help="Set one agent's Telegram bot token.")
 def set_token(agent_id: str = typer.Argument(..., help="Agent id, e.g. work"),
               token: str = typer.Argument(..., help="Bot token from @BotFather")) -> None:
