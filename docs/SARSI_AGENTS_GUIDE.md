@@ -183,8 +183,35 @@ One pass, in this order — and the order is the point:
 | **V** | is the goal already met? | verification sits **above** the typing steps |
 | **AN** | a gate on screen? | answers only gates it recognises; anything else waits for you |
 | — | mid-turn? | leave it alone |
+| **Q** | is it **asking you something**? | answers from the plan, or stops for you |
 | **SP** | a prompt stranded at the `❯`? | submits it **verbatim**, retypes nothing |
 | **S** | otherwise | composes **one** instruction and types it |
+
+### What the verifier is given
+
+**Not the terminal.** The pane is where a session *says* what it did; evidence is
+what it *left behind*. So a listing of the task folder and the real contents of
+the files your criteria name are read from disk, absence of a named file is
+reported as absence, and the pane is included last and labelled *narration*.
+
+This is why naming a file in your `Verified when:` line is worth doing — it is
+what gets read and shown to the judge.
+
+### When the session asks a question
+
+Claude Code asks things mid-task: *which directory*, *tests first?*, *which of
+these two approaches*. The agent answers **only from what it already holds** —
+the goal, the criteria, the scope, and what you have said — and records the
+question with its answer.
+
+It stops for you rather than guessing when the workspace does not settle it, and
+it will **never** answer:
+
+- an **owner fact** (salary, start date, a reference) — it asks rather than invents;
+- a request for a **secret** — that is the vault's question;
+- anything that would **widen what the session may do** — `sudo`, skipping a
+  check. Authority is decided at the gate, and a clarification that grants
+  permission is not a clarification.
 
 The composer is given the plan, the phase by name, the verifier's last reason,
 **what you said**, its own last five prompts (*do not repeat what failed*), and

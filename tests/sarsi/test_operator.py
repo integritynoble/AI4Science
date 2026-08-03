@@ -241,6 +241,42 @@ def test_verification_runs_before_submitting_a_stranded_prompt(config, agent):
     assert order == ["verified", "submitted"]
 
 
+def test_the_verifier_is_given_gathered_evidence_not_the_pane(config, agent):
+    """The live bug: the loop handed the verifier a terminal showing a spinner
+    and some narration, and the verifier correctly said it could see no evidence
+    of the file. What the session LEFT BEHIND is what a verdict rests on."""
+    t = _task(config, agent)
+    t.criteria = ["report.md exists and states the total 111"]
+    folder = tsk.dir_of(agent, t.id)
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "report.md").write_text("# Report\n\nThe total is 111.\n")
+
+    seen = {}
+
+    def verifier(*, goal, criteria, evidence):
+        seen["evidence"] = evidence
+        return {"state": "FAIL", "why": "not yet"}
+
+    op.tick(config, agent, t, pane=FakePane("✻ Running 1 shell command…"),
+            verifier=verifier)
+    assert "The total is 111." in seen["evidence"]        # what it left behind
+    assert "narration" in seen["evidence"].lower()        # the pane, labelled
+
+
+def test_a_missing_required_file_reaches_the_verifier_as_missing(config, agent):
+    t = _task(config, agent)
+    t.criteria = ["summary.md exists"]
+    tsk.dir_of(agent, t.id).mkdir(parents=True, exist_ok=True)
+    seen = {}
+
+    def verifier(*, goal, criteria, evidence):
+        seen["evidence"] = evidence
+        return {"state": "FAIL", "why": "no"}
+
+    op.tick(config, agent, t, pane=FakePane(IDLE_PANE), verifier=verifier)
+    assert "NOT PRESENT" in seen["evidence"]
+
+
 def test_a_pass_ends_the_task_and_steers_nothing_further(config, agent):
     pane = FakePane(STRANDED_PANE)
     t = _task(config, agent)
@@ -254,6 +290,50 @@ def test_without_a_verifier_it_does_not_claim_anything(config, agent):
     """No verifier supplied is not a PASS; it just does not verify this pass."""
     action = op.tick(config, agent, _task(config, agent), pane=FakePane(IDLE_PANE))
     assert action.kind != "verified"
+
+
+# ── the session asks; the agent answers ───────────────────────────────
+
+QUESTION_PANE = """\
+I can put the export in either ./out or ./reports.
+Which directory should I write the export to?
+────────────────────────────────────────────────
+❯
+"""
+
+
+def test_a_question_is_answered_from_the_workspace(config, agent):
+    t = _task(config, agent)
+    t.criteria = ["export.csv is written under ./reports"]
+    pane = FakePane(QUESTION_PANE)
+    action = op.tick(config, agent, t, pane=pane,
+                     model=lambda p: "./reports, per the plan's criterion.")
+    assert action.kind == "answered-question"
+    assert pane.sent == ["./reports, per the plan's criterion."]
+
+
+def test_an_underivable_question_stops_for_the_owner(config, agent):
+    t = _task(config, agent)
+    pane = FakePane(QUESTION_PANE)
+    action = op.tick(config, agent, t, pane=pane,
+                     model=lambda p: "ASK-THE-OWNER")
+    assert action.kind == "asks-owner"
+    assert pane.sent == []                       # nothing typed on a guess
+
+
+def test_a_question_preempts_steering(config, agent):
+    """Answering what was asked beats typing an unrelated next step over it."""
+    t = _task(config, agent)
+    pane = FakePane(QUESTION_PANE)
+    action = op.tick(config, agent, t, pane=pane, model=lambda p: "./reports")
+    assert action.kind != "steered"
+
+
+def test_a_gate_still_preempts_a_question(config, agent):
+    """An option menu is authority, and authority is decided at the gate."""
+    pane = FakePane(TRUST_PANE + "\nWhich directory should I use?\n")
+    assert op.tick(config, agent, _task(config, agent), pane=pane,
+                   model=lambda p: "anything").kind == "answered"
 
 
 # ── S: it steers when there is nothing else to do ─────────────────────

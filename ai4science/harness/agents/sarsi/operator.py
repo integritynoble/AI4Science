@@ -15,8 +15,15 @@ One pass, and the order is load-bearing:
 | 4 | **is the goal already met?** | `V` — and this sits ABOVE both typing steps |
 | 5 | **is a gate on screen?** | `AN` — answer it if recognised, else abstain |
 | 6 | is it mid-turn? | leave it alone; queued input is normal, not stuck |
-| 7 | **is a prompt stranded at the `❯`?** | `SP` — submit it, verbatim |
-| 8 | otherwise | `S` — compose one instruction and type it |
+| 7 | **is it asking a question?** | answer it from the plan, or stop for the owner |
+| 8 | **is a prompt stranded at the `❯`?** | `SP` — submit it, verbatim |
+| 9 | otherwise | `S` — compose one instruction and type it |
+
+Step 7 is why an unattended run is not a thing that pages you every few minutes.
+An agent answers a session's question **only** from what it already holds — the
+goal, the criteria, the scope, what you said — and escalates rather than guesses.
+Owner facts, secrets and anything that would widen what the session may do are
+never answered here.
 
 Step 4's position is why it exists at all: in the console a session that kept
 receiving typed prompts consumed every pass at the submit step, so verification
@@ -97,9 +104,15 @@ def tick(config: Config, agent: Agent, task: tsk.Task, *, pane: Any,
     screen = pane.capture(session) or ""
 
     if verifier is not None:
-        from ai4science.harness.agents.sarsi import session as ses
+        from ai4science.harness.agents.sarsi import evidence as evd, session as ses
+        # What the session LEFT BEHIND, not what its terminal was showing. A
+        # live run failed here: the pane held a spinner and some narration, and
+        # the verifier correctly reported it could see no evidence of the file
+        # the session had in fact written.
+        proof = evd.gather(tsk.dir_of(agent, task.id), task.criteria or [],
+                           screen=screen)
         task = ses.verify(config, agent, task, verifier=verifier,
-                          evidence=screen, engine=engine, runtime=_Sender(pane),
+                          evidence=proof, engine=engine, runtime=_Sender(pane),
                           now=now)
         if task.state == tsk.VERIFIED:
             return Action("verified", "the goal is met")
@@ -120,6 +133,20 @@ def tick(config: Config, agent: Agent, task: tsk.Task, *, pane: Any,
         # A permission menu's cursor is not a prompt, and a live spinner means
         # queued input is normal rather than stuck.
         return Action("busy")
+
+    # The session asked something. Answering what was asked beats typing an
+    # unrelated next step over it — and beats waking the owner for a question
+    # the plan already settles. A gate is checked first, above: an option menu
+    # is authority, and authority is not a clarification.
+    if model is not None:
+        from ai4science.harness.agents.sarsi import answering as anq
+        asked = anq.question_on(screen)
+        if asked:
+            out = anq.answer(config, agent, task, question=asked, model=model)
+            if out.answer:
+                pane.send(session, out.answer)
+                return Action("answered-question", asked[:70])
+            return Action("asks-owner", out.escalate)
 
     stranded = _stranded(screen)
     if stranded:
