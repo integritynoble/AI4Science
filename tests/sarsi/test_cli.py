@@ -216,6 +216,41 @@ def test_run_refuses_a_task_still_awaiting_a_grant(isolated):
     assert "mail.read" in result.output          # names what it waits for
 
 
+def test_operate_reports_what_it_did(isolated, monkeypatch):
+    """`AN` and `SP`, driven from the CLI against a scripted pane."""
+    from ai4science.harness.agents.sarsi import operator as op
+
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    out = runner.invoke(app, ["sarsi", "do", "work", "write DONE.md"]).output
+    task_id = [w for w in out.split() if w.startswith("tsk_")][0]
+
+    # give it a session without starting tmux
+    from ai4science.harness.agents.sarsi import task as tsk
+    config = reg.load()
+    agent = config.agents["work"]
+    t = tsk.get(config, agent, task_id)
+    t.session = {"name": "work-test", "engine": "claude", "ceiling": "A1"}
+    tsk._touch(agent, t, __import__("time").time)
+
+    class Pane:
+        sent, keys = [], []
+
+        def capture(self, name):
+            return "❯ Goal: write DONE.md\n"
+
+        def send(self, name, text):
+            Pane.sent.append(text)
+
+        def key(self, name, key):
+            Pane.keys.append(key)
+
+    monkeypatch.setattr(op, "TmuxPane", lambda: Pane())
+    result = runner.invoke(app, ["sarsi", "operate", "work", task_id, "--passes", "1"])
+    assert result.exit_code == 0
+    assert "submitted" in result.output
+    assert Pane.keys == ["Enter"]
+
+
 def test_run_refuses_the_manager(isolated):
     runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
     result = runner.invoke(app, ["sarsi", "run", "sarsi-machine", "tsk_whatever"])

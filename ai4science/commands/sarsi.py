@@ -357,6 +357,31 @@ def vault_policy(agent_id: str = typer.Argument(..., help="Agent the policy is f
                   f"{'ALLOW' if allow else 'DENY'}", markup=False, highlight=False)
 
 
+@app.command("operate", help="Nudge a session past the two things that stall it: a gate, and a stranded prompt.")
+def operate_cmd(agent_id: str = typer.Argument(..., help="Worker id"),
+                task_id: str = typer.Argument(..., help="Task id"),
+                passes: int = typer.Option(20, "--passes",
+                                           help="How many supervision passes."),
+                interval: float = typer.Option(3.0, "--interval",
+                                               help="Seconds between passes.")) -> None:
+    from ai4science.harness.agents.sarsi import operator as op
+
+    config = _load()
+    agent = _worker_or_exit(config, agent_id)
+    t = _task_or_exit(config, agent, task_id)
+    actions = op.run(config, agent, t, pane=op.TmuxPane(), passes=passes,
+                     interval=interval)
+    for action in actions:
+        # 'abstained' is the interesting one: a gate it would not guess at
+        console.print(f"  {action.kind}"
+                      + (f" — {action.detail}" if action.detail else ""),
+                      markup=False, highlight=False)
+    if any(a.kind == "abstained" for a in actions):
+        console.print("a gate is waiting for you: tmux attach -t "
+                      f"{(t.session or {}).get('name', '?')}", style="yellow",
+                      markup=False, highlight=False)
+
+
 @app.command("check", help="Ask the independent verifier whether this task's goal is met.")
 def check_cmd(agent_id: str = typer.Argument(..., help="Worker id"),
               task_id: str = typer.Argument(..., help="Task id"),
