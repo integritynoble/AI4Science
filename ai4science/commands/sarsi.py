@@ -6,7 +6,7 @@ door, not a scope.
 """
 from __future__ import annotations
 
-from typing import Optional
+from typing import List, Optional
 
 import typer
 from rich.console import Console
@@ -84,6 +84,64 @@ def ask(agent_id: str = typer.Argument(..., help="Agent id, e.g. work"),
     reply = gateway.handle(agent=agent, text=text, surface=router.CLI_CHANNEL, chat_id="")
     # markup off: an agent's reply is data. `[abraham]` is a name, not a style.
     console.print(reply or "(no reply)", markup=False, highlight=False)
+
+
+@app.command("do", help="Hand one worker a directive: a goal, and what it will need.")
+def do(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
+       goal: str = typer.Argument(..., help="The goal — one sentence, not the conversation"),
+       tool: List[str] = typer.Option(None, "--tool",
+                                      help="A tool the work needs (repeatable)."),
+       secret: List[str] = typer.Option(None, "--secret",
+                                        help="A secret the work will need (repeatable).")) -> None:
+    from ai4science.harness.agents.sarsi import worker
+
+    config = _load()
+    agent = config.agents.get(agent_id)
+    if agent is None:
+        console.print(f"[red]no agent {agent_id!r}[/red] — known: "
+                      f"{', '.join(sorted(config.agents))}")
+        raise typer.Exit(code=2)
+    try:
+        directive = worker.Directive(agent_id=agent_id, goal=goal,
+                                     requires_tools=list(tool or []),
+                                     requires_secrets=list(secret or []))
+    except worker.BadDirective as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(code=2)
+    try:
+        out = worker.admit(config, agent, directive)
+    except worker.NotAWorker as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(code=2)
+    if not out.admitted:
+        # NOM: say what is missing, by name, and do not queue it.
+        console.print(out.message, style="yellow", markup=False, highlight=False)
+        console.print("not queued — nothing is waiting on this", style="dim")
+        raise typer.Exit(code=1)
+    console.print(f"admitted by {agent_id}: {directive.id}", markup=False, highlight=False)
+
+
+@app.command("tasks", help="What one worker has admitted and not yet reported on.")
+def tasks(agent_id: str = typer.Argument(..., help="Worker id, e.g. work")) -> None:
+    from ai4science.harness.agents.sarsi import worker
+
+    config = _load()
+    agent = config.agents.get(agent_id)
+    if agent is None:
+        console.print(f"[red]no agent {agent_id!r}[/red]")
+        raise typer.Exit(code=2)
+    rows = worker.outstanding(config, agent)
+    if not rows:
+        console.print(f"{agent_id}: nothing outstanding")
+        return
+    table = Table(title=f"{agent_id} — outstanding", show_lines=False)
+    table.add_column("Directive", style="cyan")
+    table.add_column("Goal")
+    table.add_column("Needs")
+    for row in rows:
+        table.add_row(row.get("id", ""), row.get("goal", ""),
+                      ", ".join(row.get("requires_tools") or []) or "—")
+    console.print(table)
 
 
 @app.command("gateway", help="Run the local daemon: poll every agent's bot and route what arrives.")

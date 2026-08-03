@@ -126,6 +126,46 @@ def test_the_manager_says_it_does_not_drive_sessions(isolated):
     assert "do not drive" in result.output.lower() or "not drive" in result.output.lower()
 
 
+def test_do_admits_a_directive_this_machine_can_run(isolated):
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    result = runner.invoke(app, ["sarsi", "do", "work", "tidy the report folder"])
+    assert result.exit_code == 0
+    assert "admitted" in result.output.lower()
+
+
+def test_do_refuses_and_names_the_missing_tool(isolated):
+    """Slice 2's observation, on the real command."""
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    result = runner.invoke(app, ["sarsi", "do", "work", "run the segmentation",
+                                 "--tool", "time-machine"])
+    assert result.exit_code != 0
+    assert "time-machine" in result.output
+    assert "[yellow]" not in result.output      # style is styling, not text
+
+
+def test_do_refuses_the_manager(isolated):
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    result = runner.invoke(app, ["sarsi", "do", "sarsi-machine", "run my tests"])
+    assert result.exit_code != 0
+    assert "manager" in result.output.lower()
+
+
+def test_tasks_lists_what_is_outstanding(isolated):
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    runner.invoke(app, ["sarsi", "do", "work", "tidy the report folder"])
+    result = runner.invoke(app, ["sarsi", "tasks", "work"])
+    assert "tidy the report folder" in result.output
+
+
+def test_tasks_does_not_list_a_refused_directive(isolated):
+    """Nothing waits quietly."""
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    runner.invoke(app, ["sarsi", "do", "work", "run the segmentation",
+                        "--tool", "time-machine"])
+    result = runner.invoke(app, ["sarsi", "tasks", "work"])
+    assert "segmentation" not in result.output
+
+
 def test_gateway_with_no_tokens_reports_rather_than_polling_nothing(isolated):
     runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
     result = runner.invoke(app, ["sarsi", "gateway", "--passes", "1"])
