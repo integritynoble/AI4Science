@@ -165,7 +165,7 @@ def start(config: Config, agent: Agent, task: Task, *, now=time.time) -> Task:
         return _touch(agent, task, now)
     if task.state not in (READY, OFF):
         return task
-    if _active_count(config, agent, exclude=task.id) >= max(1, agent.max_concurrent_tasks):
+    if _active_count(config, agent, exclude=task.id) >= max(1, _concurrency(config, agent)):
         # not a queue: it stays ready and says why, so the board never shows it
         # as though it were working
         task.state = READY
@@ -207,6 +207,18 @@ def refuse(config: Config, agent: Agent, task: Task, reason: str, *,
 
 
 # ── internals ─────────────────────────────────────────────────────────
+
+def _concurrency(config: Config, agent: Agent) -> int:
+    """How many sessions this worker runs at once — from the **playbook**, which
+    is the value the RSI loop tunes and the owner signs. The registry supplies
+    the starting value; without reading it here, a promoted parameter would move
+    on disk and change nothing."""
+    from ai4science.harness.agents.sarsi import playbook as pb
+    try:
+        return int(pb.param(config, agent, "max_concurrent_tasks"))
+    except Exception:
+        return int(agent.max_concurrent_tasks)
+
 
 def _active_count(config: Config, agent: Agent, *, exclude: Optional[str] = None) -> int:
     return sum(1 for t in all_of(config, agent)

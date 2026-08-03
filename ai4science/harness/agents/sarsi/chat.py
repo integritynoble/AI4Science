@@ -34,6 +34,9 @@ def handle(config: Config, agent: Agent, text: str, *, surface: str,
            runtime: Optional[Any] = None) -> str:
     body = (text or "").strip()
     if not body.startswith("/"):
+        verb = _self_verb(body)
+        if verb:
+            return verb(config, agent)
         return _not_a_command(config, agent, body, surface)
 
     verb, _, rest = body[1:].partition(" ")
@@ -180,6 +183,56 @@ def _edit(config, agent, t, tail, runtime):
     tsk._touch(agent, t, __import__("time").time)
     return (f"{t.id} phase {number} now reads: {criterion}\n"
             f"that is the standard the verifier will apply.")
+
+
+# ── the self-model, and the loop that changes the playbook ────────────
+
+def _self_verb(body: str):
+    """The four deterministic verbs, matched exactly rather than guessed at."""
+    low = body.strip().lower().rstrip("?.!")
+    if low in ("self model", "self-model", "how competent are you",
+               "what can you do"):
+        return _self_model
+    if low in ("improve yourself", "improve", "rsi"):
+        return _improve
+    if low in ("yes", "y", "sign", "approve"):
+        return _sign
+    if low in ("no", "n", "discard", "decline"):
+        return _decline
+    return None
+
+
+def _self_model(config: Config, agent: Agent) -> str:
+    from ai4science.harness.agents.sarsi import selfmodel as sm
+    return sm.render(config, agent)
+
+
+def _improve(config: Config, agent: Agent) -> str:
+    from ai4science.harness.agents.sarsi import playbook as pb, selfmodel as sm
+    evidence = sm.evidence_for_rsi(config, agent)
+    candidate = pb.propose(config, agent, evidence=evidence)
+    if candidate.change is None:
+        # the honest outcome when nothing measured justifies one
+        return f"[{agent.id}] {candidate.rationale}"
+    return (f"[{agent.id}] I propose: {candidate.change}\n"
+            f"why: {candidate.rationale}\n"
+            f"held — reply `yes` to sign it, `no` to discard. I cannot promote "
+            f"this myself.")
+
+
+def _sign(config: Config, agent: Agent) -> str:
+    from ai4science.harness.agents.sarsi import playbook as pb
+    out = pb.sign(config, agent, by_owner=True)
+    if not out.adopted:
+        return f"[{agent.id}] nothing was pending — nothing changed."
+    return (f"[{agent.id}] promoted — playbook now v{out.version}. "
+            f"The parameters are live on the next action.\n{out.note}")
+
+
+def _decline(config: Config, agent: Agent) -> str:
+    from ai4science.harness.agents.sarsi import playbook as pb
+    pb.discard(config, agent)
+    return f"[{agent.id}] discarded — the playbook is unchanged."
 
 
 # ── fallbacks ─────────────────────────────────────────────────────────

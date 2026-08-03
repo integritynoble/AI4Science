@@ -214,6 +214,63 @@ def test_an_owner_edited_plan_survives_the_next_polish_as_a_proposal(config, age
     assert outcome.plan.criteria()[0] == "mine, not yours"
 
 
+# ── the self-model, and the signed loop ───────────────────────────────
+
+def test_self_model_answers_with_observed_lines(config, agent):
+    _task(config, agent)
+    out = _say(config, agent, "self model")
+    assert "tasks_held: 1" in out and "unverified" in out
+
+
+def test_the_manager_answers_with_what_it_cannot_do(config):
+    out = _say(config, config.agents["sarsi-machine"], "self model")
+    assert "cannot" in out.lower()
+
+
+def test_improve_yourself_proposes_and_holds(config, agent):
+    from ai4science.harness.agents.sarsi import playbook as pb
+    pb.write(config, agent, {"max_concurrent_tasks": 1})
+    for i in range(4):                          # manufacture real congestion
+        tsk.start(config, agent, _task(config, agent, f"job {i}"))
+    out = _say(config, agent, "improve yourself")
+    assert "signature" in out.lower() or "sign" in out.lower()
+    assert pb.read(config, agent)["version"] == 1        # held, not applied
+
+
+def test_signing_promotes_and_says_the_new_version(config, agent):
+    from ai4science.harness.agents.sarsi import playbook as pb
+    agent.max_concurrent_tasks = 1
+    for i in range(4):
+        tsk.start(config, agent, _task(config, agent, f"job {i}"))
+    _say(config, agent, "improve yourself")
+    out = _say(config, agent, "yes")
+    assert "v2" in out or "version 2" in out.lower()
+    assert pb.read(config, agent)["version"] == 2
+
+
+def test_a_bare_yes_with_nothing_pending_does_nothing(config, agent):
+    from ai4science.harness.agents.sarsi import playbook as pb
+    out = _say(config, agent, "yes")
+    assert "nothing" in out.lower()
+    assert pb.read(config, agent)["version"] == 1
+
+
+def test_no_discards_the_candidate(config, agent):
+    from ai4science.harness.agents.sarsi import playbook as pb
+    agent.max_concurrent_tasks = 1
+    for i in range(4):
+        tsk.start(config, agent, _task(config, agent, f"job {i}"))
+    _say(config, agent, "improve yourself")
+    _say(config, agent, "no")
+    assert pb.pending(config, agent) is None
+    assert pb.read(config, agent)["version"] == 1
+
+
+def test_improve_with_nothing_to_justify_it_says_so(config, agent):
+    out = _say(config, agent, "improve yourself")
+    assert "no change" in out.lower()
+
+
 # ── anything that is not a command ────────────────────────────────────
 
 def test_plain_text_is_not_swallowed_as_a_command(config, agent):
