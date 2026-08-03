@@ -261,3 +261,89 @@ def test_a_fresh_plan_is_judged_normally(monkeypatch, tmp_path):
     out = ses.verify(config, agent, t,
                      verifier=lambda **kw: {"state": "PASS", "why": "done"})
     assert out.verdict["state"] == "PASS"
+
+
+# ── a verdict LINE, not a word that appears in prose ──────────────────
+
+def test_the_declared_verdict_wins_over_the_word_in_its_reasoning():
+    """Observed on grace: `the verifier's answer gave more than one verdict:
+    ['FAIL', 'PASS']`. Refusing was right — but the ambiguity was invited. A
+    reply that OPENS with a proper verdict line has decided; the same words
+    inside its own reasoning are prose, not a second judgment."""
+    got = vf.parse(
+        "FAIL: result.json is absent.\n"
+        "For a PASS I would need to see the file listed with a psnr above 15.")
+    assert got["state"] == "FAIL"
+    assert "absent" in got["why"]
+
+
+def test_a_reply_that_explains_the_format_is_not_two_verdicts():
+    got = vf.parse(
+        "PASS: the listing shows result.json with a psnr of 25.41.\n"
+        "(Criteria are judged PASS or FAIL on visible evidence only.)")
+    assert got["state"] == "PASS"
+
+
+def test_two_real_verdict_lines_are_still_refused():
+    """Genuinely competing judgments must not be resolved by taking the first.
+    A model that decides and then reverses has said two things."""
+    got = vf.parse("PASS: looks right to me.\nFAIL: on reflection the file is empty.")
+    assert got["state"] == "UNVERIFIED"
+    assert "more than one" in got["why"]
+
+
+def test_the_narrated_pass_that_caused_the_false_verdict_still_fails():
+    """The original: a task recorded VERIFIED off an answer that said
+    `PASS/FAIL judgment on visible evidence only` and then FAILED it."""
+    got = vf.parse(
+        "PASS/FAIL judgment on visible evidence only, as instructed.\n"
+        "FAIL: nothing in the evidence shows the export ran.")
+    assert got["state"] == "FAIL"
+
+
+def test_a_reply_with_no_verdict_line_at_all_is_unverified():
+    got = vf.parse("I would need to see the file before I could judge this.")
+    assert got["state"] == "UNVERIFIED"
+
+
+def test_the_contract_asks_for_the_verdict_first_and_nothing_before_it():
+    prompt = vf.build_prompt(goal="g", criteria=["c"], evidence="e")
+    low = prompt.lower()
+    assert "first line" in low
+    assert "do not restate" in low or "nothing before" in low
+
+
+# ── a verdict wearing markdown is still a verdict ─────────────────────
+
+def test_a_bolded_verdict_is_read():
+    """Models write `**PASS**: …` constantly. Discarding it as unreadable turns
+    a real judgment into UNVERIFIED — a false not-judged, which stalls the loop
+    and wastes the work that earned the verdict."""
+    assert vf.parse("**PASS**: the listing shows result.json")["state"] == "PASS"
+
+
+def test_a_bolded_verdict_keeps_its_reason():
+    assert "result.json" in vf.parse("**PASS**: the listing shows result.json")["why"]
+
+
+def test_a_colon_inside_the_emphasis_is_read():
+    assert vf.parse("**FAIL:** the folder is empty")["state"] == "FAIL"
+
+
+def test_a_bulleted_verdict_is_read():
+    assert vf.parse("- FAIL: nothing was written")["state"] == "FAIL"
+
+
+def test_a_numbered_verdict_is_read():
+    assert vf.parse("1. PASS: every criterion is met")["state"] == "PASS"
+
+
+def test_decoration_does_not_make_prose_into_a_verdict():
+    """Stripping `*` and `-` must not turn a sentence into a judgment."""
+    got = vf.parse("**The criteria are judged PASS or FAIL on evidence.**")
+    assert got["state"] == "UNVERIFIED"
+
+
+def test_decoration_does_not_hide_a_second_verdict():
+    got = vf.parse("**PASS**: looks right\n- FAIL: on reflection it is empty")
+    assert got["state"] == "UNVERIFIED"

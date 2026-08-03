@@ -46,8 +46,11 @@ _CONTRACT = (
     "Judge ONLY the visible evidence below. An unproven claim FAILS — a "
     "statement that something was done is not evidence that it was.\n"
     "Every criterion must be satisfied by that evidence for a PASS.\n"
-    "Answer on one line, starting with exactly PASS or FAIL, then a colon and "
-    "your reason."
+    "Answer with the verdict on the FIRST line: exactly PASS or FAIL, then a "
+    "colon and your reason. Nothing before it — no preamble, no restating of "
+    "these instructions — and exactly ONE such line. If you reconsider, give "
+    "the single verdict you settled on rather than both; a reply containing two "
+    "verdicts is discarded and nothing is judged."
 )
 
 
@@ -109,6 +112,24 @@ def build_prompt(*, goal: str, criteria: List[str], evidence: str) -> str:
 #: down. Matching the first word of a narration is not reading a verdict.
 _VERDICT_LINE = re.compile(r"^(PASS|FAIL)(?![\w/|-])[:\s]*(.*)$", re.I)
 
+#: Decoration a model puts in FRONT of its verdict: a bullet, a number, or
+#: markdown emphasis. `**PASS**: …` is how models answer when asked for a
+#: verdict word, and reading it as unreadable turned a real judgment into
+#: UNVERIFIED — a false not-judged, which stalls the loop and throws away the
+#: work that earned the verdict.
+_DECORATION = re.compile(r"^(?:[-*+>]\s+|\d+[.)]\s+|#{1,6}\s+)*[*_`]*")
+
+
+def _undecorate(line: str) -> str:
+    """Strip leading bullets/emphasis, and emphasis that wraps the verdict word.
+
+    Deliberately only touches the DECORATION: a sentence is not turned into a
+    verdict, because the word must still begin what is left.
+    """
+    stripped = _DECORATION.sub("", line.strip())
+    # `**FAIL:**` — emphasis closing after the colon
+    return re.sub(r"^(PASS|FAIL)([*_`]+)(\s*:)", r"\1\3", stripped, flags=re.I)
+
 
 def parse(answer: str) -> Verdict:
     """Read the verdict out of the answer — by its verdict LINE, not its first
@@ -116,7 +137,7 @@ def parse(answer: str) -> Verdict:
     text = (answer or "").strip()
     found = []
     for line in text.splitlines():
-        m = _VERDICT_LINE.match(line.strip())
+        m = _VERDICT_LINE.match(_undecorate(line))
         if m:
             found.append((m.group(1).upper(), (m.group(2) or "").strip()))
     if not found:
