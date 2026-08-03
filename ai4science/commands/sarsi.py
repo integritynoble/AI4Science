@@ -663,6 +663,28 @@ def gateway_cmd(passes: Optional[int] = typer.Option(None, "--passes",
         console.print("stopped")
 
 
+@app.command("ceiling", help="Set the auto level an agent runs at: sarsi ceiling all A2.")
+def ceiling(target: str = typer.Argument(..., help="Agent id, e.g. work — or 'all'"),
+            level: str = typer.Argument(..., help="A0, A1, A2 or A3")) -> None:
+    _load()
+    agent_id = None if target.lower() == "all" else target
+    try:
+        changed = admin.set_ceiling(agent_id, level.upper())
+    except (KeyError, ValueError) as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(code=2)
+    console.print(f"ceiling {level.upper()} — {', '.join(changed)}", markup=False,
+                  highlight=False)
+    # what is written is what is ASKED for; say where it will actually land
+    config = _load()
+    for row in admin.agent_rows(config):
+        if row["id"] in changed and row.get("ceiling_effective") != row["ceiling"]:
+            console.print(f"  {row['id']}: runs at {row['ceiling_effective']} until "
+                          f"the trust ledger earns {row['ceiling']}", style="yellow")
+    console.print("planning still runs at A0; outward acts still stop at you",
+                  style="dim")
+
+
 @app.command("set-token", help="Set one agent's Telegram bot token.")
 def set_token(agent_id: str = typer.Argument(..., help="Agent id, e.g. work"),
               token: str = typer.Argument(..., help="Bot token from @BotFather")) -> None:

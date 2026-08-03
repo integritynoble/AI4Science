@@ -54,6 +54,38 @@ def set_bot_token(agent_id: str, token: str, *, root: Optional[Path] = None) -> 
     _write_raw(raw, path)
 
 
+#: The levels the governance gate knows. A ceiling outside this set would read
+#: as "no ceiling" wherever it is compared, so it is refused at the door.
+CEILINGS = ("A0", "A1", "A2", "A3")
+
+
+def set_ceiling(agent_id: Optional[str], ceiling: str, *,
+                root: Optional[Path] = None) -> List[str]:
+    """Set one agent's auto level in place, or every agent's when `agent_id` is
+    None. Returns the ids changed.
+
+    This writes the ceiling the registry *asks* for. It is not a way past the
+    trust ledger — A3 stays capped until the ledger has earned it, and planning
+    still drops to A0 regardless of what is written here.
+    """
+    if ceiling not in CEILINGS:
+        raise ValueError(f"unknown ceiling {ceiling!r} — known: {', '.join(CEILINGS)}")
+    root = Path(root) if root else state_dir()
+    path = reg.config_path(root)
+    raw = json.loads(path.read_text())
+    entries = ((raw.get("agents") or {}).get("list") or [])
+    known = [str(e.get("id")) for e in entries]
+    if agent_id is not None and agent_id not in known:
+        raise KeyError(f"no agent {agent_id!r} — known: {', '.join(sorted(known))}")
+    changed = []
+    for entry in entries:
+        if agent_id is None or entry.get("id") == agent_id:
+            entry["ceiling"] = ceiling
+            changed.append(str(entry.get("id")))
+    _write_raw(raw, path)
+    return changed
+
+
 def agent_rows(config: reg.Config) -> List[Dict[str, Any]]:
     """One row per agent, for `sarsi agents list --bindings`. Never a token."""
     accounts = _accounts(config)

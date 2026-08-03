@@ -129,6 +129,24 @@ def test_agent_inherits_defaults(tmp_path):
     assert c.agents["work"].ceiling == "A1"
 
 
+def test_the_shipped_roster_runs_at_a2(tmp_path):
+    """The owner's setting: A2 is the auto level the seven run at.
+
+    A2 is a ceiling, not a floor — planning still drops to A0, and A3 stays
+    capped until the trust ledger has earned it.
+    """
+    c = reg.parse(reg.default_config(owner_id="1"), root=tmp_path)
+    assert {a.ceiling for a in c.agents.values()} == {"A2"}
+
+
+def test_a2_does_not_reach_past_what_the_ledger_earned(tmp_path):
+    """Raising the shipped default must not become a way around the gate."""
+    c = reg.parse(reg.default_config(owner_id="1"), root=tmp_path)
+    for entry in reg.default_config(owner_id="1")["agents"]["list"]:
+        assert entry.get("ceiling", "A2") != "A3"
+    assert all(a.ceiling in ("A0", "A1", "A2") for a in c.agents.values())
+
+
 def test_agent_overrides_defaults(tmp_path):
     cfg = _minimal()
     cfg["agents"]["list"][1]["ceiling"] = "A2"

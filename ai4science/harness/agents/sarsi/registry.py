@@ -272,7 +272,11 @@ def default_config(owner_id: str = "", bot_tokens: Optional[Dict[str, str]] = No
                              "match": {"channel": channel, "accountId": a["id"]}})
     return {
         "agents": {
-            "defaults": {"model": "anthropic/claude-haiku-4-5", "ceiling": "A1",
+            # A2 is the auto level the seven run at: the loop answers the
+            # ordinary gates itself. It is a CEILING, not a floor — planning
+            # still drops to A0, the outward acts still stop at the owner, and
+            # A3 stays capped until the trust ledger has earned it.
+            "defaults": {"model": "anthropic/claude-haiku-4-5", "ceiling": "A2",
                          "selfAware": True, "rsi": True, "maxConcurrentTasks": 3},
             "list": [dict(a) for a in _ROSTER],
         },

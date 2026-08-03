@@ -490,3 +490,47 @@ def test_init_twice_refuses(isolated):
     result = runner.invoke(app, ["sarsi", "init", "--owner-id", "999"])
     assert result.exit_code != 0
     assert reg.load().owner_id == "7007143162"          # the first one stands
+
+
+def test_ceiling_all_sets_every_agent(isolated):
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    result = runner.invoke(app, ["sarsi", "ceiling", "all", "A2"])
+    assert result.exit_code == 0
+    from ai4science.harness.agents.sarsi import registry as reg
+    assert {a.ceiling for a in reg.load().agents.values()} == {"A2"}
+
+
+def test_ceiling_names_one_agent_without_touching_the_rest(isolated):
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    runner.invoke(app, ["sarsi", "ceiling", "all", "A1"])
+    runner.invoke(app, ["sarsi", "ceiling", "work", "A2"])
+    from ai4science.harness.agents.sarsi import registry as reg
+    config = reg.load()
+    assert config.agents["work"].ceiling == "A2"
+    assert config.agents["abraham"].ceiling == "A1"
+
+
+def test_ceiling_says_where_a3_will_actually_land(isolated, monkeypatch):
+    """Writing A3 is not the same as running at it — the ledger decides.
+
+    The ledger is machine state (on a long-running host A3 may genuinely be
+    earned), so the cap is controlled here rather than asserted about whatever
+    this machine happens to have.
+    """
+    monkeypatch.setattr(admin, "_effective",
+                        lambda requested: "A2" if requested == "A3" else requested)
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    result = runner.invoke(app, ["sarsi", "ceiling", "all", "A3"])
+    assert "trust ledger" in result.output
+
+
+def test_ceiling_stays_quiet_when_the_level_is_what_it_will_run_at(isolated):
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    result = runner.invoke(app, ["sarsi", "ceiling", "all", "A2"])
+    assert "trust ledger" not in result.output
+
+
+def test_ceiling_refuses_a_level_the_gate_does_not_know(isolated):
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    result = runner.invoke(app, ["sarsi", "ceiling", "work", "A9"])
+    assert result.exit_code == 2 and "A9" in result.output

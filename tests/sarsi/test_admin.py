@@ -76,3 +76,37 @@ def test_agent_rows_never_prints_a_bot_token(isolated):
     admin.set_bot_token("work", "8541204756:AA-secret")
     rows = admin.agent_rows(reg.load())
     assert "AA-secret" not in json.dumps(rows)
+
+
+# ── setting the auto level on an install that already exists ──────────
+
+def test_ceiling_is_set_in_place_leaving_the_rest_untouched(isolated):
+    admin.init(owner_id="7007143162")
+    admin.set_bot_token("work", "8541204756:AA-secret")
+    admin.set_ceiling("work", "A2")
+    config = reg.load()
+    assert config.agents["work"].ceiling == "A2"
+    assert admin.agent_rows(config)[0]["telegram"] is not None
+    raw = json.loads((isolated / "sarsi.json").read_text())
+    accounts = raw["channels"]["telegram"]["accounts"]
+    assert accounts["work"]["botToken"] == "8541204756:AA-secret"
+
+
+def test_every_agent_can_be_set_at_once(isolated):
+    admin.init(owner_id="7007143162")
+    admin.set_ceiling(None, "A2")
+    assert {a.ceiling for a in reg.load().agents.values()} == {"A2"}
+
+
+def test_an_unknown_level_is_refused_rather_than_written(isolated):
+    """A ceiling the gate does not know would read as 'no ceiling'."""
+    admin.init(owner_id="7007143162")
+    with pytest.raises(ValueError, match="A9"):
+        admin.set_ceiling("work", "A9")
+    assert reg.load().agents["work"].ceiling != "A9"
+
+
+def test_an_unknown_agent_is_refused(isolated):
+    admin.init(owner_id="7007143162")
+    with pytest.raises(KeyError):
+        admin.set_ceiling("ghost", "A2")
