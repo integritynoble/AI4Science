@@ -11,9 +11,9 @@ One list, merged from three sources that were drifting apart:
 
 Where the three disagreed, the disagreement is stated rather than averaged away.
 
-**Status is against the `AI4Science` implementation** (`ai4science/harness/agents/sarsi/`).
-The `singularity/sarsi/` implementation is a second, partly-overlapping build of
-the same spec. Three behaviours had diverged; **all three are now decided** —
+**`AI4Science/ai4science/harness/agents/sarsi/` is the canonical implementation**
+(decided 2026-08-03). `singularity/sarsi/` is superseded — kept for reference,
+not extended. Three behaviours had diverged; **all three are now decided** —
 see [the three decisions](#two-implementations--and-the-three-decisions-that-settled)
 at the end.
 
@@ -289,18 +289,47 @@ wiring it *"the largest value per line of new code anywhere in the system."*
 
 ### Where that leaves the two builds
 
-| | `AI4Science/…/sarsi/` | `singularity/sarsi/` |
+**`AI4Science/ai4science/harness/agents/sarsi/` is canonical.** Decided
+2026-08-03. `singularity/sarsi/` is superseded: it is kept as a reference and
+should not be extended.
+
+| | `AI4Science/…/sarsi/` (canonical) | `singularity/sarsi/` (superseded) |
 |---|---|---|
 | `retry` | built, reason-carrying | listed "do not build" |
 | stale plan | **UNVERIFIED, strict** | UNVERIFIED, strict |
 | answering wired | **yes** | no |
 | task lifecycle | `stop` / `archive` / `reopen` | proposed |
 | entry cursor | built | `shell.py`, uncommitted |
-| `attention` | built | proposed |
+| `attention` | built, incl. **orphan** | proposed |
 
-The three behavioural disagreements are settled. What remains is **duplication,
-not disagreement** — one spec, two codebases, and documentation that is true of
-one and false of the other until a canonical repository is chosen.
+### What was salvaged from it before retiring it
+
+The superseded build made observations this one had not. Those are worth more
+than its code, so they were carried across rather than lost:
+
+- **the strict stale-plan rule** — adopted wholesale (decision 2 above);
+- **`orphan`** — a terminal *still running* after its task ended. The mirror of
+  a dead session, and the more dangerous of the two: nothing is steering it and
+  it still holds whatever the task was granted.
+
+  > **Observed on that fleet:** a session sat running for two hours after its
+  > task had FAILED, holding a grant at A2, and nothing reported it.
+
+  `attention` now reports it, ranked directly after a gate. A finished task
+  whose terminal is *also* gone is **not** reported — the record and the machine
+  agree, nothing holds a grant, and tidying a stale record is not something that
+  needs the owner.
+
+### Still worth porting
+
+Not yet built here, and named so the decision to retire that build does not
+quietly drop them:
+
+| From | Idea | Why it is worth having |
+|---|---|---|
+| `competence.py` | read the ledgers back into a **capability estimate** | the system records what it *did* and nowhere what it *can do* |
+| `board.py` | one source, **three faces** — CLI, chat, and a local HTML page | the page is the `physicsworldmodel.org/<agent>/` idea, and it guarantees a task cannot look ready in one place and blocked in another |
+| `conversation.py` | never re-ask on one surface what was answered on the other | `ownerlog` records both surfaces; nothing yet *uses* that to suppress a repeat question |
 
 ---
 

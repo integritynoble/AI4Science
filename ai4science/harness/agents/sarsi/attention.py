@@ -33,8 +33,14 @@ from ai4science.harness.agents.sarsi.registry import Agent, Config
 #: Most blocking first. A gate stops work *now*; a stale plan stops the next
 #: decision. The order is the whole value of the list — the owner reads down it
 #: until they run out of time, so what they read first has to be what matters.
-ORDER = ("gate", "grant", "question", "exhausted", "undelivered",
+ORDER = ("gate", "orphan", "grant", "question", "exhausted", "undelivered",
          "dead-session", "stale")
+
+#: States in which nothing is steering the session any more. A terminal still
+#: running past one of these is an ORPHAN — the reverse of a dead session, and
+#: the more dangerous of the two: nobody is driving it and it still holds
+#: whatever the task was granted.
+ENDED_STATES = (tsk.VERIFIED, tsk.OFF, tsk.REFUSED, tsk.ARCHIVED)
 
 #: The command a gate is asking about, as Claude Code renders it: an indented
 #: block above the "Do you want to proceed?" line.
@@ -141,18 +147,29 @@ def _for_task(config: Config, agent: Agent, task: tsk.Task, *,
 
 def _from_pane(agent: Agent, task: tsk.Task, name: str, pane: Any) -> List[Item]:
     """What the session's own screen says. Unreadable is an answer, not a gap."""
+    ended = task.state in ENDED_STATES
     try:
         screen = pane.capture(name)
     except Exception:
-        # The record believes in a terminal that will not answer. Saying so beats
-        # both "idle" and silence — the owner can see it is gone, and the record
-        # cannot.
+        screen = None
+    if screen is None:
+        if ended:
+            # The task is over and so is its terminal: the record and the machine
+            # agree, nothing is running, nothing holds a grant. Closing the stale
+            # record is tidiness, and this list is for what needs the OWNER.
+            return []
+        # A live task whose terminal will not answer. Saying so beats both
+        # "idle" and silence — the owner can see it is gone; the record cannot.
         return [Item("dead-session", task.id,
                      f"its record points at session {name}, which is not there",
                      action=f"sarsi stop {agent.id} {task.id}")]
-    if screen is None:
-        return [Item("dead-session", task.id,
-                     f"its record points at session {name}, which returned nothing",
+
+    if task.state in ENDED_STATES:
+        # Observed on the other fleet: a session sat running for two hours after
+        # its task had FAILED, holding a grant at A2, and nothing reported it.
+        return [Item("orphan", task.id,
+                     f"its task is {task.state} but session {name} is still "
+                     f"running, holding whatever it was granted",
                      action=f"sarsi stop {agent.id} {task.id}")]
 
     gate = op._gate(screen, planning=not task.plan_agreed)

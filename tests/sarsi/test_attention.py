@@ -232,3 +232,61 @@ def test_the_manager_holds_no_tasks_and_is_not_scanned(config):
     """It drives nothing, so it can be blocked on nothing."""
     rows = att.across(config, pane=Pane())
     assert all(r.agent_id != "sarsi-machine" for r in rows.items)
+
+
+# ── an orphan: the terminal outliving the task ────────────────────────
+
+def test_a_session_still_running_after_the_task_ended_is_an_orphan(config, agent):
+    """Observed on the other fleet: a session sat running for two hours after
+    its task had FAILED, holding a grant at A2, and nothing reported it.
+
+    A dead-session is a record pointing at nothing. An orphan is the reverse —
+    a live terminal nothing is steering — and it is the more dangerous of the
+    two, because it still holds whatever the task was granted.
+    """
+    t = _with_session(config, agent)
+    t = tsk.finish(config, agent, t,
+                   verdict={"state": "PASS", "why": "all criteria met"})
+    got = att.needs(config, agent, pane=Pane({t.session["name"]: BUSY}))
+    assert [i.kind for i in got.items] == ["orphan"]
+    assert t.session["name"] in got.items[0].detail
+
+
+def test_an_orphan_is_reported_after_a_failed_task_too(config, agent):
+    t = _with_session(config, agent)
+    t.state = tsk.OFF
+    tsk._touch(agent, t, __import__("time").time)
+    kinds = [i.kind for i in att.needs(config, agent,
+                                       pane=Pane({t.session["name"]: BUSY})).items]
+    assert kinds == ["orphan"]
+
+
+def test_the_orphan_says_how_to_close_it(config, agent):
+    t = _with_session(config, agent)
+    t = tsk.finish(config, agent, t, verdict={"state": "PASS", "why": "done"})
+    got = att.needs(config, agent, pane=Pane({t.session["name"]: BUSY}))
+    assert f"stop {agent.id}" in got.items[0].action
+
+
+def test_a_running_task_with_a_live_session_is_not_an_orphan(config, agent):
+    """That is just work happening."""
+    t = _with_session(config, agent)
+    assert att.needs(config, agent, pane=Pane({t.session["name"]: BUSY})).items == []
+
+
+def test_a_finished_task_whose_terminal_is_gone_is_not_an_orphan(config, agent):
+    """Nothing is running, so nothing is holding anything. Closing the record
+    is tidiness, not safety — and attention is for what needs the owner."""
+    t = _with_session(config, agent)
+    t = tsk.finish(config, agent, t, verdict={"state": "PASS", "why": "done"})
+    assert att.needs(config, agent, pane=Pane({})).items == []
+
+
+def test_an_orphan_outranks_a_stale_plan(config, agent):
+    t = _with_session(config, agent)
+    t = tsk.finish(config, agent, t, verdict={"state": "PASS", "why": "done"})
+    t.plan_stale = True
+    tsk._touch(agent, t, __import__("time").time)
+    kinds = [i.kind for i in att.needs(config, agent,
+                                       pane=Pane({t.session["name"]: BUSY})).items]
+    assert kinds.index("orphan") < kinds.index("stale")
