@@ -105,8 +105,23 @@ def do(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
        tool: List[str] = typer.Option(None, "--tool",
                                       help="A tool the work needs (repeatable)."),
        secret: List[str] = typer.Option(None, "--secret",
-                                        help="A secret the work will need (repeatable).")) -> None:
+                                        help="A secret the work will need (repeatable)."),
+       workdir: str = typer.Option("", "--workdir",
+                                   help="Where the work happens — evidence is gathered from here.")) -> None:
+    from pathlib import Path
+
     from ai4science.harness.agents.sarsi import worker
+
+    root = None
+    if workdir.strip():
+        root = Path(workdir).expanduser()
+        if not root.is_dir():
+            # Refused here rather than at verification time: a folder that is
+            # not there makes every later verdict UNVERIFIED, for a reason
+            # stated nowhere near the mistake that caused it.
+            console.print(f"[red]no such directory: {workdir}[/red]")
+            raise typer.Exit(code=2)
+        root = str(root.resolve())
 
     config = _load()
     agent = config.agents.get(agent_id)
@@ -134,10 +149,16 @@ def do(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
 
     from ai4science.harness.agents.sarsi import plan as pl, task as tsk
 
-    t = tsk.attach_plan(config, agent, tsk.create(config, agent, directive),
-                        pl.draft(directive))
+    draft = pl.draft(directive)
+    if root:
+        from dataclasses import replace as _replace
+        draft = _replace(draft, work_root=root)
+    t = tsk.attach_plan(config, agent, tsk.create(config, agent, directive), draft)
     t = tsk.start(config, agent, t)
     console.print(f"{agent_id} holds {t.id} — {t.state}", markup=False, highlight=False)
+    if root:
+        console.print(f"evidence will be gathered from {root}", style="dim",
+                      markup=False, highlight=False)
     if t.awaiting:
         # asking here is the point of the plan step, and it names what it wants
         console.print("waiting on you to grant:", style="yellow")
@@ -744,6 +765,12 @@ def check_cmd(agent_id: str = typer.Argument(..., help="Worker id"),
     agent = _worker_or_exit(config, agent_id)
     t = _task_or_exit(config, agent, task_id)
     judge = vf.unavailable("--no-model was given") if no_model else vf.default_verifier()
+    if not evidence.strip():
+        # Gather it rather than answering UNVERIFIED for want of a paste. A live
+        # run wrote its artefacts correctly and was recorded "nothing visible
+        # was supplied" purely because nobody had typed a listing in.
+        from ai4science.harness.agents.sarsi import evidence as evd, task as _t
+        evidence = evd.gather(_t.evidence_root(agent, t), t.criteria or [])
     try:
         t = ses.verify(config, agent, t, verifier=judge, evidence=evidence,
                        engine=engine or None,

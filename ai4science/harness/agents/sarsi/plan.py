@@ -23,6 +23,8 @@ from typing import List, Optional, Sequence
 
 PERMISSIONS_HEADING = "## Permissions needed"
 VERIFIED_PREFIX = "Verified when:"
+#: where the work happens, when it is not the task's own folder
+WORK_ROOT_PREFIX = "Working directory:"
 _PHASE_RE = re.compile(r"^##\s+Phase\s+\d+\s+—\s+(?P<title>.+?)\s*$", re.M)
 
 
@@ -69,6 +71,11 @@ class Plan:
     #: Limits the plan states rather than asks for — "no network", "no
     #: credentials". Asking the owner to GRANT one of these is nonsense.
     constraints: Sequence[str] = field(default_factory=tuple)
+    #: Where the work happens, when it is not the task's own folder. DECLARED,
+    #: never inferred: evidence is gathered from here, so a criterion naming a
+    #: path cannot move it. `None` means the task folder, which stays the
+    #: default — the boundary moves only when the plan says to move it.
+    work_root: Optional[str] = None
 
     def __post_init__(self) -> None:
         if not self.phases:
@@ -93,6 +100,8 @@ class Plan:
 
     def render(self) -> str:
         out = [f"# {self.goal}", ""]
+        if self.work_root:
+            out += [f"{WORK_ROOT_PREFIX} {self.work_root}", ""]
         for i, phase in enumerate(self.phases, start=1):
             out.append(f"## Phase {i} — {phase.title}")
             if phase.body:
@@ -184,6 +193,12 @@ def parse(text: str) -> Plan:
             goal = line[2:].strip()
             break
 
+    work_root = None
+    for line in lines:
+        if line.strip().lower().startswith(WORK_ROOT_PREFIX.lower()):
+            work_root = line.split(":", 1)[1].strip() or None
+            break
+
     phases: List[Phase] = []
     permissions: List[str] = []
     current_title: Optional[str] = None
@@ -242,7 +257,7 @@ def parse(text: str) -> Plan:
                 current_body.append(line)
     flush()
     return Plan(goal=goal, phases=phases, permissions=permissions,
-                constraints=constraints)
+                constraints=constraints, work_root=work_root)
 
 
 _NEGATIVE = re.compile(r"^(no|none|not|never|nothing)\b", re.I)

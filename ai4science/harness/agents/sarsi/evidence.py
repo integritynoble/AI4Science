@@ -17,8 +17,11 @@ A terminal pane is where a session **says** what it did. Evidence is what it
 
 Two refusals, not filters:
 
-  * **it never leaves the task folder.** Criteria start owner-written and are
-    polished by a model, so a criterion naming `/etc/passwd` reads nothing.
+  * **it never leaves the evidence root.** That root is the task's own folder,
+    or the `Working directory:` the plan **declared** — declared, because a
+    criterion naming `/etc/passwd` must not be able to move it. A path outside
+    is reported as outside and not read; it is never silently dropped, because
+    silence about a file the owner named reads as "nothing to report".
   * **it runs nothing.** It reads. Evidence gathering that could execute would
     be a second, ungoverned path to running commands, next door to the one the
     governance hook exists to watch.
@@ -56,13 +59,25 @@ def named_files(criteria: Iterable[str]) -> List[str]:
 
 
 def gather(folder, criteria: Sequence[str], screen: str = "") -> str:
-    """The evidence a verdict should rest on."""
-    root = Path(folder).resolve()
+    """The evidence a verdict should rest on, read from `folder` and only there.
+
+    `folder` is the task's **evidence root**: its own directory by default, or
+    the `Working directory:` the plan declared. Declared is the whole point —
+    the boundary moves when the plan says so, never because a criterion names a
+    path.
+    """
+    root = Path(folder).expanduser().resolve()
     parts: List[str] = []
 
-    listing = _listing(root)
-    if listing:
-        parts.append("FILES IN THE TASK FOLDER (real listing):\n" + listing)
+    if not root.is_dir():
+        # NOT an empty listing. "the folder is empty" and "the folder is not
+        # there" are different facts, and the first is far more damning.
+        parts.append(f"THE WORKING DIRECTORY {root} does not exist, so nothing "
+                     f"could be read from it")
+    else:
+        listing = _listing(root)
+        if listing:
+            parts.append(f"FILES IN {root} (real listing):\n" + listing)
 
     for name in named_files(criteria):
         parts.append(_read(root, name))
@@ -96,20 +111,25 @@ def _listing(root: Path) -> str:
 
 
 def _read(root: Path, name: str) -> str:
-    target = (root / name)
+    # An absolute path is taken as itself — the containment check below decides
+    # whether it may be read. `root / "/etc/passwd"` would silently BECOME
+    # /etc/passwd, so joining first and checking after is the only safe order.
+    target = Path(name) if Path(name).is_absolute() else (root / name)
     try:
         resolved = target.resolve()
     except OSError:
         return f"{name}: could not be resolved"
 
-    # never outside the task folder — a criterion is not a licence to read
+    # Never outside the root — a criterion is not a licence to read. Checked on
+    # the RESOLVED path, so a symlink planted inside the root cannot widen it.
     if resolved != root and root not in resolved.parents:
-        return (f"{name}: outside the task folder, so it was not read "
-                f"(evidence is gathered from the task's own folder only)")
+        return (f"{name}: outside {root}, so it was not read "
+                f"(evidence is gathered from the declared working directory "
+                f"only)")
 
     if not resolved.exists():
         # absence, stated. Silence here would read as "nothing to report".
-        return f"{name}: NOT PRESENT in the task folder"
+        return f"{name}: NOT PRESENT in {root}"
     if resolved.is_dir():
         return f"{name}: is a directory"
     if resolved.suffix.lower() not in _TEXTISH:

@@ -86,6 +86,9 @@ class Task:
     #: after that was never input — it is Claude Code's dimmed suggestion, which
     #: a captured pane renders identically to something typed.
     last_submitted: Optional[str] = None
+    #: Where the work happens, from the plan's `Working directory:` line.
+    #: Evidence is gathered from here; empty means the task's own folder.
+    work_root: Optional[str] = None
     #: Per-phase verdicts, keyed by phase index as a STRING (JSON has no int
     #: keys). A phase is complete when the verifier said so ABOUT THAT PHASE —
     #: not when the session claims it and not when the loop moves on. Without
@@ -200,6 +203,22 @@ def clear_phase(task: Task, index: Optional[int] = None) -> Task:
     return task
 
 
+def evidence_root(agent: Agent, task: Task) -> Path:
+    """Where this task's evidence is gathered from.
+
+    The plan's declared `Working directory:` when it has one, the task's own
+    folder otherwise. Declared, never inferred — a criterion naming a path does
+    not move this, or "read /etc/passwd" would be a criterion away.
+    """
+    declared = (task.work_root or "").strip()
+    if not declared:
+        return dir_of(agent, task.id).resolve()
+    try:
+        return Path(declared).expanduser().resolve()
+    except OSError:
+        return dir_of(agent, task.id).resolve()
+
+
 def dir_of(agent: Agent, task_id: str) -> Path:
     return agent.tasks / task_id
 
@@ -214,6 +233,7 @@ def attach_plan(config: Config, agent: Agent, task: Task, plan: pl.Plan, *,
     path.write_text(plan.render())
     task.plan_version = plan.version
     task.criteria = plan.criteria()
+    task.work_root = plan.work_root
     task.awaiting = [p for p in plan.permissions if p not in task.grants]
     # asking here is the point of the plan step: the worst moment to request a
     # permission is halfway through unattended work
@@ -231,6 +251,7 @@ def adopt_plan(config: Config, agent: Agent, task: Task, plan: pl.Plan, *,
     """
     task.plan_version = plan.version
     task.criteria = plan.criteria()
+    task.work_root = plan.work_root
     task.awaiting = [p for p in plan.permissions if p not in task.grants]
     task.state = AWAITING_GRANT if task.awaiting else READY
     task.plan_agreed = True           # the session has had its say

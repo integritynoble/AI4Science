@@ -692,3 +692,29 @@ def test_cli_enter_is_quiet_when_tmux_agrees(isolated, monkeypatch):
     monkeypatch.setattr(entry, "_live_names", lambda: set())
     result = runner.invoke(app, ["sarsi", "enter", "work"])
     assert "gone" not in result.output
+
+
+def test_cli_do_can_declare_the_working_directory(isolated, tmp_path):
+    """Otherwise the root is only reachable if the session happens to write it
+    into plan0.md, and the owner has no way to say where the work happens."""
+    from ai4science.harness.agents.sarsi import task as tsk
+    work = tmp_path / "live-gaptv"
+    work.mkdir()
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    result = runner.invoke(app, ["sarsi", "do", "work", "reconstruct the cube",
+                                 "--workdir", str(work)])
+    assert result.exit_code == 0
+    config = reg.load()
+    agent = config.agents["work"]
+    t = tsk.all_of(config, agent)[0]
+    assert tsk.evidence_root(agent, t) == work.resolve()
+
+
+def test_cli_do_refuses_a_working_directory_that_is_not_there(isolated, tmp_path):
+    """Declaring a folder that does not exist would make every verdict
+    UNVERIFIED later, for a reason stated nowhere near the mistake."""
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    result = runner.invoke(app, ["sarsi", "do", "work", "x",
+                                 "--workdir", str(tmp_path / "nope")])
+    assert result.exit_code != 0
+    assert "nope" in result.output

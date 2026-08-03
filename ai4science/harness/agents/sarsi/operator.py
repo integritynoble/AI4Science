@@ -139,7 +139,11 @@ def tick(config: Config, agent: Agent, task: tsk.Task, *, pane: Any,
         criteria = ([task.criteria[here]]
                     if here is not None and here < len(task.criteria or [])
                     else list(task.criteria or []))
-        proof = evd.gather(tsk.dir_of(agent, task.id), criteria, screen=screen)
+        # The task's own folder unless the plan declared a working directory.
+        # A live run wrote its artefacts to the declared folder and was recorded
+        # UNVERIFIED because the gatherer was looking somewhere else.
+        proof = evd.gather(tsk.evidence_root(agent, task), criteria,
+                           screen=screen)
         task = ses.verify(config, agent, task, verifier=verifier,
                           evidence=proof, engine=engine, runtime=_Sender(pane),
                           phase=here, now=now)

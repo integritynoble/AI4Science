@@ -49,7 +49,8 @@ Each of these is live, tested, and exercised on the installed binary.
 | `guide` / `/guided` | Steer by hand. The owner's word always goes through; the worker's stands down when the owner holds the wheel. |
 | `/interact` | Hands over the `tmux attach` line and stands back. **It does not relay.** |
 | `/history` | What has happened, from the record. |
-| `check` | Ask the verifier: **PASS / FAIL / UNVERIFIED**, with a reason. A **stale plan is refused, not judged** — see decision 2. |
+| `check` | Ask the verifier: **PASS / FAIL / UNVERIFIED**, with a reason. **Gathers its own evidence** when none is given. A **stale plan is refused, not judged** — see decision 2. |
+| `do --workdir <dir>` | Declare **where the work happens**. Evidence is gathered from there instead of the task folder — declared, never inferred, so a criterion naming a path cannot move the boundary. A path outside it is reported as outside, never read and never silently dropped. |
 | `check --phase N` | Judge **one phase against its own criterion**. A phase is done when a verdict says so about *that* phase; the task is verified only when every phase is. Editing a criterion clears that phase's verdict; moving the goal clears all of them. |
 | `retry` | **Hand a FAIL back carrying the verifier's reason.** Only a judged `FAIL` retries; capped at 3; a `PASS` clears the count. |
 
@@ -77,27 +78,13 @@ Each of these is live, tested, and exercised on the installed binary.
 
 ## Part 2 — Next, in order
 
-### 1. Evidence that can follow the work out of the task folder
-
-Evidence gathering never leaves the task folder — a deliberate boundary. But a
-goal that names a project directory puts every artefact outside it.
-
-> **Observed 2026-08-03, grace:** the goal named `/home/grace/live-gaptv`. The
-> session wrote `gaptv.py` and `result.json` there and finished correctly.
-> `check` returned `UNVERIFIED: nothing visible was supplied`. Passing the
-> listing by hand with `--evidence` produced an immediate `PASS` citing
-> `"psnr": 25.41`. The work was done; only the *looking* failed.
-
-The plan should declare its working directory and evidence should read that
-declared root — still a fixed boundary, not a roaming search. Pairs with the blast-radius item below.
-
-### 2. `spend` / `cost`
+### 1. `spend` / `cost`
 
 What a worker has cost, in tokens, time and PWM. Both source documents ask for
 it independently. One task burned ~8 minutes of unattended waiting and nothing
 recorded it.
 
-### 3. A rule for destructive-command gates
+### 2. A rule for destructive-command gates
 
 > **Observed 2026-08-03, grace:** the session chose to prove reproducibility by
 > deleting `result.json` and regenerating it. The `rm` tripped a `PreToolUse`
@@ -108,14 +95,14 @@ A narrow rule: a delete confined to paths the plan declared, of files the
 session itself created, during a phase that declared it. Narrow on purpose — a
 blanket "allow rm" makes the abstention decorative.
 
-### 4. Blast-radius declaration
+### 3. Blast-radius declaration
 
 The plan declares permissions; have it declare which **paths** it may touch,
 then check afterwards that nothing outside them changed. Turns "it said it would
 only touch the export folder" into something verified. Shares its declaration with
 the evidence item above.
 
-### 5. Verdict parsing that resists narration
+### 4. Verdict parsing that resists narration
 
 > **Observed 2026-08-03, grace:** a verifier reply contained both words and the
 > loop reported `the verifier's answer gave more than one verdict: ['FAIL',
@@ -125,12 +112,12 @@ the evidence item above.
 Demand a verdict line and nothing else, so `UNVERIFIED` is reserved for genuine
 uncertainty rather than for chattiness.
 
-### 6. `questions` — open escalations in one place
+### 5. `questions` — open escalations in one place
 
 Answerable from either surface. `attention` surfaces gates; escalated questions
 deserve the same treatment.
 
-### 6a. `attention` should carry the unclaimed terminal too
+### 6. `attention` should carry the unclaimed terminal too
 
 `enter` now reports a live session of this agent that **no task claims** — the
 dangerous direction, because the board shows nothing at all while something runs
