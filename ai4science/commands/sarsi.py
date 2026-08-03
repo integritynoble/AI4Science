@@ -49,17 +49,26 @@ def agents(bindings: bool = typer.Option(False, "--bindings",
     table.add_column("Agent", style="cyan")
     table.add_column("Role")
     table.add_column("Drives sessions")
+    # which ai4science agent spec its sessions run — the seven are a layer over
+    # the specs the registry already ships, not a second stack beside them
+    table.add_column("Built on")
     table.add_column("Ceiling")
     table.add_column("Telegram")
     rows = admin.agent_rows(config)
     for row in rows:
         # the invariant, shown rather than assumed: the manager may not execute
         drives = "[green]yes[/green]" if row["drives_sessions"] else "[yellow]no[/yellow]"
+        # the supervision loop reads Claude Code's TUI; on another interface it
+        # can start the session but must not claim it can drive it
+        built_on = row["spec"]
+        if not row.get("unattended", True):
+            built_on = f"{built_on} [yellow](attended)[/yellow]"
         # what it would actually run at, not what the file asks for
         ceiling = row["ceiling"]
         if row.get("ceiling_effective") != ceiling:
             ceiling = f"{row['ceiling_effective']} (asked {ceiling})"
-        table.add_row(row["id"], row["role"], drives, ceiling, row["telegram"])
+        table.add_row(row["id"], row["role"], drives, built_on, ceiling,
+                      row["telegram"])
     console.print(table)
     if bindings:
         # printed as lines rather than a table column: a wrapped cell can split

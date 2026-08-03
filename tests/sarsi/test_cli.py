@@ -54,6 +54,23 @@ def test_init_then_agents_lists_all_seven(isolated):
         assert name in result.output
 
 
+def test_agents_shows_which_ai4science_spec_each_is_built_on(isolated):
+    """The seven are an orchestration layer over the specs the registry already
+    ships, and the table says which — otherwise `social` and the social agent
+    look like two unrelated things with one name."""
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    result = runner.invoke(app, ["sarsi", "agents"])
+    assert "manager" in result.output and "pocket" in result.output
+
+
+def test_agents_marks_the_ones_the_loop_cannot_drive_unattended(isolated):
+    """Its screen-reading is tuned to Claude Code's TUI. Saying so beats
+    mis-driving a different interface."""
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    result = runner.invoke(app, ["sarsi", "agents"])
+    assert "attended" in result.output.lower()
+
+
 def test_agents_shows_bindings_when_asked(isolated):
     runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
     result = runner.invoke(app, ["sarsi", "agents", "--bindings"])

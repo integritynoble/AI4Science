@@ -43,7 +43,7 @@ class FakeRuntime:
         self.started = []
         self.sent = []
 
-    def start(self, name, cwd, *, govern, ceiling, env=None):
+    def start(self, name, cwd, *, govern, ceiling, env=None, spec=None):
         self.started.append({"name": name, "cwd": cwd, "govern": govern,
                              "ceiling": ceiling, "env": dict(env or {})})
         if not self.ok:

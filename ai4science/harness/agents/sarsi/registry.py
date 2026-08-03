@@ -44,6 +44,11 @@ class Agent:
     digest: bool = False
     standing_grants: bool = True
     max_concurrent_tasks: int = 3
+    #: The ai4science agent spec this one is BUILT ON. The registry already
+    #: holds `manager`, `machine`, `social`, `pocket`, `research` and the domain
+    #: agents; the seven are an orchestration layer over those, not a second
+    #: stack beside them.
+    spec: str = "claude-code"
     root: Path = field(default_factory=state_dir)
 
     @property
@@ -199,6 +204,7 @@ def _agent_from(entry: Dict[str, Any], defaults: Dict[str, Any], root: Path) -> 
         digest=bool(pick("digest", False)),
         standing_grants=bool(pick("standingGrants", True)),
         max_concurrent_tasks=int(pick("maxConcurrentTasks", 3)),
+        spec=str(pick("spec", "claude-code")),
         root=root,
     )
 
@@ -223,15 +229,26 @@ def _validate_binding(b: Dict[str, Any], agents: Dict[str, Agent],
 
 # ── the default roster ────────────────────────────────────────────────
 
+#: Each entry names the ai4science spec it is built on. These are the specs the
+#: registry already ships for exactly these roles — `manager` is the owner
+#: console, `social` is the social-media agent, `pocket` is the closed
+#: permission-tight one, which is why abraham runs on it.
 _ROSTER = [
-    {"id": "sarsi-machine", "role": MANAGER_ROLE},
-    {"id": "sarsi-worker", "role": WORKER_ROLE, "tools": ["shell", "editor", "browser"]},
-    {"id": "work", "role": WORKER_ROLE, "tools": ["qupath", "matlab", "mail"]},
-    {"id": "social", "role": WORKER_ROLE, "tools": ["browser"], "digest": True},
-    {"id": "funding", "role": WORKER_ROLE, "tools": ["browser", "documents"]},
-    {"id": "jobs", "role": WORKER_ROLE, "tools": ["browser", "documents"]},
-    # abraham: broadest scope, narrowest authority — no standing grants at all.
-    {"id": "abraham", "role": WORKER_ROLE, "digest": True, "standingGrants": False,
+    {"id": "sarsi-machine", "role": MANAGER_ROLE, "spec": "manager"},
+    {"id": "sarsi-worker", "role": WORKER_ROLE, "spec": "claude-code",
+     "tools": ["shell", "editor", "browser"]},
+    {"id": "work", "role": WORKER_ROLE, "spec": "claude-code",
+     "tools": ["qupath", "matlab", "mail"]},
+    {"id": "social", "role": WORKER_ROLE, "spec": "social",
+     "tools": ["browser"], "digest": True},
+    {"id": "funding", "role": WORKER_ROLE, "spec": "research",
+     "tools": ["browser", "documents"]},
+    {"id": "jobs", "role": WORKER_ROLE, "spec": "unified-LLM",
+     "tools": ["browser", "documents"]},
+    # abraham: broadest scope, narrowest authority — no standing grants at all,
+    # and built on `pocket`, the closed permission-tight spec.
+    {"id": "abraham", "role": WORKER_ROLE, "spec": "pocket", "digest": True,
+     "standingGrants": False,
      "tools": ["browser", "calendar", "documents", "payment"]},
 ]
 

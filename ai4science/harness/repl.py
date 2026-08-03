@@ -53,8 +53,11 @@ def _dispatch_slash(line: str, state: dict) -> tuple[bool, str]:
         return True, "bye"
     if cmd in ("help", "?"):
         return True, ("slash commands: /help /clear /model <backend> [id] "
-                      "/agent [name|specific <q>] /login /whoami /feedback <text> "
-                      "/readonly /yes /default /cost /files /exit")
+                      "/agent [name|specific <q>] /do <goal> /tasks /login "
+                      "/whoami /feedback <text> /readonly /yes /default "
+                      "/cost /files /exit\n"
+                      "  /do hands the goal to this agent's sarsi worker "
+                      "(task + plan + sarsi-claude) instead of answering here")
     if cmd == "readonly":
         state["read_only"] = True
         return True, "read-only: ON (mutating tools blocked)"
@@ -68,7 +71,70 @@ def _dispatch_slash(line: str, state: dict) -> tuple[bool, str]:
     if cmd == "clear":
         state["clear"] = True
         return True, "conversation cleared"
+    if cmd in ("do", "tasks"):
+        return True, _sarsi_bridge(cmd, _arg.strip(), state.get("agent") or "")
     return False, ""
+
+
+def _sarsi_bridge(cmd: str, arg: str, agent_name: str) -> str:
+    """`/do` and `/tasks` — the door from this chat agent to its sarsi worker.
+
+    The chat agent answers in-process: ask it for an implementation and it
+    writes one here. Its sarsi counterpart is the other contract — the agent
+    you talk to does not execute, it opens a task, agrees a plan with
+    `sarsi-claude`, and that session drives Claude Code.
+
+    So this delegates and returns. It never runs the goal, and it never guesses
+    which worker was meant: an agent with no counterpart gets the list, not a
+    default. Every failure is a returned string — raising here would drop the
+    REPL session the owner is standing in.
+    """
+    from ai4science.harness.agents.sarsi import registry as reg
+
+    try:
+        config = reg.load()
+    except reg.ConfigError:
+        return ("no sarsi registry on this machine yet — the seven agents are "
+                "not configured.\n  set them up with: ai4science sarsi init")
+    except Exception as e:                       # never take the REPL down
+        return f"could not read the sarsi registry: {e}"
+
+    agent = config.agents.get(agent_name)
+    if agent is None:
+        return (f"{agent_name or 'this agent'} has no sarsi worker — it answers "
+                f"here instead of delegating.\n  workers with a task board: "
+                f"{', '.join(sorted(config.agents))}\n"
+                f"  switch with /agent <name>, then /do <goal>")
+
+    from ai4science.harness.agents.sarsi import chat as sarsi_chat
+
+    if cmd == "tasks":
+        return sarsi_chat.handle(config, agent, "/tasks", surface="cli")
+
+    if not arg:
+        return (f"usage: /do <goal>  — hands {agent.id} a goal; it drafts a "
+                f"plan and sarsi-claude agrees it before anything runs")
+
+    from ai4science.harness.agents.sarsi import (plan as pl, task as tsk,
+                                                 worker as wk)
+    try:
+        directive = wk.Directive(agent_id=agent.id, goal=arg)
+        out = wk.admit(config, agent, directive)
+    except (wk.BadDirective, wk.NotAWorker) as e:
+        return str(e)
+    if not out.admitted:
+        return f"{out.message}\nnot queued — nothing is waiting on this"
+
+    task = tsk.attach_plan(config, agent, tsk.create(config, agent, directive),
+                           pl.draft(directive))
+    task = tsk.start(config, agent, task)
+    lines = [f"{agent.id} holds {task.id} — {task.state}",
+             f"  plan drafted; sarsi-claude agrees it before work starts",
+             f"  open it:    ai4science sarsi plan {agent.id} {task.id}",
+             f"  run it:     ai4science sarsi run {agent.id} {task.id}"]
+    if task.awaiting:
+        lines.insert(1, f"  waiting on: {', '.join(task.awaiting)}")
+    return "\n".join(lines)
 
 
 def make_confirm(read_input, mode_label: str):
@@ -438,6 +504,9 @@ def run_common_repl(
         "read_only": read_only,
         "auto_yes": auto_yes,
         "exit": False,
+        # which agent is answering — `/do` delegates to the sarsi worker of
+        # this name, so it has to follow `/agent` switches (see below).
+        "agent": active_spec.name,
     }
 
     # Per-turn token accumulator (mutated by the meter wrapper).
@@ -753,6 +822,7 @@ def run_common_repl(
                           flush=True)
                     continue
                 active_spec = target
+                state["agent"] = target.name       # `/do` follows the switch
                 # Enforce the agent's provider lock: Codex → OpenAI (ChatGPT),
                 # Claude → Anthropic. Switch the brand to that provider's flagship
                 # so a Codex session never runs on Claude (and vice-versa). Other

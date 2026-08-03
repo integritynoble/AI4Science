@@ -43,6 +43,10 @@ class CouldNotStart(Exception):
     """The session would not start. Reported, never pretended around."""
 
 
+class SpecUnavailable(Exception):
+    """The ai4science agent this sarsi agent is built on is not installed."""
+
+
 class OwnerHasTheWheel(Exception):
     """The owner is driving. The worker stands down — top of the ladder."""
 
@@ -54,13 +58,20 @@ class MachineRuntime:
     engine = "claude"
 
     def start(self, name: str, cwd: str, *, govern: bool, ceiling: str,
-              env: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+              env: Optional[Dict[str, str]] = None,
+              spec: str = "claude-code") -> Dict[str, Any]:
         from ai4science.harness.agents.machine import sessions
         if env:
             # The secret reaches the local session and nothing that outlives it.
             import os
             os.environ.update({_env_key(k): v for k, v in env.items()})
-        return sessions.start_session(name, cwd, govern=govern, ceiling=ceiling)
+        # `claude-code` is Claude Code itself; anything else runs through the
+        # ai4science harness in that mode.
+        binary = "claude" if spec == "claude-code" else None
+        if binary:
+            return sessions.start_session(name, cwd, govern=govern, ceiling=ceiling)
+        return sessions.start_session(name, cwd, govern=govern, ceiling=ceiling,
+                                      claude_bin=f"ai4science chat --mode {spec}")
 
     def send(self, name: str, text: str) -> Dict[str, Any]:
         from ai4science.harness.agents.machine import sessions
@@ -76,8 +87,28 @@ class MachineRuntime:
         return supervisor.update(name, ceiling=ceiling) or {}
 
 
+#: Specs whose interface the supervision loop can actually read. Its gate
+#: detection, stranded-prompt reading and busy marker are tuned to Claude
+#: Code's TUI; another interface may be STARTED, and is reported as not
+#: drivable rather than quietly mis-driven.
+DRIVABLE_SPECS = {"claude-code", "codex"}
+
+
+def drivable(spec: str) -> bool:
+    return spec in DRIVABLE_SPECS
+
+
+def installed_specs() -> set:
+    try:
+        from ai4science.harness.agents import registry as ar
+        return set(ar.AGENT_REGISTRY)
+    except Exception:
+        return set()
+
+
 def assign(config: Config, agent: Agent, task: tsk.Task, *,
            runtime: Optional[Any] = None, vault_prompt: Optional[Callable] = None,
+           installed: Optional[Callable[[], set]] = None,
            now=time.time) -> tsk.Task:
     if not agent.is_worker:
         raise NotAWorker(
@@ -89,6 +120,15 @@ def assign(config: Config, agent: Agent, task: tsk.Task, *,
 
     if task.session:
         return task                          # one task, one session
+
+    # The spec this agent is built on has to be here. Substituting a generalist
+    # would run the wrong agent under the right label, which is worse than not
+    # starting at all.
+    available = (installed or installed_specs)()
+    if available and agent.spec not in available:
+        raise SpecUnavailable(
+            f"{agent.id} is built on the {agent.spec!r} agent, which is not "
+            f"installed here. Installed: {', '.join(sorted(available))}")
 
     # VLT for the secrets the DIRECTIVE declared. It has to be here rather than
     # at release: a secret reaches the session through the environment its tmux
@@ -112,7 +152,7 @@ def assign(config: Config, agent: Agent, task: tsk.Task, *,
     # ceiling does the holding, and `release` raises it.
     ceiling = "A0" if not task.plan_agreed else _effective_ceiling(agent.ceiling)
     started = runtime.start(name, str(workdir), govern=True, ceiling=ceiling,
-                            env=secrets)
+                            env=secrets, spec=agent.spec)
     if not (started or {}).get("ok"):
         reason = (started or {}).get("reason") or "the session would not start"
         ledger.append(config, "reports",

@@ -70,6 +70,10 @@ def agent_rows(config: reg.Config) -> List[Dict[str, Any]]:
             "ceiling": agent.ceiling,
             # A3 is earned, not set: show what the ledger would actually grant
             "ceiling_effective": _effective(agent.ceiling),
+            # which ai4science agent this one is built on, and whether the
+            # supervision loop can read that agent's interface
+            "spec": agent.spec,
+            "unattended": _drivable(agent.spec),
             "self_aware": agent.self_aware,
             "tools": list(agent.tools),
             "bindings": bindings,
@@ -77,6 +81,11 @@ def agent_rows(config: reg.Config) -> List[Dict[str, Any]]:
             "dir": str(agent.agent_dir),
         })
     return rows
+
+
+def _drivable(spec: str) -> bool:
+    from ai4science.harness.agents.sarsi.session import drivable
+    return drivable(spec)
 
 
 def _effective(requested: str) -> str:

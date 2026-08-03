@@ -68,7 +68,12 @@ _FIND_EXEC = {"-exec", "-execdir", "-ok", "-okdir", "-delete", "-fprintf",
 # DENIED at every ceiling (reads are unaffected).
 _PROTECTED_WRITE = (".claude/settings.json", ".claude/settings.local.json",
                     "pwm-cc-trust", "pwm-cc-tripwires", "pwm-cc-sessions", "/pwm-cp/")
-_WRITE_VERB = re.compile(r">|\btee\b|\bdd\b|\brm\b|\bmv\b|\bcp\b|\bln\b|\btruncate\b|\bchmod\b|\bchown\b")
+# `\b` treats '-' as a word boundary, so `\bcp\b` matched the "cp" inside our own
+# state dir name (pwm-cp) and any command naming it read as a copy. Require each
+# verb to stand alone — not glued to a word char OR a hyphen on either side.
+_WRITE_VERB = re.compile(
+    r">|(?<![\w-])(?:tee|dd|rm|mv|cp|ln|truncate|chmod|chown)(?![\w-])")
+_SEG_SPLIT = re.compile(r"[;|&]+")
 
 
 def _write_is_protected(path: str) -> bool:
@@ -85,18 +90,25 @@ def _bash_writes_protected(cmd: str) -> bool:
     as writing to it. Only a write-verb match on the SAME SIDE of (before) a
     protected-path mention counts: a verb that appears after the path can't be
     the thing writing to it.
+
+    Position alone is still too coarse across a compound command: in
+    `cat x 2>/dev/null; ls .../pwm-cc-trust` the '>' precedes the path but
+    belongs to a DIFFERENT segment, so it cannot be writing it either. Scope the
+    verb search to the segment the path appears in — a write and its target
+    always share one segment.
     """
     if not any(s in cmd for s in _PROTECTED_WRITE):
         return False
-    for s in _PROTECTED_WRITE:
-        start = 0
-        while True:
-            idx = cmd.find(s, start)
-            if idx == -1:
-                break
-            if _WRITE_VERB.search(cmd[:idx]):
-                return True
-            start = idx + 1
+    for seg in _SEG_SPLIT.split(cmd or ""):
+        for s in _PROTECTED_WRITE:
+            start = 0
+            while True:
+                idx = seg.find(s, start)
+                if idx == -1:
+                    break
+                if _WRITE_VERB.search(seg[:idx]):
+                    return True
+                start = idx + 1
     return False
 
 

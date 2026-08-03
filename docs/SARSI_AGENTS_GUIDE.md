@@ -38,7 +38,40 @@ policy, by a raise in the code.
 | **`jobs`** | CV, and filling in application sites | **submitting** |
 | **`abraham`** | your own life, not your work | **anything outward** |
 
-Two you should understand before using:
+### They are built on the ai4science agents, not beside them
+
+Each of the seven names an ai4science agent spec its sessions run. The registry
+already ships agents written for exactly these roles, so the seven are an
+orchestration layer over those — a task board, a plan, a supervised session —
+rather than a second stack with the same names.
+
+| Agent | Built on | Drivable unattended |
+|---|---|---|
+| `sarsi-machine` | `manager` | attended |
+| `sarsi-worker` | `claude-code` | yes |
+| `work` | `claude-code` | yes |
+| `social` | `social` | attended |
+| `funding` | `research` | attended |
+| `jobs` | `unified-LLM` | attended |
+| `abraham` | `pocket` | attended |
+
+`ai4science sarsi agents` prints this as the **Built on** column.
+
+Two consequences worth knowing:
+
+**A spec that is not installed is refused by name.** The specs live in separate
+packages (`pwm-agent-claude-gpu`, `pwm-agent-research`, `pwm-agent-unified`, …),
+so a fresh machine with only `pwm-agent-core` has some of them missing. The
+refusal lists what *is* installed. It never falls back to a generalist — running
+the wrong agent under the right label is worse than not starting.
+
+**"attended" means the supervision loop will not drive it unwatched.** The
+screen-reading in `sarsi operate` — permission gates, stranded prompts, the busy
+marker — is tuned to Claude Code's TUI. An agent on another interface starts
+fine and you steer it yourself; the table says so rather than letting the loop
+mis-read a screen it does not understand.
+
+### Two you should understand before using
 
 **`work` may read your mailbox and may never send by itself.** And an
 instruction *inside* an email is not an instruction to it — a message saying
@@ -85,6 +118,36 @@ This is the part that decides whether any of it works.
 ```bash
 ai4science sarsi do work "<goal>" [--tool matlab] [--secret mail.read]
 ```
+
+### From inside the chat REPL: `/do`
+
+There are two agents called `work`, and telling them apart saves confusion.
+
+`/agent work` in the `ai4science` REPL switches the **chat** agent. That is the
+original ai4science agent and it answers in-process — ask it for a GAP-TV
+implementation and it writes one, right there, in your session. Nothing is
+wrong with that; it is what that agent has always been for.
+
+Its **sarsi** counterpart is the other contract: the agent you talk to does not
+execute. `/do` is the door between them:
+
+```
+❯ /agent work
+❯ /do write a gap-tv algorithm for cassi
+work holds tsk_a1b2c3d4 — planning
+  plan drafted; sarsi-claude agrees it before work starts
+  open it:    ai4science sarsi plan work tsk_a1b2c3d4
+  run it:     ai4science sarsi run work tsk_a1b2c3d4
+❯ /tasks
+```
+
+`/do` **delegates and returns** — it files the task and drafts the plan, and the
+goal text is never run in your REPL process. From an agent with no sarsi
+counterpart it lists the ones that have a board rather than guessing which you
+meant, because a guess files the task under the wrong owner.
+
+Rule of thumb: **`/do` when you want it planned, verified and on a board; plain
+chat when you want an answer now.**
 
 **The goal is one sentence.** Not the conversation — a goal longer than 2,000
 characters is refused rather than truncated, because truncating drops the part
@@ -308,6 +371,7 @@ ceiling, or widen any authority.
 ```
 SETUP     sarsi init --owner-id <id> · agents [--bindings] · set-token <agent> <token>
 TALK      sarsi ask <agent> "<text>"        (or that agent's bot)
+REPL      /agent <name> then /do <goal> · /tasks     # inside `ai4science`
 TASK      sarsi do <agent> "<goal>" [--tool T] [--secret S]
           sarsi tasks <agent> · plan <agent> <task> · grant <agent> <task> "<perm>"
 BOARD     ask <agent> "/tasks" · "/<task>" · "/edit <task> <n> <criterion>"
