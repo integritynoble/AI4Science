@@ -1,20 +1,27 @@
-"""`AN` and `SP` — the two nodes between "a session starts" and "a session runs".
+"""The supervision pass — `V`, `AN`, `SP`, `EC`, `S`, in that order.
 
-Both were found by the first live run, which had to be nursed by hand. Claude
-Code's first-run folder-trust prompt swallowed the kickoff; the kickoff then sat
-typed-but-unsubmitted at the `❯`. Neither is exotic — both are specified in the
-session loop, and neither was implemented.
+`AN` and `SP` came out of the first live run, which had to be nursed by hand:
+Claude Code's folder-trust prompt swallowed the kickoff, and the kickoff then sat
+typed-but-unsubmitted at the `❯`. Both were specified in the session loop and
+neither was implemented.
 
-One pass, in this order, and the order is load-bearing:
+One pass, and the order is load-bearing:
 
 | | Check | Then |
 |---|---|---|
 | 1 | is there a session at all? | nothing to operate |
 | 2 | is it already verified? | stand down |
 | 3 | **does the owner have the wheel?** | do nothing — the operator *is* the worker |
-| 4 | is it mid-turn? | leave it alone; queued input is normal, not stuck |
+| 4 | **is the goal already met?** | `V` — and this sits ABOVE both typing steps |
 | 5 | **is a gate on screen?** | `AN` — answer it if recognised, else abstain |
-| 6 | **is a prompt stranded at the `❯`?** | `SP` — submit it, verbatim |
+| 6 | is it mid-turn? | leave it alone; queued input is normal, not stuck |
+| 7 | **is a prompt stranded at the `❯`?** | `SP` — submit it, verbatim |
+| 8 | otherwise | `S` — compose one instruction and type it |
+
+Step 4's position is why it exists at all: in the console a session that kept
+receiving typed prompts consumed every pass at the submit step, so verification
+starved for **23 consecutive passes** while an already-finished session went on
+being guided.
 
 Two rules the code keeps rather than the prompt:
 
@@ -31,7 +38,7 @@ from __future__ import annotations
 import re
 import time
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from ai4science.harness.agents.sarsi import ledger, task as tsk
 from ai4science.harness.agents.sarsi.registry import Agent, Config
@@ -65,8 +72,19 @@ class Action:
 
 
 def tick(config: Config, agent: Agent, task: tsk.Task, *, pane: Any,
-         now=time.time) -> Action:
-    """One supervision pass over one session."""
+         verifier: Optional[Callable[..., dict]] = None,
+         model: Optional[Callable[[str], str]] = None,
+         engine: Optional[str] = None, now=time.time) -> Action:
+    """One supervision pass over one session, in this order:
+
+    no session · already done · the owner has the wheel · **verify** · a gate ·
+    mid-turn · a stranded prompt · steer.
+
+    Verification sits **above** both typing steps, and that position is
+    load-bearing: in the console a session that kept receiving typed prompts
+    consumed every pass at the submit step, and verification starved for 23
+    consecutive passes while an already-finished session went on being guided.
+    """
     session = (task.session or {}).get("name")
     if not session:
         return Action("no-session")
@@ -77,6 +95,14 @@ def tick(config: Config, agent: Agent, task: tsk.Task, *, pane: Any,
         return Action("paused", "the owner has the wheel")
 
     screen = pane.capture(session) or ""
+
+    if verifier is not None:
+        from ai4science.harness.agents.sarsi import session as ses
+        task = ses.verify(config, agent, task, verifier=verifier,
+                          evidence=screen, engine=engine, runtime=_Sender(pane),
+                          now=now)
+        if task.state == tsk.VERIFIED:
+            return Action("verified", "the goal is met")
 
     gate = _gate(screen)
     if gate is not None:
@@ -97,22 +123,47 @@ def tick(config: Config, agent: Agent, task: tsk.Task, *, pane: Any,
 
     stranded = _stranded(screen)
     if stranded:
+        # Submitting what is already typed beats writing something new over it.
         pane.key(session, "Enter")          # verbatim: nothing is retyped
         _report(config, agent, task, state="submitted",
                 evidence=stranded[:200], now=now)
         return Action("submitted", stranded[:80])
 
+    if model is not None:
+        from ai4science.harness.agents.sarsi import composer as cp
+        out = cp.steer(config, agent, task, screen=screen, model=model, pane=pane)
+        if out.instruction:
+            _report(config, agent, task, state="steered",
+                    evidence=out.instruction[:200], now=now)
+            return Action("steered", out.instruction[:80])
+        return Action("idle", out.note)
+
     return Action("idle")
 
 
+class _Sender:
+    """Lets `verify` feed a FAIL reason back through the same pane."""
+
+    def __init__(self, pane: Any) -> None:
+        self._pane = pane
+
+    def send(self, name: str, text: str):
+        return self._pane.send(name, text)
+
+
 def run(config: Config, agent: Agent, task: tsk.Task, *, pane: Any,
+        verifier: Optional[Callable[..., dict]] = None,
+        model: Optional[Callable[[str], str]] = None,
+        engine: Optional[str] = None,
         passes: int = 20, interval: float = 3.0, sleep=time.sleep) -> list:
-    """Keep nudging until the session is moving on its own."""
+    """Supervise until the goal is verified, the owner takes over, or the budget
+    runs out. Stops on a verdict — it does not keep guiding a finished session."""
     seen = []
     for i in range(passes):
-        action = tick(config, agent, task, pane=pane)
+        action = tick(config, agent, task, pane=pane, verifier=verifier,
+                      model=model, engine=engine)
         seen.append(action)
-        if action.kind in ("no-session", "done", "paused"):
+        if action.kind in ("no-session", "done", "paused", "verified"):
             break
         if i + 1 < passes:
             sleep(interval)

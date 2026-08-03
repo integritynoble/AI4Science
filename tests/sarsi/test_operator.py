@@ -217,6 +217,75 @@ def test_a_verified_task_is_left_alone(config, agent):
     assert op.tick(config, agent, t, pane=FakePane(STRANDED_PANE)).kind == "done"
 
 
+# ── V first, then everything else ─────────────────────────────────────
+
+def test_verification_runs_before_submitting_a_stranded_prompt(config, agent):
+    """The position is load-bearing. In the console a session that kept
+    receiving typed prompts consumed every pass at the submit step, so
+    verification starved for 23 consecutive passes."""
+    order = []
+
+    def verifier(**kw):
+        order.append("verified")
+        return {"state": "FAIL", "why": "not yet"}
+
+    pane = FakePane(STRANDED_PANE)
+    original = pane.key
+
+    def key(name, k):
+        order.append("submitted")
+        return original(name, k)
+
+    pane.key = key
+    op.tick(config, agent, _task(config, agent), pane=pane, verifier=verifier)
+    assert order == ["verified", "submitted"]
+
+
+def test_a_pass_ends_the_task_and_steers_nothing_further(config, agent):
+    pane = FakePane(STRANDED_PANE)
+    t = _task(config, agent)
+    action = op.tick(config, agent, t, pane=pane,
+                     verifier=lambda **kw: {"state": "PASS"})
+    assert action.kind == "verified"
+    assert pane.keys == [] and pane.sent == []
+
+
+def test_without_a_verifier_it_does_not_claim_anything(config, agent):
+    """No verifier supplied is not a PASS; it just does not verify this pass."""
+    action = op.tick(config, agent, _task(config, agent), pane=FakePane(IDLE_PANE))
+    assert action.kind != "verified"
+
+
+# ── S: it steers when there is nothing else to do ─────────────────────
+
+def test_an_idle_session_is_steered(config, agent):
+    pane = FakePane(IDLE_PANE)
+    action = op.tick(config, agent, _task(config, agent), pane=pane,
+                     model=lambda prompt: "run the drain script")
+    assert action.kind == "steered"
+    assert pane.sent == ["run the drain script"]
+
+
+def test_a_busy_session_is_never_steered(config, agent):
+    pane = FakePane(BUSY_PANE)
+    op.tick(config, agent, _task(config, agent), pane=pane,
+            model=lambda prompt: "do something")
+    assert pane.sent == []
+
+
+def test_a_stranded_prompt_preempts_steering(config, agent):
+    """Submitting what is already typed beats writing something new over it."""
+    pane = FakePane(STRANDED_PANE)
+    action = op.tick(config, agent, _task(config, agent), pane=pane,
+                     model=lambda prompt: "something else entirely")
+    assert action.kind == "submitted" and pane.sent == []
+
+
+def test_with_no_model_an_idle_session_is_just_idle(config, agent):
+    action = op.tick(config, agent, _task(config, agent), pane=FakePane(IDLE_PANE))
+    assert action.kind == "idle"
+
+
 # ── the loop ──────────────────────────────────────────────────────────
 
 def test_the_loop_gets_a_stuck_session_moving(config, agent):

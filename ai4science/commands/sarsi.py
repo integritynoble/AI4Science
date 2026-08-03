@@ -382,6 +382,42 @@ def operate_cmd(agent_id: str = typer.Argument(..., help="Worker id"),
                       markup=False, highlight=False)
 
 
+@app.command("supervise", help="Drive a task to a verified result: verify, answer, submit, steer.")
+def supervise_cmd(agent_id: str = typer.Argument(..., help="Worker id"),
+                  task_id: str = typer.Argument(..., help="Task id"),
+                  passes: int = typer.Option(12, "--passes",
+                                             help="How many supervision passes."),
+                  interval: float = typer.Option(20.0, "--interval",
+                                                 help="Seconds between passes."),
+                  no_verify: bool = typer.Option(False, "--no-verify",
+                                                 help="Do not verify; unstick and steer only."),
+                  no_steer: bool = typer.Option(False, "--no-steer",
+                                                help="Do not compose instructions; unstick only.")) -> None:
+    from ai4science.harness.agents.sarsi import (composer as cp, operator as op,
+                                                 verifier as vf)
+
+    config = _load()
+    agent = _worker_or_exit(config, agent_id)
+    t = _task_or_exit(config, agent, task_id)
+    engine = vf.chosen_engine()
+    actions = op.run(config, agent, t, pane=op.TmuxPane(),
+                     verifier=None if no_verify else vf.default_verifier(),
+                     model=None if no_steer else cp.claude_model(),
+                     engine=engine, passes=passes, interval=interval)
+    for action in actions:
+        console.print(f"  {action.kind}"
+                      + (f" — {action.detail}" if action.detail else ""),
+                      markup=False, highlight=False)
+    final = _task_or_exit(config, agent, task_id)
+    from ai4science.harness.agents.sarsi import session as ses
+    console.print("\n" + ses.answer(config, agent, final),
+                  markup=False, highlight=False)
+    if any(a.kind == "abstained" for a in actions):
+        console.print("a gate is waiting for you: tmux attach -t "
+                      f"{(final.session or {}).get('name', '?')}", style="yellow",
+                      markup=False, highlight=False)
+
+
 @app.command("check", help="Ask the independent verifier whether this task's goal is met.")
 def check_cmd(agent_id: str = typer.Argument(..., help="Worker id"),
               task_id: str = typer.Argument(..., help="Task id"),
