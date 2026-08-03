@@ -234,6 +234,7 @@ def test_a_task_needing_no_secret_never_asks(config, agent):
 def test_the_kickoff_names_the_plan_file(config, agent):
     rt = FakeRuntime()
     t = ses.assign(config, agent, _agreed(config, agent), runtime=rt)
+    ses.deliver_kickoff(config, agent, t, runtime=rt)
     text = rt.sent[0][1]
     assert "plan0.md" in text
 
@@ -241,7 +242,8 @@ def test_the_kickoff_names_the_plan_file(config, agent):
 def test_the_kickoff_names_the_earliest_incomplete_phase(config, agent):
     """Once the plan is agreed. Before that the session is asked to plan."""
     rt = FakeRuntime()
-    ses.assign(config, agent, _agreed(config, agent), runtime=rt)
+    t = ses.assign(config, agent, _agreed(config, agent), runtime=rt)
+    ses.deliver_kickoff(config, agent, t, runtime=rt)
     assert "drain the queue" in rt.sent[0][1]
 
 
@@ -253,7 +255,8 @@ def test_the_work_kickoff_does_not_carry_the_conversation(config, agent):
     ownerlog.append(config, agent, "and by the way my cat is called Mildred",
                     surface="cli")
     rt = FakeRuntime()
-    ses.assign(config, agent, _agreed(config, agent), runtime=rt)
+    t = ses.assign(config, agent, _agreed(config, agent), runtime=rt)
+    ses.deliver_kickoff(config, agent, t, runtime=rt)
     assert "Mildred" not in rt.sent[0][1]
 
 
@@ -264,7 +267,8 @@ def test_the_planning_kickoff_does_carry_what_the_owner_said(config, agent):
     from ai4science.harness.agents.sarsi import ownerlog
     ownerlog.append(config, agent, "never touch production", surface="cli")
     rt = FakeRuntime()
-    ses.assign(config, agent, _task(config, agent), runtime=rt)
+    t = ses.assign(config, agent, _task(config, agent), runtime=rt)
+    ses.deliver_kickoff(config, agent, t, runtime=rt)
     assert "never touch production" in rt.sent[0][1]
 
 

@@ -65,6 +65,10 @@ class Task:
     plan_stale: bool = False
     #: the owner rewrote it; polish may propose a successor, never replace it
     plan_owner_edited: bool = False
+    #: The first instruction this session is owed, held until it can receive
+    #: it. Typing into a session that is still booting loses the text, and the
+    #: worker then believes it has told the session something it never heard.
+    kickoff_pending: Optional[str] = None
     #: the last text `SP` pressed Enter on. Text still sitting at the prompt
     #: after that was never input — it is Claude Code's dimmed suggestion, which
     #: a captured pane renders identically to something typed.

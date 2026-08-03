@@ -118,7 +118,8 @@ def test_the_seed_carries_what_the_directive_declared(config, agent):
 
 def test_the_session_is_asked_to_improve_the_plan_not_invent_one(config, agent):
     rt = FakeRuntime()
-    ses.assign(config, agent, _task(config, agent), runtime=rt)
+    t = ses.assign(config, agent, _task(config, agent), runtime=rt)
+    ses.deliver_kickoff(config, agent, t, runtime=rt)
     kickoff = rt.sent[0].lower()
     assert "already" in kickoff or "initial" in kickoff
     assert "improve" in kickoff or "sharpen" in kickoff
@@ -137,8 +138,8 @@ def test_a_plan_the_session_never_touched_is_flagged_as_still_the_seed(config, a
     from ai4science.harness.agents.sarsi import ledger
     rt = FakeRuntime()
     t = ses.assign(config, agent, _task(config, agent), runtime=rt)
-    # the session stopped without improving it
-    t = ses.collect_plan(config, agent, t, runtime=rt, session_idle=True)
+    # the owner accepts the sketch deliberately
+    t = ses.collect_plan(config, agent, t, runtime=rt, accept_seed=True)
     row = [r for r in ledger.read(config, "reports") if r.get("state") == "planned"][-1]
     assert row["unchanged"] is True
 
@@ -158,7 +159,7 @@ def test_a_plan_the_session_improved_is_not_flagged(config, agent):
 def test_a_task_with_no_plan_is_asked_to_plan_first(config, agent):
     rt = FakeRuntime()
     t = ses.assign(config, agent, _task(config, agent), runtime=rt)
-    kickoff = rt.sent[0]
+    kickoff = ses.deliver_kickoff(config, agent, t, runtime=rt) and rt.sent[0]
     assert "plan0.md" in kickoff
     assert "Verified when:" in kickoff
     assert "Permissions needed" in kickoff
@@ -167,7 +168,8 @@ def test_a_task_with_no_plan_is_asked_to_plan_first(config, agent):
 def test_the_planning_kickoff_says_to_stop_after_planning(config, agent):
     """Otherwise it drafts a plan and then does the work nobody granted."""
     rt = FakeRuntime()
-    ses.assign(config, agent, _task(config, agent), runtime=rt)
+    t = ses.assign(config, agent, _task(config, agent), runtime=rt)
+    ses.deliver_kickoff(config, agent, t, runtime=rt)
     assert "stop" in rt.sent[0].lower()
 
 
@@ -179,7 +181,8 @@ def test_the_task_is_planning_not_running(config, agent):
 
 def test_the_goal_and_scope_reach_the_planner(config, agent):
     rt = FakeRuntime()
-    ses.assign(config, agent, _task(config, agent), runtime=rt)
+    t = ses.assign(config, agent, _task(config, agent), runtime=rt)
+    ses.deliver_kickoff(config, agent, t, runtime=rt)
     assert "finish the export" in rt.sent[0]
     assert "/home/me/reports" in rt.sent[0]
 
@@ -306,3 +309,60 @@ def test_even_paused_the_owners_own_guidance_goes_through(config, agent):
     t.steering_paused = True
     ses.guide(config, agent, t, "carry on with this", runtime=rt, by_owner=True)
     assert rt.sent[-1] == "carry on with this"
+
+
+# ── the kickoff is delivered when the session can receive it ──────────
+
+def test_assign_does_not_type_into_a_session_that_is_still_booting(config, agent):
+    """social's live run: `assign` typed the kickoff microseconds after
+    `tmux new-session`, Claude Code was still starting, and the text was lost.
+    The session then sat there asking "What would you like me to work on?" while
+    the worker believed it had been told."""
+    rt = FakeRuntime()
+    t = ses.assign(config, agent, _task(config, agent), runtime=rt)
+    assert rt.sent == []                      # nothing typed at a booting session
+    assert t.kickoff_pending                  # it is owed one, and says so
+
+
+def test_the_pending_kickoff_is_the_planning_one(config, agent):
+    rt = FakeRuntime()
+    t = ses.assign(config, agent, _task(config, agent), runtime=rt)
+    assert "plan0.md" in t.kickoff_pending
+    assert "improve" in t.kickoff_pending.lower()
+
+
+def test_delivering_it_types_it_and_clears_it(config, agent):
+    rt = FakeRuntime()
+    t = ses.assign(config, agent, _task(config, agent), runtime=rt)
+    t = ses.deliver_kickoff(config, agent, t, runtime=rt)
+    assert rt.sent and "plan0.md" in rt.sent[0]
+    assert tsk.get(config, agent, t.id).kickoff_pending is None
+
+
+def test_it_is_delivered_once(config, agent):
+    rt = FakeRuntime()
+    t = ses.assign(config, agent, _task(config, agent), runtime=rt)
+    t = ses.deliver_kickoff(config, agent, t, runtime=rt)
+    ses.deliver_kickoff(config, agent, t, runtime=rt)
+    assert len(rt.sent) == 1
+
+
+# ── an untouched seed is never adopted on the agent's say-so ──────────
+
+def test_an_untouched_seed_is_not_adopted_even_when_the_session_is_quiet(config, agent):
+    """It was, and social's run went to `ready` holding a plan that said
+    "(provisional — no criterion was given)". A quiet session is not the same as
+    a session that has planned."""
+    rt = FakeRuntime()
+    t = ses.assign(config, agent, _task(config, agent), runtime=rt)
+    after = ses.collect_plan(config, agent, t, runtime=rt, session_idle=True)
+    assert after.state == tsk.PLANNING
+
+
+def test_the_owner_may_accept_the_seed_deliberately(config, agent):
+    """If the session will not plan, that is the owner's call to make — and it
+    is an explicit act, not something a quiet pass decides for them."""
+    rt = FakeRuntime()
+    t = ses.assign(config, agent, _task(config, agent), runtime=rt)
+    after = ses.collect_plan(config, agent, t, runtime=rt, accept_seed=True)
+    assert after.state in (tsk.READY, tsk.AWAITING_GRANT)

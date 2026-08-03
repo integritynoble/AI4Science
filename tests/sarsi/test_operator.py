@@ -474,3 +474,34 @@ def test_a_different_prompt_is_still_submitted(config, agent):
     pane.text = "❯ something else entirely\n"
     again = op.tick(config, agent, tsk.get(config, agent, t.id), pane=pane)
     assert again.kind == "submitted"
+
+
+# ── a wizard is not a gate, and saying so is the useful answer ────────
+
+ONBOARDING_PANE = """\
+ Choose the option that looks best with your terminal:
+
+ ❯ 1. Dark mode
+   2. Light mode
+   3. Dark mode (colorblind-friendly)
+
+  Syntax theme: Monokai Extended (ctrl+t to disable)
+"""
+
+
+def test_claude_codes_first_run_wizard_is_named_not_guessed_at(config, agent):
+    """A fresh user account hits Claude Code's onboarding before anything else.
+    Answering a wizard the loop does not understand is the guess the allowlist
+    exists to forbid — but "an option menu this loop has no rule for" tells the
+    owner nothing about what to do."""
+    action = op.tick(config, agent, _task(config, agent),
+                     pane=FakePane(ONBOARDING_PANE))
+    assert action.kind == "abstained"
+    assert "first-run" in action.detail.lower() or "onboarding" in action.detail.lower()
+    assert "claude" in action.detail.lower()
+
+
+def test_the_wizard_is_still_not_answered(config, agent):
+    pane = FakePane(ONBOARDING_PANE)
+    op.tick(config, agent, _task(config, agent), pane=pane)
+    assert pane.sent == []

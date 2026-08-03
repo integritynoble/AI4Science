@@ -115,6 +115,13 @@ def tick(config: Config, agent: Agent, task: tsk.Task, *, pane: Any,
     # `planning`, because collection used to return before `AN` ever ran.
     planning = task.state == tsk.PLANNING
 
+    # A task that has not been briefed yet cannot have done anything to judge.
+    if task.kickoff_pending and not planning:
+        from ai4science.harness.agents.sarsi import session as ses
+        if not _busy(screen) and _gate(screen) is None:
+            ses.deliver_kickoff(config, agent, task, runtime=_Sender(pane), now=now)
+            return Action("briefed", "the session has been told what to work")
+
     if verifier is not None and not planning:
         from ai4science.harness.agents.sarsi import evidence as evd, session as ses
         # What the session LEFT BEHIND, not what its terminal was showing. A
@@ -173,11 +180,15 @@ def tick(config: Config, agent: Agent, task: tsk.Task, *, pane: Any,
         return Action("submitted", stranded[:80])
 
     if planning:
-        # the session has had the pane to itself this pass — read back what it
-        # wrote, or leave it planning
         from ai4science.harness.agents.sarsi import session as ses
+        # The session is idle and can receive its first instruction now. It was
+        # not given one at assign, because a session started moments earlier is
+        # still booting and the text is simply lost.
+        if task.kickoff_pending:
+            ses.deliver_kickoff(config, agent, task, runtime=_Sender(pane), now=now)
+            return Action("briefed", "the session has been told what to plan")
         after = ses.collect_plan(config, agent, task, runtime=_Sender(pane),
-                                 session_idle=True, now=now)
+                                 now=now)
         if after.state != tsk.PLANNING:
             return Action("planned",
                           f"{len(after.criteria)} criterion(s); "
@@ -230,6 +241,11 @@ def run(config: Config, agent: Agent, task: tsk.Task, *, pane: Any,
 #: The one extra gate A0 makes necessary: writing THIS task's own plan file,
 #: while planning. Narrow on purpose — a blanket "allow writes while planning"
 #: would make the A0 drop decorative, which is worse than not dropping it.
+#: Claude Code's own first-run wizard. A fresh user account meets it before
+#: anything else, and it blocks every session that user starts.
+_ONBOARDING = re.compile(r"Choose the option that looks best|Syntax theme:|"
+                         r"colorblind-friendly", re.I)
+
 _PLAN_WRITE = re.compile(r"\b(create|write|edit|update)\b[^\n]*\bplan0(_\d+)?\.md\b",
                          re.I)
 
@@ -244,6 +260,12 @@ def _gate(screen: str, *, planning: bool = False):
     if planning and _PLAN_WRITE.search(screen):
         return ("1", "writing this task's own plan file, which is exactly what "
                      "it was asked to do")
+    if _ONBOARDING.search(screen):
+        # Recognised, and still not answered. Clicking through a setup wizard on
+        # the owner's behalf is the guess the allowlist forbids — but a fresh
+        # account meets this before it can do anything, so name it.
+        return (None, "this account has not finished Claude Code's first-run "
+                      "setup — run `claude` once as this user and complete it")
     return (None, "an option menu this loop has no rule for")
 
 

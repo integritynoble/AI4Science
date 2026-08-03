@@ -143,10 +143,11 @@ def assign(config: Config, agent: Agent, task: tsk.Task, *,
         # owner asked for — and the session is asked to improve it, then stop.
         _seed_plan(config, agent, task)
         task.state = tsk.PLANNING
+        task.kickoff_pending = planning_kickoff(config, agent, task)
         task = tsk._touch(agent, task, now)
-        runtime.send(task.session["name"], planning_kickoff(config, agent, task))
     else:
-        runtime.send(task.session["name"], kickoff(task, plan))
+        task.kickoff_pending = kickoff(task, plan)
+        task = tsk._touch(agent, task, now)
     ledger.append(config, "directives",
                   {"agent": agent.id, "task": task.id, "assigned": True,
                    "session": task.session["name"], "goal": task.goal}, now=now)
@@ -281,16 +282,32 @@ def _seed_plan(config: Config, agent: Agent, task: tsk.Task) -> str:
     return text
 
 
+def deliver_kickoff(config: Config, agent: Agent, task: tsk.Task, *,
+                    runtime: Optional[Any] = None, now=time.time) -> tsk.Task:
+    """Hand the session its first instruction, once it can receive one.
+
+    `assign` no longer types it: a session started microseconds ago is still
+    booting, the text is dropped, and the worker is left believing it has said
+    something the session never heard. So it waits here until the supervision
+    pass finds the session idle.
+    """
+    pending = task.kickoff_pending
+    if not pending:
+        return task
+    (runtime or MachineRuntime()).send((task.session or {}).get("name", ""), pending)
+    task.kickoff_pending = None
+    return tsk._touch(agent, task, now)
+
+
 def collect_plan(config: Config, agent: Agent, task: tsk.Task, *,
                  runtime: Optional[Any] = None, session_idle: bool = False,
-                 now=time.time) -> tsk.Task:
-    """Read back the plan, once the session has had its say.
+                 accept_seed: bool = False, now=time.time) -> tsk.Task:
+    """Read back the plan the session wrote — never the seed it ignored.
 
     A plan identical to the worker's seed means the session has not engaged with
-    it yet, so it is left alone while the session is still working. When the
-    session has stopped, the seed is adopted anyway — flagged as untouched,
-    because a task that waits forever for a better plan is worse than one that
-    runs on an honest sketch the owner can see is a sketch.
+    it, and no amount of quiet changes that. The task stays `planning`, visibly,
+    until either the session improves the plan or the owner accepts the seed
+    deliberately with `accept_seed`.
     """
     if task.state != tsk.PLANNING:
         return task
@@ -300,8 +317,12 @@ def collect_plan(config: Config, agent: Agent, task: tsk.Task, *,
 
     seed_path = tsk.dir_of(agent, task.id) / SEED_FILE
     untouched = seed_path.exists() and seed_path.read_text() == path.read_text()
-    if untouched and not session_idle:
-        return task                       # give it its turn
+    if untouched and not accept_seed:
+        # A quiet session is NOT a session that has planned. social's run went
+        # to `ready` holding a plan that still said "(provisional — no criterion
+        # was given)" because a quiet pass adopted the seed on the agent's own
+        # say-so. If the session will not plan, that is the owner's call.
+        return task
 
     try:
         plan = pl.parse(path.read_text())
