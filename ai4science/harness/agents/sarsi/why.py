@@ -23,7 +23,7 @@ from ai4science.harness.agents.sarsi import task as tsk
 from ai4science.harness.agents.sarsi.registry import Agent, Config
 
 
-def explain(config: Config, agent: Agent, task: tsk.Task) -> str:
+def explain(config: Config, agent: Agent, task: tsk.Task, *, acts=None) -> str:
     lines: List[str] = [f"{task.id} — {task.goal}", f"state: {task.state}"]
 
     plan = tsk.read_plan(config, agent, task)
@@ -95,6 +95,15 @@ def explain(config: Config, agent: Agent, task: tsk.Task) -> str:
         lines.append("waiting on you to grant: " + ", ".join(task.awaiting))
     elif task.blocked_by:
         lines.append(f"not moving: {task.blocked_by}")
+
+    # what it wrote, against what it was allowed to write
+    from ai4science.harness.agents.sarsi import blast
+    radius = blast.check(config, agent, task, acts=acts)
+    if radius.escaped:
+        lines.append("BLAST RADIUS: wrote outside the declared paths — "
+                     + ", ".join(radius.outside[:5]))
+    elif radius.read and (radius.inside or radius.unchecked):
+        lines.append("blast radius: " + radius.summary)
 
     name = (task.session or {}).get("name")
     if name:

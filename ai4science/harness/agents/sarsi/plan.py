@@ -25,6 +25,8 @@ PERMISSIONS_HEADING = "## Permissions needed"
 VERIFIED_PREFIX = "Verified when:"
 #: where the work happens, when it is not the task's own folder
 WORK_ROOT_PREFIX = "Working directory:"
+#: other paths the plan may change, one per line
+MAY_TOUCH_PREFIX = "May also touch:"
 _PHASE_RE = re.compile(r"^##\s+Phase\s+\d+\s+—\s+(?P<title>.+?)\s*$", re.M)
 
 
@@ -76,12 +78,17 @@ class Plan:
     #: path cannot move it. `None` means the task folder, which stays the
     #: default — the boundary moves only when the plan says to move it.
     work_root: Optional[str] = None
+    #: Paths BESIDES the working directory this plan may change. Declared, so
+    #: the blast-radius check has something to check against; a path the agent
+    #: touched must never be able to authorise itself.
+    may_touch: Sequence[str] = field(default_factory=tuple)
 
     def __post_init__(self) -> None:
         if not self.phases:
             raise BadPlan("a plan needs at least one phase")
         object.__setattr__(self, "phases", tuple(self.phases))
         object.__setattr__(self, "permissions", tuple(self.permissions))
+        object.__setattr__(self, "may_touch", tuple(self.may_touch))
         object.__setattr__(self, "constraints", tuple(self.constraints))
 
     # ── what the verifier is given ────────────────────────────────────
@@ -102,6 +109,10 @@ class Plan:
         out = [f"# {self.goal}", ""]
         if self.work_root:
             out += [f"{WORK_ROOT_PREFIX} {self.work_root}", ""]
+        for path in self.may_touch:
+            out += [f"{MAY_TOUCH_PREFIX} {path}"]
+        if self.may_touch:
+            out.append("")
         for i, phase in enumerate(self.phases, start=1):
             out.append(f"## Phase {i} — {phase.title}")
             if phase.body:
@@ -194,10 +205,15 @@ def parse(text: str) -> Plan:
             break
 
     work_root = None
+    may_touch: List[str] = []
     for line in lines:
-        if line.strip().lower().startswith(WORK_ROOT_PREFIX.lower()):
-            work_root = line.split(":", 1)[1].strip() or None
-            break
+        stripped = line.strip()
+        if work_root is None and stripped.lower().startswith(WORK_ROOT_PREFIX.lower()):
+            work_root = stripped.split(":", 1)[1].strip() or None
+        elif stripped.lower().startswith(MAY_TOUCH_PREFIX.lower()):
+            extra = stripped.split(":", 1)[1].strip()
+            if extra:
+                may_touch.append(extra)
 
     phases: List[Phase] = []
     permissions: List[str] = []
@@ -257,7 +273,8 @@ def parse(text: str) -> Plan:
                 current_body.append(line)
     flush()
     return Plan(goal=goal, phases=phases, permissions=permissions,
-                constraints=constraints, work_root=work_root)
+                constraints=constraints, work_root=work_root,
+                may_touch=may_touch)
 
 
 _NEGATIVE = re.compile(r"^(no|none|not|never|nothing)\b", re.I)

@@ -787,3 +787,17 @@ def test_cli_decisions_ack_needs_an_agent(isolated):
     runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
     result = runner.invoke(app, ["sarsi", "decisions", "--ack"])
     assert result.exit_code != 0
+
+
+def test_cli_blast_reports_the_declared_paths(isolated):
+    _config, _agent, t = _one_task()
+    result = runner.invoke(app, ["sarsi", "blast", "work", t.id])
+    assert result.exit_code == 0
+    assert "declared" in result.output.lower()
+
+
+def test_cli_blast_does_not_claim_clean_without_a_record(isolated):
+    """No transcript is not a clean bill."""
+    _config, _agent, t = _one_task()
+    result = runner.invoke(app, ["sarsi", "blast", "work", t.id])
+    assert "clean" not in result.output.lower() or "not a clean" in result.output.lower()

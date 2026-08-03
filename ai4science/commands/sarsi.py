@@ -203,6 +203,25 @@ def tasks(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
                       f"[cyan]sarsi tasks {agent_id} --archived[/cyan]", style="dim")
 
 
+@app.command("blast", help="What it wrote, against the paths its plan declared.")
+def blast_cmd(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
+              task_id: str = typer.Argument(..., help="Task id")) -> None:
+    from ai4science.harness.agents.sarsi import blast
+
+    config, agent, t = _load_task(agent_id, task_id)
+    got = blast.check(config, agent, t)
+    console.print("declared paths:", style="dim")
+    for path in got.declared:
+        console.print(f"  {path}", markup=False, highlight=False)
+    style = "red" if got.escaped else ("dim" if got.confident else "yellow")
+    console.print(got.summary, style=style, markup=False, highlight=False)
+    for path in got.outside:
+        console.print(f"  outside: {path}", style="red", markup=False,
+                      highlight=False)
+    if got.escaped:
+        raise typer.Exit(code=1)
+
+
 @app.command("decisions", help="What the agent decided without you, and at which rung.")
 def decisions(agent_id: Optional[str] = typer.Option(None, "--agent",
                                                      help="Only this worker."),

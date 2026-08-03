@@ -90,6 +90,8 @@ class Task:
     #: a stopped or archived task cost — the live record is cleared on stop,
     #: and the working directory it names is where the transcript lives.
     past_sessions: List[Dict[str, Any]] = field(default_factory=list)
+    #: Paths besides the working directory this plan declared it may change.
+    may_touch: List[str] = field(default_factory=list)
     #: Where the work happens, from the plan's `Working directory:` line.
     #: Evidence is gathered from here; empty means the task's own folder.
     work_root: Optional[str] = None
@@ -238,6 +240,7 @@ def attach_plan(config: Config, agent: Agent, task: Task, plan: pl.Plan, *,
     task.plan_version = plan.version
     task.criteria = plan.criteria()
     task.work_root = plan.work_root
+    task.may_touch = list(plan.may_touch)
     task.awaiting = [p for p in plan.permissions if p not in task.grants]
     # asking here is the point of the plan step: the worst moment to request a
     # permission is halfway through unattended work
@@ -256,6 +259,7 @@ def adopt_plan(config: Config, agent: Agent, task: Task, plan: pl.Plan, *,
     task.plan_version = plan.version
     task.criteria = plan.criteria()
     task.work_root = plan.work_root
+    task.may_touch = list(plan.may_touch)
     task.awaiting = [p for p in plan.permissions if p not in task.grants]
     task.state = AWAITING_GRANT if task.awaiting else READY
     task.plan_agreed = True           # the session has had its say
