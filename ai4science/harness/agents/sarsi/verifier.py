@@ -102,14 +102,33 @@ def build_prompt(*, goal: str, criteria: List[str], evidence: str) -> str:
     return "\n".join(lines)
 
 
+#: A verdict LINE: begins with PASS or FAIL as a standalone token. The negative
+#: lookahead is the whole fix — `PASS/FAIL` is not a verdict, it is the word
+#: "verdict", and a live run recorded a task VERIFIED off an answer that said
+#: `PASS/FAIL judgment on visible evidence only…` and then FAILED it two lines
+#: down. Matching the first word of a narration is not reading a verdict.
+_VERDICT_LINE = re.compile(r"^(PASS|FAIL)(?![\w/|-])[:\s]*(.*)$", re.I)
+
+
 def parse(answer: str) -> Verdict:
+    """Read the verdict out of the answer — by its verdict LINE, not its first
+    word, and never by guessing when the answer says two things."""
     text = (answer or "").strip()
-    m = re.match(r"^\s*(PASS|FAIL)\b[:\s-]*(.*)$", text, re.I | re.S)
-    if not m:
+    found = []
+    for line in text.splitlines():
+        m = _VERDICT_LINE.match(line.strip())
+        if m:
+            found.append((m.group(1).upper(), (m.group(2) or "").strip()))
+    if not found:
         return _unverified(f"the verifier's answer could not be read as a "
                            f"verdict: {text[:120]!r}")
-    state = m.group(1).upper()
-    why = (m.group(2) or "").strip()
+    states = {state for state, _ in found}
+    if len(states) > 1:
+        # It said both. Picking one would be inventing a judgment; saying
+        # nothing was decided is the truth.
+        return _unverified(f"the verifier's answer gave more than one verdict: "
+                           f"{sorted(states)}")
+    state, why = found[0]
     return {"state": state, "why": why}
 
 

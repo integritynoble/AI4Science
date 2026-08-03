@@ -67,6 +67,52 @@ def test_no_verifier_available_is_unverified_and_never_a_pass():
     assert "no model configured" in out["why"]
 
 
+# ── reading the verdict out of a real answer ──────────────────────────
+
+#: Verbatim from a live run. The model narrated before it judged, and the word
+#: it narrated with was "PASS/FAIL". The old parser matched PASS at position 0
+#: and recorded a task VERIFIED that this answer rejects.
+LIVE_FALSE_PASS = (
+    "PASS/FAIL judgment on visible evidence only — let me read what's "
+    "actually shown.\n\n"
+    "FAIL: The visible pane contains no `ls`/`cat`/`grep` output for "
+    "report.md — only narration about the harness's capture mechanism and an "
+    'in-progress "Running 1 shell command…" spinner; neither the file\'s '
+    "existence in the task folder nor the total 111 appears anywhere in the "
+    "evidence."
+)
+
+
+def test_a_narrated_answer_is_read_by_its_verdict_line_not_its_first_word():
+    """The live bug: `PASS/FAIL` is not a verdict, it is the word "verdict"."""
+    out = vf.parse(LIVE_FALSE_PASS)
+    assert out["state"] == "FAIL"
+    assert "no `ls`" in out["why"]
+
+
+def test_pass_slash_fail_alone_is_not_a_verdict():
+    assert vf.parse("PASS/FAIL: unclear")["state"] == "UNVERIFIED"
+
+
+def test_a_verdict_word_inside_a_sentence_is_not_a_verdict():
+    out = vf.parse("I would PASS this if the file were shown.")
+    assert out["state"] == "UNVERIFIED"
+
+
+def test_two_disagreeing_verdict_lines_are_unreadable():
+    """Better to say nothing was decided than to pick one."""
+    assert vf.parse("PASS: looks right\nFAIL: on reflection, no")["state"] == "UNVERIFIED"
+
+
+def test_a_clean_verdict_after_a_preamble_is_found():
+    out = vf.parse("Let me check the evidence.\n\nPASS: 1,204 rows are visible")
+    assert out["state"] == "PASS" and "1,204 rows" in out["why"]
+
+
+def test_a_bare_verdict_word_on_its_own_line_still_counts():
+    assert vf.parse("FAIL")["state"] == "FAIL"
+
+
 # ── what it is told ───────────────────────────────────────────────────
 
 def test_the_prompt_carries_every_criterion():
