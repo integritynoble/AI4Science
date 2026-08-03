@@ -551,6 +551,26 @@ def verify(config: Config, agent: Agent, task: tsk.Task, *,
     **fed back into the session** as the next instruction rather than merely
     logged — a reason that only reaches a log steers nothing.
     """
+    if task.plan_stale:
+        # The owner drove this session by hand, so the plan no longer describes
+        # what happened. Judging against the goal alone would silently answer a
+        # WEAKER question than the one the owner set, and report the answer as
+        # though it were the one they asked — which is how a false PASS gets
+        # recorded. Refusing, and saying how to clear it, is the honest move.
+        task.verdict = {
+            "verdict": "UNVERIFIED",
+            "reason": ("the plan is stale: you drove this session directly, so "
+                       "it no longer describes what happened. Rewrite it first "
+                       f"— /edit {task.id} <phase#> <criterion> — then ask again."),
+            "engine": engine or "unknown", "independent": False,
+            "criteria": list(task.criteria or []),
+        }
+        task.state = tsk.RUNNING
+        ledger.append(config, "reports",
+                      {"agent": agent.id, "task": task.id, "state": "not-judged",
+                       "evidence": ["the plan is stale"]}, now=now)
+        return tsk._touch(agent, task, now)
+
     criteria = list(task.criteria or [])
     verdict = dict(verifier(goal=task.goal, criteria=criteria, evidence=evidence) or {})
     verdict["engine"] = engine or "unknown"

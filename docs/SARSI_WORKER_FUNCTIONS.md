@@ -13,7 +13,9 @@ Where the three disagreed, the disagreement is stated rather than averaged away.
 
 **Status is against the `AI4Science` implementation** (`ai4science/harness/agents/sarsi/`).
 The `singularity/sarsi/` implementation is a second, partly-overlapping build of
-the same spec; see [Two implementations](#two-implementations) at the end.
+the same spec. Three behaviours had diverged; **all three are now decided** —
+see [the three decisions](#two-implementations--and-the-three-decisions-that-settled)
+at the end.
 
 ---
 
@@ -47,7 +49,7 @@ Each of these is live, tested, and exercised on the installed binary.
 | `guide` / `/guided` | Steer by hand. The owner's word always goes through; the worker's stands down when the owner holds the wheel. |
 | `/interact` | Hands over the `tmux attach` line and stands back. **It does not relay.** |
 | `/history` | What has happened, from the record. |
-| `check` | Ask the verifier: **PASS / FAIL / UNVERIFIED**, with a reason. |
+| `check` | Ask the verifier: **PASS / FAIL / UNVERIFIED**, with a reason. A **stale plan is refused, not judged** — see decision 2. |
 | `retry` | **Hand a FAIL back carrying the verifier's reason.** Only a judged `FAIL` retries; capped at 3; a `PASS` clears the count. |
 
 ### Knowing where you are, and what needs you
@@ -237,27 +239,68 @@ What the doc refuses is a *button*. What exists is a *reason carrier*.
 
 ---
 
-## Two implementations
+## Two implementations — and the three decisions that settled
 
-These functions exist twice, in two repositories, from one spec:
+These functions exist twice, in two repositories, from one spec. Three
+behaviours had diverged. **All three are now decided, and this implementation
+follows the decision in every case.**
 
-| | `AI4Science/ai4science/harness/agents/sarsi/` | `singularity/sarsi/` |
+### 1. Should `retry` exist? — **yes**
+
+`singularity/docs/sarsi-worker-functions.md` listed it as *do not build*:
+*"a bare retry re-runs a plan that already failed its criteria."*
+
+The objection is right about a **button** and wrong about a **reason carrier**.
+What is built refuses to be the thing the doc warns against:
+
+- the verdict's **reason** is the instruction, so a retry always carries new
+  information;
+- a task with **no verdict** is refused outright;
+- **`UNVERIFIED`** is refused by name — nothing was judged, so a retry would
+  spend a session on a *looking* problem rather than a *doing* one;
+- it **caps at 3**, then reports instead of spending.
+
+### 2. The stale-plan rule — **yes, the strict one**
+
+After Interact the owner drove the session by hand, so the plan no longer
+describes what happened. The two builds handled that differently:
+
+| | behaviour |
+|---|---|
+| was, here | criteria **withheld**, judged **against the goal alone** |
+| was, singularity | **`UNVERIFIED`** — rewrite the plan before asking |
+
+**The strict rule wins, and this implementation now uses it.** Judging against
+the goal alone silently answers a *weaker* question than the one the owner set
+and reports the answer as though it were the one they asked. That is exactly how
+a false PASS gets recorded — the failure mode this system has already been bitten
+by once, when a narrated `PASS/FAIL` line was read as a verdict.
+
+The refusal names the escape hatch: `/edit <task> <phase#> <criterion>` clears
+the staleness, because rewriting the plan *is* the owner restating the mission.
+
+### 3. Should answering be wired into the loop? — **yes**
+
+It is, here: `operator.py` calls `answering.answer()` inside the supervision
+pass, so a session that asks *"which directory should I index?"* is answered
+within a pass instead of waiting for the owner. In `singularity/sarsi/`,
+`answer.py` is built, tested, and called by nothing — its own proposal calls
+wiring it *"the largest value per line of new code anywhere in the system."*
+
+### Where that leaves the two builds
+
+| | `AI4Science/…/sarsi/` | `singularity/sarsi/` |
 |---|---|---|
-| Answering the session's questions | **wired into the supervision loop** (`operator.py`) | built, tested, *called by nothing* |
-| `UNVERIFIED` verdict | yes | yes (originated here) |
-| Task lifecycle | `stop` / `archive` / `reopen` | proposed |
-| `retry` | built, reason-carrying | listed as "do not build" |
-| Entry cursor | built | `shell.py`, half-written, uncommitted |
-| `attention` | built | proposed — *"the one to do before anything else"* |
+| `retry` | built, reason-carrying | listed "do not build" |
+| stale plan | **UNVERIFIED, strict** | UNVERIFIED, strict |
+| answering wired | **yes** | no |
+| task lifecycle | `stop` / `archive` / `reopen` | proposed |
+| entry cursor | built | `shell.py`, uncommitted |
+| `attention` | built | proposed |
 
-The single highest-value item in the `singularity` proposal — *"wire `answer.py`
-into the timer… largest value per line of new code anywhere in the system"* — is
-already wired in this implementation and unwired in that one.
-
-**Recommendation: make one canonical.** Two builds of one spec now disagree on
-whether `retry` should exist, on the stale-plan rule, and on whether answering is
-wired — and each disagreement is a place where the documentation is true of one
-repository and false of the other.
+The three behavioural disagreements are settled. What remains is **duplication,
+not disagreement** — one spec, two codebases, and documentation that is true of
+one and false of the other until a canonical repository is chosen.
 
 ---
 

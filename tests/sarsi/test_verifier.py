@@ -192,3 +192,72 @@ def test_a_judge_that_says_fail_is_a_real_failure_not_an_unverified():
 def test_an_unverified_result_was_not_judged():
     out = vf.unavailable("nothing installed")(goal="g", criteria=["x"], evidence="e")
     assert vf.was_judged(out) is False
+
+
+# ── a stale plan is not judged at all ─────────────────────────────────
+
+def test_a_stale_plan_is_refused_rather_than_judged_against_the_goal(
+        monkeypatch, tmp_path):
+    """The owner drove the session by hand, so the plan no longer describes
+    what happened.
+
+    Withholding the criteria and judging against the goal alone silently
+    lowers the standard: the verifier then answers PASS about a weaker
+    question than the one the owner set, without saying that is what it did.
+    Refusing, and saying why, is the only honest move.
+    """
+    monkeypatch.setenv("SARSI_STATE_DIR", str(tmp_path))
+    from ai4science.harness.agents.sarsi import (plan as pl, registry as reg,
+                                                 session as ses, task as tsk,
+                                                 worker)
+    config = reg.parse(reg.default_config(owner_id="1"), root=tmp_path)
+    config.ensure_dirs()
+    agent = config.agents["work"]
+    d = worker.Directive(agent_id=agent.id, goal="finish the export")
+    t = tsk.attach_plan(config, agent, tsk.create(config, agent, d), pl.draft(d))
+    t.plan_stale = True
+    tsk._touch(agent, t, __import__("time").time)
+
+    asked = []
+
+    def judge(**kw):
+        asked.append(kw)
+        return {"verdict": "PASS", "reason": "looks done to me"}
+
+    out = ses.verify(config, agent, t, verifier=judge, evidence="whatever")
+    assert asked == []                              # never even asked
+    assert out.verdict["verdict"] == "UNVERIFIED"
+    assert "stale" in out.verdict["reason"].lower()
+    assert out.state != tsk.VERIFIED
+
+
+def test_the_refusal_says_how_to_clear_it(monkeypatch, tmp_path):
+    monkeypatch.setenv("SARSI_STATE_DIR", str(tmp_path))
+    from ai4science.harness.agents.sarsi import (plan as pl, registry as reg,
+                                                 session as ses, task as tsk,
+                                                 worker)
+    config = reg.parse(reg.default_config(owner_id="1"), root=tmp_path)
+    config.ensure_dirs()
+    agent = config.agents["work"]
+    d = worker.Directive(agent_id=agent.id, goal="finish the export")
+    t = tsk.attach_plan(config, agent, tsk.create(config, agent, d), pl.draft(d))
+    t.plan_stale = True
+    tsk._touch(agent, t, __import__("time").time)
+    out = ses.verify(config, agent, t,
+                     verifier=lambda **kw: {"verdict": "PASS", "reason": "x"})
+    assert "/edit" in out.verdict["reason"] or "rewrite" in out.verdict["reason"].lower()
+
+
+def test_a_fresh_plan_is_judged_normally(monkeypatch, tmp_path):
+    monkeypatch.setenv("SARSI_STATE_DIR", str(tmp_path))
+    from ai4science.harness.agents.sarsi import (plan as pl, registry as reg,
+                                                 session as ses, task as tsk,
+                                                 worker)
+    config = reg.parse(reg.default_config(owner_id="1"), root=tmp_path)
+    config.ensure_dirs()
+    agent = config.agents["work"]
+    d = worker.Directive(agent_id=agent.id, goal="finish the export")
+    t = tsk.attach_plan(config, agent, tsk.create(config, agent, d), pl.draft(d))
+    out = ses.verify(config, agent, t,
+                     verifier=lambda **kw: {"verdict": "PASS", "reason": "done"})
+    assert out.verdict["verdict"] == "PASS"

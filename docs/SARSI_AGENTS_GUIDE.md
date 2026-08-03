@@ -335,6 +335,18 @@ Three answers, and the third is why you can trust the other two:
 Answers state their authority: *verified*, *recorded*, *not judged*, *I think* —
 and name the session. In a fleet, "it worked" is an incomplete sentence.
 
+**A stale plan is refused, not judged.** After Interact you drove the session by
+hand, so the plan no longer describes what happened — and judging against the
+goal alone would quietly answer a *weaker* question than the one you set, then
+report the answer as though it were the one you asked. That is how a false PASS
+gets recorded. `check` returns UNVERIFIED and names the way out:
+
+```bash
+ai4science sarsi ask work "/edit <task> 1 <what done now means>"
+```
+
+Rewriting the plan **is** you restating the mission, so it clears the staleness.
+
 ## 8. What leaves the machine
 
 Nothing, without you:
