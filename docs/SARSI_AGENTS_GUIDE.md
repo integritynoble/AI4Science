@@ -336,9 +336,10 @@ your own session. The worker's does not.
 - **`sarsi-worker`, `work` and `abraham` have run live end to end.** The other
   four assign, get their own governed session and are handed the plan — but
   through a stand-in runtime, not four more live sessions.
-- **The A0 planning drop is new and has not run live yet.** It is tested, and
-  the live evidence for it is the run that showed why it was needed: a session
-  told to plan and stop wrote its artefact anyway.
+- **The A0 planning drop is confirmed live**: a session planning at `A0` left
+  `plan0.md` and nothing else in its folder, where the same shape at `A1` had
+  written its artefact during planning. Release raises a running session
+  without restarting it.
 - **No transmitter has run against a live service.** Mail, post and submit are
   all exercised against fakes; the endpoint shapes are unverified.
 - **`AN` knows one gate** — the folder-trust prompt. Any command-approval prompt
