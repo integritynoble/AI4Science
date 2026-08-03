@@ -43,8 +43,13 @@ class CouldNotStart(Exception):
 class MachineRuntime:
     """The real one: the machine agent's tmux session control."""
 
-    def start(self, name: str, cwd: str, *, govern: bool, ceiling: str) -> Dict[str, Any]:
+    def start(self, name: str, cwd: str, *, govern: bool, ceiling: str,
+              env: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
         from ai4science.harness.agents.machine import sessions
+        if env:
+            # The secret reaches the local session and nothing that outlives it.
+            import os
+            os.environ.update({_env_key(k): v for k, v in env.items()})
         return sessions.start_session(name, cwd, govern=govern, ceiling=ceiling)
 
     def send(self, name: str, text: str) -> Dict[str, Any]:
@@ -53,7 +58,8 @@ class MachineRuntime:
 
 
 def assign(config: Config, agent: Agent, task: tsk.Task, *,
-           runtime: Optional[Any] = None, now=time.time) -> tsk.Task:
+           runtime: Optional[Any] = None, vault_prompt: Optional[Callable] = None,
+           now=time.time) -> tsk.Task:
     if not agent.is_worker:
         raise NotAWorker(
             f"{agent.id} is a manager: assigning a task to sarsi-claude may be "
@@ -65,12 +71,18 @@ def assign(config: Config, agent: Agent, task: tsk.Task, *,
     if task.session:
         return task                          # one task, one session
 
+    # VLT sits here: between the owner's grant and the session starting. A
+    # denied secret stops the task before any session exists, and the denial
+    # names the secret so the owner can grant it if they meant to.
+    secrets = _unlock(config, agent, task, vault_prompt)
+
     runtime = runtime or MachineRuntime()
     workdir = tsk.dir_of(agent, task.id)
     workdir.mkdir(parents=True, exist_ok=True)
     name = f"{agent.id}-{task.id[-4:]}"
 
-    started = runtime.start(name, str(workdir), govern=True, ceiling=agent.ceiling)
+    started = runtime.start(name, str(workdir), govern=True, ceiling=agent.ceiling,
+                            env=secrets)
     if not (started or {}).get("ok"):
         reason = (started or {}).get("reason") or "the session would not start"
         ledger.append(config, "reports",
@@ -90,6 +102,40 @@ def assign(config: Config, agent: Agent, task: tsk.Task, *,
                   {"agent": agent.id, "task": task.id, "assigned": True,
                    "session": task.session["name"], "goal": task.goal}, now=now)
     return task
+
+
+def _unlock(config: Config, agent: Agent, task: tsk.Task,
+            prompt: Optional[Callable]) -> Dict[str, str]:
+    """Ask the vault for every secret this task's directive declared.
+
+    Returns the values for the local session only. They are never written to the
+    task record, the plan, or any ledger — the vault ledger records *which*
+    secret was asked for and what was decided, and nothing more.
+    """
+    from ai4science.harness.agents.sarsi import vault
+
+    wanted = list((task.directive or {}).get("requires_secrets") or [])
+    if not wanted:
+        return {}
+    prompt = prompt or _refuse_silently
+    out: Dict[str, str] = {}
+    for secret in wanted:
+        decision = vault.ask(config, agent_id=agent.id, secret=secret,
+                             act="read", purpose=task.goal, prompt=prompt,
+                             standing_grants=agent.standing_grants)
+        if not decision.allowed:
+            raise NotReady(decision.reason)
+        out[secret] = decision.value or ""
+    return out
+
+
+def _refuse_silently(**_: Any) -> None:
+    """No way to reach the owner is not an approval."""
+    return None
+
+
+def _env_key(name: str) -> str:
+    return name.upper().replace(".", "_").replace("-", "_")
 
 
 def kickoff(task: tsk.Task, plan: Optional[pl.Plan]) -> str:

@@ -232,6 +232,46 @@ def test_check_without_a_verifier_never_passes(isolated):
     assert "fail" in result.output.lower()
 
 
+def test_vault_lists_names_but_never_values(isolated):
+    from ai4science.harness.agents.sarsi import vault
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    vault.put(reg.load(), "mail.read", "hunter2")
+    out = runner.invoke(app, ["sarsi", "vault", "list"]).output
+    assert "mail.read" in out and "hunter2" not in out
+
+
+def test_vault_policy_refuses_the_broad_money_form(isolated):
+    """`abraham may use the card` must not be writable from the CLI either."""
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    result = runner.invoke(app, ["sarsi", "vault", "policy", "abraham",
+                                 "card.personal", "pay", "--allow"])
+    assert result.exit_code != 0
+    assert "counterparty" in result.output or "limit" in result.output
+
+
+def test_vault_policy_accepts_the_narrow_form(isolated):
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    result = runner.invoke(app, ["sarsi", "vault", "policy", "abraham",
+                                 "card.personal", "pay", "--allow",
+                                 "--amount", "40", "--currency", "GBP",
+                                 "--counterparty", "grocery",
+                                 "--uses", "2", "--per", "week"])
+    assert result.exit_code == 0
+
+
+def test_a_run_needing_a_denied_secret_names_it(isolated):
+    from ai4science.harness.agents.sarsi import vault
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    vault.put(reg.load(), "mail.read", "hunter2")
+    out = runner.invoke(app, ["sarsi", "do", "work", "triage my mail",
+                              "--secret", "mail.read"]).output
+    task_id = [w for w in out.split() if w.startswith("tsk_")][0]
+    runner.invoke(app, ["sarsi", "grant", "work", task_id, "read secret mail.read"])
+    result = runner.invoke(app, ["sarsi", "run", "work", task_id, "--deny-secrets"])
+    assert result.exit_code != 0
+    assert "mail.read" in result.output
+
+
 def test_gateway_with_no_tokens_reports_rather_than_polling_nothing(isolated):
     runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
     result = runner.invoke(app, ["sarsi", "gateway", "--passes", "1"])

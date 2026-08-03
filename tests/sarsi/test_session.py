@@ -8,6 +8,9 @@ verdict comes back from a verifier, never from the agent that did the work.
 Every outside call — starting tmux, typing into the pane, asking a model — is an
 injected seam, so these rules are asserted against real code without a terminal.
 """
+import json
+from dataclasses import asdict
+
 import pytest
 
 from ai4science.harness.agents.sarsi import (plan as pl, registry as reg,
@@ -40,9 +43,9 @@ class FakeRuntime:
         self.started = []
         self.sent = []
 
-    def start(self, name, cwd, *, govern, ceiling):
+    def start(self, name, cwd, *, govern, ceiling, env=None):
         self.started.append({"name": name, "cwd": cwd, "govern": govern,
-                             "ceiling": ceiling})
+                             "ceiling": ceiling, "env": dict(env or {})})
         if not self.ok:
             return {"ok": False, "reason": "could not start tmux session"}
         return {"ok": True, "name": name, "pid": 4242, "cwd": cwd,
@@ -123,6 +126,47 @@ def test_a_session_that_will_not_start_is_reported_not_pretended(config, agent):
     with pytest.raises(ses.CouldNotStart, match="tmux"):
         ses.assign(config, agent, t, runtime=rt)
     assert tsk.get(config, agent, t.id).session is None
+
+
+# ── VLT sits between the grant and the session ────────────────────────
+
+def _secret_task(config, agent):
+    from ai4science.harness.agents.sarsi import vault
+    vault.put(config, "mail.read", "hunter2")
+    d = worker.Directive(agent_id=agent.id, goal="triage the mailbox",
+                         requires_secrets=["mail.read"])
+    t = tsk.attach_plan(config, agent, tsk.create(config, agent, d), _plan())
+    t = tsk.grant(config, agent, t, "read secret mail.read")
+    return tsk.start(config, agent, t)
+
+
+def test_a_denied_secret_stops_the_task_before_any_session_starts(config, agent):
+    rt = FakeRuntime()
+    t = _secret_task(config, agent)
+    with pytest.raises(ses.NotReady, match="mail.read"):
+        ses.assign(config, agent, t, runtime=rt,
+                   vault_prompt=lambda **kw: "no")
+    assert rt.started == []
+
+
+def test_an_allowed_secret_reaches_the_runtime_and_nothing_else(config, agent):
+    """On allow the value goes to the local session and nowhere else — not the
+    task record, not the plan, not a ledger."""
+    from ai4science.harness.agents.sarsi import ledger
+    rt = FakeRuntime()
+    t = ses.assign(config, agent, _secret_task(config, agent), runtime=rt,
+                   vault_prompt=lambda **kw: "yes")
+    assert rt.started[0]["env"]["mail.read"] == "hunter2"
+    assert "hunter2" not in json.dumps(asdict(t))
+    assert "hunter2" not in json.dumps(ledger.read(config, "vault"))
+    assert "hunter2" not in (tsk.dir_of(agent, t.id) / "plan0.md").read_text()
+
+
+def test_a_task_needing_no_secret_never_asks(config, agent):
+    asked = []
+    ses.assign(config, agent, _task(config, agent), runtime=FakeRuntime(),
+               vault_prompt=lambda **kw: asked.append(kw))
+    assert asked == []
 
 
 # ── it is handed the PLAN, not the wish ───────────────────────────────

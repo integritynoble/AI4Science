@@ -210,14 +210,17 @@ def _worker_or_exit(config: reg.Config, agent_id: str):
 
 @app.command("run", help="Hand a task's plan to sarsi-claude — starts its governed session.")
 def run_cmd(agent_id: str = typer.Argument(..., help="Worker id"),
-            task_id: str = typer.Argument(..., help="Task id")) -> None:
+            task_id: str = typer.Argument(..., help="Task id"),
+            deny_secrets: bool = typer.Option(False, "--deny-secrets",
+                                              help="Answer every vault prompt with no (a dry check).")) -> None:
     from ai4science.harness.agents.sarsi import session as ses, task as tsk, worker
 
     config = _load()
     agent = _worker_or_exit(config, agent_id)
     t = _task_or_exit(config, agent, task_id)
+    prompt = (lambda **kw: "no") if deny_secrets else _terminal_vault_prompt
     try:
-        t = ses.assign(config, agent, t)
+        t = ses.assign(config, agent, t, vault_prompt=prompt)
     except worker.NotAWorker as e:
         console.print(str(e), style="red", markup=False, highlight=False)
         raise typer.Exit(code=2)
@@ -233,6 +236,63 @@ def run_cmd(agent_id: str = typer.Argument(..., help="Worker id"),
     console.print(f"take the wheel yourself: tmux attach -t {name}   "
                   f"(Ctrl-b d hands it back)", style="dim",
                   markup=False, highlight=False)
+
+
+vault_app = typer.Typer(help="The vault: secrets never leave this machine.",
+                        no_args_is_help=True)
+app.add_typer(vault_app, name="vault")
+
+
+@vault_app.command("list", help="The names of the secrets held — never their values.")
+def vault_list() -> None:
+    from ai4science.harness.agents.sarsi import vault
+
+    config = _load()
+    names = vault.names(config)
+    if not names:
+        console.print("the vault is empty")
+        return
+    # names only: the only interface to a value is the question
+    for name in names:
+        console.print(f"  {name}", markup=False, highlight=False)
+
+
+@vault_app.command("put", help="Add or replace one secret. Its value is never echoed.")
+def vault_put(name: str = typer.Argument(..., help="e.g. mail.read"),
+              value: str = typer.Option(..., "--value", prompt=True, hide_input=True,
+                                        help="The secret itself.")) -> None:
+    from ai4science.harness.agents.sarsi import vault
+
+    vault.put(_load(), name, value)
+    console.print(f"held: {name}", markup=False, highlight=False)
+
+
+@vault_app.command("policy", help="Write a standing policy. Permitting money needs limit + counterparty + rate.")
+def vault_policy(agent_id: str = typer.Argument(..., help="Agent the policy is for"),
+                 secret: str = typer.Argument(..., help="Secret it covers"),
+                 act: str = typer.Argument(..., help="read | send | pay | post | …"),
+                 allow: bool = typer.Option(False, "--allow", help="ALLOW (default is DENY)"),
+                 amount: Optional[float] = typer.Option(None, "--amount"),
+                 currency: str = typer.Option("", "--currency"),
+                 counterparty: str = typer.Option("", "--counterparty",
+                                                  help="A payee CLASS, e.g. grocery. Never a wildcard."),
+                 uses: Optional[int] = typer.Option(None, "--uses"),
+                 per: str = typer.Option("", "--per", help="day | week | month")) -> None:
+    from ai4science.harness.agents.sarsi import vault
+
+    config = _load()
+    try:
+        vault.write_policy(
+            config, agent_id=agent_id, secret=secret, act=act,
+            decision=vault.ALLOW if allow else vault.DENY,
+            limit={"amount": amount, "currency": currency} if amount is not None else None,
+            counterparty={"class": counterparty} if counterparty else None,
+            rate={"uses": uses, "per": per} if uses is not None else None)
+    except vault.PolicyRefused as e:
+        console.print(str(e), style="red", markup=False, highlight=False)
+        raise typer.Exit(code=2)
+    console.print(f"policy written: {agent_id} {act} {secret} — "
+                  f"{'ALLOW' if allow else 'DENY'}", markup=False, highlight=False)
 
 
 @app.command("check", help="Ask the independent verifier whether this task's goal is met.")
@@ -256,6 +316,19 @@ def check_cmd(agent_id: str = typer.Argument(..., help="Worker id"),
     console.print(f"{verdict.get('state', '?')}: {verdict.get('why', '')}",
                   markup=False, highlight=False)
     console.print(ses.answer(config, agent, t), markup=False, highlight=False)
+
+
+def _terminal_vault_prompt(*, secret: str, purpose: str, agent: str, act: str):
+    """Stage 2, at the terminal: name the secret and what it is for, then ask.
+
+    Approving here approves **this one use**. Nothing about it becomes standing:
+    that is `sarsi vault policy`, and it is deliberately a separate act.
+    """
+    console.print(f"\n{agent} wants to {act} the secret {secret}", style="yellow",
+                  markup=False, highlight=False)
+    console.print(f"  for: {purpose}", markup=False, highlight=False)
+    console.print("  (this one use only)", style="dim")
+    return typer.confirm("  allow?", default=False)
 
 
 def _task_or_exit(config: reg.Config, agent, task_id: str):
