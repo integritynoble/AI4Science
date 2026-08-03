@@ -105,6 +105,7 @@ def answer(config: Config, agent: Agent, task: tsk.Task, *, question: str,
 
     ledger.append(config, "reports",
                   {"agent": agent.id, "task": task.id, "state": "answered-question",
+                   "ceiling": (task.session or {}).get("ceiling") or "unknown",
                    "evidence": [f"Q: {q}", f"A: {reply[:300]}"]})
     return Answered(answer=reply)
 

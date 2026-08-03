@@ -203,6 +203,38 @@ def tasks(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
                       f"[cyan]sarsi tasks {agent_id} --archived[/cyan]", style="dim")
 
 
+@app.command("decisions", help="What the agent decided without you, and at which rung.")
+def decisions(agent_id: Optional[str] = typer.Option(None, "--agent",
+                                                     help="Only this worker."),
+              ack: bool = typer.Option(False, "--ack",
+                                       help="Acknowledge them (needs --agent)."),
+              everything: bool = typer.Option(False, "--all",
+                                              help="Every one ever, not just the new ones.")) -> None:
+    from ai4science.harness.agents.sarsi import decisions as dec
+
+    config = _load()
+    if ack and not agent_id:
+        # Acknowledging the whole fleet in one keystroke is how a real one gets
+        # skimmed past.
+        console.print("[red]--ack needs --agent[/red] — acknowledge one worker "
+                      "at a time")
+        raise typer.Exit(code=2)
+
+    if agent_id:
+        agent = _worker_or_exit(config, agent_id)
+        got = dec.all_of(config, agent) if everything else dec.since(config, agent)
+    else:
+        got = dec.across(config)
+
+    console.print(got.summary, markup=False, highlight=False)
+    for item in got.items:
+        console.print(f"  {item}", markup=False, highlight=False)
+
+    if ack:
+        dec.acknowledge(config, _worker_or_exit(config, agent_id))
+        console.print("acknowledged — they stay readable with --all", style="dim")
+
+
 @app.command("spend", help="What it cost: tokens and time, read from the session transcripts.")
 def spend(agent_id: Optional[str] = typer.Option(None, "--agent",
                                                  help="Only this worker."),

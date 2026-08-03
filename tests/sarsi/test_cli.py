@@ -749,3 +749,41 @@ def test_cli_spend_says_not_recorded_rather_than_zero_tokens(isolated):
     result = runner.invoke(app, ["sarsi", "spend", "--agent", "work",
                                  "--task", t.id])
     assert "not started" in result.output.lower() or "not recorded" in result.output.lower()
+
+
+def test_cli_decisions_lists_what_the_agent_did_alone(isolated):
+    from ai4science.harness.agents.sarsi import ledger
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    config = reg.load()
+    ledger.append(config, "reports",
+                  {"agent": "work", "task": "tsk_1", "state": "answered",
+                   "ceiling": "A2", "evidence": ["the folder-trust prompt"]})
+    result = runner.invoke(app, ["sarsi", "decisions"])
+    assert result.exit_code == 0
+    assert "A2" in result.output and "folder-trust" in result.output
+
+
+def test_cli_decisions_is_quiet_when_the_agent_decided_nothing(isolated):
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    result = runner.invoke(app, ["sarsi", "decisions"])
+    assert "nothing decided without you" in result.output.lower()
+
+
+def test_cli_decisions_ack_moves_the_line(isolated):
+    from ai4science.harness.agents.sarsi import ledger
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    config = reg.load()
+    ledger.append(config, "reports",
+                  {"agent": "work", "task": "tsk_1", "state": "answered",
+                   "ceiling": "A2", "evidence": ["x"]})
+    runner.invoke(app, ["sarsi", "decisions", "--agent", "work", "--ack"])
+    result = runner.invoke(app, ["sarsi", "decisions", "--agent", "work"])
+    assert "nothing decided without you" in result.output.lower()
+
+
+def test_cli_decisions_ack_needs_an_agent(isolated):
+    """Acknowledging the whole fleet in one keystroke is how a real one gets
+    skimmed past."""
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    result = runner.invoke(app, ["sarsi", "decisions", "--ack"])
+    assert result.exit_code != 0

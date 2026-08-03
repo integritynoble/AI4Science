@@ -305,8 +305,13 @@ def _stranded(screen: str) -> Optional[str]:
 
 def _report(config: Config, agent: Agent, task: tsk.Task, *, state: str,
             evidence: str, now) -> None:
+    # The rung the act was taken AT, from the live session record rather than
+    # the registry — the registry says what the agent asks for, the session says
+    # what it got. Without this the ledger held every autonomous act and not the
+    # authority it was taken under, so "did it over-reach" was unanswerable.
     ledger.append(config, "reports",
                   {"agent": agent.id, "task": task.id, "state": state,
+                   "ceiling": (task.session or {}).get("ceiling") or "unknown",
                    "evidence": [evidence]}, now=now)
 
 

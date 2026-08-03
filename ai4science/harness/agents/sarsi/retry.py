@@ -79,6 +79,7 @@ def retry(config: Config, agent: Agent, task: tsk.Task, *,
               runtime=runtime, by_owner=False, now=now)
     ledger.append(config, "reports",
                   {"agent": agent.id, "task": task.id, "state": "retried",
+                   "ceiling": (task.session or {}).get("ceiling") or "unknown",
                    "evidence": [f"attempt {task.retries}: {reason[:160]}"]},
                   now=now)
     return task
