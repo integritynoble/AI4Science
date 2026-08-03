@@ -204,7 +204,10 @@ def _agent_from(entry: Dict[str, Any], defaults: Dict[str, Any], root: Path) -> 
         digest=bool(pick("digest", False)),
         standing_grants=bool(pick("standingGrants", True)),
         max_concurrent_tasks=int(pick("maxConcurrentTasks", 3)),
-        spec=str(pick("spec", "claude-code")),
+        # A registry written before `spec` existed carries none. Falling back
+        # to a flat default would silently unbind every agent — and the table
+        # would print `claude-code` seven times and look like it was working.
+        spec=str(pick("spec", _ROSTER_SPECS.get(agent_id, "claude-code"))),
         root=root,
     )
 
@@ -251,6 +254,11 @@ _ROSTER = [
      "standingGrants": False,
      "tools": ["browser", "calendar", "documents", "payment"]},
 ]
+
+
+#: id -> spec, so an entry that names no spec still binds to the agent it was
+#: designed on rather than to a flat default.
+_ROSTER_SPECS = {a["id"]: a["spec"] for a in _ROSTER}
 
 
 def default_config(owner_id: str = "", bot_tokens: Optional[Dict[str, str]] = None) -> Dict[str, Any]:

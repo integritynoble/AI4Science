@@ -76,6 +76,26 @@ def test_a_spec_can_be_set_per_agent(tmp_path):
     assert c.agents["funding"].spec == "research"
 
 
+def test_a_registry_written_before_specs_existed_still_binds_correctly(tmp_path):
+    """A config from an older build carries no `spec` on any entry. Defaulting
+    those to `claude-code` would silently unbind every agent — the table would
+    say `claude-code` seven times and look like the feature was working."""
+    raw = reg.default_config(owner_id="1")
+    for entry in raw["agents"]["list"]:
+        entry.pop("spec", None)
+    c = reg.parse(raw, root=tmp_path)
+    assert c.agents["sarsi-machine"].spec == "manager"
+    assert c.agents["abraham"].spec == "pocket"
+    assert c.agents["social"].spec == "social"
+
+
+def test_an_agent_the_roster_does_not_know_still_gets_a_usable_default(tmp_path):
+    raw = reg.default_config(owner_id="1")
+    raw["agents"]["list"].append({"id": "extra", "role": "worker"})
+    c = reg.parse(raw, root=tmp_path)
+    assert c.agents["extra"].spec == "claude-code"
+
+
 def test_the_agents_table_shows_which_spec_each_is_built_on(config):
     rows = {r["id"]: r for r in admin.agent_rows(config)}
     assert rows["social"]["spec"] == "social"
