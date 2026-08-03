@@ -204,6 +204,11 @@ def reversibility(act: Act) -> str:
     when nobody supplied the number, it must read as **unknown**, never as free.
     """
     r = act.reversibility or {}
+    if r.get("irreversible"):
+        # For an act that is known to be one-way, "unknown" would be a lie of
+        # omission — the most consequential fact about it is that there is no
+        # undoing, and it must be the plainest thing on the screen.
+        return "reversibility: THIS CANNOT BE UNDONE"
     cost, until = r.get("cost"), r.get("until")
     if not cost:
         return "reversibility: unknown — nobody has supplied this"

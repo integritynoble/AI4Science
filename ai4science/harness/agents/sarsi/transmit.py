@@ -24,6 +24,7 @@ nobody read is an approval of half the message.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from email.message import EmailMessage
 from typing import Any, Callable, Dict, Optional
 
@@ -201,6 +202,137 @@ def post(config: Config, agent: Agent, *, platform: str, secret: str,
 
     send.precheck = precheck            # so OWN can ask before it asks you
     return send
+
+
+# ── submitting an application ─────────────────────────────────────────
+
+class AskTheOwnerFirst(Exception):
+    """A form carried an owner fact nobody stated. It asks rather than invents."""
+
+
+class IncompleteForm(Exception):
+    """A required field was empty. A half-submitted application cannot be
+    taken back and completed."""
+
+
+@dataclass(frozen=True)
+class Field:
+    name: str
+    value: str
+    required: bool = False
+    #: True only when the OWNER stated this, not when the agent worked it out.
+    supplied: bool = False
+
+
+@dataclass(frozen=True)
+class Form:
+    url: str
+    fields: tuple = ()
+
+    def render(self) -> str:
+        """Every field and value, one per line.
+
+        A form is what goes out, so a form is what the owner is shown. A prose
+        summary of an application is not the application.
+        """
+        return "\n".join(f"{f.name}: {f.value}" for f in self.fields)
+
+    def values(self) -> Dict[str, str]:
+        return {f.name: f.value for f in self.fields}
+
+
+def submission(agent: Agent, form: Form) -> outward.Act:
+    """The act for a form: its body IS the form, and it declares itself one-way."""
+    return outward.Act(agent_id=agent.id, kind="submit", destination=form.url,
+                       body=form.render(),
+                       reversibility={"irreversible": True})
+
+
+def submit_form(config: Config, agent: Agent, form: Form, *,
+                driver: Callable[..., Dict[str, str]],
+                timeout: float = 120.0) -> Callable[..., str]:
+    """A transmitter for `submit`, built for **one** form.
+
+    Taking the form here rather than binding it afterwards is deliberate: a
+    transmitter holding a form set somewhere else could be handed an act built
+    from a different one, and the thing submitted would not be the thing
+    approved.
+
+    The driver returns **what it actually entered**, so a site that trims,
+    re-cases, auto-completes or silently drops a field is caught by `OWN` rather
+    than discovered weeks later in a rejection.
+    """
+
+    def precheck(act: outward.Act) -> None:
+        from ai4science.harness.agents.sarsi import specs
+        if act.body != form.render():
+            raise IncompleteForm(
+                "this act was not built from the form this transmitter holds")
+        for field in form.fields:
+            if field.name in specs.OWNER_FACTS and not field.supplied:
+                raise AskTheOwnerFirst(
+                    f"{field.name} is an owner fact and nobody stated it — "
+                    f"{agent.id} asks rather than invents, and an invented "
+                    f"answer on a submitted form cannot be taken back")
+            if field.required and not (field.value or "").strip():
+                raise IncompleteForm(
+                    f"{field.name} is required and empty — a half-submitted "
+                    f"application cannot be taken back and completed")
+
+    def send(act: outward.Act, *, body: str) -> str:
+        precheck(act)
+        try:
+            entered = driver(url=form.url, fields=form.values(), timeout=timeout)
+        except NoTransmitter:
+            raise
+        except Exception as e:
+            raise TransmitFailed(f"the application was not submitted: {e}")
+        # what the site actually received, rendered the same way the owner read it
+        return "\n".join(f"{name}: {value}" for name, value in entered.items())
+
+    send.precheck = precheck
+    return send
+
+
+def playwright_driver(*, headless: bool = True,
+                      available: Optional[Callable[[], bool]] = None
+                      ) -> Callable[..., Dict[str, str]]:
+    """The real driver. Built, and deliberately never run against a live form.
+
+    It reports what it read back out of each input after typing, so the
+    comparison `OWN` makes is against the page's own state rather than against
+    our intention.
+    """
+    def _available() -> bool:
+        try:
+            import playwright.sync_api          # noqa: F401
+            return True
+        except Exception:
+            return False
+
+    check = available or _available
+
+    def drive(*, url: str, fields: Dict[str, str], timeout: float) -> Dict[str, str]:
+        if not check():
+            raise NoTransmitter(
+                "submitting needs playwright and a browser on this machine: "
+                "pip install playwright && playwright install chromium")
+        from playwright.sync_api import sync_playwright
+        entered: Dict[str, str] = {}
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=headless)
+            page = browser.new_page()
+            page.goto(url, timeout=timeout * 1000)
+            for name, value in fields.items():
+                page.fill(f"[name={name!r}]", value)
+            # read back what the page holds, not what we meant to type
+            for name in fields:
+                entered[name] = page.input_value(f"[name={name!r}]")
+            page.click("button[type=submit], input[type=submit]")
+            browser.close()
+        return entered
+
+    return drive
 
 
 def dry_run(record: Optional[list] = None) -> Callable[..., str]:

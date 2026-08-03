@@ -349,6 +349,11 @@ def _real_transmitter(config: reg.Config, agent, act):
                 f"{secret} in the vault: ai4science sarsi vault put {secret}")
         return tx.post(config, agent, platform=platform, secret=secret,
                        prompt=_terminal_vault_prompt)
+    if act.kind == "submit":
+        raise tx.NoTransmitter(
+            "submitting is wired but is never built from a --body: use "
+            "`ai4science sarsi submit <agent> <form.json>`, so every field and "
+            "value is shown to you rather than a paragraph about them")
     if act.kind != "mail":
         raise tx.NoTransmitter(
             f"nothing is wired to {act.kind} — the gate would approve this and "
@@ -446,6 +451,66 @@ def operate_cmd(agent_id: str = typer.Argument(..., help="Worker id"),
         console.print("a gate is waiting for you: tmux attach -t "
                       f"{(t.session or {}).get('name', '?')}", style="yellow",
                       markup=False, highlight=False)
+
+
+@app.command("submit", help="Submit an application form — every field shown, and it cannot be undone.")
+def submit_cmd(agent_id: str = typer.Argument(..., help="Worker id, e.g. jobs"),
+               form_path: str = typer.Argument(..., help="A JSON form: url + fields"),
+               dry_run: bool = typer.Option(False, "--dry-run",
+                                            help="Go through the gate, then do not submit.")) -> None:
+    import json as _json
+    from pathlib import Path
+
+    from ai4science.harness.agents.sarsi import outward, transmit as tx
+
+    config = _load()
+    agent = config.agents.get(agent_id)
+    if agent is None:
+        console.print(f"[red]no agent {agent_id!r}[/red]")
+        raise typer.Exit(code=2)
+    try:
+        raw = _json.loads(Path(form_path).read_text())
+    except Exception as e:
+        console.print(f"[red]could not read {form_path}: {e}[/red]")
+        raise typer.Exit(code=2)
+
+    form = tx.Form(url=raw.get("url", ""),
+                   fields=tuple(tx.Field(name=f.get("name", ""),
+                                         value=str(f.get("value", "")),
+                                         required=bool(f.get("required")),
+                                         # supplied means the OWNER stated it
+                                         supplied=bool(f.get("supplied")))
+                                for f in raw.get("fields", [])))
+    act = tx.submission(agent, form)
+    driver = tx.dry_run([]) if dry_run else tx.playwright_driver()
+    sender = (tx.dry_run([]) if dry_run
+              else tx.submit_form(config, agent, form, driver=driver))
+
+    def approve(*, act, shown, reversibility):
+        console.print("\n" + shown, markup=False, highlight=False)
+        console.print(reversibility, style="bold yellow", markup=False, highlight=False)
+        return typer.confirm("submit this?", default=False)
+
+    try:
+        outcome = outward.request(config, agent, act, approve=approve, transmit=sender)
+    except (tx.AskTheOwnerFirst, tx.IncompleteForm) as e:
+        console.print(str(e), style="yellow", markup=False, highlight=False)
+        raise typer.Exit(code=1)
+    except outward.NotWhatWasApproved as e:
+        console.print(str(e), style="red", markup=False, highlight=False)
+        raise typer.Exit(code=2)
+    except (tx.NoTransmitter, tx.TransmitFailed) as e:
+        console.print(str(e), style="red", markup=False, highlight=False)
+        raise typer.Exit(code=1)
+
+    if outcome.abstained:
+        console.print(outcome.reason, style="yellow", markup=False, highlight=False)
+        raise typer.Exit(code=1)
+    if not outcome.approved:
+        console.print(f"not submitted — {outcome.reason}", markup=False, highlight=False)
+        raise typer.Exit(code=1)
+    console.print("would have submitted" if dry_run else f"submitted to {form.url}",
+                  markup=False, highlight=False)
 
 
 @app.command("supervise", help="Drive a task to a verified result: verify, answer, submit, steer.")

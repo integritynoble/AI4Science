@@ -355,11 +355,51 @@ def test_send_shows_the_subject_because_it_is_transmitted(isolated):
 def test_send_without_a_wired_transmitter_says_so(isolated):
     """The gate would approve it and then have nowhere to send it."""
     runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
-    result = runner.invoke(app, ["sarsi", "send", "jobs", "--kind", "submit",
-                                 "--to", "a job board", "--body", "hello"],
+    result = runner.invoke(app, ["sarsi", "send", "jobs", "--kind", "fax",
+                                 "--to", "a machine", "--body", "hello"],
                            input="y\n")
     assert result.exit_code != 0
     assert "nothing is wired" in result.output.lower()
+
+
+def test_a_submission_may_not_be_built_from_a_paragraph(isolated):
+    """A form is what goes out, so a form is what must be shown — `--body` would
+    let a paragraph about the application stand in for the application."""
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    result = runner.invoke(app, ["sarsi", "send", "jobs", "--kind", "submit",
+                                 "--to", "a job board", "--body", "I applied"],
+                           input="y\n")
+    assert result.exit_code != 0
+    assert "form.json" in result.output      # the wrap-proof part of the hint
+
+
+def test_submit_shows_every_field_and_that_it_cannot_be_undone(isolated, tmp_path):
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    form = tmp_path / "form.json"
+    form.write_text(json.dumps({
+        "url": "https://jobs.example/apply",
+        "fields": [{"name": "full_name", "value": "C. Y.", "required": True},
+                   {"name": "salary_expectation", "value": "£65,000",
+                    "required": True, "supplied": True}]}))
+    result = runner.invoke(app, ["sarsi", "submit", "jobs", str(form),
+                                 "--dry-run"], input="n\n")
+    assert "full_name: C. Y." in result.output
+    assert "salary_expectation: £65,000" in result.output
+    assert "CANNOT BE UNDONE" in result.output
+
+
+def test_submit_refuses_an_invented_owner_fact_before_asking(isolated, tmp_path):
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    form = tmp_path / "form.json"
+    form.write_text(json.dumps({
+        "url": "https://jobs.example/apply",
+        "fields": [{"name": "salary_expectation", "value": "£70,000",
+                    "required": True}]}))          # not supplied
+    result = runner.invoke(app, ["sarsi", "submit", "jobs", str(form)],
+                           input="y\n")
+    assert result.exit_code != 0
+    assert "salary_expectation" in result.output
+    assert "submit this?" not in result.output.lower()
 
 
 def test_posting_needs_its_platform_token_in_the_vault(isolated):
