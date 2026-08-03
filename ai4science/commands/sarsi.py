@@ -208,6 +208,66 @@ def _worker_or_exit(config: reg.Config, agent_id: str):
     return agent
 
 
+@app.command("run", help="Hand a task's plan to sarsi-claude — starts its governed session.")
+def run_cmd(agent_id: str = typer.Argument(..., help="Worker id"),
+            task_id: str = typer.Argument(..., help="Task id")) -> None:
+    from ai4science.harness.agents.sarsi import session as ses, task as tsk, worker
+
+    config = _load()
+    agent = _worker_or_exit(config, agent_id)
+    t = _task_or_exit(config, agent, task_id)
+    try:
+        t = ses.assign(config, agent, t)
+    except worker.NotAWorker as e:
+        console.print(str(e), style="red", markup=False, highlight=False)
+        raise typer.Exit(code=2)
+    except ses.NotReady as e:
+        console.print(str(e), style="yellow", markup=False, highlight=False)
+        raise typer.Exit(code=1)
+    except ses.CouldNotStart as e:
+        console.print(str(e), style="red", markup=False, highlight=False)
+        raise typer.Exit(code=1)
+    name = (t.session or {}).get("name", "?")
+    console.print(f"{t.id} — {t.state} in session {name}",
+                  markup=False, highlight=False)
+    console.print(f"take the wheel yourself: tmux attach -t {name}   "
+                  f"(Ctrl-b d hands it back)", style="dim",
+                  markup=False, highlight=False)
+
+
+@app.command("check", help="Ask the independent verifier whether this task's goal is met.")
+def check_cmd(agent_id: str = typer.Argument(..., help="Worker id"),
+              task_id: str = typer.Argument(..., help="Task id"),
+              evidence: str = typer.Option("", "--evidence",
+                                           help="The visible evidence to judge."),
+              no_model: bool = typer.Option(False, "--no-model",
+                                            help="Do not call a model; report that no verifier was available."),
+              engine: str = typer.Option("", "--engine",
+                                         help="Which engine judged (recorded with the verdict).")) -> None:
+    from ai4science.harness.agents.sarsi import session as ses, verifier as vf
+
+    config = _load()
+    agent = _worker_or_exit(config, agent_id)
+    t = _task_or_exit(config, agent, task_id)
+    judge = vf.unavailable("--no-model was given") if no_model else vf.default_verifier()
+    t = ses.verify(config, agent, t, verifier=judge, evidence=evidence,
+                   engine=engine or None)
+    verdict = t.verdict or {}
+    console.print(f"{verdict.get('state', '?')}: {verdict.get('why', '')}",
+                  markup=False, highlight=False)
+    console.print(ses.answer(config, agent, t), markup=False, highlight=False)
+
+
+def _task_or_exit(config: reg.Config, agent, task_id: str):
+    from ai4science.harness.agents.sarsi import task as tsk
+
+    t = tsk.get(config, agent, task_id)
+    if t is None:
+        console.print(f"[red]no task {task_id!r} for {agent.id}[/red]")
+        raise typer.Exit(code=2)
+    return t
+
+
 @app.command("gateway", help="Run the local daemon: poll every agent's bot and route what arrives.")
 def gateway_cmd(passes: Optional[int] = typer.Option(None, "--passes",
                                                      help="Stop after N polls (default: run forever)."),

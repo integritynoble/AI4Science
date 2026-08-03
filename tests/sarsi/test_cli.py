@@ -203,6 +203,35 @@ def test_tasks_shows_why_a_task_is_not_running(isolated):
     assert "grant" in result.output.lower()
 
 
+def _task_id(output):
+    return [w for w in output.split() if w.startswith("tsk_")][0]
+
+
+def test_run_refuses_a_task_still_awaiting_a_grant(isolated):
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    out = runner.invoke(app, ["sarsi", "do", "work", "read my mail",
+                              "--secret", "mail.read"]).output
+    result = runner.invoke(app, ["sarsi", "run", "work", _task_id(out)])
+    assert result.exit_code != 0
+    assert "mail.read" in result.output          # names what it waits for
+
+
+def test_run_refuses_the_manager(isolated):
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    result = runner.invoke(app, ["sarsi", "run", "sarsi-machine", "tsk_whatever"])
+    assert result.exit_code != 0
+
+
+def test_check_without_a_verifier_never_passes(isolated):
+    """Silence is never success — and neither is an unreachable verifier."""
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    out = runner.invoke(app, ["sarsi", "do", "work", "tidy the folder"]).output
+    result = runner.invoke(app, ["sarsi", "check", "work", _task_id(out),
+                                 "--evidence", "I did it", "--no-model"])
+    assert "verified" not in result.output.lower()
+    assert "fail" in result.output.lower()
+
+
 def test_gateway_with_no_tokens_reports_rather_than_polling_nothing(isolated):
     runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
     result = runner.invoke(app, ["sarsi", "gateway", "--passes", "1"])
