@@ -118,6 +118,18 @@ def request(config: Config, agent: Agent, act: Act, *,
         return Outcome(approved=False, abstained=True, reason=reason,
                        digest=act.digest())
 
+    # Anything the transmitter already knows makes this act unsendable is
+    # raised BEFORE the owner is asked. Rendering a message that cannot go out
+    # and waiting for a yes spends their attention on a decision that has no
+    # effect — the live run did exactly that with a 300-character post.
+    precheck = getattr(transmit, "precheck", None)
+    if precheck is not None:
+        try:
+            precheck(act)
+        except Exception:
+            _record(config, act, outcome="unsendable", now=now)
+            raise
+
     # Some acts are the agent's own stopping point and are asked EVERY time: a
     # standing grant must not turn "never sends by itself" into "sends by
     # default". The act stays possible; it never becomes automatic.

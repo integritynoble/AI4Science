@@ -297,6 +297,10 @@ def send_cmd(agent_id: str = typer.Argument(..., help="Agent id"),
     except outward.NotWhatWasApproved as e:
         console.print(str(e), style="red", markup=False, highlight=False)
         raise typer.Exit(code=2)
+    except tx.TooLongToPost as e:
+        # refused, never truncated
+        console.print(str(e), style="yellow", markup=False, highlight=False)
+        raise typer.Exit(code=1)
     except tx.TransmitFailed as e:
         # recorded as failed, not sent: a message nobody received is not sent
         console.print(str(e), style="red", markup=False, highlight=False)
@@ -326,8 +330,25 @@ def _real_transmitter(config: reg.Config, agent, act):
     """
     import os
 
-    from ai4science.harness.agents.sarsi import transmit as tx
+    from ai4science.harness.agents.sarsi import transmit as tx, vault
 
+    if act.kind == "post":
+        # the destination IS the platform; its token is a vault secret named
+        # after it, so one agent can hold several without them blurring
+        platform = (act.destination or "").strip().lower()
+        if platform not in tx.PLATFORMS:
+            # named before the token is looked for: "no mastodon.token" invites
+            # you to go and find a token for a platform never supported
+            raise tx.NoTransmitter(
+                f"no transmitter for {platform!r} — known platforms: "
+                f"{', '.join(sorted(tx.PLATFORMS))}")
+        secret = os.environ.get("SARSI_POST_SECRET", f"{platform}.token")
+        if secret not in vault.names(config):
+            raise _MissingSettings(
+                f"posting to {platform} is wired, but this machine holds no "
+                f"{secret} in the vault: ai4science sarsi vault put {secret}")
+        return tx.post(config, agent, platform=platform, secret=secret,
+                       prompt=_terminal_vault_prompt)
     if act.kind != "mail":
         raise tx.NoTransmitter(
             f"nothing is wired to {act.kind} — the gate would approve this and "

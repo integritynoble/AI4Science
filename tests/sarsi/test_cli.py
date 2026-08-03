@@ -355,11 +355,43 @@ def test_send_shows_the_subject_because_it_is_transmitted(isolated):
 def test_send_without_a_wired_transmitter_says_so(isolated):
     """The gate would approve it and then have nowhere to send it."""
     runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    result = runner.invoke(app, ["sarsi", "send", "jobs", "--kind", "submit",
+                                 "--to", "a job board", "--body", "hello"],
+                           input="y\n")
+    assert result.exit_code != 0
+    assert "nothing is wired" in result.output.lower()
+
+
+def test_posting_needs_its_platform_token_in_the_vault(isolated):
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
     result = runner.invoke(app, ["sarsi", "send", "social", "--kind", "post",
                                  "--to", "substack", "--body", "hello"],
                            input="y\n")
     assert result.exit_code != 0
-    assert "nothing is wired" in result.output.lower()
+    assert "substack.token" in result.output
+
+
+def test_an_unknown_platform_says_it_is_unknown_not_that_a_token_is_missing(isolated):
+    """The live run answered 'no mastodon.token in the vault', which invites you
+    to go and find a token for a platform that was never supported."""
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    result = runner.invoke(app, ["sarsi", "send", "social", "--kind", "post",
+                                 "--to", "mastodon", "--body", "hello"],
+                           input="y\n")
+    assert result.exit_code != 0
+    assert "no transmitter" in result.output.lower()
+    assert "substack" in result.output          # and names what it does know
+
+
+def test_an_over_limit_post_never_reaches_the_approval_prompt(isolated):
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    from ai4science.harness.agents.sarsi import vault
+    vault.put(reg.load(), "x.token", "t")
+    result = runner.invoke(app, ["sarsi", "send", "social", "--kind", "post",
+                                 "--to", "x", "--body", "y" * 300], input="y\n")
+    assert result.exit_code != 0
+    assert "send this?" not in result.output.lower()
+    assert "280" in result.output
 
 
 def test_mail_needs_its_smtp_settings_before_it_can_send(isolated):
