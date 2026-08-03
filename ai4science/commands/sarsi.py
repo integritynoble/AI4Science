@@ -118,30 +118,94 @@ def do(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
         console.print(out.message, style="yellow", markup=False, highlight=False)
         console.print("not queued — nothing is waiting on this", style="dim")
         raise typer.Exit(code=1)
-    console.print(f"admitted by {agent_id}: {directive.id}", markup=False, highlight=False)
+
+    from ai4science.harness.agents.sarsi import plan as pl, task as tsk
+
+    t = tsk.attach_plan(config, agent, tsk.create(config, agent, directive),
+                        pl.draft(directive))
+    t = tsk.start(config, agent, t)
+    console.print(f"{agent_id} holds {t.id} — {t.state}", markup=False, highlight=False)
+    if t.awaiting:
+        # asking here is the point of the plan step, and it names what it wants
+        console.print("waiting on you to grant:", style="yellow")
+        for permission in t.awaiting:
+            console.print(f"  {permission}", markup=False, highlight=False)
+        console.print(f"grant it with: ai4science sarsi grant {agent_id} {t.id} "
+                      f"\"{t.awaiting[0]}\"", style="dim", markup=False, highlight=False)
+    elif t.blocked_by:
+        console.print(f"not started — {t.blocked_by}", style="yellow")
 
 
-@app.command("tasks", help="What one worker has admitted and not yet reported on.")
+@app.command("tasks", help="Every task this worker holds, and what each is waiting for.")
 def tasks(agent_id: str = typer.Argument(..., help="Worker id, e.g. work")) -> None:
-    from ai4science.harness.agents.sarsi import worker
+    from ai4science.harness.agents.sarsi import task as tsk
 
     config = _load()
+    agent = _worker_or_exit(config, agent_id)
+    rows = tsk.all_of(config, agent)
+    if not rows:
+        console.print(f"{agent_id}: no tasks")
+        return
+    table = Table(title=f"{agent_id} — tasks", show_lines=False)
+    table.add_column("Task", style="cyan")
+    table.add_column("Goal")
+    table.add_column("State")
+    table.add_column("Waiting on")
+    for t in rows:
+        # a task never looks idle when it is actually blocked: say which
+        waiting = ", ".join(t.awaiting) or (t.blocked_by or "—")
+        table.add_row(t.id, t.goal, t.state, waiting)
+    console.print(table)
+
+
+@app.command("plan", help="Show one task's plan — its phases, criteria, and declared permissions.")
+def plan_cmd(agent_id: str = typer.Argument(..., help="Worker id"),
+             task_id: str = typer.Argument(..., help="Task id, e.g. tsk_…")) -> None:
+    from ai4science.harness.agents.sarsi import task as tsk
+
+    config = _load()
+    agent = _worker_or_exit(config, agent_id)
+    t = tsk.get(config, agent, task_id)
+    if t is None:
+        console.print(f"[red]no task {task_id!r} for {agent_id}[/red]")
+        raise typer.Exit(code=2)
+    plan = tsk.read_plan(config, agent, t)
+    if plan is None:
+        console.print(f"{task_id} has no plan yet")
+        raise typer.Exit(code=1)
+    console.print(plan.render(), markup=False, highlight=False)
+
+
+@app.command("grant", help="Grant one permission a task's plan declared.")
+def grant_cmd(agent_id: str = typer.Argument(..., help="Worker id"),
+              task_id: str = typer.Argument(..., help="Task id"),
+              permission: str = typer.Argument(..., help="Exactly the permission the plan named")) -> None:
+    from ai4science.harness.agents.sarsi import task as tsk
+
+    config = _load()
+    agent = _worker_or_exit(config, agent_id)
+    t = tsk.get(config, agent, task_id)
+    if t is None:
+        console.print(f"[red]no task {task_id!r} for {agent_id}[/red]")
+        raise typer.Exit(code=2)
+    before = list(t.awaiting)
+    t = tsk.start(config, agent, tsk.grant(config, agent, t, permission))
+    if permission not in before:
+        # a grant answers the permission it names, and no other
+        console.print(f"granted, but {permission!r} was not one this task asked "
+                      f"for; still waiting on: {', '.join(t.awaiting) or 'nothing'}",
+                      style="yellow", markup=False, highlight=False)
+        return
+    console.print(f"{t.id} — {t.state}", markup=False, highlight=False)
+
+
+def _worker_or_exit(config: reg.Config, agent_id: str):
     agent = config.agents.get(agent_id)
     if agent is None:
-        console.print(f"[red]no agent {agent_id!r}[/red]")
+        console.print(f"[red]no agent {agent_id!r}[/red] — known: "
+                      f"{', '.join(sorted(config.agents))}")
         raise typer.Exit(code=2)
-    rows = worker.outstanding(config, agent)
-    if not rows:
-        console.print(f"{agent_id}: nothing outstanding")
-        return
-    table = Table(title=f"{agent_id} — outstanding", show_lines=False)
-    table.add_column("Directive", style="cyan")
-    table.add_column("Goal")
-    table.add_column("Needs")
-    for row in rows:
-        table.add_row(row.get("id", ""), row.get("goal", ""),
-                      ", ".join(row.get("requires_tools") or []) or "—")
-    console.print(table)
+    return agent
 
 
 @app.command("gateway", help="Run the local daemon: poll every agent's bot and route what arrives.")

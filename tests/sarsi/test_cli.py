@@ -130,7 +130,7 @@ def test_do_admits_a_directive_this_machine_can_run(isolated):
     runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
     result = runner.invoke(app, ["sarsi", "do", "work", "tidy the report folder"])
     assert result.exit_code == 0
-    assert "admitted" in result.output.lower()
+    assert "tsk_" in result.output and "running" in result.output
 
 
 def test_do_refuses_and_names_the_missing_tool(isolated):
@@ -150,7 +150,7 @@ def test_do_refuses_the_manager(isolated):
     assert "manager" in result.output.lower()
 
 
-def test_tasks_lists_what_is_outstanding(isolated):
+def test_tasks_lists_what_the_worker_holds(isolated):
     runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
     runner.invoke(app, ["sarsi", "do", "work", "tidy the report folder"])
     result = runner.invoke(app, ["sarsi", "tasks", "work"])
@@ -164,6 +164,43 @@ def test_tasks_does_not_list_a_refused_directive(isolated):
                         "--tool", "time-machine"])
     result = runner.invoke(app, ["sarsi", "tasks", "work"])
     assert "segmentation" not in result.output
+
+
+def test_do_creates_a_task_with_a_plan(isolated):
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    out = runner.invoke(app, ["sarsi", "do", "work", "tidy the report folder"]).output
+    task_id = [w for w in out.split() if w.startswith("tsk_")][0]
+    plan = runner.invoke(app, ["sarsi", "plan", "work", task_id]).output
+    assert "Verified when:" in plan
+    assert "## Permissions needed" in plan
+
+
+def test_a_task_needing_a_permission_waits_for_the_owner(isolated):
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    out = runner.invoke(app, ["sarsi", "do", "work", "read my mail",
+                              "--secret", "mail.read"]).output
+    assert "awaiting-grant" in out
+    assert "mail.read" in out              # it names what it is waiting for
+
+
+def test_granting_the_declared_permission_releases_the_task(isolated):
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    out = runner.invoke(app, ["sarsi", "do", "work", "read my mail",
+                              "--secret", "mail.read"]).output
+    task_id = [w for w in out.split() if w.startswith("tsk_")][0]
+    granted = runner.invoke(app, ["sarsi", "grant", "work", task_id,
+                                  "read secret mail.read"])
+    assert granted.exit_code == 0
+    listing = runner.invoke(app, ["sarsi", "tasks", "work"]).output
+    assert "running" in listing and "awaiting-grant" not in listing
+
+
+def test_tasks_shows_why_a_task_is_not_running(isolated):
+    """A task over the limit says so rather than looking idle."""
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    runner.invoke(app, ["sarsi", "do", "work", "read my mail", "--secret", "mail.read"])
+    result = runner.invoke(app, ["sarsi", "tasks", "work"])
+    assert "grant" in result.output.lower()
 
 
 def test_gateway_with_no_tokens_reports_rather_than_polling_nothing(isolated):
