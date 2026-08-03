@@ -150,7 +150,12 @@ def tick(config: Config, agent: Agent, task: tsk.Task, *, pane: Any,
         if task.state == tsk.VERIFIED:
             return Action("verified", "the goal is met")
 
-    gate = _gate(screen, planning=planning)
+    # The declared working directory is what makes a delete answerable at all,
+    # so a task without one never reaches the rule.
+    deletes = None
+    if task.work_root:
+        deletes = (tsk.evidence_root(agent, task), list(task.grants or []))
+    gate = _gate(screen, planning=planning, deletes=deletes)
     if gate is not None:
         answer, why = gate
         if answer is None:
@@ -270,13 +275,29 @@ _PLAN_WRITE = re.compile(r"\b(create|write|edit|update)\b[^\n]*\bplan0(_\d+)?\.m
                          re.I)
 
 
-def _gate(screen: str, *, planning: bool = False):
-    """(answer, why) when a gate is on screen; (None, why) when unrecognised."""
+def _gate(screen: str, *, planning: bool = False, deletes=None):
+    """(answer, why) when a gate is on screen; (None, why) when unrecognised.
+
+    `deletes` is `(root, granted)` when this task has a declared working
+    directory — the one destructive gate that can be answered, and only under
+    the conditions in `deletion.permitted`.
+    """
     if not _GATE_SHAPE.search(screen):
         return None
     for pattern, answer, why in _KNOWN_GATES:
         if pattern.search(screen):
             return (answer, why)
+    if deletes is not None:
+        command = _gate_command(screen)
+        if command and _looks_like_delete(command):
+            from ai4science.harness.agents.sarsi import deletion as dl
+            root, granted = deletes
+            allowed, why = dl.permitted(command, root=root, granted=granted)
+            # Either way this gate is now RECOGNISED: a refusal that names its
+            # reason beats "an option menu this loop has no rule for", which
+            # told the owner nothing about what was being asked.
+            return (("1", f"a delete this task is allowed: {why}") if allowed
+                    else (None, f"a delete this loop will not answer: {why}"))
     if planning and _PLAN_WRITE.search(screen):
         return ("1", "writing this task's own plan file, which is exactly what "
                      "it was asked to do")
@@ -287,6 +308,27 @@ def _gate(screen: str, *, planning: bool = False):
         return (None, "this account has not finished Claude Code's first-run "
                       "setup — run `claude` once as this user and complete it")
     return (None, "an option menu this loop has no rule for")
+
+
+#: The command a Bash gate is asking about: the indented block above the
+#: "Do you want to proceed?" line, exactly as `attention` reads it.
+_GATE_CMD = re.compile(r"^\s{2,}(?P<cmd>\S.*)$", re.M)
+
+
+def _gate_command(screen: str) -> str:
+    head = screen.split("Do you want to proceed", 1)[0]
+    lines = [m.group("cmd").strip() for m in _GATE_CMD.finditer(head)]
+    lines = [ln for ln in lines
+             if not ln.lower().startswith(("bash command", "hook "))]
+    return " ".join(lines).strip()
+
+
+def _looks_like_delete(command: str) -> bool:
+    """Is this gate even about deleting? Cheap and deliberately loose — the
+    real decision is `deletion.permitted`, which refuses by default."""
+    first = command.split()[0] if command.split() else ""
+    from pathlib import Path as _P
+    return _P(first).name in ("rm", "unlink", "shred", "rmdir")
 
 
 def _busy(screen: str) -> bool:

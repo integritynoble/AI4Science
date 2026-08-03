@@ -30,7 +30,7 @@ Each of these is live, tested, and exercised on the installed binary.
 | `do` / `/new <goal>` | Open a task. `/new` works from inside the worker; `do` from the CLI. |
 | `tasks` / `/task` / `/tasks` | The board — every task, its state, and what each waits on. |
 | `plan` | A task's phases, criteria and declared permissions. |
-| `grant` | Grant one permission the plan declared. |
+| `grant` | Grant one permission the plan declared — including `delete files in the working directory`, the **only** destructive gate the loop may answer, and only for a non-recursive delete of named paths inside that directory in a command that does nothing else. |
 | `goal` / `/goal` | **Move the goal.** The plan is re-drafted to follow it, the agreement drops, the owner's own criteria survive, and a running session is told. |
 | `/edit <task> <n> <criterion>` | Change what gets verified. The owner's edit wins; polish may only propose around it. |
 | `stop` / `/stop` | Stop a task **and kill its session**. Resumable; the plan survives; the slot is freed. |
@@ -80,25 +80,14 @@ Each of these is live, tested, and exercised on the installed binary.
 
 ## Part 2 — Next, in order
 
-### 1. A rule for destructive-command gates
-
-> **Observed 2026-08-03, grace:** the session chose to prove reproducibility by
-> deleting `result.json` and regenerating it. The `rm` tripped a `PreToolUse`
-> hook; the loop abstained four passes and the task stalled. Nothing was wrong
-> with the session's plan — the loop had no rule for it.
-
-A narrow rule: a delete confined to paths the plan declared, of files the
-session itself created, during a phase that declared it. Narrow on purpose — a
-blanket "allow rm" makes the abstention decorative.
-
-### 2. Blast-radius declaration
+### 1. Blast-radius declaration
 
 The plan declares permissions; have it declare which **paths** it may touch,
 then check afterwards that nothing outside them changed. Turns "it said it would
 only touch the export folder" into something verified. Shares its declaration with
 the evidence item above.
 
-### 3. Verdict parsing that resists narration
+### 2. Verdict parsing that resists narration
 
 > **Observed 2026-08-03, grace:** a verifier reply contained both words and the
 > loop reported `the verifier's answer gave more than one verdict: ['FAIL',
@@ -108,12 +97,12 @@ the evidence item above.
 Demand a verdict line and nothing else, so `UNVERIFIED` is reserved for genuine
 uncertainty rather than for chattiness.
 
-### 4. `questions` — open escalations in one place
+### 3. `questions` — open escalations in one place
 
 Answerable from either surface. `attention` surfaces gates; escalated questions
 deserve the same treatment.
 
-### 5. `attention` should carry the unclaimed terminal too
+### 4. `attention` should carry the unclaimed terminal too
 
 `enter` now reports a live session of this agent that **no task claims** — the
 dangerous direction, because the board shows nothing at all while something runs
@@ -121,33 +110,33 @@ holding whatever it was granted. `attention` reports the reverse (a record with
 no terminal) and the orphan (a terminal past its task's end), but not this one.
 It is the same class and belongs on the same list.
 
-### 6. `undo the last outward act`
+### 5. `undo the last outward act`
 
 You approve a send and regret it within a minute. Nothing can retract, and the
 outward ledger already holds enough to *try*. Load-bearing, per doc A.
 
-### 7. A step and wall-clock budget per task
+### 6. A step and wall-clock budget per task
 
 A session that loops burns tokens until someone looks. A declared budget that
 pauses and reports beats one that runs all night.
 
-### 8. `handoff`
+### 7. `handoff`
 
 Writes `HANDOFF.md` before a context clear. The spec's layout names it; nothing
 writes it.
 
-### 9. Task dependencies
+### 8. Task dependencies
 
 `funding` drafting an application that needs `work`'s benchmark numbers is the
 obvious case. Without them the owner is the scheduler.
 
-### 10. A workspace fold
+### 9. A workspace fold
 
 History is bounded with the overflow counted, but never summarised — a long
 task's early context is dropped rather than compressed. Matters most during
 planning, which is exactly where it is worth keeping.
 
-### 11. Per-agent house rules
+### 10. Per-agent house rules
 
 A file each worker injects into every kickoff.
 
@@ -156,7 +145,7 @@ A file each worker injects into every kickoff.
 > again on every new session. *"Always use python3 on this host"* belongs in the
 > agent's host workspace, not in each session's trial and error.
 
-### 12. `digest`
+### 11. `digest`
 
 §6's `DIG` — one daily read across tasks.
 
