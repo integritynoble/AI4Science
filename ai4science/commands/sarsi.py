@@ -150,25 +150,103 @@ def do(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
 
 
 @app.command("tasks", help="Every task this worker holds, and what each is waiting for.")
-def tasks(agent_id: str = typer.Argument(..., help="Worker id, e.g. work")) -> None:
+def tasks(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
+          archived: bool = typer.Option(False, "--archived",
+                                        help="Show the closed ones instead.")) -> None:
     from ai4science.harness.agents.sarsi import task as tsk
 
     config = _load()
     agent = _worker_or_exit(config, agent_id)
-    rows = tsk.all_of(config, agent)
+    rows = tsk.all_of(config, agent, archived=archived)
+    closed = 0 if archived else len(tsk.all_of(config, agent, archived=True))
     if not rows:
-        console.print(f"{agent_id}: no tasks")
-        return
-    table = Table(title=f"{agent_id} — tasks", show_lines=False)
-    table.add_column("Task", style="cyan")
-    table.add_column("Goal")
-    table.add_column("State")
-    table.add_column("Waiting on")
-    for t in rows:
-        # a task never looks idle when it is actually blocked: say which
-        waiting = ", ".join(t.awaiting) or (t.blocked_by or "—")
-        table.add_row(t.id, t.goal, t.state, waiting)
-    console.print(table)
+        console.print(f"{agent_id}: {'nothing archived' if archived else 'no tasks'}")
+    else:
+        table = Table(title=f"{agent_id} — {'archived' if archived else 'tasks'}",
+                      show_lines=False)
+        table.add_column("Task", style="cyan")
+        table.add_column("Goal")
+        table.add_column("State")
+        table.add_column("Waiting on")
+        for t in rows:
+            # a task never looks idle when it is actually blocked: say which
+            waiting = ", ".join(t.awaiting) or (t.blocked_by or "—")
+            state = t.state
+            if t.retries:
+                state = f"{state} ({t.retries} retr{'y' if t.retries == 1 else 'ies'})"
+            table.add_row(t.id, t.goal, state, waiting)
+        console.print(table)
+    if closed:
+        # counted rather than hidden: archiving must not read as deleting
+        console.print(f"{closed} archived — see them with "
+                      f"[cyan]sarsi tasks {agent_id} --archived[/cyan]", style="dim")
+
+
+@app.command("stop", help="Stop a task and close its session. Resumable — the plan survives.")
+def stop(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
+         task_id: str = typer.Argument(..., help="Task id")) -> None:
+    from ai4science.harness.agents.sarsi import session as ses
+    config, agent, t = _load_task(agent_id, task_id)
+    t = ses.stop(config, agent, t)
+    console.print(f"{t.id} stopped — its slot is free", markup=False, highlight=False)
+    console.print(f"pick it up again: sarsi run {agent_id} {t.id}", style="dim")
+
+
+@app.command("archive", help="Close a task for good: the record is kept, the slot is freed.")
+def archive(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
+            task_id: str = typer.Argument(..., help="Task id")) -> None:
+    from ai4science.harness.agents.sarsi import session as ses
+    config, agent, t = _load_task(agent_id, task_id)
+    t = ses.stop(config, agent, t, archive=True)
+    console.print(f"{t.id} archived — off the board, and kept",
+                  markup=False, highlight=False)
+    console.print(f"read it any time: sarsi plan {agent_id} {t.id}", style="dim")
+
+
+@app.command("reopen", help="Put an archived task back on the board, stopped.")
+def reopen(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
+           task_id: str = typer.Argument(..., help="Task id")) -> None:
+    from ai4science.harness.agents.sarsi import task as tsk
+    config, agent, t = _load_task(agent_id, task_id)
+    if t.state != tsk.ARCHIVED:
+        console.print(f"[yellow]{t.id} is not archived — it is {t.state}[/yellow]")
+        raise typer.Exit(code=1)
+    t = tsk.reopen(config, agent, t)
+    console.print(f"{t.id} is back on the board, stopped",
+                  markup=False, highlight=False)
+
+
+@app.command("goal", help="Change a task's goal — the plan is re-drafted to follow it.")
+def goal(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
+         task_id: str = typer.Argument(..., help="Task id"),
+         text: str = typer.Argument(..., help="The new goal — one sentence")) -> None:
+    from ai4science.harness.agents.sarsi import chat as sarsi_chat
+    config, agent, t = _load_task(agent_id, task_id)
+    out = sarsi_chat.handle(config, agent, f"/goal {t.id} {text}", surface="cli")
+    console.print(out, markup=False, highlight=False)
+
+
+@app.command("retry", help="Hand a FAILed task back to its session with the verifier's reason.")
+def retry(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
+          task_id: str = typer.Argument(..., help="Task id")) -> None:
+    from ai4science.harness.agents.sarsi import retry as rty
+    config, agent, t = _load_task(agent_id, task_id)
+    try:
+        t = rty.retry(config, agent, t)
+    except (rty.NothingToRetry, rty.Exhausted) as e:
+        console.print(str(e), style="yellow", markup=False, highlight=False)
+        raise typer.Exit(code=1)
+    console.print(f"{t.id} handed back — attempt {t.retries} of {rty.MAX_RETRIES}",
+                  markup=False, highlight=False)
+    console.print(f"watch it: sarsi supervise {agent_id} {t.id}", style="dim")
+
+
+def _load_task(agent_id: str, task_id: str):
+    """(config, agent, task) for the lifecycle verbs. `_task_or_exit` below
+    takes an already-loaded config; this is the one-call form."""
+    config = _load()
+    agent = _worker_or_exit(config, agent_id)
+    return config, agent, _task_or_exit(config, agent, task_id)
 
 
 @app.command("plan", help="Show one task's plan — its phases, criteria, and declared permissions.")

@@ -77,6 +77,10 @@ class MachineRuntime:
         from ai4science.harness.agents.machine import sessions
         return sessions.send_to_session(name, text)
 
+    def stop(self, name: str) -> Dict[str, Any]:
+        from ai4science.harness.agents.machine import sessions
+        return sessions.kill_session(name)
+
     def set_ceiling(self, name: str, ceiling: str) -> Dict[str, Any]:
         """Change a live session's ceiling.
 
@@ -466,6 +470,32 @@ def release(config: Config, agent: Agent, task: tsk.Task, *,
         task.session["ceiling"] = raised
         task = tsk._touch(agent, task, now)
     rt.send((task.session or {}).get("name", ""), kickoff(task, plan))
+    return task
+
+
+def stop(config: Config, agent: Agent, task: tsk.Task, *,
+         runtime: Optional[Any] = None, archive: bool = False,
+         now=time.time) -> tsk.Task:
+    """Stop a task and take its session with it.
+
+    A stopped task whose tmux session keeps running is the worst of both: the
+    board says nothing is happening while something is, and the next `run` on
+    that task starts a second session against the same folder.
+
+    Killing the session is best-effort by design — if tmux is gone, or the
+    session was already killed by hand, the task still stops. The owner asked
+    for it stopped; refusing to record that because the cleanup failed would
+    leave the board lying in the other direction.
+    """
+    runtime = runtime or MachineRuntime()
+    name = (task.session or {}).get("name")
+    if name:
+        try:
+            runtime.stop(name)
+        except Exception:
+            pass                      # the record matters more than the cleanup
+        task.session = None
+    task = (tsk.archive if archive else tsk.turn_off)(config, agent, task, now=now)
     return task
 
 

@@ -40,9 +40,17 @@ VERIFIED = "verified"
 OFF = "off"
 REFUSED = "refused"
 BLOCKED = "blocked"
+#: terminal. The record is kept — the plan, the verdict and the history are what
+#: the agent actually did — but the slot is freed and it is off the default
+#: board. Deleting is still not a thing a worker does.
+ARCHIVED = "archived"
 
 #: states that occupy one of the worker's concurrency slots
 ACTIVE_STATES = (RUNNING, AWAITING_OWNER)
+
+
+class Archived(Exception):
+    """Raised rather than silently reviving a task the owner closed."""
 
 
 @dataclass
@@ -78,6 +86,11 @@ class Task:
     #: after that was never input — it is Claude Code's dimmed suggestion, which
     #: a captured pane renders identically to something typed.
     last_submitted: Optional[str] = None
+    #: how many times the verifier's FAIL has been handed back to the session.
+    #: Capped: a task that has failed this often wants the owner, not another
+    #: attempt. Cleared by a PASS, so old failures do not follow a task that
+    #: has since succeeded.
+    retries: int = 0
     #: has this plan been settled between the worker and the session (or by the
     #: owner)? A worker's seed is a starting point, not an agreed plan, and the
     #: difference is whether the session has had its say.
@@ -110,16 +123,23 @@ def get(config: Config, agent: Agent, task_id: str) -> Optional[Task]:
         return None
 
 
-def all_of(config: Config, agent: Agent) -> List[Task]:
+def all_of(config: Config, agent: Agent, *, archived: bool = False) -> List[Task]:
     """Every task this agent holds, oldest first — including the ones that have
-    not started, because those are exactly the ones a queue would hide."""
+    not started, because those are exactly the ones a queue would hide.
+
+    Archived tasks are off this board by default and returned on their own with
+    `archived=True`. Mixing them in would grow the board without bound until the
+    live work was invisible inside the record of the finished work.
+    """
     out: List[Task] = []
     if not agent.tasks.exists():
         return out
     for child in sorted(agent.tasks.iterdir()):
         if child.is_dir():
             task = get(config, agent, child.name)
-            if task is not None:
+            if task is None:
+                continue
+            if (task.state == ARCHIVED) == archived:
                 out.append(task)
     return sorted(out, key=lambda t: t.created_at)
 
@@ -218,6 +238,8 @@ def finish(config: Config, agent: Agent, task: Task, *,
     task.verdict = dict(verdict)
     task.state = VERIFIED
     task.blocked_by = None
+    # a run that succeeded should not carry its earlier failures forward
+    task.retries = 0
     return _touch(agent, task, now)
 
 
@@ -227,9 +249,31 @@ def turn_off(config: Config, agent: Agent, task: Task, *, now=time.time) -> Task
     return _touch(agent, task, now)
 
 
+def archive(config: Config, agent: Agent, task: Task, *, now=time.time) -> Task:
+    """Terminal: the record is kept, the slot is freed, the board is clear.
+
+    Distinct from `turn_off`, which is resumable. Closing a task the owner meant
+    to come back to, and closing one they are done with, are different acts and
+    conflating them loses one of them.
+    """
+    task.state = ARCHIVED
+    task.blocked_by = None
+    return _touch(agent, task, now)
+
+
 def resume(config: Config, agent: Agent, task: Task, *, now=time.time) -> Task:
+    if task.state == ARCHIVED:
+        raise Archived(f"{task.id} was archived; re-open it deliberately with "
+                       f"`sarsi reopen` rather than resuming it by accident")
     task.state = READY
     return start(config, agent, task, now=now)
+
+
+def reopen(config: Config, agent: Agent, task: Task, *, now=time.time) -> Task:
+    """Put an archived task back on the board, stopped rather than running —
+    the owner decides when it starts."""
+    task.state = OFF
+    return _touch(agent, task, now)
 
 
 def refuse(config: Config, agent: Agent, task: Task, reason: str, *,

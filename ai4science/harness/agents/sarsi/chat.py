@@ -20,6 +20,7 @@ one set of sessions regardless of which door was used.
 """
 from __future__ import annotations
 
+import time
 from typing import Any, List, Optional
 
 from ai4science.harness.agents.sarsi import plan as pl, session as ses, task as tsk
@@ -42,15 +43,20 @@ def handle(config: Config, agent: Agent, text: str, *, surface: str,
     verb, _, rest = body[1:].partition(" ")
     verb, rest = verb.strip(), rest.strip()
 
-    if verb == "tasks":
+    if verb in ("tasks", "task"):
         return _tasks(config, agent)
-    if verb in ("guided", "interact", "resume", "history", "plan", "edit"):
+    if verb == "archived":
+        return _archived(config, agent)
+    if verb in ("guided", "interact", "resume", "history", "plan", "edit",
+                "stop", "archive", "reopen", "resume-task", "goal"):
         token, _, tail = rest.partition(" ")
         found = _resolve(config, agent, token.strip())
         if isinstance(found, str):
             return found
         return {"guided": _guided, "interact": _interact, "resume": _resume,
-                "history": _history, "plan": _plan, "edit": _edit}[verb](
+                "history": _history, "plan": _plan, "edit": _edit,
+                "stop": _stop, "archive": _archive, "reopen": _reopen,
+                "resume-task": _resume_task, "goal": _goal}[verb](
                     config, agent, found, tail.strip(), runtime)
 
     found = _resolve(config, agent, verb)      # `/<task>` opens one
@@ -65,15 +71,78 @@ def handle(config: Config, agent: Agent, text: str, *, surface: str,
 
 def _tasks(config: Config, agent: Agent) -> str:
     rows = tsk.all_of(config, agent)
+    # counted, not listed: the record has to stay visible or archiving reads as
+    # deleting, but a growing archive must not bury the live work
+    closed = len(tsk.all_of(config, agent, archived=True))
+    tail = f"\n{closed} archived — /archived to list them" if closed else ""
     if not rows:
-        return f"{agent.id}: no tasks."
+        return f"{agent.id}: no tasks.{tail}"
     lines = [f"{agent.id} — {len(rows)} task(s):"]
     for t in rows:
         # never idle-looking when it is actually blocked: say which
         waiting = ", ".join(t.awaiting) or t.blocked_by or ""
         suffix = f" — waiting on {waiting}" if waiting else ""
         lines.append(f"  /{t.id}  {t.goal}  [{t.state}]{suffix}")
+    return "\n".join(lines) + tail
+
+
+def _archived(config: Config, agent: Agent) -> str:
+    rows = tsk.all_of(config, agent, archived=True)
+    if not rows:
+        return f"{agent.id}: nothing archived."
+    lines = [f"{agent.id} — {len(rows)} archived:"]
+    for t in rows:
+        verdict = (t.verdict or {}).get("verdict") or "no verdict"
+        lines.append(f"  /{t.id}  {t.goal}  [{verdict}]")
+    lines.append("re-open one with /reopen <task>")
     return "\n".join(lines)
+
+
+# ── closing one ───────────────────────────────────────────────────────
+
+def _stop(config: Config, agent: Agent, t: tsk.Task, rest: str,
+          runtime) -> str:
+    """Stop it and take its session with it. Resumable — the plan survives."""
+    from ai4science.harness.agents.sarsi import session as ses
+    t = ses.stop(config, agent, t, runtime=runtime)
+    return (f"{t.id} stopped — its session is closed and its slot is free.\n"
+            f"pick it up again with /resume-task {t.id}")
+
+
+def _archive(config: Config, agent: Agent, t: tsk.Task, rest: str,
+             runtime) -> str:
+    from ai4science.harness.agents.sarsi import session as ses
+    t = ses.stop(config, agent, t, runtime=runtime, archive=True)
+    return (f"{t.id} archived — off the board, and kept.\n"
+            f"its plan, verdict and history stay readable with /{t.id}")
+
+
+def _resume_task(config: Config, agent: Agent, t: tsk.Task, rest: str,
+                 runtime) -> str:
+    """Put a stopped task back to work.
+
+    Named apart from `/resume`, which hands the *steering* back to the worker
+    after Interact. Two different resumes on one board is exactly the kind of
+    collision that stops the wrong thing.
+    """
+    try:
+        t = tsk.resume(config, agent, t)
+    except tsk.Archived as e:
+        return str(e)
+    if t.blocked_by == "concurrency":
+        return (f"{t.id} is ready but every slot is busy — stop or archive one "
+                f"first (/tasks shows which).")
+    return (f"{t.id} is {t.state} again.\n"
+            f"it has no session yet: ai4science sarsi run {agent.id} {t.id}")
+
+
+def _reopen(config: Config, agent: Agent, t: tsk.Task, rest: str,
+            runtime) -> str:
+    if t.state != tsk.ARCHIVED:
+        return f"{t.id} is not archived — it is {t.state}."
+    t = tsk.reopen(config, agent, t)
+    return (f"{t.id} is back on the board, stopped.\n"
+            f"start it when you want it: /resume-task {t.id}")
 
 
 def _open(config: Config, agent: Agent, t: tsk.Task) -> str:
@@ -159,6 +228,63 @@ def _plan(config, agent, t, _tail, runtime):
     return plan.render() if plan else f"{t.id} has no plan yet."
 
 
+def _goal(config, agent, t, tail, runtime):
+    """Move the goal, and take the plan with it.
+
+    A plan drafted for the old goal, still attached to the new one, is a plan
+    that verifies the wrong thing — the most expensive kind of wrong, because
+    it looks settled. So the plan is re-drafted, the agreement is dropped (it
+    was agreed about a different goal), and a working session is told rather
+    than left finishing the old task perfectly.
+
+    The owner's own criteria are kept across the move: they are the owner's
+    words about what done means, and a re-draft may propose around them but
+    never over them.
+    """
+    goal = (tail or "").strip()
+    if not goal:
+        return (f"usage: /goal {t.id} <the new goal, one sentence>\n"
+                f"it currently reads: {t.goal}")
+
+    from ai4science.harness.agents.sarsi import worker as wk
+    record = dict(t.directive or {})
+    try:
+        directive = wk.Directive(
+            agent_id=agent.id, goal=goal,
+            scope=list(record.get("scope") or []),
+            requires_tools=list(record.get("requires_tools") or []),
+            requires_secrets=list(record.get("requires_secrets") or []))
+    except wk.BadDirective as e:
+        return str(e)
+
+    owner_criteria = list(t.criteria) if t.plan_owner_edited else []
+    was = t.goal
+    t.goal = goal
+    t.directive = directive.as_record()
+    t = tsk.attach_plan(config, agent, t, pl.draft(directive))
+    if owner_criteria:
+        t.criteria = owner_criteria           # the owner's words survive
+        t.plan_owner_edited = True
+    t.plan_agreed = False                     # agreed about a different goal
+    t.plan_stale = False                      # restated, not abandoned
+    t = tsk._touch(agent, t, time.time)
+
+    lines = [f"{t.id} goal is now: {goal}",
+             f"  was: {was}",
+             f"  the plan was re-drafted for it and is no longer agreed — "
+             f"{agent.id} and sarsi-claude settle it again"]
+    if owner_criteria:
+        lines.append(f"  your criteria were kept: {'; '.join(owner_criteria)}")
+    if (t.session or {}).get("name"):
+        from ai4science.harness.agents.sarsi import session as ses
+        ses.guide(config, agent, t,
+                  f"The owner has changed this task's goal. It is now: {goal}\n"
+                  f"Stop working the old goal and re-read the plan file.",
+                  runtime=runtime, by_owner=True)
+        lines.append("  its running session has been told")
+    return "\n".join(lines)
+
+
 def _edit(config, agent, t, tail, runtime):
     number, _, criterion = tail.partition(" ")
     criterion = criterion.strip()
@@ -241,7 +367,9 @@ def _decline(config: Config, agent: Agent) -> str:
 def _resolve(config: Config, agent: Agent, token: str):
     """A task id, or a unique prefix of one. Never a guess."""
     token = (token or "").strip()
-    rows = tsk.all_of(config, agent)
+    # archived tasks are off the BOARD, not out of reach: `/reopen` and reading
+    # the record of finished work both have to find them by id
+    rows = tsk.all_of(config, agent) + tsk.all_of(config, agent, archived=True)
     exact = [t for t in rows if t.id == token]
     if exact:
         return exact[0]

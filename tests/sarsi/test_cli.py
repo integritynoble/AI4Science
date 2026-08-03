@@ -534,3 +534,62 @@ def test_ceiling_refuses_a_level_the_gate_does_not_know(isolated):
     runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
     result = runner.invoke(app, ["sarsi", "ceiling", "work", "A9"])
     assert result.exit_code == 2 and "A9" in result.output
+
+
+# ── Tier 1: closing, retrying, and moving the goal from the CLI ───────
+
+def _one_task(goal="tidy the report folder"):
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    runner.invoke(app, ["sarsi", "do", "work", goal])
+    from ai4science.harness.agents.sarsi import task as tsk
+    config = reg.load()
+    return config, config.agents["work"], tsk.all_of(config, config.agents["work"])[0]
+
+
+def test_cli_stop_frees_the_slot(isolated):
+    from ai4science.harness.agents.sarsi import task as tsk
+    config, agent, t = _one_task()
+    result = runner.invoke(app, ["sarsi", "stop", "work", t.id])
+    assert result.exit_code == 0
+    assert tsk.get(config, agent, t.id).state == tsk.OFF
+
+
+def test_cli_archive_takes_it_off_the_board(isolated):
+    from ai4science.harness.agents.sarsi import task as tsk
+    config, agent, t = _one_task()
+    runner.invoke(app, ["sarsi", "archive", "work", t.id])
+    assert tsk.all_of(config, agent) == []
+    assert [x.id for x in tsk.all_of(config, agent, archived=True)] == [t.id]
+
+
+def test_cli_tasks_can_show_the_archive(isolated):
+    _config, _agent, t = _one_task("tidy the report folder")
+    runner.invoke(app, ["sarsi", "archive", "work", t.id])
+    result = runner.invoke(app, ["sarsi", "tasks", "work", "--archived"])
+    assert "tidy the report folder" in result.output
+
+
+def test_cli_goal_moves_it(isolated):
+    from ai4science.harness.agents.sarsi import task as tsk
+    config, agent, t = _one_task()
+    result = runner.invoke(app, ["sarsi", "goal", "work", t.id, "rebuild the index"])
+    assert result.exit_code == 0
+    assert tsk.get(config, agent, t.id).goal == "rebuild the index"
+
+
+def test_cli_retry_refuses_without_a_judged_failure(isolated):
+    """A retry with nothing to act on would re-run the same work blind."""
+    _config, _agent, t = _one_task()
+    result = runner.invoke(app, ["sarsi", "retry", "work", t.id])
+    assert result.exit_code != 0
+    assert "check" in result.output.lower() or "verdict" in result.output.lower()
+
+
+def test_cli_retry_refuses_an_unverified_task(isolated):
+    from ai4science.harness.agents.sarsi import task as tsk
+    config, agent, t = _one_task()
+    t.verdict = {"verdict": "UNVERIFIED", "reason": "nothing visible was supplied"}
+    tsk._touch(agent, t, __import__("time").time)
+    result = runner.invoke(app, ["sarsi", "retry", "work", t.id])
+    assert result.exit_code != 0
+    assert "judged" in result.output.lower()

@@ -652,3 +652,16 @@ def summarize(mine: List[Dict[str, Any]], others_count: int) -> str:
         lines.append(f"({others_count} more claude process(es) owned by other users — "
                      f"run as that user or with privileges to inspect them.)")
     return "\n".join(lines)
+
+
+def kill_session(name: str, *, run: Optional[Callable] = None) -> Dict[str, Any]:
+    """Kill a tmux session by name. Fail-safe: reports rather than raises, and
+    a session that is already gone is a success — the caller wanted it stopped,
+    and it is stopped."""
+    run = run or _tmux_run
+    code, _out, err = run(["tmux", "kill-session", "-t", _session_name_of(name)])
+    if code == 0:
+        return {"ok": True, "name": name, "note": "session killed"}
+    if "can't find session" in (err or "").lower():
+        return {"ok": True, "name": name, "note": "no such session — already stopped"}
+    return {"ok": False, "name": name, "reason": (err or "").strip() or "tmux failed"}
