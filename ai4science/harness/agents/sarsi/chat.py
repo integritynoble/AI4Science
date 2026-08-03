@@ -42,6 +42,13 @@ def handle(config: Config, agent: Agent, text: str, *, surface: str,
         # "in" one means. With no cursor they are not steered anywhere: a
         # message with nowhere to go must not pick a session for itself.
         standing = _standing(config, agent, surface)
+        if body.lower().rstrip("?").strip() == "why":
+            # Asked from inside a task, it is about that task — naming it again
+            # is the friction the cursor exists to remove.
+            if standing is None:
+                return (f"which task? /why <task> — or open one with /<task> "
+                        f"first. /tasks lists them.")
+            return _why(config, agent, standing, "", runtime)
         if standing is not None:
             return _guided(config, agent, standing, body, runtime)
         return _not_a_command(config, agent, body, surface)
@@ -59,7 +66,7 @@ def handle(config: Config, agent: Agent, text: str, *, surface: str,
     if verb == "archived":
         return _archived(config, agent)
     if verb in ("guided", "interact", "resume", "history", "plan", "edit",
-                "stop", "archive", "reopen", "resume-task", "goal"):
+                "stop", "archive", "reopen", "resume-task", "goal", "why"):
         token, _, tail = rest.partition(" ")
         found = _resolve(config, agent, token.strip())
         if isinstance(found, str):
@@ -67,7 +74,8 @@ def handle(config: Config, agent: Agent, text: str, *, surface: str,
         return {"guided": _guided, "interact": _interact, "resume": _resume,
                 "history": _history, "plan": _plan, "edit": _edit,
                 "stop": _stop, "archive": _archive, "reopen": _reopen,
-                "resume-task": _resume_task, "goal": _goal}[verb](
+                "resume-task": _resume_task, "goal": _goal,
+                "why": _why}[verb](
                     config, agent, found, tail.strip(), runtime)
 
     found = _resolve(config, agent, verb)      # `/<task>` opens one
@@ -293,6 +301,12 @@ def _history(config, agent, t, _tail, runtime):
 def _plan(config, agent, t, _tail, runtime):
     plan = tsk.read_plan(config, agent, t)
     return plan.render() if plan else f"{t.id} has no plan yet."
+
+
+def _why(config, agent, t, tail, runtime):
+    """The goal, the criteria, and the last verdict — in one answer."""
+    from ai4science.harness.agents.sarsi import why as wy
+    return wy.explain(config, agent, t)
 
 
 def _goal(config, agent, t, tail, runtime):

@@ -182,6 +182,14 @@ def tasks(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
                       f"[cyan]sarsi tasks {agent_id} --archived[/cyan]", style="dim")
 
 
+@app.command("why", help="Why is it doing this: the goal, the criteria, and the last verdict.")
+def why(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
+        task_id: str = typer.Argument(..., help="Task id")) -> None:
+    from ai4science.harness.agents.sarsi import why as wy
+    config, agent, t = _load_task(agent_id, task_id)
+    console.print(wy.explain(config, agent, t), markup=False, highlight=False)
+
+
 @app.command("attention", help="What is waiting on YOU — across every worker, or one.")
 def attention(agent_id: Optional[str] = typer.Option(None, "--agent",
                                                      help="Only this worker.")) -> None:

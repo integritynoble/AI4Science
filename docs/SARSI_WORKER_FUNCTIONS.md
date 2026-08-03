@@ -59,6 +59,7 @@ Each of these is live, tested, and exercised on the installed binary.
 | `attention` | **"Is anything waiting on me?"** across every worker, or one. Gates (with the actual command), ungranted permissions, exhausted retries, undelivered kickoffs, stale plans, and records pointing at terminals that are gone. Exits non-zero when something waits, so a timer can act on it. |
 | `enter` | Step into a worker: the task you last touched, or — holding none — **the question "what would you like done?"** rather than an empty board. |
 | cursor per `(surface, account)` | Being *in* a task, so plain words are about that task. Stored on disk; the phone and the laptop stand in different places. |
+| `why` / `/why <task>` | **The goal, the criteria a verdict will apply, and what the last verdict said** — in one answer. Reports and never infers: no verdict says *not judged yet*, and it will not name a "current phase" (see below). |
 | `ask` / `self model` | What the worker observes about itself. |
 | `improve yourself` / `yes` | RSI: it proposes a playbook change and holds it until the owner signs. |
 
@@ -75,12 +76,19 @@ Each of these is live, tested, and exercised on the installed binary.
 
 ## Part 2 — Next, in order
 
-### 1. `why` — *"why are you doing this?"*
+### 1. Track which phase is actually finished
 
-The current phase, its criterion, and the last verdict's reason. All three are
-stored; nothing shows them together, so the owner assembles it by hand from
-three commands. **Cheapest thing in any of the three documents**, and doc A's
-pick to build first. Still true.
+Building `why` surfaced this: **phase completion is tracked nowhere.**
+`session.kickoff` and `composer.compose` both said *"earliest incomplete phase"*
+and handed over `plan.phases[0]` — every kickoff, every steer, regardless of
+what had been done. A two-phase plan whose first phase was finished still told
+the session it was starting at phase 1.
+
+The wording is fixed (both now say *"the plan starts at"* and state that
+progress is not tracked), and `why` refuses to name a current phase at all. But
+the underlying number still does not exist. It should: a per-phase verdict is
+the thing that would let steering, `why` and the verifier agree on where the
+work actually is.
 
 ### 2. Reconcile sessions on entry
 

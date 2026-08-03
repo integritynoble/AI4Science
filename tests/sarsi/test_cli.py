@@ -629,3 +629,11 @@ def test_cli_enter_asks_when_the_board_is_empty(isolated):
     runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
     result = runner.invoke(app, ["sarsi", "enter", "work"])
     assert result.exit_code == 0 and "?" in result.output
+
+
+def test_cli_why_answers_from_the_record(isolated):
+    _config, _agent, t = _one_task("tidy the report folder")
+    result = runner.invoke(app, ["sarsi", "why", "work", t.id])
+    assert result.exit_code == 0
+    assert "tidy the report folder" in result.output
+    assert "not been judged" in result.output.lower()

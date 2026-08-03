@@ -1,4 +1,4 @@
-"""`S` — steer the plan's earliest incomplete phase.
+"""`S` — steer the plan the session is working.
 
 The composer writes **one** instruction and types it. What it is *given* matters
 more than what it says, so most of this module is the workspace it reads:
@@ -89,7 +89,12 @@ def build_prompt(config: Config, agent: Agent, task: tsk.Task, *, screen: str,
         lines.append("PLAN: withheld — it is stale (the owner took the wheel or "
                      "the mission changed). Improvise against the goal alone.")
     elif phase:
-        lines.append(f"PHASE YOU ARE DRIVING: {phase}")
+        # `phase` is plan.phases[0]: which phase is finished is tracked
+        # nowhere, so calling this the one being driven would tell the model a
+        # hardcode is progress and invite it to redo work already done.
+        lines.append(f"THE PLAN STARTS AT: {phase} "
+                     f"(progress through the phases is not tracked — judge from "
+                     f"the screen which one is actually live)")
         lines.append("CRITERIA — what the verifier must see:")
         lines += [f"  - {c}" for c in task.criteria]
 

@@ -533,8 +533,14 @@ def kickoff(task: tsk.Task, plan: Optional[pl.Plan]) -> str:
     if plan is not None and task.plan_version:
         lines.append(f"Your plan is {task.plan_version}.md in this folder. "
                      f"Work its earliest incomplete phase.")
+        # Phase completion is tracked NOWHERE, so this is the first phase every
+        # time — on the kickoff and on every steer. Labelling it "earliest
+        # incomplete" would report a hardcode as progress, and the session would
+        # be told to redo phase 1 in language implying it had not been done.
         first = plan.phases[0]
-        lines.append(f"Earliest incomplete phase: {first.title}")
+        lines.append(f"The plan starts at: {first.title} "
+                     f"(work forward from whichever phase is actually done — "
+                     f"this worker does not track that)")
         lines.append(f"Verified when: {first.verified_when}")
     lines.append("Report what you did with the evidence for it. "
                  "An independent verifier decides whether the goal is met.")
