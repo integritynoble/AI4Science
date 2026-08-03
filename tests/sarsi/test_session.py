@@ -284,7 +284,27 @@ def test_a_same_engine_verdict_says_so_rather_than_claiming_independence(config,
     same one, the verdict must not pretend otherwise."""
     rt = FakeRuntime()
     t = ses.assign(config, agent, _task(config, agent), runtime=rt)
-    t = ses.verify(config, agent, t, evidence="ok", engine=agent.model,
+    t = ses.verify(config, agent, t, evidence="ok",
+                   engine=t.session["engine"],
+                   verifier=lambda **kw: {"state": "PASS"})
+    assert t.verdict["independent"] is False
+
+
+def test_the_session_records_the_engine_that_actually_ran_it(config, agent):
+    """Not the worker's planning model. The worker plans with one engine and the
+    session is executed by another, and independence is a claim about the one
+    that did the work."""
+    t = ses.assign(config, agent, _task(config, agent), runtime=FakeRuntime())
+    assert t.session["engine"] == "claude"
+    assert t.session["planner"] == agent.model
+
+
+def test_independence_is_measured_against_the_session_not_the_planner(config, agent):
+    """The live run caught this: the verifier ran `claude`, the session ran
+    `claude`, and the verdict claimed independence because the worker's PLANNING
+    model happened to be a different string."""
+    t = ses.assign(config, agent, _task(config, agent), runtime=FakeRuntime())
+    t = ses.verify(config, agent, t, evidence="ok", engine="claude",
                    verifier=lambda **kw: {"state": "PASS"})
     assert t.verdict["independent"] is False
 

@@ -43,6 +43,9 @@ class CouldNotStart(Exception):
 class MachineRuntime:
     """The real one: the machine agent's tmux session control."""
 
+    #: what actually executes the session, for the independence comparison
+    engine = "claude"
+
     def start(self, name: str, cwd: str, *, govern: bool, ceiling: str,
               env: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
         from ai4science.harness.agents.machine import sessions
@@ -92,7 +95,11 @@ def assign(config: Config, agent: Agent, task: tsk.Task, *,
 
     task.session = {"name": started.get("name", name), "pid": started.get("pid"),
                     "cwd": str(workdir), "ceiling": agent.ceiling,
-                    "engine": agent.model}
+                    # what ACTUALLY executes the session — the CLI the runtime
+                    # drives. Independence is a claim about the engine that did
+                    # the work, not the one the worker planned with.
+                    "engine": getattr(runtime, "engine", "claude"),
+                    "planner": agent.model}
     task.state = tsk.RUNNING
     task = tsk._touch(agent, task, now)
 
@@ -166,9 +173,13 @@ def verify(config: Config, agent: Agent, task: tsk.Task, *,
     criteria = list(task.criteria or [])
     verdict = dict(verifier(goal=task.goal, criteria=criteria, evidence=evidence) or {})
     verdict["engine"] = engine or "unknown"
-    # a different engine is the cheapest independence there is; when it is the
-    # same one, say so rather than claiming an independence we do not have
-    verdict["independent"] = bool(engine and engine != (agent.model or ""))
+    # A different engine is the cheapest independence there is; when it is the
+    # same one, say so rather than claiming an independence we do not have.
+    # Compared against the engine that RAN the session: the live run recorded
+    # `independent: true` for a claude-judged, claude-executed task because the
+    # worker's planning model happened to be a different string.
+    ran_it = (task.session or {}).get("engine") or agent.model or ""
+    verdict["independent"] = bool(engine and engine != ran_it)
     verdict["criteria"] = criteria
 
     if str(verdict.get("state", "")).upper() == PASS:

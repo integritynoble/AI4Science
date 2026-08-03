@@ -84,20 +84,73 @@ def parse(answer: str) -> Verdict:
     return {"state": state, "why": why}
 
 
-def default_verifier(model: Optional[str] = None) -> Callable[..., Verdict]:
-    """The real one, if this install can reach a model — otherwise one that
-    fails honestly rather than one that waves work through."""
-    try:
-        from ai4science.llm import routing            # noqa: F401
-        from ai4science.llm.openai_compat import chat
-    except Exception as e:
-        return unavailable(f"no LLM backend available ({type(e).__name__})")
+def _default_run(argv, prompt: str, timeout: float):
+    import subprocess
+    proc = subprocess.run(argv, input=prompt, capture_output=True, text=True,
+                          timeout=timeout)
+    return proc.returncode, proc.stdout, proc.stderr
+
+
+def claude_verifier(*, model: Optional[str] = None, timeout: float = 180.0,
+                    run=_default_run) -> Callable[..., Verdict]:
+    """A verifier that runs the local Claude CLI headlessly.
+
+    A separate process with a fixed contract is real independence of *judgment*
+    from the session that did the work. When it is the same engine, `verify()`
+    records `independent: False` rather than pretending otherwise.
+    """
 
     def call(prompt: str) -> str:
-        text, _ = chat("openai", [{"role": "user", "content": prompt}], model=model)
-        return text
+        argv = ["claude", "-p"] + (["--model", model] if model else [])
+        code, out, err = run(argv, prompt, timeout)
+        if code != 0:
+            raise RuntimeError((err or out or "the verifier exited non-zero").strip()[:200])
+        return out
 
     return model_verifier(call)
+
+
+def chosen_engine(*, which: Callable[[str], Optional[str]] = None,
+                  has_api_key: Optional[Callable[[], bool]] = None) -> Optional[str]:
+    """Which judge this machine can actually reach.
+
+    An unreachable judge fails everything, which is safe and useless. So prefer
+    an engine that is installed here over one that only exists in config.
+    """
+    import shutil
+    which = which or shutil.which
+    if which("claude"):
+        return "claude"
+    if which("codex"):
+        return "codex"
+    if has_api_key is None:
+        has_api_key = _openai_key_present
+    return "openai" if has_api_key() else None
+
+
+def _openai_key_present() -> bool:
+    try:
+        from ai4science.llm.openai_compat import resolve_key
+        return bool(resolve_key("openai"))
+    except Exception:
+        return False
+
+
+def default_verifier(model: Optional[str] = None, *, which=None,
+                     has_api_key=None) -> Callable[..., Verdict]:
+    """The best judge this machine can reach — or an honest refusal."""
+    engine = chosen_engine(which=which, has_api_key=has_api_key)
+    if engine == "claude":
+        return claude_verifier(model=model)
+    if engine == "openai":
+        from ai4science.llm.openai_compat import chat
+
+        def call(prompt: str) -> str:
+            text, _ = chat("openai", [{"role": "user", "content": prompt}], model=model)
+            return text
+
+        return model_verifier(call)
+    return unavailable("no verifier engine is installed or configured here")
 
 
 def _fail(why: str) -> Verdict:

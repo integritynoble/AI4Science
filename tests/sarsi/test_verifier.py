@@ -77,6 +77,38 @@ def test_with_no_criteria_it_judges_against_the_goal_alone():
     assert "finish the export" in call.prompt
 
 
+# ── which judge this machine can actually reach ───────────────────────
+
+def test_the_claude_cli_verifier_parses_its_answer():
+    def run(argv, prompt, timeout):
+        run.argv = argv
+        return 0, "PASS: DONE.md reads exactly that", ""
+
+    out = vf.claude_verifier(run=run)(goal="g", criteria=["c"], evidence="e")
+    assert out["state"] == "PASS"
+    assert "-p" in run.argv                      # headless, not interactive
+
+
+def test_a_failing_claude_cli_call_fails_rather_than_passing():
+    def run(argv, prompt, timeout):
+        return 1, "", "not logged in"
+
+    out = vf.claude_verifier(run=run)(goal="g", criteria=["c"], evidence="e")
+    assert out["state"] == "FAIL" and "not logged in" in out["why"]
+
+
+def test_default_prefers_a_judge_this_machine_can_reach():
+    """An unreachable judge fails everything, which is safe but useless. Prefer
+    the engine that is actually installed here."""
+    chosen = vf.chosen_engine(which=lambda n: "/usr/bin/claude" if n == "claude" else None)
+    assert chosen == "claude"
+
+
+def test_with_nothing_installed_the_default_is_the_honest_refusal():
+    judge = vf.default_verifier(which=lambda n: None, has_api_key=lambda: False)
+    assert judge(goal="g", criteria=["c"], evidence="e")["state"] == "FAIL"
+
+
 def test_empty_evidence_fails_without_asking_the_model():
     """Nothing visible cannot prove anything, and paying for a model call to
     learn that is waste."""
