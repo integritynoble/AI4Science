@@ -243,6 +243,8 @@ def send_cmd(agent_id: str = typer.Argument(..., help="Agent id"),
              kind: str = typer.Option("mail", "--kind", help="mail | post | submit | pay | …"),
              to: str = typer.Option(..., "--to", help="Recipient or destination"),
              body: str = typer.Option(..., "--body", help="Exactly what would go out"),
+             subject: str = typer.Option("", "--subject",
+                                         help="Transmitted too, so you are shown it"),
              task_id: str = typer.Option("", "--task", help="The task it belongs to"),
              undo_cost: str = typer.Option("", "--undo-cost",
                                            help="What undoing costs, if known"),
@@ -261,7 +263,8 @@ def send_cmd(agent_id: str = typer.Argument(..., help="Agent id"),
     reversibility = ({"cost": undo_cost, "until": undo_until or None}
                      if undo_cost else None)
     act = outward.Act(agent_id=agent_id, kind=kind, destination=to, body=body,
-                      task_id=task_id, reversibility=reversibility)
+                      subject=subject, task_id=task_id,
+                      reversibility=reversibility)
 
     def approve(*, act, shown, reversibility):
         # the owner reads the actual words: OWN is a composition step, not a
@@ -270,22 +273,33 @@ def send_cmd(agent_id: str = typer.Argument(..., help="Agent id"),
         console.print(reversibility, style="yellow", markup=False, highlight=False)
         return typer.confirm("send this?", default=False)
 
-    sent: list = []
+    from ai4science.harness.agents.sarsi import transmit as tx
 
-    def transmit(act, *, body):
-        if dry_run:
-            sent.append(body)
-            return body                       # what would have gone out
-        raise NotImplementedError(
-            "no transmitter is wired for this act yet — use --dry-run")
+    sent: list = []
+    # Authority is answered before mechanics: an act this agent must abstain on
+    # is refused for that reason, not for a missing transmitter. Otherwise the
+    # answer to "abraham, pay the shop" would be a wiring complaint.
+    will_abstain = act.kind in outward.RESERVED and not agent.standing_grants
+    if dry_run or will_abstain:
+        sender = tx.dry_run(sent)
+    else:
+        try:
+            # resolved BEFORE the gate: approving something with nowhere to go
+            # spends the owner's attention and records an approval for an act
+            # that never happened
+            sender = _real_transmitter(config, agent, act)
+        except (tx.NoTransmitter, _MissingSettings) as e:
+            console.print(str(e), style="yellow", markup=False, highlight=False)
+            raise typer.Exit(code=1)
 
     try:
-        outcome = outward.request(config, agent, act, approve=approve, transmit=transmit)
+        outcome = outward.request(config, agent, act, approve=approve, transmit=sender)
     except outward.NotWhatWasApproved as e:
         console.print(str(e), style="red", markup=False, highlight=False)
         raise typer.Exit(code=2)
-    except NotImplementedError as e:
-        console.print(str(e), style="yellow", markup=False, highlight=False)
+    except tx.TransmitFailed as e:
+        # recorded as failed, not sent: a message nobody received is not sent
+        console.print(str(e), style="red", markup=False, highlight=False)
         raise typer.Exit(code=1)
 
     if outcome.abstained:
@@ -295,9 +309,40 @@ def send_cmd(agent_id: str = typer.Argument(..., help="Agent id"),
         # a refusal is an outcome, not an error — but the shell still learns it
         console.print(f"not sent — {outcome.reason}", markup=False, highlight=False)
         raise typer.Exit(code=1)
-    console.print(f"would have sent {len(sent[0])} characters to {to}"
+    console.print(f"would have sent {len(sent[0]['body'])} characters to {to}"
                   if dry_run else f"sent to {to}",
                   markup=False, highlight=False)
+
+
+class _MissingSettings(Exception):
+    """The transmitter exists but this machine has not been told how to reach it."""
+
+
+def _real_transmitter(config: reg.Config, agent, act):
+    """Build the transmitter for this act, or say what is missing.
+
+    Mail settings live in the registry beside the agent; the PASSWORD does not —
+    it is a vault secret, asked for at send time.
+    """
+    import os
+
+    from ai4science.harness.agents.sarsi import transmit as tx
+
+    if act.kind != "mail":
+        raise tx.NoTransmitter(
+            f"nothing is wired to {act.kind} — the gate would approve this and "
+            f"then have nowhere to send it")
+    host = os.environ.get("SARSI_SMTP_HOST")
+    user = os.environ.get("SARSI_SMTP_USER")
+    port = int(os.environ.get("SARSI_SMTP_PORT", "587"))
+    secret = os.environ.get("SARSI_SMTP_SECRET", "mail.smtp")
+    if not host or not user:
+        raise _MissingSettings(
+            "mail is wired but this machine has no SMTP settings: set "
+            "SARSI_SMTP_HOST and SARSI_SMTP_USER, and hold the password in the "
+            "vault as " + secret)
+    return tx.smtp_mail(config, agent, host=host, port=port, user=user,
+                        secret=secret, prompt=_terminal_vault_prompt)
 
 
 vault_app = typer.Typer(help="The vault: secrets never leave this machine.",

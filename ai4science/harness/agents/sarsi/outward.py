@@ -67,12 +67,21 @@ class Act:
     kind: str                     # mail | post | submit | pay | …
     destination: str
     body: str
+    subject: str = ""
     task_id: str = ""
     #: what UNDOING costs and when that changes; None means unknown
     reversibility: Optional[Dict[str, Any]] = None
 
+    def envelope(self) -> str:
+        """Everything that leaves, in one canonical string.
+
+        The recipient and the subject go out too, so an approval of the body
+        alone is an approval of half the message. The digest covers all three.
+        """
+        return f"to: {self.destination}\nsubject: {self.subject}\n\n{self.body}"
+
     def digest(self) -> str:
-        return hashlib.sha256(self.body.encode("utf-8")).hexdigest()
+        return hashlib.sha256(self.envelope().encode("utf-8")).hexdigest()
 
 
 @dataclass
@@ -147,7 +156,13 @@ def _always_asks(agent: Agent, act: Act) -> bool:
 def _transmit(config: Config, act: Act, transmit: Callable[..., str], *,
               via: str, now) -> Outcome:
     approved_body = act.body
-    sent = transmit(act, body=approved_body)
+    try:
+        sent = transmit(act, body=approved_body)
+    except Exception:
+        # A send that failed did not happen. Record it as failed rather than
+        # letting a `sent` line stand for a message nobody received.
+        _record(config, act, outcome="failed", now=now)
+        raise
     if sent is not None and sent != approved_body:
         # the approved bytes ARE the transmitted bytes
         _record(config, act, outcome="mismatch", now=now)
@@ -159,10 +174,15 @@ def _transmit(config: Config, act: Act, transmit: Callable[..., str], *,
 
 
 def render(act: Act) -> str:
-    """Exactly what will go out — recipient, destination, and the whole body."""
-    return (f"{act.agent_id} wants to {act.kind}\n"
-            f"to: {act.destination}\n"
-            f"---\n{act.body}\n---")
+    """Exactly what will go out — recipient, subject, and the whole body.
+
+    The subject is shown because it is transmitted. An approval of a body whose
+    subject nobody read is not an approval of the message.
+    """
+    head = f"{act.agent_id} wants to {act.kind}\nto: {act.destination}"
+    if act.subject:
+        head += f"\nsubject: {act.subject}"
+    return f"{head}\n---\n{act.body}\n---"
 
 
 def reversibility(act: Act) -> str:

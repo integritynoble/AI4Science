@@ -311,8 +311,8 @@ def test_send_shows_the_whole_body_and_stops(isolated):
     runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
     result = runner.invoke(app, ["sarsi", "send", "work", "--kind", "mail",
                                  "--to", "bob@example.com",
-                                 "--body", "Hi Bob — the export is done."],
-                           input="n\n")
+                                 "--body", "Hi Bob — the export is done.",
+                                 "--dry-run"], input="n\n")
     assert "bob@example.com" in result.output
     assert "Hi Bob — the export is done." in result.output
     assert result.exit_code != 0                       # refused
@@ -321,7 +321,7 @@ def test_send_shows_the_whole_body_and_stops(isolated):
 def test_send_refused_is_recorded_as_an_outcome(isolated):
     from ai4science.harness.agents.sarsi import ledger
     runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
-    runner.invoke(app, ["sarsi", "send", "work", "--kind", "mail",
+    runner.invoke(app, ["sarsi", "send", "work", "--kind", "mail", "--dry-run",
                         "--to", "bob@example.com", "--body", "hi"], input="n\n")
     assert ledger.count(reg.load(), "outward", outcome="refused") == 1
 
@@ -338,9 +338,37 @@ def test_send_approved_transmits_exactly_what_was_shown(isolated):
 def test_send_shows_reversibility_as_unknown_when_nobody_supplied_it(isolated):
     runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
     result = runner.invoke(app, ["sarsi", "send", "work", "--kind", "mail",
-                                 "--to", "bob@example.com", "--body", "hi"],
-                           input="n\n")
+                                 "--to", "bob@example.com", "--body", "hi",
+                                 "--dry-run"], input="n\n")
     assert "unknown" in result.output.lower()
+
+
+def test_send_shows_the_subject_because_it_is_transmitted(isolated):
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    result = runner.invoke(app, ["sarsi", "send", "work", "--kind", "mail",
+                                 "--to", "bob@example.com",
+                                 "--subject", "the export is done",
+                                 "--body", "hi", "--dry-run"], input="n\n")
+    assert "the export is done" in result.output
+
+
+def test_send_without_a_wired_transmitter_says_so(isolated):
+    """The gate would approve it and then have nowhere to send it."""
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    result = runner.invoke(app, ["sarsi", "send", "social", "--kind", "post",
+                                 "--to", "substack", "--body", "hello"],
+                           input="y\n")
+    assert result.exit_code != 0
+    assert "nothing is wired" in result.output.lower()
+
+
+def test_mail_needs_its_smtp_settings_before_it_can_send(isolated):
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    result = runner.invoke(app, ["sarsi", "send", "work", "--kind", "mail",
+                                 "--to", "bob@example.com", "--body", "hi"],
+                           input="y\n")
+    assert result.exit_code != 0
+    assert "smtp" in result.output.lower()
 
 
 def test_abraham_abstains_on_a_payment_rather_than_asking(isolated):
