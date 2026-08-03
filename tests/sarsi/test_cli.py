@@ -272,6 +272,50 @@ def test_a_run_needing_a_denied_secret_names_it(isolated):
     assert "mail.read" in result.output
 
 
+def test_send_shows_the_whole_body_and_stops(isolated):
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    result = runner.invoke(app, ["sarsi", "send", "work", "--kind", "mail",
+                                 "--to", "bob@example.com",
+                                 "--body", "Hi Bob — the export is done."],
+                           input="n\n")
+    assert "bob@example.com" in result.output
+    assert "Hi Bob — the export is done." in result.output
+    assert result.exit_code != 0                       # refused
+
+
+def test_send_refused_is_recorded_as_an_outcome(isolated):
+    from ai4science.harness.agents.sarsi import ledger
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    runner.invoke(app, ["sarsi", "send", "work", "--kind", "mail",
+                        "--to", "bob@example.com", "--body", "hi"], input="n\n")
+    assert ledger.count(reg.load(), "outward", outcome="refused") == 1
+
+
+def test_send_approved_transmits_exactly_what_was_shown(isolated):
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    result = runner.invoke(app, ["sarsi", "send", "work", "--kind", "mail",
+                                 "--to", "bob@example.com", "--body", "hi",
+                                 "--dry-run"], input="y\n")
+    assert result.exit_code == 0
+    assert "would have sent" in result.output.lower()
+
+
+def test_send_shows_reversibility_as_unknown_when_nobody_supplied_it(isolated):
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    result = runner.invoke(app, ["sarsi", "send", "work", "--kind", "mail",
+                                 "--to", "bob@example.com", "--body", "hi"],
+                           input="n\n")
+    assert "unknown" in result.output.lower()
+
+
+def test_abraham_abstains_on_a_payment_rather_than_asking(isolated):
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    result = runner.invoke(app, ["sarsi", "send", "abraham", "--kind", "pay",
+                                 "--to", "the shop", "--body", "£40"])
+    assert "no grant" in result.output.lower()
+    assert "allow?" not in result.output.lower()       # it did not ask
+
+
 def test_gateway_with_no_tokens_reports_rather_than_polling_nothing(isolated):
     runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
     result = runner.invoke(app, ["sarsi", "gateway", "--passes", "1"])

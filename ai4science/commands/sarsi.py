@@ -238,6 +238,68 @@ def run_cmd(agent_id: str = typer.Argument(..., help="Worker id"),
                   markup=False, highlight=False)
 
 
+@app.command("send", help="Ask to let one act leave the machine. Drafting is not sending.")
+def send_cmd(agent_id: str = typer.Argument(..., help="Agent id"),
+             kind: str = typer.Option("mail", "--kind", help="mail | post | submit | pay | …"),
+             to: str = typer.Option(..., "--to", help="Recipient or destination"),
+             body: str = typer.Option(..., "--body", help="Exactly what would go out"),
+             task_id: str = typer.Option("", "--task", help="The task it belongs to"),
+             undo_cost: str = typer.Option("", "--undo-cost",
+                                           help="What undoing costs, if known"),
+             undo_until: str = typer.Option("", "--undo-until",
+                                            help="Until when undoing is free"),
+             dry_run: bool = typer.Option(False, "--dry-run",
+                                          help="Go through the gate, then report instead of sending.")) -> None:
+    from ai4science.harness.agents.sarsi import outward
+
+    config = _load()
+    agent = config.agents.get(agent_id)
+    if agent is None:
+        console.print(f"[red]no agent {agent_id!r}[/red]")
+        raise typer.Exit(code=2)
+
+    reversibility = ({"cost": undo_cost, "until": undo_until or None}
+                     if undo_cost else None)
+    act = outward.Act(agent_id=agent_id, kind=kind, destination=to, body=body,
+                      task_id=task_id, reversibility=reversibility)
+
+    def approve(*, act, shown, reversibility):
+        # the owner reads the actual words: OWN is a composition step, not a
+        # rubber stamp, and this is where a bad draft is caught
+        console.print("\n" + shown, markup=False, highlight=False)
+        console.print(reversibility, style="yellow", markup=False, highlight=False)
+        return typer.confirm("send this?", default=False)
+
+    sent: list = []
+
+    def transmit(act, *, body):
+        if dry_run:
+            sent.append(body)
+            return body                       # what would have gone out
+        raise NotImplementedError(
+            "no transmitter is wired for this act yet — use --dry-run")
+
+    try:
+        outcome = outward.request(config, agent, act, approve=approve, transmit=transmit)
+    except outward.NotWhatWasApproved as e:
+        console.print(str(e), style="red", markup=False, highlight=False)
+        raise typer.Exit(code=2)
+    except NotImplementedError as e:
+        console.print(str(e), style="yellow", markup=False, highlight=False)
+        raise typer.Exit(code=1)
+
+    if outcome.abstained:
+        console.print(outcome.reason, style="yellow", markup=False, highlight=False)
+        raise typer.Exit(code=1)
+    if not outcome.approved:
+        # a refusal is an outcome, not an error — but the shell still learns it
+        console.print(f"not sent — {outcome.reason}", markup=False, highlight=False)
+        raise typer.Exit(code=1)
+    console.print(f"would have sent {len(sent[0])} characters to {to}"
+                  if dry_run else f"sent to {to}",
+                  markup=False, highlight=False)
+
+
 vault_app = typer.Typer(help="The vault: secrets never leave this machine.",
                         no_args_is_help=True)
 app.add_typer(vault_app, name="vault")
