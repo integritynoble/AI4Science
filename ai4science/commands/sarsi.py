@@ -735,15 +735,25 @@ def check_cmd(agent_id: str = typer.Argument(..., help="Worker id"),
               no_model: bool = typer.Option(False, "--no-model",
                                             help="Do not call a model; report that no verifier was available."),
               engine: str = typer.Option("", "--engine",
-                                         help="Which engine judged (recorded with the verdict).")) -> None:
+                                         help="Which engine judged (recorded with the verdict)."),
+              phase: Optional[int] = typer.Option(None, "--phase",
+                                                  help="Judge ONE phase (1-based) against its own criterion.")) -> None:
     from ai4science.harness.agents.sarsi import session as ses, verifier as vf
 
     config = _load()
     agent = _worker_or_exit(config, agent_id)
     t = _task_or_exit(config, agent, task_id)
     judge = vf.unavailable("--no-model was given") if no_model else vf.default_verifier()
-    t = ses.verify(config, agent, t, verifier=judge, evidence=evidence,
-                   engine=engine or None)
+    try:
+        t = ses.verify(config, agent, t, verifier=judge, evidence=evidence,
+                       engine=engine or None,
+                       phase=None if phase is None else phase - 1)
+    except IndexError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(code=2)
+    if phase is not None:
+        console.print(f"phase {phase} of {len(t.criteria or [])}",
+                      style="dim", markup=False, highlight=False)
     verdict = t.verdict or {}
     console.print(f"{verdict.get('state', '?')}: {verdict.get('why', '')}",
                   markup=False, highlight=False)

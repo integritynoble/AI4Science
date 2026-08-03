@@ -637,3 +637,27 @@ def test_cli_why_answers_from_the_record(isolated):
     assert result.exit_code == 0
     assert "tidy the report folder" in result.output
     assert "not been judged" in result.output.lower()
+
+
+def test_cli_check_can_name_one_phase(isolated):
+    """So the owner can settle phase 1 before phase 2's evidence exists."""
+    from ai4science.harness.agents.sarsi import task as tsk
+    config, agent, t = _one_task("tidy the report folder")
+    result = runner.invoke(app, ["sarsi", "check", "work", t.id, "--phase", "1",
+                                 "--evidence", "x", "--no-model"])
+    assert result.exit_code == 0
+    assert "phase 1" in result.output.lower()
+
+
+def test_cli_check_rejects_a_phase_that_does_not_exist(isolated):
+    _config, _agent, t = _one_task()
+    result = runner.invoke(app, ["sarsi", "check", "work", t.id, "--phase", "9",
+                                 "--evidence", "x", "--no-model"])
+    assert result.exit_code != 0
+    assert "phase" in result.output.lower()
+
+
+def test_cli_why_shows_the_phase_breakdown(isolated):
+    _config, _agent, t = _one_task("tidy the report folder")
+    result = runner.invoke(app, ["sarsi", "why", "work", t.id])
+    assert "not judged yet" in result.output.lower()

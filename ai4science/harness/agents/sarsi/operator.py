@@ -130,11 +130,19 @@ def tick(config: Config, agent: Agent, task: tsk.Task, *, pane: Any,
         # live run failed here: the pane held a spinner and some narration, and
         # the verifier correctly reported it could see no evidence of the file
         # the session had in fact written.
-        proof = evd.gather(tsk.dir_of(agent, task.id), task.criteria or [],
-                           screen=screen)
+        # Judge the phase the work is actually ON, not every criterion at
+        # once. Judging all of them meant a two-phase task could never pass its
+        # first phase: the evidence for phase 2 does not exist yet, so the
+        # whole-task verdict was FAIL until the very last step, and each FAIL
+        # was fed back as though phase 1 were wrong.
+        here = tsk.earliest_incomplete(task)
+        criteria = ([task.criteria[here]]
+                    if here is not None and here < len(task.criteria or [])
+                    else list(task.criteria or []))
+        proof = evd.gather(tsk.dir_of(agent, task.id), criteria, screen=screen)
         task = ses.verify(config, agent, task, verifier=verifier,
                           evidence=proof, engine=engine, runtime=_Sender(pane),
-                          now=now)
+                          phase=here, now=now)
         if task.state == tsk.VERIFIED:
             return Action("verified", "the goal is met")
 

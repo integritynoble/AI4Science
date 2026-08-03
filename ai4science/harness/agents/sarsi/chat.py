@@ -343,6 +343,9 @@ def _goal(config, agent, t, tail, runtime):
     t.goal = goal
     t.directive = directive.as_record()
     t = tsk.attach_plan(config, agent, t, pl.draft(directive))
+    # The plan was re-drafted for a different goal; none of the old per-phase
+    # answers are about it.
+    tsk.clear_phase(t, None)
     if owner_criteria:
         t.criteria = owner_criteria           # the owner's words survive
         t.plan_owner_edited = True
@@ -385,6 +388,9 @@ def _edit(config, agent, t, tail, runtime):
     path = tsk.dir_of(agent, t.id) / f"{t.plan_version}.md"
     path.write_text(edited.render())
     t.criteria = edited.criteria()
+    # That phase was judged against a standard that no longer exists. Keeping
+    # the PASS would carry a verdict about a question nobody asks any more.
+    tsk.clear_phase(t, index)
     t.plan_stale = False               # an edit is the mission restated
     t.plan_owner_edited = True
     t.plan_agreed = True               # you have settled it; no more drafting

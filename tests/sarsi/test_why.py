@@ -8,11 +8,10 @@ The hard rule here is that `why` **reports and never infers**. It is the command
 you reach for when you distrust the others, so a plausible-sounding answer is
 worse than a short one:
 
-  * **it does not claim a "current phase".** Phase completion is not tracked
-    anywhere — the kickoff says "earliest incomplete phase" and hands over
-    `phases[0]` every time. `why` names the phase the session was *pointed at*
-    and says the progress is not recorded, rather than repeating a claim the
-    code cannot back.
+  * **the phase it names comes from the verdicts, never a guess.** A phase is
+    done when a verdict says so *about that phase*; with none it reads "not
+    judged yet". (Writing this command is what exposed that the number did not
+    exist at all — see `test_phases.py`.)
   * **"not judged yet" is not "in progress".** A task with no verdict says so.
   * **a stale plan says its criteria are not the standard any more**, because
     that is the one case where the listed criteria will not be applied.
@@ -95,11 +94,12 @@ def test_it_gives_the_last_verdicts_reason(config, agent):
 
 # ── it reports, it does not infer ─────────────────────────────────────
 
-def test_it_does_not_claim_a_current_phase(config, agent):
-    """Phase completion is tracked nowhere. Saying "currently on phase 2" would
-    be inventing the one number the owner is asking about."""
+def test_an_unjudged_phase_is_never_shown_as_done(config, agent):
+    """Progress is tracked now — but only by verdicts. A phase nobody judged
+    reads "not judged yet", because silence is not success."""
     out = wy.explain(config, agent, _task(config, agent)).lower()
-    assert "not tracked" in out or "not recorded" in out
+    assert out.count("not judged yet") >= 2          # both phases
+    assert "pass" not in out
 
 
 def test_no_verdict_says_not_judged_rather_than_in_progress(config, agent):

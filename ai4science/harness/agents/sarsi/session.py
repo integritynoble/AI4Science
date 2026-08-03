@@ -499,6 +499,62 @@ def stop(config: Config, agent: Agent, task: tsk.Task, *,
     return task
 
 
+def _verify_phase(config: Config, agent: Agent, task: tsk.Task, *,
+                  verifier: Callable[..., Dict[str, Any]], evidence: str,
+                  engine: Optional[str], index: int, now) -> tsk.Task:
+    """Judge ONE phase against ONE criterion.
+
+    Judging a phase against every criterion would make "phase 1 passed" mean
+    "everything passed", and the phase number would be decoration on a
+    task-level verdict.
+    """
+    criteria = list(task.criteria or [])
+    if index < 0 or index >= len(criteria):
+        raise IndexError(f"{task.id} has {len(criteria)} phase(s); there is no "
+                         f"phase {index + 1}")
+
+    verdict = dict(verifier(goal=task.goal, criteria=[criteria[index]],
+                            evidence=evidence) or {})
+    verdict["engine"] = engine or "unknown"
+    ran_it = (task.session or {}).get("engine") or agent.model or ""
+    verdict["independent"] = bool(engine and engine != ran_it)
+    verdict["criteria"] = [criteria[index]]
+    verdict["phase"] = index + 1
+
+    from ai4science.harness.agents.sarsi import verifier as vf
+
+    if not vf.was_judged(verdict):
+        # Nothing judged it, so nothing is recorded ABOUT the phase — an
+        # unrecorded phase is incomplete, which is the honest reading.
+        task.verdict = verdict
+        ledger.append(config, "reports",
+                      {"agent": agent.id, "task": task.id, "state": "unverified",
+                       "verdict": verdict, "evidence": [evidence[:500]]}, now=now)
+        return tsk._touch(agent, task, now)
+
+    task = tsk.record_phase(config, agent, task, index, verdict, now=now)
+    task.verdict = verdict
+    ledger.append(config, "reports",
+                  {"agent": agent.id, "task": task.id,
+                   "state": "verified" if vf.is_pass(verdict) else "failed",
+                   "verdict": verdict, "evidence": [evidence[:500]]}, now=now)
+
+    if tsk.earliest_incomplete(task) is None:
+        # Every phase has its own PASS. The task-level verdict says how it was
+        # reached, so a reader can tell a whole-task judgment from a sum of
+        # per-phase ones.
+        done = len(criteria)
+        task = tsk.finish(config, agent, task, verdict={
+            "state": "PASS",
+            "why": f"every phase was verified on its own: {done} of {done} "
+                   f"phase(s) passed",
+            "engine": verdict["engine"],
+            "independent": verdict["independent"],
+            "criteria": criteria}, now=now)
+        return task
+    return tsk._touch(agent, task, now)
+
+
 def who_drives(task: tsk.Task) -> str:
     """The ladder, in one place. The owner is the top of it."""
     return "owner" if task.steering_paused else "worker"
@@ -533,15 +589,18 @@ def kickoff(task: tsk.Task, plan: Optional[pl.Plan]) -> str:
     if plan is not None and task.plan_version:
         lines.append(f"Your plan is {task.plan_version}.md in this folder. "
                      f"Work its earliest incomplete phase.")
-        # Phase completion is tracked NOWHERE, so this is the first phase every
-        # time — on the kickoff and on every steer. Labelling it "earliest
-        # incomplete" would report a hardcode as progress, and the session would
-        # be told to redo phase 1 in language implying it had not been done.
-        first = plan.phases[0]
-        lines.append(f"The plan starts at: {first.title} "
-                     f"(work forward from whichever phase is actually done — "
-                     f"this worker does not track that)")
-        lines.append(f"Verified when: {first.verified_when}")
+        # The real number: the first phase without a PASS of its own. A phase is
+        # complete when the VERIFIER said so about that phase — the session
+        # saying it is finished does not move this.
+        index = tsk.earliest_incomplete(task) or 0
+        done = [p.title for i, p in enumerate(plan.phases)
+                if tsk.phase_passed(task, i)]
+        if done:
+            lines.append("Already verified, do not redo: " + "; ".join(done))
+        if index < len(plan.phases):
+            here = plan.phases[index]
+            lines.append(f"Earliest incomplete phase: {here.title}")
+            lines.append(f"Verified when: {here.verified_when}")
     lines.append("Report what you did with the evidence for it. "
                  "An independent verifier decides whether the goal is met.")
     return "\n".join(lines)
@@ -550,7 +609,7 @@ def kickoff(task: tsk.Task, plan: Optional[pl.Plan]) -> str:
 def verify(config: Config, agent: Agent, task: tsk.Task, *,
            verifier: Callable[..., Dict[str, Any]], evidence: str = "",
            engine: Optional[str] = None, runtime: Optional[Any] = None,
-           now=time.time) -> tsk.Task:
+           phase: Optional[int] = None, now=time.time) -> tsk.Task:
     """Ask the verifier, and act on what it says.
 
     On PASS the task is verified and the verdict recorded. On FAIL the reason is
@@ -576,6 +635,11 @@ def verify(config: Config, agent: Agent, task: tsk.Task, *,
                       {"agent": agent.id, "task": task.id, "state": "not-judged",
                        "evidence": ["the plan is stale"]}, now=now)
         return tsk._touch(agent, task, now)
+
+    if phase is not None:
+        return _verify_phase(config, agent, task, verifier=verifier,
+                             evidence=evidence, engine=engine, index=phase,
+                             now=now)
 
     criteria = list(task.criteria or [])
     verdict = dict(verifier(goal=task.goal, criteria=criteria, evidence=evidence) or {})

@@ -86,6 +86,11 @@ class Task:
     #: after that was never input — it is Claude Code's dimmed suggestion, which
     #: a captured pane renders identically to something typed.
     last_submitted: Optional[str] = None
+    #: Per-phase verdicts, keyed by phase index as a STRING (JSON has no int
+    #: keys). A phase is complete when the verifier said so ABOUT THAT PHASE —
+    #: not when the session claims it and not when the loop moves on. Without
+    #: this, "earliest incomplete phase" was `phases[0]` forever.
+    phase_verdicts: Dict[str, Any] = field(default_factory=dict)
     #: how many times the verifier's FAIL has been handed back to the session.
     #: Capped: a task that has failed this often wants the owner, not another
     #: attempt. Cleared by a PASS, so old failures do not follow a task that
@@ -142,6 +147,57 @@ def all_of(config: Config, agent: Agent, *, archived: bool = False) -> List[Task
             if (task.state == ARCHIVED) == archived:
                 out.append(task)
     return sorted(out, key=lambda t: t.created_at)
+
+
+# ── phases ────────────────────────────────────────────────────────────
+
+def phase_verdict(task: Task, index: int) -> Optional[Dict[str, Any]]:
+    """The verdict recorded for one phase, or None if it has not been judged."""
+    return (task.phase_verdicts or {}).get(str(index))
+
+
+def phase_passed(task: Task, index: int) -> bool:
+    verdict = phase_verdict(task, index)
+    return str((verdict or {}).get("state", "")).upper() == "PASS"
+
+
+def earliest_incomplete(task: Task) -> Optional[int]:
+    """The first phase without a PASS, or None when every one has it.
+
+    Counted over the task's CRITERIA, which is one per phase. A phase with no
+    verdict is incomplete — silence is not success.
+    """
+    for index in range(len(task.criteria or [])):
+        if not phase_passed(task, index):
+            return index
+    return None if task.criteria else 0
+
+
+def record_phase(config: Config, agent: Agent, task: Task, index: int,
+                 verdict: Dict[str, Any], *, now=time.time) -> Task:
+    if index < 0 or index >= len(task.criteria or []):
+        raise IndexError(
+            f"{task.id} has {len(task.criteria or [])} phase(s); there is no "
+            f"phase {index + 1}")
+    task.phase_verdicts = dict(task.phase_verdicts or {})
+    task.phase_verdicts[str(index)] = dict(verdict)
+    return _touch(agent, task, now)
+
+
+def clear_phase(task: Task, index: Optional[int] = None) -> Task:
+    """Forget what was judged, because the standard it was judged against is
+    gone. `index=None` clears every phase — for a plan that was re-drafted.
+
+    Not persisted here: the caller is mid-edit and saves once, and a clear that
+    wrote itself would race the edit that caused it.
+    """
+    current = dict(task.phase_verdicts or {})
+    if index is None:
+        current = {}
+    else:
+        current.pop(str(index), None)
+    task.phase_verdicts = current
+    return task
 
 
 def dir_of(agent: Agent, task_id: str) -> Path:

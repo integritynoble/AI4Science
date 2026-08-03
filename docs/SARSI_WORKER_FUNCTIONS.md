@@ -50,6 +50,7 @@ Each of these is live, tested, and exercised on the installed binary.
 | `/interact` | Hands over the `tmux attach` line and stands back. **It does not relay.** |
 | `/history` | What has happened, from the record. |
 | `check` | Ask the verifier: **PASS / FAIL / UNVERIFIED**, with a reason. A **stale plan is refused, not judged** — see decision 2. |
+| `check --phase N` | Judge **one phase against its own criterion**. A phase is done when a verdict says so about *that* phase; the task is verified only when every phase is. Editing a criterion clears that phase's verdict; moving the goal clears all of them. |
 | `retry` | **Hand a FAIL back carrying the verifier's reason.** Only a judged `FAIL` retries; capped at 3; a `PASS` clears the count. |
 
 ### Knowing where you are, and what needs you
@@ -76,28 +77,14 @@ Each of these is live, tested, and exercised on the installed binary.
 
 ## Part 2 — Next, in order
 
-### 1. Track which phase is actually finished
-
-Building `why` surfaced this: **phase completion is tracked nowhere.**
-`session.kickoff` and `composer.compose` both said *"earliest incomplete phase"*
-and handed over `plan.phases[0]` — every kickoff, every steer, regardless of
-what had been done. A two-phase plan whose first phase was finished still told
-the session it was starting at phase 1.
-
-The wording is fixed (both now say *"the plan starts at"* and state that
-progress is not tracked), and `why` refuses to name a current phase at all. But
-the underlying number still does not exist. It should: a per-phase verdict is
-the thing that would let steering, `why` and the verifier agree on where the
-work actually is.
-
-### 2. Reconcile sessions on entry
+### 1. Reconcile sessions on entry
 
 `attention` now reports a record pointing at a dead terminal, but only when
 asked. Sessions outlive the process that started them, so **entering** a worker
 should say *"2 tasks running; 1 record points at a terminal that is gone"*
 rather than reporting state that was true when it was written.
 
-### 3. Evidence that can follow the work out of the task folder
+### 2. Evidence that can follow the work out of the task folder
 
 Evidence gathering never leaves the task folder — a deliberate boundary. But a
 goal that names a project directory puts every artefact outside it.
@@ -109,15 +96,15 @@ goal that names a project directory puts every artefact outside it.
 > `"psnr": 25.41`. The work was done; only the *looking* failed.
 
 The plan should declare its working directory and evidence should read that
-declared root — still a fixed boundary, not a roaming search. Pairs with #6.
+declared root — still a fixed boundary, not a roaming search. Pairs with the blast-radius item below.
 
-### 4. `spend` / `cost`
+### 3. `spend` / `cost`
 
 What a worker has cost, in tokens, time and PWM. Both source documents ask for
 it independently. One task burned ~8 minutes of unattended waiting and nothing
 recorded it.
 
-### 5. A rule for destructive-command gates
+### 4. A rule for destructive-command gates
 
 > **Observed 2026-08-03, grace:** the session chose to prove reproducibility by
 > deleting `result.json` and regenerating it. The `rm` tripped a `PreToolUse`
@@ -128,14 +115,14 @@ A narrow rule: a delete confined to paths the plan declared, of files the
 session itself created, during a phase that declared it. Narrow on purpose — a
 blanket "allow rm" makes the abstention decorative.
 
-### 6. Blast-radius declaration
+### 5. Blast-radius declaration
 
 The plan declares permissions; have it declare which **paths** it may touch,
 then check afterwards that nothing outside them changed. Turns "it said it would
-only touch the export folder" into something verified. Shares its declaration
-with #3.
+only touch the export folder" into something verified. Shares its declaration with
+the evidence item above.
 
-### 7. Verdict parsing that resists narration
+### 6. Verdict parsing that resists narration
 
 > **Observed 2026-08-03, grace:** a verifier reply contained both words and the
 > loop reported `the verifier's answer gave more than one verdict: ['FAIL',
@@ -145,44 +132,44 @@ with #3.
 Demand a verdict line and nothing else, so `UNVERIFIED` is reserved for genuine
 uncertainty rather than for chattiness.
 
-### 8. `questions` — open escalations in one place
+### 7. `questions` — open escalations in one place
 
 Answerable from either surface. `attention` surfaces gates; escalated questions
 deserve the same treatment.
 
-### 9. `undo the last outward act`
+### 8. `undo the last outward act`
 
 You approve a send and regret it within a minute. Nothing can retract, and the
 outward ledger already holds enough to *try*. Load-bearing, per doc A.
 
-### 10. `what did you decide without me?`
+### 9. `what did you decide without me?`
 
 This worker's own A2-level answers since you last looked. The rung is recorded;
 nothing reads it back — **so the one number that would show over-reach is
 invisible.**
 
-### 11. A step and wall-clock budget per task
+### 10. A step and wall-clock budget per task
 
 A session that loops burns tokens until someone looks. A declared budget that
 pauses and reports beats one that runs all night.
 
-### 12. `handoff`
+### 11. `handoff`
 
 Writes `HANDOFF.md` before a context clear. The spec's layout names it; nothing
 writes it.
 
-### 13. Task dependencies
+### 12. Task dependencies
 
 `funding` drafting an application that needs `work`'s benchmark numbers is the
 obvious case. Without them the owner is the scheduler.
 
-### 14. A workspace fold
+### 13. A workspace fold
 
 History is bounded with the overflow counted, but never summarised — a long
 task's early context is dropped rather than compressed. Matters most during
 planning, which is exactly where it is worth keeping.
 
-### 15. Per-agent house rules
+### 14. Per-agent house rules
 
 A file each worker injects into every kickoff.
 
@@ -191,7 +178,7 @@ A file each worker injects into every kickoff.
 > again on every new session. *"Always use python3 on this host"* belongs in the
 > agent's host workspace, not in each session's trial and error.
 
-### 16. `digest`
+### 15. `digest`
 
 §6's `DIG` — one daily read across tasks.
 
