@@ -665,3 +665,24 @@ def kill_session(name: str, *, run: Optional[Callable] = None) -> Dict[str, Any]
     if "can't find session" in (err or "").lower():
         return {"ok": True, "name": name, "note": "no such session — already stopped"}
     return {"ok": False, "name": name, "reason": (err or "").strip() or "tmux failed"}
+
+
+def live_session_names(*, run: Optional[Callable] = None) -> Optional[List[str]]:
+    """Every tmux session name this user can see, or **None** when tmux could
+    not be asked at all.
+
+    The None is the point. "tmux says no such session" and "tmux could not be
+    reached" are different answers, and collapsing them makes a stopped server
+    look like every session having died.
+    """
+    run = run or _tmux_run
+    try:
+        code, out, err = run(["tmux", "list-sessions", "-F", "#{session_name}"])
+    except Exception:
+        return None
+    if code != 0:
+        # "no server running" is a real answer: nothing is alive.
+        if "no server running" in (err or "").lower():
+            return []
+        return None
+    return [line.strip() for line in (out or "").splitlines() if line.strip()]

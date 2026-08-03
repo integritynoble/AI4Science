@@ -661,3 +661,34 @@ def test_cli_why_shows_the_phase_breakdown(isolated):
     _config, _agent, t = _one_task("tidy the report folder")
     result = runner.invoke(app, ["sarsi", "why", "work", t.id])
     assert "not judged yet" in result.output.lower()
+
+
+def test_cli_enter_reports_a_record_with_no_terminal(isolated, monkeypatch):
+    """Entering must not repeat a record that was true when it was written."""
+    from ai4science.harness.agents.sarsi import entry, session as ses, task as tsk
+
+    class Rt:
+        engine = "claude"
+
+        def start(self, name, cwd, *, govern, ceiling, env=None, spec=None):
+            return {"ok": True, "name": name, "pid": 1, "cwd": cwd}
+
+        def send(self, name, text):
+            return {"ok": True}
+
+        def set_ceiling(self, name, ceiling):
+            return {"ok": True}
+
+    config, agent, t = _one_task()
+    ses.assign(config, agent, t, runtime=Rt())
+    monkeypatch.setattr(entry, "_live_names", lambda: set())
+    result = runner.invoke(app, ["sarsi", "enter", "work"])
+    assert "gone" in result.output
+
+
+def test_cli_enter_is_quiet_when_tmux_agrees(isolated, monkeypatch):
+    from ai4science.harness.agents.sarsi import entry
+    _one_task()
+    monkeypatch.setattr(entry, "_live_names", lambda: set())
+    result = runner.invoke(app, ["sarsi", "enter", "work"])
+    assert "gone" not in result.output
