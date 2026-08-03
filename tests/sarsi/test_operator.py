@@ -505,3 +505,29 @@ def test_the_wizard_is_still_not_answered(config, agent):
     pane = FakePane(ONBOARDING_PANE)
     op.tick(config, agent, _task(config, agent), pane=pane)
     assert pane.sent == []
+
+
+# ── Claude Code's own hint is not something the session typed ─────────
+
+SUGGESTION = '❯ Try "how does <filepath> work?"\n'
+SUGGESTION_2 = '❯ Try "how do I log an error?"\n'
+
+
+def test_a_placeholder_suggestion_is_not_a_stranded_prompt():
+    """Claude Code prints a dimmed example at an empty prompt. A captured pane
+    renders it identically to typed text, so the loop pressed Enter on it — and
+    `decisions` on grace showed two real sessions asked "how does <filepath>
+    work?" by their own supervisor."""
+    assert op._stranded(SUGGESTION) is None
+    assert op._stranded(SUGGESTION_2) is None
+
+
+def test_a_real_stranded_prompt_is_still_found():
+    assert op._stranded('❯ run the export again\n') == "run the export again"
+
+
+def test_a_line_that_merely_starts_with_try_is_not_a_placeholder():
+    """The hint has a very specific shape. Anything looser would swallow real
+    instructions that happen to begin with the word."""
+    assert op._stranded('❯ try the staging host first\n') == \
+        "try the staging host first"

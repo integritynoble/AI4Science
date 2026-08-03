@@ -294,13 +294,29 @@ def _busy(screen: str) -> bool:
     return any(marker.lower() in low for marker in _BUSY)
 
 
+#: Claude Code's own dimmed example at an EMPTY prompt — `Try "how does
+#: <filepath> work?"`. A captured pane renders it identically to typed text, so
+#: the loop read it as a stranded prompt and pressed Enter: `decisions` on the
+#: grace fleet showed two real sessions asked "how does <filepath> work?" by
+#: their own supervisor. Matched tightly on purpose — a looser rule would
+#: swallow a real instruction that happens to begin with the word "try".
+_SUGGESTION = re.compile(r'^Try\s+"[^"]*\?"$', re.I)
+
+
 def _stranded(screen: str) -> Optional[str]:
-    """Text typed at the `❯` and left unsent. An empty prompt is not stranded."""
+    """Text typed at the `❯` and left unsent.
+
+    An empty prompt is not stranded, and neither is Claude Code's placeholder:
+    submitting the tool's own hint is the loop typing into a session on nobody's
+    behalf.
+    """
     hits = _PROMPT_LINE.findall(screen)
     if not hits:
         return None
     text = hits[-1].strip()
-    return text or None
+    if not text or _SUGGESTION.match(text):
+        return None
+    return text
 
 
 def _report(config: Config, agent: Agent, task: tsk.Task, *, state: str,
