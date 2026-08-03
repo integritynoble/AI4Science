@@ -156,19 +156,41 @@ A grant answers the permission it names and no other.
 
 ## 5. From task to `sarsi-claude` to Claude Code
 
+The plan is made **between** the worker and the session, and the ceiling is what
+holds the work back until you have seen it.
+
 ```bash
-ai4science sarsi run work <task-id>
+ai4science sarsi run       work <task-id>     # 1. plan, at A0
+ai4science sarsi supervise work <task-id>     # 2. collect it
+ai4science sarsi grant     work <task-id> "…" # 3. grant what it declared
+ai4science sarsi release   work <task-id>     # 4. raise the ceiling, start work
+ai4science sarsi supervise work <task-id>     # 5. drive it to a verdict
 ```
 
-What happens, in order:
+**1 — plan.** The worker writes an initial `plan0.md` (anchored to your goal,
+scope and declared tools) and asks the session to *improve it in place, then
+stop*. The session has the model and the repo; the worker has what you asked
+for. The session starts at **`A0`** — reads allowed, everything else asks — so
+"stop after planning" is enforced by the ceiling rather than requested in a
+sentence. The one write it needs, `plan0.md` itself, is the single extra gate
+the supervisor will answer while planning.
 
-1. **the vault is asked** for each declared secret — for this one use. A denial
-   stops the task *before* any session exists, and names the secret.
-2. **a tmux session starts** in the task's own folder, named for the agent,
-   with the A0–A3 governance hook wired at that agent's ceiling.
-3. **the plan goes down, not the wish.** The kickoff names `plan0.md` and the
-   earliest incomplete phase, and carries none of your conversation — that is
-   what keeps the session's context bounded.
+The kickoff also carries the **workspace**: your own words, grants already held,
+criteria that passed before, permissions discovered mid-run last time, and
+secrets previously refused. A plan written without the history asks again for
+what you already refused.
+
+**2 — collect.** The worker reads the plan back. If a phase has no
+`Verified when:` line it is sent back to be fixed, not accepted. If the session
+never touched the seed, that is recorded — a stub is never mistaken for a
+considered plan.
+
+**3 — grant.** The task waits at `awaiting-grant`. Negative bullets ("no
+network") are separated out as constraints; you are not asked to grant a limit.
+
+**4 — release.** The ceiling rises to whatever that agent has **earned** —
+`A3` in the registry is still capped at `A2` until the trust ledger says
+otherwise — and the session is told which phase to work.
 
 Then supervise it:
 
@@ -298,11 +320,25 @@ SELF      ask <agent> "self model" · "improve yourself" · "yes" / "no"
 GATEWAY   sarsi gateway [--passes N]        # poll every agent's bot
 ```
 
-## 11. Honest limits
+## 11. Who is driving
 
-- **`sarsi-worker` is the only agent proven live end to end.** The other five
-  workers assign, get their own governed session and are handed the plan — but
-  through a stand-in runtime, not five more live sessions.
+| | who | beats |
+|---|---|---|
+| 1 | **you**, in Interact | everything — the worker stands down entirely |
+| 2 | **you**, guiding (`sarsi guide`, `/guided`) | the worker's own steering |
+| 3 | the **worker**, guiding and steering | its own automatic composer |
+
+Your guidance goes through even while you hold the wheel — it is your word on
+your own session. The worker's does not.
+
+## 12. Honest limits
+
+- **`sarsi-worker`, `work` and `abraham` have run live end to end.** The other
+  four assign, get their own governed session and are handed the plan — but
+  through a stand-in runtime, not four more live sessions.
+- **The A0 planning drop is new and has not run live yet.** It is tested, and
+  the live evidence for it is the run that showed why it was needed: a session
+  told to plan and stop wrote its artefact anyway.
 - **No transmitter has run against a live service.** Mail, post and submit are
   all exercised against fakes; the endpoint shapes are unverified.
 - **`AN` knows one gate** — the folder-trust prompt. Any command-approval prompt

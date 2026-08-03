@@ -129,7 +129,7 @@ def tick(config: Config, agent: Agent, task: tsk.Task, *, pane: Any,
         if task.state == tsk.VERIFIED:
             return Action("verified", "the goal is met")
 
-    gate = _gate(screen)
+    gate = _gate(screen, planning=planning)
     if gate is not None:
         answer, why = gate
         if answer is None:
@@ -227,13 +227,23 @@ def run(config: Config, agent: Agent, task: tsk.Task, *, pane: Any,
 
 # ── reading the screen ────────────────────────────────────────────────
 
-def _gate(screen: str):
+#: The one extra gate A0 makes necessary: writing THIS task's own plan file,
+#: while planning. Narrow on purpose — a blanket "allow writes while planning"
+#: would make the A0 drop decorative, which is worse than not dropping it.
+_PLAN_WRITE = re.compile(r"\b(create|write|edit|update)\b[^\n]*\bplan0(_\d+)?\.md\b",
+                         re.I)
+
+
+def _gate(screen: str, *, planning: bool = False):
     """(answer, why) when a gate is on screen; (None, why) when unrecognised."""
     if not _GATE_SHAPE.search(screen):
         return None
     for pattern, answer, why in _KNOWN_GATES:
         if pattern.search(screen):
             return (answer, why)
+    if planning and _PLAN_WRITE.search(screen):
+        return ("1", "writing this task's own plan file, which is exactly what "
+                     "it was asked to do")
     return (None, "an option menu this loop has no rule for")
 
 

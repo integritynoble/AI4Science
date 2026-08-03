@@ -66,6 +66,15 @@ class MachineRuntime:
         from ai4science.harness.agents.machine import sessions
         return sessions.send_to_session(name, text)
 
+    def set_ceiling(self, name: str, ceiling: str) -> Dict[str, Any]:
+        """Change a live session's ceiling.
+
+        The governance hook reads the supervisor record on every tool call, so
+        this takes effect without restarting the session.
+        """
+        from ai4science.harness.agents.machine import supervisor
+        return supervisor.update(name, ceiling=ceiling) or {}
+
 
 def assign(config: Config, agent: Agent, task: tsk.Task, *,
            runtime: Optional[Any] = None, vault_prompt: Optional[Callable] = None,
@@ -97,7 +106,11 @@ def assign(config: Config, agent: Agent, task: tsk.Task, *,
     # trust ledger decides what it gets. Passing the configured value straight
     # through would make editing one line of JSON a way to hand an agent full
     # autonomy, which is the one thing the ladder exists to prevent.
-    ceiling = _effective_ceiling(agent.ceiling)
+    # Planning runs at A0: reads allowed, everything else asks. "Plan and stop"
+    # is a sentence in a prompt, and a sentence is not a gate — abraham's live
+    # run wrote its artefact during planning because nothing held it back. The
+    # ceiling does the holding, and `release` raises it.
+    ceiling = "A0" if not task.plan_agreed else _effective_ceiling(agent.ceiling)
     started = runtime.start(name, str(workdir), govern=True, ceiling=ceiling,
                             env=secrets)
     if not (started or {}).get("ok"):
@@ -344,8 +357,19 @@ def release(config: Config, agent: Agent, task: tsk.Task, *,
     task = tsk.start(config, agent, task, now=now)
     if task.state != tsk.RUNNING:
         return task
-    (runtime or MachineRuntime()).send((task.session or {}).get("name", ""),
-                                       kickoff(task, plan))
+
+    # The owner has seen the plan and granted what it declared, so the session
+    # may now do more than read. Raised only to what this agent has EARNED.
+    raised = _effective_ceiling(agent.ceiling)
+    rt = runtime or MachineRuntime()
+    try:
+        rt.set_ceiling((task.session or {}).get("name", ""), raised)
+    except Exception:
+        pass
+    if task.session:
+        task.session["ceiling"] = raised
+        task = tsk._touch(agent, task, now)
+    rt.send((task.session or {}).get("name", ""), kickoff(task, plan))
     return task
 
 
