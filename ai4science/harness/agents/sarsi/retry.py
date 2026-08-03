@@ -41,9 +41,13 @@ class Exhausted(Exception):
 def retry(config: Config, agent: Agent, task: tsk.Task, *,
           runtime: Optional[Any] = None, now=time.time) -> tsk.Task:
     """Hand the task back to its session with the verifier's reason attached."""
+    # The record the verifier writes uses `state` / `why` (see verifier.parse).
+    # Keying this on anything else means retry never fires on a real FAIL: it
+    # reports "no verdict" about a task the verifier has just failed, and the
+    # loop this module exists to close silently never closes.
     verdict = task.verdict or {}
-    word = str(verdict.get("verdict") or "").upper()
-    reason = str(verdict.get("reason") or "").strip()
+    word = str(verdict.get("state") or verdict.get("verdict") or "").upper()
+    reason = str(verdict.get("why") or verdict.get("reason") or "").strip()
 
     if not word:
         raise NothingToRetry(

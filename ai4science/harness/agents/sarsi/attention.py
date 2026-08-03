@@ -113,7 +113,9 @@ def _for_task(config: Config, agent: Agent, task: tsk.Task, *,
                                f"\"{task.awaiting[0]}\""))
 
     if int(task.retries or 0) >= rty.MAX_RETRIES:
-        reason = (task.verdict or {}).get("reason") or "no reason recorded"
+        verdict = task.verdict or {}
+        reason = (verdict.get("why") or verdict.get("reason")
+                  or "no reason recorded")
         out.append(Item("exhausted", task.id,
                         f"handed back {task.retries} times and still fails: {reason}",
                         action=f"sarsi plan {agent.id} {task.id}"))

@@ -192,3 +192,38 @@ def test_retrying_a_task_with_no_session_starts_one(config, agent):
     t = rty.retry(config, agent, t, runtime=rt)
     assert t.session is not None
     assert len(rt.started) == 2
+
+
+# ── the verdict as the SYSTEM writes it, not as this test imagines it ──
+
+def test_retry_reads_a_verdict_in_the_shape_the_verifier_actually_writes(
+        config, agent):
+    """The record uses `state` / `why`. A retry keyed on `verdict` / `reason`
+    would never fire on a real FAIL — it would report 'no verdict' about a task
+    the verifier had just failed, and the loop would silently never close."""
+    from ai4science.harness.agents.sarsi import verifier as vf
+    rt = FakeRuntime()
+    t = _running(config, agent, rt)
+    t.verdict = vf.parse("FAIL: export.csv has 0 rows, not 1204")
+    assert set(t.verdict) == {"state", "why"}          # the real shape
+    t = rty.retry(config, agent, t, runtime=rt)
+    assert "export.csv has 0 rows" in rt.sent[-1]
+    assert t.retries == 1
+
+
+def test_a_real_pass_is_not_retried(config, agent):
+    from ai4science.harness.agents.sarsi import verifier as vf
+    rt = FakeRuntime()
+    t = _running(config, agent, rt)
+    t.verdict = vf.parse("PASS: all 1204 rows present")
+    with pytest.raises(rty.NothingToRetry):
+        rty.retry(config, agent, t, runtime=rt)
+
+
+def test_a_real_unverified_is_not_retried(config, agent):
+    from ai4science.harness.agents.sarsi import verifier as vf
+    rt = FakeRuntime()
+    t = _running(config, agent, rt)
+    t.verdict = vf._unverified("nothing visible was supplied")
+    with pytest.raises(rty.NothingToRetry, match="nothing was judged"):
+        rty.retry(config, agent, t, runtime=rt)

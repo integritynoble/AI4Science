@@ -557,14 +557,14 @@ def verify(config: Config, agent: Agent, task: tsk.Task, *,
         # WEAKER question than the one the owner set, and report the answer as
         # though it were the one they asked — which is how a false PASS gets
         # recorded. Refusing, and saying how to clear it, is the honest move.
-        task.verdict = {
-            "verdict": "UNVERIFIED",
-            "reason": ("the plan is stale: you drove this session directly, so "
-                       "it no longer describes what happened. Rewrite it first "
-                       f"— /edit {task.id} <phase#> <criterion> — then ask again."),
-            "engine": engine or "unknown", "independent": False,
-            "criteria": list(task.criteria or []),
-        }
+        from ai4science.harness.agents.sarsi import verifier as _vf
+        task.verdict = dict(_vf._unverified(
+            "the plan is stale: you drove this session directly, so it no "
+            "longer describes what happened. Rewrite it first — "
+            f"/edit {task.id} <phase#> <criterion> — then ask again."))
+        task.verdict.update({"engine": engine or "unknown",
+                             "independent": False,
+                             "criteria": list(task.criteria or [])})
         task.state = tsk.RUNNING
         ledger.append(config, "reports",
                       {"agent": agent.id, "task": task.id, "state": "not-judged",

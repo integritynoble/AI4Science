@@ -159,7 +159,7 @@ def _archived(config: Config, agent: Agent) -> str:
         return f"{agent.id}: nothing archived."
     lines = [f"{agent.id} — {len(rows)} archived:"]
     for t in rows:
-        verdict = (t.verdict or {}).get("verdict") or "no verdict"
+        verdict = (t.verdict or {}).get("state") or "no verdict"
         lines.append(f"  /{t.id}  {t.goal}  [{verdict}]")
     lines.append("re-open one with /reopen <task>")
     return "\n".join(lines)

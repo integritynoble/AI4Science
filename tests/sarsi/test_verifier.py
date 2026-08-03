@@ -222,12 +222,12 @@ def test_a_stale_plan_is_refused_rather_than_judged_against_the_goal(
 
     def judge(**kw):
         asked.append(kw)
-        return {"verdict": "PASS", "reason": "looks done to me"}
+        return {"state": "PASS", "why": "looks done to me"}
 
     out = ses.verify(config, agent, t, verifier=judge, evidence="whatever")
     assert asked == []                              # never even asked
-    assert out.verdict["verdict"] == "UNVERIFIED"
-    assert "stale" in out.verdict["reason"].lower()
+    assert out.verdict["state"] == "UNVERIFIED"   # the record's real key
+    assert "stale" in out.verdict["why"].lower()
     assert out.state != tsk.VERIFIED
 
 
@@ -244,8 +244,8 @@ def test_the_refusal_says_how_to_clear_it(monkeypatch, tmp_path):
     t.plan_stale = True
     tsk._touch(agent, t, __import__("time").time)
     out = ses.verify(config, agent, t,
-                     verifier=lambda **kw: {"verdict": "PASS", "reason": "x"})
-    assert "/edit" in out.verdict["reason"] or "rewrite" in out.verdict["reason"].lower()
+                     verifier=lambda **kw: {"state": "PASS", "why": "x"})
+    assert "/edit" in out.verdict["why"]
 
 
 def test_a_fresh_plan_is_judged_normally(monkeypatch, tmp_path):
@@ -259,5 +259,5 @@ def test_a_fresh_plan_is_judged_normally(monkeypatch, tmp_path):
     d = worker.Directive(agent_id=agent.id, goal="finish the export")
     t = tsk.attach_plan(config, agent, tsk.create(config, agent, d), pl.draft(d))
     out = ses.verify(config, agent, t,
-                     verifier=lambda **kw: {"verdict": "PASS", "reason": "done"})
-    assert out.verdict["verdict"] == "PASS"
+                     verifier=lambda **kw: {"state": "PASS", "why": "done"})
+    assert out.verdict["state"] == "PASS"
