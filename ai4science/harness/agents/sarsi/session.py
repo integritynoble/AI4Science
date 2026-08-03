@@ -182,7 +182,23 @@ def verify(config: Config, agent: Agent, task: tsk.Task, *,
     verdict["independent"] = bool(engine and engine != ran_it)
     verdict["criteria"] = criteria
 
-    if str(verdict.get("state", "")).upper() == PASS:
+    from ai4science.harness.agents.sarsi import verifier as vf
+
+    if not vf.was_judged(verdict):
+        # Nothing judged this. It is not a pass, and it is not a finding about
+        # the work either — so nothing is steered into the session. Telling it
+        # to "address" an absent verifier is a correction nobody made about a
+        # problem it cannot fix.
+        task.verdict = verdict
+        task.state = tsk.RUNNING
+        task = tsk._touch(agent, task, now)
+        ledger.append(config, "reports",
+                      {"agent": agent.id, "task": task.id, "state": "unverified",
+                       "verdict": verdict, "steered": False,
+                       "evidence": [evidence[:500]]}, now=now)
+        return task
+
+    if vf.is_pass(verdict):
         task = tsk.finish(config, agent, task, verdict=verdict, now=now)
         ledger.append(config, "reports",
                       {"agent": agent.id, "task": task.id, "state": "verified",
@@ -223,6 +239,11 @@ def answer(config: Config, agent: Agent, task: tsk.Task) -> str:
             else " (judged by the same engine that did the work)"
         return (f"verified — {task.goal}\n"
                 f"session {session}, verdict {PASS}{independence}")
+    verdict = task.verdict or {}
+    if str(verdict.get("state", "")).upper() == "UNVERIFIED":
+        # distinct from "in progress": the work may be done and nobody looked
+        return (f"not judged — {task.goal}\n"
+                f"session {session}: {verdict.get('why', '')}")
     if task.state == tsk.RUNNING:
         return f"recorded — {task.goal} is in progress in session {session}"
     return f"I think — {task.goal} is {task.state} in session {session}"

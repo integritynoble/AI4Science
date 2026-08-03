@@ -4,19 +4,29 @@ Its contract is deliberately narrow: **judge only visible evidence; an unproven
 claim fails.** `CAP`, the ledgers and the worker all *report*; none of them may
 issue a positive verdict.
 
-Every failure mode resolves to **FAIL**, never PASS:
+**Three verdicts, and the third is the point:**
 
 | Situation | Verdict | Why |
 |---|---|---|
-| the model says PASS, with evidence | PASS | the only way through |
-| the model says FAIL | FAIL | with its reason kept, because the reason is used |
-| the answer cannot be parsed | FAIL | an unparseable verdict is not a verdict |
-| the model call raises | FAIL | an error is not an endorsement |
-| no verifier is configured at all | FAIL | **silence is never success** |
-| there is no visible evidence | FAIL | nothing visible cannot prove anything |
+| the model says PASS, with evidence | `PASS` | the only way through |
+| the model says FAIL | `FAIL` | with its reason kept, because the reason is *used* |
+| the answer cannot be parsed | `UNVERIFIED` | an unparseable verdict is not a verdict |
+| the model call raises | `UNVERIFIED` | an error is not a judgment |
+| no verifier is configured at all | `UNVERIFIED` | nothing judged this |
+| there is no visible evidence | `UNVERIFIED` | nothing was shown, so nothing was judged |
 
-The last row is also why the empty-evidence case never reaches the model: paying
-for a call to learn that nothing was shown is waste.
+`UNVERIFIED` is **never a pass** — that part is unchanged, and `is_pass()` is
+the only thing anything downstream should ask.
+
+Collapsing it into `FAIL` looks safe and is not. `FAIL` is a *judgment*, and its
+reason is fed back into the session as the next instruction. With no verifier
+configured, the session was being told *"the verifier says this is not done yet:
+no independent verifier is available"* and asked to address it — a correction
+nobody made, about a problem it cannot fix. Separating the two costs one
+constant and removes a whole class of nonsense instruction.
+
+The empty-evidence case still never reaches the model: paying for a call to
+learn that nothing was shown is waste.
 """
 from __future__ import annotations
 
@@ -24,6 +34,11 @@ import re
 from typing import Any, Callable, Dict, List, Optional, Sequence
 
 Verdict = Dict[str, Any]
+
+PASS = "PASS"
+FAIL = "FAIL"
+#: No judgment happened — distinct from a judgment that the work is wrong.
+UNVERIFIED = "UNVERIFIED"
 
 _CONTRACT = (
     "You are an independent verifier. You did not do this work and you do not "
@@ -36,27 +51,41 @@ _CONTRACT = (
 )
 
 
+def is_pass(verdict: Verdict) -> bool:
+    """The only question anything downstream should ask about a verdict."""
+    return str((verdict or {}).get("state", "")).upper() == PASS
+
+
+def was_judged(verdict: Verdict) -> bool:
+    """Did a judge actually look? `UNVERIFIED` means no.
+
+    Everything that *acts* on a FAIL — feeding the reason back, steering
+    against it — must ask this first, or it acts on a judgment nobody made.
+    """
+    return str((verdict or {}).get("state", "")).upper() in (PASS, FAIL)
+
+
 def model_verifier(call: Callable[[str], str]) -> Callable[..., Verdict]:
     """Wrap a single-prompt model call into a verifier."""
 
     def verify(*, goal: str, criteria: Sequence[str], evidence: str) -> Verdict:
         if not (evidence or "").strip():
-            return _fail("no visible evidence was supplied, so nothing is proven")
+            return _unverified("nothing visible was supplied, so nothing was judged")
         prompt = build_prompt(goal=goal, criteria=list(criteria or []), evidence=evidence)
         try:
             answer = call(prompt) or ""
-        except Exception as e:                     # an error is not an endorsement
-            return _fail(f"the verifier could not be reached: {e}")
+        except Exception as e:                     # an error is not a judgment
+            return _unverified(f"the verifier could not be reached: {e}")
         return parse(answer)
 
     return verify
 
 
 def unavailable(reason: str) -> Callable[..., Verdict]:
-    """The verifier when there is none. Always FAIL, and says why."""
+    """The verifier when there is none. Never a pass, and never a judgment."""
 
     def verify(**_: Any) -> Verdict:
-        return _fail(f"no independent verifier is available: {reason}")
+        return _unverified(f"no independent verifier is available: {reason}")
 
     return verify
 
@@ -77,8 +106,8 @@ def parse(answer: str) -> Verdict:
     text = (answer or "").strip()
     m = re.match(r"^\s*(PASS|FAIL)\b[:\s-]*(.*)$", text, re.I | re.S)
     if not m:
-        return _fail(f"the verifier's answer could not be read as a verdict: "
-                     f"{text[:120]!r}")
+        return _unverified(f"the verifier's answer could not be read as a "
+                           f"verdict: {text[:120]!r}")
     state = m.group(1).upper()
     why = (m.group(2) or "").strip()
     return {"state": state, "why": why}
@@ -154,4 +183,9 @@ def default_verifier(model: Optional[str] = None, *, which=None,
 
 
 def _fail(why: str) -> Verdict:
-    return {"state": "FAIL", "why": why}
+    return {"state": FAIL, "why": why}
+
+
+def _unverified(why: str) -> Verdict:
+    """Nothing judged this. Not a pass, and not a finding about the work."""
+    return {"state": UNVERIFIED, "why": why}

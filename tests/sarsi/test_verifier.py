@@ -3,8 +3,18 @@
 Its contract is fixed and narrow: **judge only visible evidence; an unproven
 claim fails.** Everything else in the system reports.
 
-The rule with the sharpest edge is the one about absence: when no verifier can
-be reached, the answer is FAIL, never PASS. Silence is never success.
+Three verdicts, not two, and the third is the point:
+
+  * **PASS** — a judge saw the evidence and the criteria were met.
+  * **FAIL** — a judge saw the evidence and they were not.
+  * **UNVERIFIED** — **no judgment happened at all.**
+
+Collapsing the third into FAIL looks safe (it never passes) and is not: the
+session is then told "the verifier says this is not done yet" when nothing
+judged it, and asked to address a reason it cannot act on. Pretending to know is
+worse than either answer.
+
+What never changes: **UNVERIFIED is not a pass.** Silence is never success.
 """
 import pytest
 
@@ -32,26 +42,28 @@ def test_a_clear_fail_is_a_fail_and_keeps_its_reason():
     assert out["state"] == "FAIL" and "3 rows" in out["why"]
 
 
-def test_an_unreadable_answer_fails_rather_than_passing():
-    """An unparseable verdict is not a verdict. Defaulting to PASS would let a
-    confused model finish a task."""
+def test_an_unreadable_answer_is_unverified_not_failed():
+    """An unparseable verdict is not a verdict — and it is not a judgment that
+    the work is wrong either."""
     out = vf.model_verifier(_fake_model("hmm, hard to say"))(
-        goal="g", criteria=["x"], evidence="")
-    assert out["state"] == "FAIL"
+        goal="g", criteria=["x"], evidence="the screen")
+    assert out["state"] == "UNVERIFIED"
+    assert vf.is_pass(out) is False
 
 
-def test_a_model_that_raises_fails_rather_than_passing():
+def test_a_model_that_raises_is_unverified():
     def boom(prompt):
         raise RuntimeError("no API key")
 
     out = vf.model_verifier(boom)(goal="g", criteria=["x"], evidence="the screen said done")
-    assert out["state"] == "FAIL" and "no API key" in out["why"]
+    assert out["state"] == "UNVERIFIED" and "no API key" in out["why"]
+    assert vf.is_pass(out) is False
 
 
-def test_no_verifier_available_is_a_fail_not_a_pass():
-    """Silence is never success."""
+def test_no_verifier_available_is_unverified_and_never_a_pass():
     out = vf.unavailable("no model configured")(goal="g", criteria=["x"], evidence="")
-    assert out["state"] == "FAIL"
+    assert out["state"] == "UNVERIFIED"
+    assert vf.is_pass(out) is False
     assert "no model configured" in out["why"]
 
 
@@ -89,12 +101,15 @@ def test_the_claude_cli_verifier_parses_its_answer():
     assert "-p" in run.argv                      # headless, not interactive
 
 
-def test_a_failing_claude_cli_call_fails_rather_than_passing():
+def test_a_claude_cli_that_will_not_run_is_unverified():
+    """A judge that could not start did not judge — and "not logged in" is not a
+    finding about the work."""
     def run(argv, prompt, timeout):
         return 1, "", "not logged in"
 
     out = vf.claude_verifier(run=run)(goal="g", criteria=["c"], evidence="e")
-    assert out["state"] == "FAIL" and "not logged in" in out["why"]
+    assert out["state"] == "UNVERIFIED" and "not logged in" in out["why"]
+    assert vf.is_pass(out) is False
 
 
 def test_default_prefers_a_judge_this_machine_can_reach():
@@ -106,13 +121,28 @@ def test_default_prefers_a_judge_this_machine_can_reach():
 
 def test_with_nothing_installed_the_default_is_the_honest_refusal():
     judge = vf.default_verifier(which=lambda n: None, has_api_key=lambda: False)
-    assert judge(goal="g", criteria=["c"], evidence="e")["state"] == "FAIL"
+    out = judge(goal="g", criteria=["c"], evidence="e")
+    assert out["state"] == "UNVERIFIED"
+    assert vf.is_pass(out) is False
 
 
-def test_empty_evidence_fails_without_asking_the_model():
-    """Nothing visible cannot prove anything, and paying for a model call to
+def test_empty_evidence_is_unverified_without_asking_the_model():
+    """Nothing visible means nothing was judged — and paying for a model call to
     learn that is waste."""
     call = _fake_model("PASS")
     out = vf.model_verifier(call)(goal="g", criteria=["x"], evidence="   ")
-    assert out["state"] == "FAIL"
+    assert out["state"] == "UNVERIFIED"
     assert not hasattr(call, "prompt")
+
+
+def test_a_judge_that_says_fail_is_a_real_failure_not_an_unverified():
+    """The distinction that matters: a judgment was made, and it was no."""
+    out = vf.model_verifier(_fake_model("FAIL: only 3 rows"))(
+        goal="g", criteria=["1204 rows"], evidence="rows: 3")
+    assert out["state"] == "FAIL"
+    assert vf.was_judged(out) is True
+
+
+def test_an_unverified_result_was_not_judged():
+    out = vf.unavailable("nothing installed")(goal="g", criteria=["x"], evidence="e")
+    assert vf.was_judged(out) is False

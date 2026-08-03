@@ -262,6 +262,51 @@ def test_an_undelivered_reason_is_recorded_as_undelivered(config, agent):
     assert ledger.read(config, "reports")[-1]["steered"] is False
 
 
+def test_an_unverified_result_steers_nothing_into_the_session(config, agent):
+    """The bug this exists for: with no verifier configured, the session was
+    told "the verifier says this is not done yet: no independent verifier is
+    available" and asked to address it — a correction nobody made, about a
+    problem the session cannot fix."""
+    from ai4science.harness.agents.sarsi import verifier as vf
+    rt = FakeRuntime()
+    t = ses.assign(config, agent, _task(config, agent), runtime=rt)
+    before = len(rt.sent)
+    t = ses.verify(config, agent, t, evidence="the screen", runtime=rt,
+                   verifier=vf.unavailable("no model configured"))
+    assert rt.sent[before:] == []                    # nothing was typed at it
+    assert t.state == tsk.RUNNING                    # and it is not finished
+
+
+def test_an_unverified_result_is_recorded_as_unverified(config, agent):
+    from ai4science.harness.agents.sarsi import ledger, verifier as vf
+    rt = FakeRuntime()
+    t = ses.assign(config, agent, _task(config, agent), runtime=rt)
+    ses.verify(config, agent, t, evidence="e", runtime=rt,
+               verifier=vf.unavailable("nothing installed"))
+    last = ledger.read(config, "reports")[-1]
+    assert last["verdict"]["state"] == "UNVERIFIED"
+    assert last["state"] == "unverified"
+
+
+def test_a_real_fail_still_steers_because_someone_judged_it(config, agent):
+    rt = FakeRuntime()
+    t = ses.assign(config, agent, _task(config, agent), runtime=rt)
+    ses.verify(config, agent, t, evidence="rows: 3", runtime=rt,
+               verifier=lambda **kw: {"state": "FAIL", "why": "only 3 rows"})
+    assert "only 3 rows" in rt.sent[-1][1]
+
+
+def test_the_answer_says_it_could_not_be_judged(config, agent):
+    from ai4science.harness.agents.sarsi import verifier as vf
+    rt = FakeRuntime()
+    t = ses.assign(config, agent, _task(config, agent), runtime=rt)
+    t = ses.verify(config, agent, t, evidence="e", runtime=rt,
+                   verifier=vf.unavailable("no model configured"))
+    answer = ses.answer(config, agent, t).lower()
+    assert "not judged" in answer or "unverified" in answer
+    assert not answer.startswith("verified")
+
+
 def test_the_worker_cannot_pass_its_own_work(config, agent):
     """There is no path from the worker to a verdict except the verifier."""
     rt = FakeRuntime()

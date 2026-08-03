@@ -263,8 +263,18 @@ def test_check_without_a_verifier_never_passes(isolated):
     out = runner.invoke(app, ["sarsi", "do", "work", "tidy the folder"]).output
     result = runner.invoke(app, ["sarsi", "check", "work", _task_id(out),
                                  "--evidence", "I did it", "--no-model"])
-    assert "verified" not in result.output.lower()
-    assert "fail" in result.output.lower()
+    assert "verified —" not in result.output.lower()
+
+
+def test_check_without_a_verifier_says_it_was_not_judged(isolated):
+    """Not "it failed" — nobody looked, and the owner is owed that distinction
+    because the work may well be done."""
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    out = runner.invoke(app, ["sarsi", "do", "work", "tidy the folder"]).output
+    result = runner.invoke(app, ["sarsi", "check", "work", _task_id(out),
+                                 "--evidence", "I did it", "--no-model"])
+    assert "not judged" in result.output.lower()
+    assert "UNVERIFIED" in result.output
 
 
 def test_vault_lists_names_but_never_values(isolated):
