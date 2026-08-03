@@ -160,22 +160,27 @@ def test_unrelated_acts_cannot_be_batched_into_one_approval(config, agent):
 
 # ── standing grants are bounded and spent ─────────────────────────────
 
-def test_a_standing_grant_covers_the_act_without_asking(config, agent):
-    outward.grant(config, agent_id="work", kind="mail", uses=2)
+def test_a_standing_grant_covers_the_act_without_asking(config):
+    """For an act that is not the agent's own stopping point."""
+    base = config.agents["sarsi-worker"]
+    outward.grant(config, agent_id="sarsi-worker", kind="mail", uses=2)
     approve = _approver([])
-    out = outward.request(config, agent, _act(), approve=approve,
-                          transmit=_transmitter([]))
+    out = outward.request(config, base, _act(agent_id="sarsi-worker"),
+                          approve=approve, transmit=_transmitter([]))
     assert out.approved is True and approve.shown == []
 
 
-def test_each_use_spends_one(config, agent):
-    outward.grant(config, agent_id="work", kind="mail", uses=2)
+def test_each_use_spends_one(config):
+    """A three-use grant really is three. Uses an agent whose act is not its own
+    stopping point, so the grant is genuinely being spent."""
+    base = config.agents["sarsi-worker"]
+    outward.grant(config, agent_id="sarsi-worker", kind="mail", uses=2)
     for _ in range(2):
-        outward.request(config, agent, _act(), approve=_approver([]),
-                        transmit=_transmitter([]))
+        outward.request(config, base, _act(agent_id="sarsi-worker"),
+                        approve=_approver([]), transmit=_transmitter([]))
     approve = _approver([None])
-    out = outward.request(config, agent, _act(), approve=approve,
-                          transmit=_transmitter([]))
+    out = outward.request(config, base, _act(agent_id="sarsi-worker"),
+                          approve=approve, transmit=_transmitter([]))
     assert out.approved is False and approve.shown != []      # asked again
 
 
@@ -241,6 +246,36 @@ def test_an_ordinary_class_still_asks(config, agent):
     approve = _approver(["yes"])
     outward.request(config, agent, _act(), approve=approve, transmit=_transmitter([]))
     assert approve.shown != []
+
+
+# ── the agent's own rules reach the gate ──────────────────────────────
+
+def test_work_is_asked_every_time_even_with_a_standing_grant(config, agent):
+    """Sending is `work`'s act that stops at the owner — *every* time. A
+    standing grant may not turn "never sends by itself" into "sends by
+    default"."""
+    outward.grant(config, agent_id="work", kind="mail", uses=5)
+    approve = _approver(["yes"])
+    out = outward.request(config, agent, _act(), approve=approve,
+                          transmit=_transmitter([]))
+    assert approve.shown != []                 # asked, not waved through
+    assert out.approved is True                # and still possible, with a yes
+
+
+def test_a_refused_send_stays_refused_despite_the_grant(config, agent):
+    outward.grant(config, agent_id="work", kind="mail", uses=5)
+    out = outward.request(config, agent, _act(), approve=_approver(["no"]),
+                          transmit=_transmitter([]))
+    assert out.approved is False
+
+
+def test_a_grant_still_works_for_an_act_the_agent_may_do(config):
+    social = config.agents["social"]
+    outward.grant(config, agent_id="social", kind="post", uses=1)
+    out = outward.request(config, social,
+                          _act(agent_id="social", kind="post", destination="substack"),
+                          approve=_approver([]), transmit=_transmitter([]))
+    assert out.approved is True
 
 
 # ── what undoing costs ────────────────────────────────────────────────

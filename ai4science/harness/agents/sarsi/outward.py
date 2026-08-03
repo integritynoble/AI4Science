@@ -109,7 +109,10 @@ def request(config: Config, agent: Agent, act: Act, *,
         return Outcome(approved=False, abstained=True, reason=reason,
                        digest=act.digest())
 
-    if _spend(config, act.agent_id, act.kind):
+    # Some acts are the agent's own stopping point and are asked EVERY time: a
+    # standing grant must not turn "never sends by itself" into "sends by
+    # default". The act stays possible; it never becomes automatic.
+    if not _always_asks(agent, act) and _spend(config, act.agent_id, act.kind):
         return _transmit(config, act, transmit, via="standing grant", now=now)
 
     shown = render(act)
@@ -129,6 +132,16 @@ def request(config: Config, agent: Agent, act: Act, *,
     # NOTE: nothing here writes a grant. A standing grant is `grant()`, an owner
     # act — never inferred from the fact that five drafts in a row were good.
     return _transmit(config, act, transmit, via="you approved this act", now=now)
+
+
+#: (agent, kind) pairs that are that agent's own stopping point — the act named
+#: in the roster as the one that stops at the owner. No standing grant covers
+#: these; they are asked every time.
+ALWAYS_ASKS = {("work", "mail"), ("funding", "submit"), ("jobs", "submit")}
+
+
+def _always_asks(agent: Agent, act: Act) -> bool:
+    return (agent.id, act.kind) in ALWAYS_ASKS
 
 
 def _transmit(config: Config, act: Act, transmit: Callable[..., str], *,
