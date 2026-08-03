@@ -104,31 +104,58 @@ def usage_of(cwd: str) -> List[Dict[str, Any]]:
     path = sessions._transcript_path(str(cwd))
     if not path:
         raise FileNotFoundError(f"no Claude Code transcript for {cwd}")
+    # EVERY transcript in that project directory, not just the newest: each
+    # `claude` launch writes a new one, so a task that was stopped and resumed
+    # has several, and taking the newest would drop every earlier run's cost.
     out: List[Dict[str, Any]] = []
-    with open(path, errors="replace") as handle:
-        for line in handle:
-            try:
-                entry = json.loads(line)
-            except Exception:
-                continue
-            usage = ((entry.get("message") or {}).get("usage")) or {}
-            if usage:
-                out.append(usage)
+    for file in sorted(Path(path).parent.glob("*.jsonl")):
+        try:
+            handle = open(file, errors="replace")
+        except OSError:
+            continue
+        with handle:
+            for line in handle:
+                try:
+                    entry = json.loads(line)
+                except Exception:
+                    continue
+                usage = ((entry.get("message") or {}).get("usage")) or {}
+                if usage:
+                    out.append(usage)
     return out
 
 
 # ── one task ──────────────────────────────────────────────────────────
 
+def sessions_of(task: tsk.Task) -> List[Dict[str, Any]]:
+    """Every session this task has had — the live one and the ended ones —
+    with **one entry per working directory**.
+
+    They share the task's folder, so they share a transcript directory; reading
+    it once per session would double the cost of every restarted task.
+    """
+    out: List[Dict[str, Any]] = []
+    seen = set()
+    for record in list(task.past_sessions or []) + [task.session or {}]:
+        cwd = (record or {}).get("cwd")
+        if not cwd or cwd in seen:
+            continue
+        seen.add(cwd)
+        out.append(record)
+    return out
+
+
 def for_task(config: Config, agent: Agent, task: tsk.Task, *,
              usage: Optional[Callable[[str], List[Dict[str, Any]]]] = None,
              now=time.time) -> Spend:
     out = Spend(agent_id=agent.id, tasks=1)
-    session = task.session or {}
-    cwd = session.get("cwd")
-    if not cwd:
+    records = sessions_of(task)
+    if not records:
         out.note = "not started — no session, so nothing was spent on one"
         out.unmeasured = 1
         return out
+    session = task.session or records[-1]
+    cwd = session.get("cwd")
 
     started = session.get("started_at")
     if started:
@@ -138,12 +165,15 @@ def for_task(config: Config, agent: Agent, task: tsk.Task, *,
     # else: left as None. Falling back to the task's creation time would report
     # the hours it sat unstarted as time it spent working.
 
-    try:
-        blocks = (usage or usage_of)(cwd)
-    except Exception:
-        out.unmeasured = 1
-        return out
-    if not blocks:
+    blocks: List[Dict[str, Any]] = []
+    read_any = False
+    for record in records:
+        try:
+            blocks.extend((usage or usage_of)(record.get("cwd")))
+            read_any = True
+        except Exception:
+            continue
+    if not read_any or not blocks:
         out.unmeasured = 1
         return out
 

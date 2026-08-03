@@ -86,6 +86,10 @@ class Task:
     #: after that was never input — it is Claude Code's dimmed suggestion, which
     #: a captured pane renders identically to something typed.
     last_submitted: Optional[str] = None
+    #: Sessions this task has already had. Kept so `spend` can still say what
+    #: a stopped or archived task cost — the live record is cleared on stop,
+    #: and the working directory it names is where the transcript lives.
+    past_sessions: List[Dict[str, Any]] = field(default_factory=list)
     #: Where the work happens, from the plan's `Working directory:` line.
     #: Evidence is gathered from here; empty means the task's own folder.
     work_root: Optional[str] = None

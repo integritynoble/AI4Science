@@ -255,3 +255,65 @@ def test_spend_reads_that_transcript(tmp_path, monkeypatch):
 
     blocks = _sp.usage_of("/home/grace/.sarsi/agents/work/tasks/tsk_676ba83f94")
     assert blocks == [{"input_tokens": 7, "output_tokens": 3}]
+
+
+# ── the cost survives the session ─────────────────────────────────────
+
+def test_stopping_a_task_keeps_what_it_cost(config, agent):
+    """`ses.stop` clears `task.session`, so on the real path — archive, which
+    stops first — the cwd went with it and the task became unmeasurable. A
+    spend figure that falls when you tidy up is worse than none."""
+    t = _running(config, agent)
+    cwd = t.session["cwd"]
+    t = ses.stop(config, agent, t, runtime=FakeRuntime())
+    got = sp.for_task(config, agent, tsk.get(config, agent, t.id),
+                      usage=_transcript({"input_tokens": 11, "output_tokens": 4}))
+    assert got.input_tokens == 11
+
+
+def test_archiving_keeps_it_too(config, agent):
+    t = _running(config, agent)
+    t = ses.stop(config, agent, t, runtime=FakeRuntime(), archive=True)
+    got = sp.for_task(config, agent, tsk.get(config, agent, t.id),
+                      usage=_transcript({"input_tokens": 11, "output_tokens": 4}))
+    assert got.input_tokens == 11
+
+
+def test_a_task_that_ran_twice_is_read_once_per_folder(config, agent):
+    """Stop, resume, run again: two sessions, one task — and one folder, so one
+    transcript directory. Reading it per session would double the cost of every
+    restarted task."""
+    t = _running(config, agent)
+    t = ses.stop(config, agent, t, runtime=FakeRuntime())
+    t = tsk.resume(config, agent, tsk.get(config, agent, t.id))
+    t = ses.assign(config, agent, t, runtime=FakeRuntime())
+    seen = []
+
+    def usage(cwd):
+        seen.append(cwd)
+        return [{"input_tokens": 5, "output_tokens": 1}]
+
+    got = sp.for_task(config, agent, tsk.get(config, agent, t.id), usage=usage)
+    assert len(seen) == 1
+    assert got.input_tokens == 5
+
+
+def test_every_transcript_in_the_folder_is_read_not_just_the_newest(tmp_path,
+                                                                   monkeypatch):
+    """Each `claude` launch writes a NEW jsonl in the same project directory.
+    Taking only the newest would drop the cost of every earlier run in that
+    folder — which is exactly what a restarted task has."""
+    home = tmp_path / "home"
+    encoded = "-work-tasks-tsk-abc"
+    d = home / ".claude" / "projects" / encoded
+    d.mkdir(parents=True)
+    (d / "run1.jsonl").write_text(json.dumps(
+        {"type": "assistant", "message": {"usage": {"input_tokens": 3,
+                                                    "output_tokens": 1}}}) + "\n")
+    (d / "run2.jsonl").write_text(json.dumps(
+        {"type": "assistant", "message": {"usage": {"input_tokens": 4,
+                                                    "output_tokens": 2}}}) + "\n")
+    monkeypatch.setenv("HOME", str(home))
+
+    blocks = sp.usage_of("/work/tasks/tsk_abc")
+    assert sum(b["input_tokens"] for b in blocks) == 7

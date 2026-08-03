@@ -497,6 +497,13 @@ def stop(config: Config, agent: Agent, task: tsk.Task, *,
             runtime.stop(name)
         except Exception:
             pass                      # the record matters more than the cleanup
+        # Keep what it cost. Clearing the record outright took the working
+        # directory with it, and with the directory went the transcript — so a
+        # task became unmeasurable the moment it was tidied away, and the spend
+        # figure fell as work FINISHED. That is the one thing it must not do.
+        past = list(task.past_sessions or [])
+        past.append(dict(task.session or {}, ended_at=now()))
+        task.past_sessions = past
         task.session = None
     task = (tsk.archive if archive else tsk.turn_off)(config, agent, task, now=now)
     return task
