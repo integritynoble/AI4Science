@@ -166,6 +166,9 @@ def assign(config: Config, agent: Agent, task: tsk.Task, *,
 
     task.session = {"name": started.get("name", name), "pid": started.get("pid"),
                     "cwd": str(workdir), "ceiling": ceiling,
+                    # when it began, so `spend` can report how long it ran
+                    # rather than how long ago the task was created
+                    "started_at": now(),
                     # what was asked for, beside what was granted: a board that
                     # showed the request would be lying about what is running
                     "ceiling_requested": agent.ceiling,

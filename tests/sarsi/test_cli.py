@@ -718,3 +718,34 @@ def test_cli_do_refuses_a_working_directory_that_is_not_there(isolated, tmp_path
                                  "--workdir", str(tmp_path / "nope")])
     assert result.exit_code != 0
     assert "nope" in result.output
+
+
+def test_cli_spend_reports_per_agent(isolated):
+    _one_task("tidy the report folder")
+    result = runner.invoke(app, ["sarsi", "spend"])
+    assert result.exit_code == 0
+    assert "work" in result.output
+
+
+def test_cli_spend_never_prints_zero_pwm(isolated):
+    """'0 PWM' reads as free; these sessions are simply not metered here."""
+    _one_task()
+    result = runner.invoke(app, ["sarsi", "spend"])
+    assert "0 PWM" not in result.output
+    assert "not charged" in result.output.lower()
+
+
+def test_cli_spend_for_one_task(isolated):
+    _config, _agent, t = _one_task()
+    result = runner.invoke(app, ["sarsi", "spend", "--agent", "work",
+                                 "--task", t.id])
+    assert result.exit_code == 0
+    assert t.id in result.output
+
+
+def test_cli_spend_says_not_recorded_rather_than_zero_tokens(isolated):
+    """A task with no transcript must not report 0 tokens."""
+    _config, _agent, t = _one_task()
+    result = runner.invoke(app, ["sarsi", "spend", "--agent", "work",
+                                 "--task", t.id])
+    assert "not started" in result.output.lower() or "not recorded" in result.output.lower()

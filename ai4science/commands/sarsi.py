@@ -203,6 +203,36 @@ def tasks(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
                       f"[cyan]sarsi tasks {agent_id} --archived[/cyan]", style="dim")
 
 
+@app.command("spend", help="What it cost: tokens and time, read from the session transcripts.")
+def spend(agent_id: Optional[str] = typer.Option(None, "--agent",
+                                                 help="Only this worker."),
+          task_id: Optional[str] = typer.Option(None, "--task",
+                                                help="Only this task (needs --agent).")) -> None:
+    from ai4science.harness.agents.sarsi import spend as spd
+
+    config = _load()
+    if task_id:
+        if not agent_id:
+            console.print("[red]--task needs --agent[/red]")
+            raise typer.Exit(code=2)
+        _c, agent, t = _load_task(agent_id, task_id)
+        one = spd.for_task(config, agent, t)
+        console.print(f"{agent_id}/{t.id}", style="cyan", markup=False,
+                      highlight=False)
+        console.print(f"  {one.summary}", markup=False, highlight=False)
+        return
+
+    rows = ([spd.for_agent(config, _worker_or_exit(config, agent_id))]
+            if agent_id else spd.across(config))
+    if not rows:
+        console.print("nothing has run yet")
+        return
+    for row in rows:
+        console.print(f"{row.agent_id}  ({row.tasks} task(s))", style="cyan",
+                      markup=False, highlight=False)
+        console.print(f"  {row.summary}", markup=False, highlight=False)
+
+
 @app.command("why", help="Why is it doing this: the goal, the criteria, and the last verdict.")
 def why(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
         task_id: str = typer.Argument(..., help="Task id")) -> None:
