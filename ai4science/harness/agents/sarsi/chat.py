@@ -65,6 +65,14 @@ def handle(config: Config, agent: Agent, text: str, *, surface: str,
         return _tasks(config, agent)
     if verb == "archived":
         return _archived(config, agent)
+    if verb == "questions":
+        return _questions(config, agent)
+    if verb == "answer":
+        token, _, tail = rest.partition(" ")
+        found = _resolve(config, agent, token.strip())
+        if isinstance(found, str):
+            return found
+        return _answer(config, agent, found, tail.strip(), runtime)
     if verb in ("guided", "interact", "resume", "history", "plan", "edit",
                 "stop", "archive", "reopen", "resume-task", "goal", "why"):
         token, _, tail = rest.partition(" ")
@@ -171,6 +179,39 @@ def _archived(config: Config, agent: Agent) -> str:
         lines.append(f"  /{t.id}  {t.goal}  [{verdict}]")
     lines.append("re-open one with /reopen <task>")
     return "\n".join(lines)
+
+
+def _questions(config: Config, agent: Agent) -> str:
+    from ai4science.harness.agents.sarsi import questions as qst
+    rows = qst.open_of(config, agent)
+    if not rows:
+        return f"{agent.id}: no open questions."
+    lines = [f"{agent.id} — {len(rows)} open question(s):"]
+    for q in rows:
+        lines.append(f"  /{q.task_id}  {q.text}")
+        if q.why:
+            lines.append(f"      ({q.why})")
+    lines.append('answer one with: /answer <task> <question> | <your answer>')
+    return "\n".join(lines)
+
+
+def _answer(config: Config, agent: Agent, t: tsk.Task, tail: str, runtime) -> str:
+    """`/answer <task> <question> | <answer>`.
+
+    The separator is explicit because a question and an answer are both free
+    text; guessing where one ends would sometimes deliver half of each.
+    """
+    from ai4science.harness.agents.sarsi import questions as qst
+    if "|" not in tail:
+        return (f"usage: /answer {t.id} <the question> | <your answer>\n"
+                f"/questions lists what is open")
+    question, _, reply = tail.partition("|")
+    try:
+        qst.answer(config, agent, t, question.strip(), reply.strip(),
+                   runtime=runtime)
+    except (qst.NotAsked, qst.NoSession) as e:
+        return str(e)
+    return f"answered — {t.id} has been told, and the question is closed"
 
 
 # ── closing one ───────────────────────────────────────────────────────

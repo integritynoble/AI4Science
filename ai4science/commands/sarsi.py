@@ -203,6 +203,44 @@ def tasks(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
                       f"[cyan]sarsi tasks {agent_id} --archived[/cyan]", style="dim")
 
 
+@app.command("questions", help="Escalations waiting on you, across every worker or one.")
+def questions_cmd(agent_id: Optional[str] = typer.Option(None, "--agent",
+                                                         help="Only this worker.")) -> None:
+    from ai4science.harness.agents.sarsi import questions as qst
+
+    config = _load()
+    rows = (qst.open_of(config, _worker_or_exit(config, agent_id))
+            if agent_id else qst.across(config))
+    if not rows:
+        console.print("no open questions")
+        return
+    console.print(f"{len(rows)} open question(s):", style="yellow")
+    for q in rows:
+        console.print(f"  {q}", markup=False, highlight=False)
+        console.print(f"    → sarsi answer {q.agent_id} {q.task_id} "
+                      f"\"{q.text}\" \"<your answer>\"", style="dim",
+                      markup=False, highlight=False)
+    # non-zero so a timer or a shell `if` can act on it without parsing text
+    raise typer.Exit(code=1)
+
+
+@app.command("answer", help="Answer an escalated question — it goes into the session.")
+def answer_cmd(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
+               task_id: str = typer.Argument(..., help="Task id"),
+               question: str = typer.Argument(..., help="The question, as listed"),
+               reply: str = typer.Argument(..., help="Your answer")) -> None:
+    from ai4science.harness.agents.sarsi import questions as qst
+
+    config, agent, t = _load_task(agent_id, task_id)
+    try:
+        qst.answer(config, agent, t, question, reply)
+    except (qst.NotAsked, qst.NoSession) as e:
+        console.print(str(e), style="yellow", markup=False, highlight=False)
+        raise typer.Exit(code=2)
+    console.print(f"answered — {t.id} has been told, and the question is closed",
+                  markup=False, highlight=False)
+
+
 @app.command("blast", help="What it wrote, against the paths its plan declared.")
 def blast_cmd(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
               task_id: str = typer.Argument(..., help="Task id")) -> None:

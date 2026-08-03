@@ -801,3 +801,35 @@ def test_cli_blast_does_not_claim_clean_without_a_record(isolated):
     _config, _agent, t = _one_task()
     result = runner.invoke(app, ["sarsi", "blast", "work", t.id])
     assert "clean" not in result.output.lower() or "not a clean" in result.output.lower()
+
+
+def test_cli_questions_lists_open_escalations(isolated):
+    from ai4science.harness.agents.sarsi import ledger
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    config = reg.load()
+    ledger.append(config, "reports",
+                  {"agent": "work", "task": "tsk_1", "state": "question",
+                   "evidence": ["Q: which directory should I index?",
+                                "escalated: the plan does not settle it"]})
+    result = runner.invoke(app, ["sarsi", "questions"])
+    assert result.exit_code != 0            # something waits on you
+    assert "which directory should I index?" in result.output
+
+
+def test_cli_questions_is_quiet_when_none_are_open(isolated):
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    result = runner.invoke(app, ["sarsi", "questions"])
+    assert result.exit_code == 0
+    assert "no open questions" in result.output.lower()
+
+
+def test_cli_answer_refuses_when_the_answer_would_reach_nobody(isolated):
+    from ai4science.harness.agents.sarsi import ledger, task as tsk
+    config, agent, t = _one_task()
+    ledger.append(config, "reports",
+                  {"agent": "work", "task": t.id, "state": "question",
+                   "evidence": ["Q: which directory?", "escalated: x"]})
+    result = runner.invoke(app, ["sarsi", "answer", "work", t.id,
+                                 "which directory?", "/srv/exports"])
+    assert result.exit_code != 0
+    assert "no session" in result.output.lower()

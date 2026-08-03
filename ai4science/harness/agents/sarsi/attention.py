@@ -112,6 +112,15 @@ def _for_task(config: Config, agent: Agent, task: tsk.Task, *,
 
     out: List[Item] = []
 
+    from ai4science.harness.agents.sarsi import questions as qst
+    for question in qst.open_of(config, agent):
+        if question.task_id == task.id:
+            out.append(Item("question", task.id,
+                            f"the session asked: {question.text}"
+                            + (f" ({question.why})" if question.why else ""),
+                            action=f"sarsi answer {agent.id} {task.id} "
+                                   f"\"{question.text}\" \"<your answer>\""))
+
     if task.awaiting:
         out.append(Item("grant", task.id,
                         "not granted: " + ", ".join(task.awaiting),
