@@ -50,8 +50,12 @@ from typing import Any, Callable, Optional
 from ai4science.harness.agents.sarsi import ledger, task as tsk
 from ai4science.harness.agents.sarsi.registry import Agent, Config
 
-#: A live spinner, or an interrupt hint, means the session is mid-turn.
-_BUSY = ("esc to interrupt", "✻", "⎿", "tokens)")
+#: Mid-turn, and nothing weaker. `esc to interrupt` is shown by Claude Code
+#: only while a turn is actually running, which makes it the one reliable
+#: signal. A bare `✻` is not: it also heads FINISHED status lines — abraham's
+#: run sat at `✻ Brewed for 35s` and the loop reported `busy` forever at a
+#: session that had already stopped. A glyph is not a state.
+_BUSY = ("esc to interrupt",)
 
 #: Gates this loop is allowed to answer, and the option to press. Recognised by
 #: a phrase that only appears on that gate. Anything else waits for the owner.
@@ -103,7 +107,15 @@ def tick(config: Config, agent: Agent, task: tsk.Task, *, pane: Any,
 
     screen = pane.capture(session) or ""
 
-    if verifier is not None:
+    # While planning there are no criteria, and judging against none is not
+    # judging. Everything ELSE in the pass still applies: a planning session
+    # gets stuck on a gate or a stranded prompt exactly like any other, and a
+    # session that cannot be unstuck cannot be planned. The live run for
+    # abraham sat at the folder-trust prompt for six passes reporting
+    # `planning`, because collection used to return before `AN` ever ran.
+    planning = task.state == tsk.PLANNING
+
+    if verifier is not None and not planning:
         from ai4science.harness.agents.sarsi import evidence as evd, session as ses
         # What the session LEFT BEHIND, not what its terminal was showing. A
         # live run failed here: the pane held a spinner and some narration, and
@@ -116,19 +128,6 @@ def tick(config: Config, agent: Agent, task: tsk.Task, *, pane: Any,
                           now=now)
         if task.state == tsk.VERIFIED:
             return Action("verified", "the goal is met")
-
-    # Planning comes before anything else the loop would do: while the task is
-    # being planned there is no plan to steer against and no criteria to judge.
-    if task.state == tsk.PLANNING:
-        from ai4science.harness.agents.sarsi import session as ses
-        idle = not _busy(screen) and not _gate(screen)
-        after = ses.collect_plan(config, agent, task, runtime=_Sender(pane),
-                                 session_idle=idle, now=now)
-        if after.state != tsk.PLANNING:
-            return Action("planned",
-                          f"{len(after.criteria)} criterion(s); "
-                          + (", ".join(after.awaiting) or "nothing to grant"))
-        return Action("planning")
 
     gate = _gate(screen)
     if gate is not None:
@@ -151,7 +150,7 @@ def tick(config: Config, agent: Agent, task: tsk.Task, *, pane: Any,
     # unrelated next step over it — and beats waking the owner for a question
     # the plan already settles. A gate is checked first, above: an option menu
     # is authority, and authority is not a clarification.
-    if model is not None:
+    if model is not None and not planning:
         from ai4science.harness.agents.sarsi import answering as anq
         asked = anq.question_on(screen)
         if asked:
@@ -162,12 +161,28 @@ def tick(config: Config, agent: Agent, task: tsk.Task, *, pane: Any,
             return Action("asks-owner", out.escalate)
 
     stranded = _stranded(screen)
-    if stranded:
+    if stranded and stranded != task.last_submitted:
         # Submitting what is already typed beats writing something new over it.
+        # Once only: text still there after Enter was never input, and pressing
+        # Enter at it every pass is how a loop mistakes a suggestion for work.
         pane.key(session, "Enter")          # verbatim: nothing is retyped
+        task.last_submitted = stranded
+        task = tsk._touch(agent, task, now)
         _report(config, agent, task, state="submitted",
                 evidence=stranded[:200], now=now)
         return Action("submitted", stranded[:80])
+
+    if planning:
+        # the session has had the pane to itself this pass — read back what it
+        # wrote, or leave it planning
+        from ai4science.harness.agents.sarsi import session as ses
+        after = ses.collect_plan(config, agent, task, runtime=_Sender(pane),
+                                 session_idle=True, now=now)
+        if after.state != tsk.PLANNING:
+            return Action("planned",
+                          f"{len(after.criteria)} criterion(s); "
+                          + (", ".join(after.awaiting) or "nothing to grant"))
+        return Action("planning")
 
     if model is not None:
         from ai4science.harness.agents.sarsi import composer as cp

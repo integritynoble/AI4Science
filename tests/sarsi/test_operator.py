@@ -114,7 +114,8 @@ def _task(config, agent, *, session=True, paused=False):
     if session:
         t.session = {"name": "work-abcd", "engine": "claude", "ceiling": "A1"}
     t.steering_paused = paused
-    return t
+    # persisted, so a reload in a later pass sees the same task
+    return tsk._touch(agent, t, __import__("time").time)
 
 
 # ── AN: answering a gate it recognises ────────────────────────────────
@@ -381,3 +382,95 @@ def test_the_loop_gets_a_stuck_session_moving(config, agent):
         actions.append(op.tick(config, agent, t, pane=pane).kind)
         advance()
     assert actions == ["answered", "submitted"]
+
+
+# ── planning must not short-circuit the unsticking ────────────────────
+
+def _planning(config, agent):
+    t = _task(config, agent)
+    t.state = tsk.PLANNING
+    t.plan_agreed = False
+    return t
+
+
+def test_a_planning_session_still_gets_its_gate_answered(config, agent):
+    """The live run for abraham sat at the folder-trust prompt for six passes
+    reporting `planning`, because the planning branch returned before AN ever
+    ran. A task that cannot be unstuck cannot be planned."""
+    pane = FakePane(TRUST_PANE)
+    action = op.tick(config, agent, _planning(config, agent), pane=pane)
+    assert action.kind == "answered"
+    assert pane.sent == ["1"]
+
+
+def test_a_planning_session_still_gets_its_kickoff_submitted(config, agent):
+    pane = FakePane(STRANDED_PANE)
+    action = op.tick(config, agent, _planning(config, agent), pane=pane)
+    assert action.kind == "submitted"
+    assert pane.keys == ["Enter"]
+
+
+def test_a_planning_session_is_not_verified(config, agent):
+    """There are no criteria yet; judging against none is not judging."""
+    called = []
+    op.tick(config, agent, _planning(config, agent), pane=FakePane(IDLE_PANE),
+            verifier=lambda **kw: called.append(kw) or {"state": "PASS"})
+    assert called == []
+
+
+def test_a_quiet_planning_session_is_collected(config, agent):
+    action = op.tick(config, agent, _planning(config, agent), pane=FakePane(IDLE_PANE))
+    assert action.kind in ("planning", "planned")
+
+
+# ── busy means mid-turn, not "a glyph appeared" ───────────────────────
+
+FINISHED_PANE = """\
+✻ Brewed for 35s
+
+───────────────────────────────────────────────────────────────────────
+❯ mark the plan agreed and move to executing
+───────────────────────────────────────────────────────────────────────
+  ⏸ manual mode on · ? for shortcuts · ← for agents
+"""
+
+
+def test_a_finished_status_line_is_not_busy(config, agent):
+    """Verbatim from abraham's run. `✻ Brewed for 35s` is Claude Code saying it
+    FINISHED in 35 seconds. Reading the glyph as a spinner left the loop
+    reporting `busy` forever at a session that had already stopped."""
+    assert op._busy(FINISHED_PANE) is False
+
+
+def test_the_interrupt_hint_is_what_means_mid_turn(config, agent):
+    """`esc to interrupt` only appears while a turn is actually running."""
+    assert op._busy(BUSY_PANE) is True
+
+
+def test_a_finished_session_gets_its_stranded_prompt_submitted(config, agent):
+    pane = FakePane(FINISHED_PANE)
+    assert op.tick(config, agent, _task(config, agent), pane=pane).kind == "submitted"
+
+
+def test_the_same_prompt_is_not_submitted_twice(config, agent):
+    """Claude Code shows a dimmed SUGGESTION at an empty prompt, and a captured
+    pane renders it identically to typed input. Abraham's run submitted
+    `mark the plan agreed and move to executing` on every pass and it never went
+    anywhere. Text still sitting there after Enter was never input — submit
+    once, then stop believing it."""
+    pane = FakePane(STRANDED_PANE)
+    t = _task(config, agent)
+    first = op.tick(config, agent, t, pane=pane)
+    second = op.tick(config, agent, tsk.get(config, agent, t.id), pane=pane)
+    assert first.kind == "submitted"
+    assert second.kind != "submitted"
+    assert pane.keys == ["Enter"]
+
+
+def test_a_different_prompt_is_still_submitted(config, agent):
+    pane = FakePane(STRANDED_PANE)
+    t = _task(config, agent)
+    op.tick(config, agent, t, pane=pane)
+    pane.text = "❯ something else entirely\n"
+    again = op.tick(config, agent, tsk.get(config, agent, t.id), pane=pane)
+    assert again.kind == "submitted"

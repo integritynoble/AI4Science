@@ -65,6 +65,10 @@ class Task:
     plan_stale: bool = False
     #: the owner rewrote it; polish may propose a successor, never replace it
     plan_owner_edited: bool = False
+    #: the last text `SP` pressed Enter on. Text still sitting at the prompt
+    #: after that was never input — it is Claude Code's dimmed suggestion, which
+    #: a captured pane renders identically to something typed.
+    last_submitted: Optional[str] = None
     #: has this plan been settled between the worker and the session (or by the
     #: owner)? A worker's seed is a starting point, not an agreed plan, and the
     #: difference is whether the session has had its say.
