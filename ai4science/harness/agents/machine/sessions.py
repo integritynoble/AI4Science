@@ -144,7 +144,14 @@ def _transcript_path(cwd: str) -> Optional[str]:
     stores them at ~/.claude/projects/<cwd-with-slashes-as-dashes>/<id>.jsonl."""
     try:
         import glob
-        enc = str(cwd).replace("/", "-")
+        # Claude Code encodes the project dir by replacing `/`, `.` AND `_`
+        # with `-`. Replacing only `/` misses every sarsi session, whose cwd is
+        # `~/.sarsi/agents/<id>/tasks/tsk_<hex>` — both a dot and an underscore.
+        # `spend` reported "not recorded" for tasks whose transcripts were
+        # sitting on disk because of exactly this.
+        enc = str(cwd)
+        for ch in ("/", ".", "_"):
+            enc = enc.replace(ch, "-")
         base = os.path.expanduser(os.path.join("~", ".claude", "projects", enc))
         files = glob.glob(os.path.join(base, "*.jsonl"))
         return max(files, key=os.path.getmtime) if files else None

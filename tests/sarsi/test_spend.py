@@ -213,3 +213,45 @@ def test_an_archived_task_still_counts_towards_what_was_spent(config, agent):
     total = sp.for_agent(config, agent, usage=_transcript(
         {"input_tokens": 10, "output_tokens": 2}))
     assert total.input_tokens == 10
+
+
+# ── the transcript lookup ─────────────────────────────────────────────
+
+def test_the_transcript_is_found_for_a_path_with_dots_and_underscores(
+        tmp_path, monkeypatch):
+    """Claude Code encodes `/`, `.` AND `_` as `-`. Replacing only `/` misses
+    every sarsi session, because their cwd is `~/.sarsi/.../tsk_<hex>` — which
+    is how `spend` reported "not recorded" for tasks whose transcripts were
+    sitting on disk.
+    """
+    from ai4science.harness.agents.machine import sessions
+
+    home = tmp_path / "home"
+    projects = home / ".claude" / "projects"
+    encoded = "-home-grace--sarsi-agents-work-tasks-tsk-676ba83f94"
+    (projects / encoded).mkdir(parents=True)
+    (projects / encoded / "abc.jsonl").write_text(
+        json.dumps({"type": "assistant",
+                    "message": {"usage": {"input_tokens": 7,
+                                          "output_tokens": 3}}}) + "\n")
+    monkeypatch.setenv("HOME", str(home))
+
+    found = sessions._transcript_path("/home/grace/.sarsi/agents/work/tasks/tsk_676ba83f94")
+    assert found is not None
+
+
+def test_spend_reads_that_transcript(tmp_path, monkeypatch):
+    from ai4science.harness.agents.sarsi import spend as _sp
+
+    home = tmp_path / "home"
+    projects = home / ".claude" / "projects"
+    encoded = "-home-grace--sarsi-agents-work-tasks-tsk-676ba83f94"
+    (projects / encoded).mkdir(parents=True)
+    (projects / encoded / "abc.jsonl").write_text(
+        json.dumps({"type": "assistant",
+                    "message": {"usage": {"input_tokens": 7,
+                                          "output_tokens": 3}}}) + "\n")
+    monkeypatch.setenv("HOME", str(home))
+
+    blocks = _sp.usage_of("/home/grace/.sarsi/agents/work/tasks/tsk_676ba83f94")
+    assert blocks == [{"input_tokens": 7, "output_tokens": 3}]
