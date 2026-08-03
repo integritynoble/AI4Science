@@ -38,12 +38,23 @@ def handle(config: Config, agent: Agent, text: str, *, surface: str,
         verb = _self_verb(body)
         if verb:
             return verb(config, agent)
+        # Inside a task, plain words are about THAT task — that is what being
+        # "in" one means. With no cursor they are not steered anywhere: a
+        # message with nowhere to go must not pick a session for itself.
+        standing = _standing(config, agent, surface)
+        if standing is not None:
+            return _guided(config, agent, standing, body, runtime)
         return _not_a_command(config, agent, body, surface)
 
     verb, _, rest = body[1:].partition(" ")
     verb, rest = verb.strip(), rest.strip()
 
+    if verb == "new":
+        return _new(config, agent, rest, surface)
     if verb in ("tasks", "task"):
+        # stepping back out to the board is explicit, so the cursor never
+        # silently follows something the owner did not choose
+        _stand(config, agent, None, surface)
         return _tasks(config, agent)
     if verb == "archived":
         return _archived(config, agent)
@@ -64,7 +75,63 @@ def handle(config: Config, agent: Agent, text: str, *, surface: str,
         # a token that is not a task id at all is a mistyped command, and the
         # useful answer names the commands rather than the missing task
         return found if verb.startswith("tsk") else _unknown(agent)
+    _stand(config, agent, found.id, surface)   # opening one is standing in it
     return _open(config, agent, found)
+
+
+# ── where this surface is standing ────────────────────────────────────
+
+def _stand(config: Config, agent: Agent, task_id, surface: str) -> None:
+    from ai4science.harness.agents.sarsi import entry
+    try:
+        entry.stand_in(config, agent, task_id, surface=surface)
+    except Exception:
+        pass          # a cursor that cannot be written must not eat the command
+
+
+def _standing(config: Config, agent: Agent, surface: str):
+    from ai4science.harness.agents.sarsi import entry
+    try:
+        here = entry.current(config, agent, surface=surface)
+    except Exception:
+        return None
+    return tsk.get(config, agent, here) if here else None
+
+
+def _new(config: Config, agent: Agent, goal: str, surface: str) -> str:
+    """Open a task from inside the worker, and stand in it.
+
+    The empty state needs a way *out* of it: until this existed, nothing created
+    a task from inside a worker and the only door was the CLI.
+    """
+    goal = (goal or "").strip()
+    if not goal:
+        return f"usage: /new <goal, one sentence>"
+    if not agent.is_worker:
+        return f"{agent.id} is a manager: it holds no tasks."
+
+    from ai4science.harness.agents.sarsi import worker as wk
+    try:
+        directive = wk.Directive(agent_id=agent.id, goal=goal)
+        out = wk.admit(config, agent, directive)
+    except (wk.BadDirective, wk.NotAWorker) as e:
+        return str(e)
+    if not out.admitted:
+        return f"{out.message}\nnot queued — nothing is waiting on this"
+
+    t = tsk.attach_plan(config, agent, tsk.create(config, agent, directive),
+                        pl.draft(directive))
+    t = tsk.start(config, agent, t)
+    _stand(config, agent, t.id, surface)
+    lines = [f"{agent.id} holds {t.id} — {t.state}",
+             "  plan drafted; sarsi-claude agrees it before work starts",
+             "  you are now in it — plain words go to its session",
+             f"  run it: ai4science sarsi run {agent.id} {t.id}"]
+    if t.awaiting:
+        lines.insert(1, f"  waiting on: {', '.join(t.awaiting)}")
+    if t.blocked_by:
+        lines.append(f"  not started — {t.blocked_by}")
+    return "\n".join(lines)
 
 
 # ── listing ───────────────────────────────────────────────────────────

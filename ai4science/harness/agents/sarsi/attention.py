@@ -1,0 +1,179 @@
+"""`ATT` — is anything waiting on the owner?
+
+Everything that went wrong on the live runs went wrong **silently**: a gate the
+supervision loop had no rule for, Claude Code's first-run trust dialog, a
+session finishing a turn having written nothing. Catching any of it took a human
+watching `tmux`. A worker that cannot answer *"is anything waiting on you?"*
+makes the owner the monitor — which is the job the worker exists to remove.
+
+Nothing here is new information. Gates are on the pane, `awaiting` is on the
+task, so are the retry count and the stale flag, and the session record says
+which terminal it believes in. They were simply never read together.
+
+Three rules:
+
+  * **it is about the owner, not about progress.** A busy session is not on this
+    list. A list that includes healthy work teaches the owner to skim it, and a
+    skimmed list is the same as no list.
+  * **a gate carries the actual command.** "A gate is waiting" tells the owner to
+    go and look; the command tells them whether they need to.
+  * **it never reports a blockage it cannot see.** A pane that will not read is
+    reported as a session whose terminal is gone — not as idle, and not as fine.
+    Reporting state that was true when it was written is how a board lies.
+"""
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass, field
+from typing import Any, List, Optional
+
+from ai4science.harness.agents.sarsi import operator as op, task as tsk
+from ai4science.harness.agents.sarsi.registry import Agent, Config
+
+#: Most blocking first. A gate stops work *now*; a stale plan stops the next
+#: decision. The order is the whole value of the list — the owner reads down it
+#: until they run out of time, so what they read first has to be what matters.
+ORDER = ("gate", "grant", "question", "exhausted", "undelivered",
+         "dead-session", "stale")
+
+#: The command a gate is asking about, as Claude Code renders it: an indented
+#: block above the "Do you want to proceed?" line.
+_COMMAND = re.compile(r"^\s{2,}(?P<cmd>\S.*)$", re.M)
+
+
+@dataclass(frozen=True)
+class Item:
+    kind: str
+    task_id: str
+    detail: str
+    agent_id: str = ""
+    action: str = ""
+
+    def __str__(self) -> str:
+        where = f"{self.agent_id}/{self.task_id}" if self.agent_id else self.task_id
+        return f"{self.kind}: {where} — {self.detail}"
+
+
+@dataclass
+class Attention:
+    items: List[Item] = field(default_factory=list)
+
+    @property
+    def summary(self) -> str:
+        if not self.items:
+            return "nothing is waiting on you"
+        counts: dict = {}
+        for item in self.items:
+            counts[item.kind] = counts.get(item.kind, 0) + 1
+        parts = [f"{counts[k]} {k}" for k in ORDER if k in counts]
+        return f"{len(self.items)} waiting on you: " + ", ".join(parts)
+
+    def __bool__(self) -> bool:
+        return bool(self.items)
+
+
+def needs(config: Config, agent: Agent, *, pane: Optional[Any] = None) -> Attention:
+    """What is waiting on the owner across everything this worker holds."""
+    if not agent.is_worker:
+        # It drives nothing, so it can be blocked on nothing.
+        return Attention()
+    items: List[Item] = []
+    for task in tsk.all_of(config, agent):          # archived is not waiting
+        items.extend(_for_task(config, agent, task, pane=pane))
+    items.sort(key=lambda i: (ORDER.index(i.kind) if i.kind in ORDER
+                              else len(ORDER), i.task_id))
+    return Attention(items=items)
+
+
+def across(config: Config, *, pane: Optional[Any] = None) -> Attention:
+    """The same question across every worker — the fleet view."""
+    items: List[Item] = []
+    for agent in config.workers():
+        for item in needs(config, agent, pane=pane).items:
+            items.append(Item(kind=item.kind, task_id=item.task_id,
+                              detail=item.detail, agent_id=agent.id,
+                              action=item.action))
+    items.sort(key=lambda i: (ORDER.index(i.kind) if i.kind in ORDER
+                              else len(ORDER), i.agent_id, i.task_id))
+    return Attention(items=items)
+
+
+# ── one task ──────────────────────────────────────────────────────────
+
+def _for_task(config: Config, agent: Agent, task: tsk.Task, *,
+              pane: Optional[Any]) -> List[Item]:
+    from ai4science.harness.agents.sarsi import retry as rty
+
+    out: List[Item] = []
+
+    if task.awaiting:
+        out.append(Item("grant", task.id,
+                        "not granted: " + ", ".join(task.awaiting),
+                        action=f"sarsi grant {agent.id} {task.id} "
+                               f"\"{task.awaiting[0]}\""))
+
+    if int(task.retries or 0) >= rty.MAX_RETRIES:
+        reason = (task.verdict or {}).get("reason") or "no reason recorded"
+        out.append(Item("exhausted", task.id,
+                        f"handed back {task.retries} times and still fails: {reason}",
+                        action=f"sarsi plan {agent.id} {task.id}"))
+
+    if task.kickoff_undelivered:
+        out.append(Item("undelivered", task.id,
+                        "its first instruction was typed and never appeared on "
+                        "screen",
+                        action=f"tmux attach -t {(task.session or {}).get('name', '')}"))
+
+    if task.plan_stale:
+        out.append(Item("stale", task.id,
+                        "its plan no longer matches what is being done; its "
+                        "criteria are withheld",
+                        action=f"sarsi ask {agent.id} \"/edit {task.id} 1 "
+                               f"<criterion>\""))
+
+    name = (task.session or {}).get("name")
+    if name and pane is not None:
+        out.extend(_from_pane(agent, task, name, pane))
+    return out
+
+
+def _from_pane(agent: Agent, task: tsk.Task, name: str, pane: Any) -> List[Item]:
+    """What the session's own screen says. Unreadable is an answer, not a gap."""
+    try:
+        screen = pane.capture(name)
+    except Exception:
+        # The record believes in a terminal that will not answer. Saying so beats
+        # both "idle" and silence — the owner can see it is gone, and the record
+        # cannot.
+        return [Item("dead-session", task.id,
+                     f"its record points at session {name}, which is not there",
+                     action=f"sarsi stop {agent.id} {task.id}")]
+    if screen is None:
+        return [Item("dead-session", task.id,
+                     f"its record points at session {name}, which returned nothing",
+                     action=f"sarsi stop {agent.id} {task.id}")]
+
+    gate = op._gate(screen, planning=not task.plan_agreed)
+    if gate is not None and gate[0] is None:
+        # A gate the loop will not answer: the owner's, by construction.
+        return [Item("gate", task.id,
+                     f"{gate[1]}{_command(screen)}",
+                     action=f"tmux attach -t {name}")]
+    return []
+
+
+def _command(screen: str) -> str:
+    """The command the gate is about, when the screen shows one.
+
+    Reported as ` — asking about: <cmd>` so the owner can decide from the list
+    whether they need to attach at all. Absent rather than guessed: a gate whose
+    subject cannot be read says nothing rather than something plausible.
+    """
+    head = screen.split("Do you want to proceed", 1)[0]
+    lines = [m.group("cmd").strip() for m in _COMMAND.finditer(head)]
+    lines = [ln for ln in lines if not ln.lower().startswith(("bash command",
+                                                              "hook "))]
+    if not lines:
+        return ""
+    text = " ".join(lines)
+    return f" — asking about: {text[:200]}"

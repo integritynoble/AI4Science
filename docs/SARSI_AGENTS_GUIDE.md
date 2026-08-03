@@ -370,11 +370,17 @@ ceiling, or widen any authority.
 
 ```
 SETUP     sarsi init --owner-id <id> · agents [--bindings] · set-token <agent> <token>
+          sarsi ceiling <agent|all> A0|A1|A2|A3
 TALK      sarsi ask <agent> "<text>"        (or that agent's bot)
 REPL      /agent <name> then /do <goal> · /tasks     # inside `ai4science`
+WAITING   sarsi attention [--agent <id>]    # what is waiting on YOU (exit 1 if any)
+ENTER     sarsi enter <agent>               # the task you last touched, or the question
+LIFECYCLE sarsi stop|archive|reopen <agent> <task> · tasks <agent> --archived
+          sarsi goal <agent> <task> "<new goal>" · retry <agent> <task>
 TASK      sarsi do <agent> "<goal>" [--tool T] [--secret S]
           sarsi tasks <agent> · plan <agent> <task> · grant <agent> <task> "<perm>"
-BOARD     ask <agent> "/tasks" · "/<task>" · "/edit <task> <n> <criterion>"
+BOARD     ask <agent> "/tasks" · "/<task>" · "/new <goal>" · "/archived"
+          "/edit <task> <n> <criterion>" · "/goal <task> <text>"
           "/guided <task> <instruction>" · "/interact <task>" · "/history <task>"
 RUN       sarsi run <agent> <task> · operate · supervise [--passes N]
 VERDICT   sarsi check <agent> <task> --evidence "…" [--engine claude]

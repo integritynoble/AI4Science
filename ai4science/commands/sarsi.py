@@ -182,6 +182,50 @@ def tasks(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
                       f"[cyan]sarsi tasks {agent_id} --archived[/cyan]", style="dim")
 
 
+@app.command("attention", help="What is waiting on YOU — across every worker, or one.")
+def attention(agent_id: Optional[str] = typer.Option(None, "--agent",
+                                                     help="Only this worker.")) -> None:
+    from ai4science.harness.agents.sarsi import attention as att, operator as op
+
+    config = _load()
+    pane = op.TmuxPane()
+    if agent_id:
+        agent = _worker_or_exit(config, agent_id)
+        found = att.needs(config, agent, pane=pane)
+        rows = [att.Item(kind=i.kind, task_id=i.task_id, detail=i.detail,
+                         agent_id=agent.id, action=i.action) for i in found.items]
+        found = att.Attention(items=rows)
+    else:
+        found = att.across(config, pane=pane)
+
+    console.print(found.summary, markup=False, highlight=False)
+    for item in found.items:
+        console.print(f"  [{item.kind}] {item.agent_id}/{item.task_id}",
+                      style="yellow", markup=False, highlight=False)
+        console.print(f"      {item.detail}", markup=False, highlight=False)
+        if item.action:
+            console.print(f"      → {item.action}", style="dim",
+                          markup=False, highlight=False)
+    if found.items:
+        # a non-zero exit so a timer or a shell `if` can act on it without
+        # parsing the text
+        raise typer.Exit(code=1)
+
+
+@app.command("enter", help="Step into a worker: its current task, or the question it wants answered.")
+def enter(agent_id: str = typer.Argument(..., help="Worker id, e.g. work")) -> None:
+    from ai4science.harness.agents.sarsi import entry
+
+    config = _load()
+    agent = config.agents.get(agent_id)
+    if agent is None:
+        console.print(f"[red]no agent {agent_id!r}[/red] — known: "
+                      f"{', '.join(sorted(config.agents))}")
+        raise typer.Exit(code=2)
+    console.print(entry.enter(config, agent, surface="cli"),
+                  markup=False, highlight=False)
+
+
 @app.command("stop", help="Stop a task and close its session. Resumable — the plan survives.")
 def stop(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
          task_id: str = typer.Argument(..., help="Task id")) -> None:

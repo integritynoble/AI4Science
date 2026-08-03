@@ -80,8 +80,12 @@ Claude Code, and stop at you before anything leaves the machine.
 > them: designing a task, writing a criterion the verifier can check, the plan
 > handshake, the three modes, the gates, and the honest limits.
 >
-> **[`docs/SARSI_ROADMAP.md`](docs/SARSI_ROADMAP.md)** — what is missing and in
-> what order, each entry named by the live run that exposed it.
+> **[`docs/SARSI_WORKER_FUNCTIONS.md`](docs/SARSI_WORKER_FUNCTIONS.md)** —
+> every function a worker has, what to build next, and what is refused on
+> purpose. Supersedes the roadmap.
+>
+> **[`docs/SARSI_ROADMAP.md`](docs/SARSI_ROADMAP.md)** — the Tier 1/2/3 ordering
+> the functions list was merged from.
 
 ```bash
 ai4science sarsi init --owner-id <your telegram user id>

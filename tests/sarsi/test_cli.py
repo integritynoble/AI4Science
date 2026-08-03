@@ -593,3 +593,39 @@ def test_cli_retry_refuses_an_unverified_task(isolated):
     result = runner.invoke(app, ["sarsi", "retry", "work", t.id])
     assert result.exit_code != 0
     assert "judged" in result.output.lower()
+
+
+def test_cli_attention_says_nothing_is_waiting(isolated):
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    result = runner.invoke(app, ["sarsi", "attention"])
+    assert result.exit_code == 0 and "nothing" in result.output.lower()
+
+
+def test_cli_attention_names_an_ungranted_permission(isolated):
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    runner.invoke(app, ["sarsi", "do", "work", "read my mail",
+                        "--secret", "mail.read"])
+    result = runner.invoke(app, ["sarsi", "attention"])
+    assert "mail.read" in result.output and "work" in result.output
+
+
+def test_cli_attention_exits_nonzero_when_something_waits(isolated):
+    """So a timer or a shell `if` can act on it without parsing text."""
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    runner.invoke(app, ["sarsi", "do", "work", "read my mail",
+                        "--secret", "mail.read"])
+    assert runner.invoke(app, ["sarsi", "attention"]).exit_code == 1
+
+
+def test_cli_attention_can_scope_to_one_agent(isolated):
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    runner.invoke(app, ["sarsi", "do", "work", "read my mail",
+                        "--secret", "mail.read"])
+    result = runner.invoke(app, ["sarsi", "attention", "--agent", "social"])
+    assert "nothing" in result.output.lower()
+
+
+def test_cli_enter_asks_when_the_board_is_empty(isolated):
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    result = runner.invoke(app, ["sarsi", "enter", "work"])
+    assert result.exit_code == 0 and "?" in result.output

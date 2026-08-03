@@ -1,0 +1,265 @@
+# What a `sarsi-worker` can do — and what it should do next
+
+One list, merged from three sources that were drifting apart:
+
+- `AI4Science/docs/SARSI_ROADMAP.md` — written from failures observed on live
+  runs against `tina` and `grace`;
+- `singularity/docs/sarsi-worker-functions.md` — proposed commands, split by
+  confidence, with three explicit refusals;
+- `singularity/docs/specs/2026-08-03-sarsi-worker-functions.md` — ranked by what
+  the first end-to-end runs proved was missing.
+
+Where the three disagreed, the disagreement is stated rather than averaged away.
+
+**Status is against the `AI4Science` implementation** (`ai4science/harness/agents/sarsi/`).
+The `singularity/sarsi/` implementation is a second, partly-overlapping build of
+the same spec; see [Two implementations](#two-implementations) at the end.
+
+---
+
+## Part 1 — Built
+
+Each of these is live, tested, and exercised on the installed binary.
+
+### Holding work
+
+| Function | What it does |
+|---|---|
+| `do` / `/new <goal>` | Open a task. `/new` works from inside the worker; `do` from the CLI. |
+| `tasks` / `/task` / `/tasks` | The board — every task, its state, and what each waits on. |
+| `plan` | A task's phases, criteria and declared permissions. |
+| `grant` | Grant one permission the plan declared. |
+| `goal` / `/goal` | **Move the goal.** The plan is re-drafted to follow it, the agreement drops, the owner's own criteria survive, and a running session is told. |
+| `/edit <task> <n> <criterion>` | Change what gets verified. The owner's edit wins; polish may only propose around it. |
+| `stop` / `/stop` | Stop a task **and kill its session**. Resumable; the plan survives; the slot is freed. |
+| `archive` / `/archive` | Terminal. Record kept, slot freed, off the board — counted on the board so archiving never reads as deleting. |
+| `reopen` / `/reopen` | Put an archived task back, **stopped** — re-opening is a decision to look, not to start. |
+| `/resume-task` | Put a stopped task back to work. Named apart from `/resume`, which hands *steering* back after Interact. |
+
+### Running work
+
+| Function | What it does |
+|---|---|
+| `run` | Hand the plan to `sarsi-claude` — starts its governed session. |
+| `release` | Raise the ceiling from the planning `A0` to what the agent has earned. |
+| `operate` | One supervision pass: answer the gates it has a rule for, submit a stranded prompt, report the rest. |
+| `supervise` | Drive a task to a verified result. |
+| `guide` / `/guided` | Steer by hand. The owner's word always goes through; the worker's stands down when the owner holds the wheel. |
+| `/interact` | Hands over the `tmux attach` line and stands back. **It does not relay.** |
+| `/history` | What has happened, from the record. |
+| `check` | Ask the verifier: **PASS / FAIL / UNVERIFIED**, with a reason. |
+| `retry` | **Hand a FAIL back carrying the verifier's reason.** Only a judged `FAIL` retries; capped at 3; a `PASS` clears the count. |
+
+### Knowing where you are, and what needs you
+
+| Function | What it does |
+|---|---|
+| `attention` | **"Is anything waiting on me?"** across every worker, or one. Gates (with the actual command), ungranted permissions, exhausted retries, undelivered kickoffs, stale plans, and records pointing at terminals that are gone. Exits non-zero when something waits, so a timer can act on it. |
+| `enter` | Step into a worker: the task you last touched, or — holding none — **the question "what would you like done?"** rather than an empty board. |
+| cursor per `(surface, account)` | Being *in* a task, so plain words are about that task. Stored on disk; the phone and the laptop stand in different places. |
+| `ask` / `self model` | What the worker observes about itself. |
+| `improve yourself` / `yes` | RSI: it proposes a playbook change and holds it until the owner signs. |
+
+### Outward, and secrets
+
+| Function | What it does |
+|---|---|
+| `send` | Ask to let one act leave the machine. Drafting is not sending. |
+| `submit` | Submit a form — every field shown, and it cannot be undone. |
+| `vault` | Two-stage secrets; money policies need a limit, a counterparty and a rate. |
+| `ceiling` | Set the auto level (A0–A3), per agent or all. Reports where it will *actually* land. |
+
+---
+
+## Part 2 — Next, in order
+
+### 1. `why` — *"why are you doing this?"*
+
+The current phase, its criterion, and the last verdict's reason. All three are
+stored; nothing shows them together, so the owner assembles it by hand from
+three commands. **Cheapest thing in any of the three documents**, and doc A's
+pick to build first. Still true.
+
+### 2. Reconcile sessions on entry
+
+`attention` now reports a record pointing at a dead terminal, but only when
+asked. Sessions outlive the process that started them, so **entering** a worker
+should say *"2 tasks running; 1 record points at a terminal that is gone"*
+rather than reporting state that was true when it was written.
+
+### 3. Evidence that can follow the work out of the task folder
+
+Evidence gathering never leaves the task folder — a deliberate boundary. But a
+goal that names a project directory puts every artefact outside it.
+
+> **Observed 2026-08-03, grace:** the goal named `/home/grace/live-gaptv`. The
+> session wrote `gaptv.py` and `result.json` there and finished correctly.
+> `check` returned `UNVERIFIED: nothing visible was supplied`. Passing the
+> listing by hand with `--evidence` produced an immediate `PASS` citing
+> `"psnr": 25.41`. The work was done; only the *looking* failed.
+
+The plan should declare its working directory and evidence should read that
+declared root — still a fixed boundary, not a roaming search. Pairs with #6.
+
+### 4. `spend` / `cost`
+
+What a worker has cost, in tokens, time and PWM. Both source documents ask for
+it independently. One task burned ~8 minutes of unattended waiting and nothing
+recorded it.
+
+### 5. A rule for destructive-command gates
+
+> **Observed 2026-08-03, grace:** the session chose to prove reproducibility by
+> deleting `result.json` and regenerating it. The `rm` tripped a `PreToolUse`
+> hook; the loop abstained four passes and the task stalled. Nothing was wrong
+> with the session's plan — the loop had no rule for it.
+
+A narrow rule: a delete confined to paths the plan declared, of files the
+session itself created, during a phase that declared it. Narrow on purpose — a
+blanket "allow rm" makes the abstention decorative.
+
+### 6. Blast-radius declaration
+
+The plan declares permissions; have it declare which **paths** it may touch,
+then check afterwards that nothing outside them changed. Turns "it said it would
+only touch the export folder" into something verified. Shares its declaration
+with #3.
+
+### 7. Verdict parsing that resists narration
+
+> **Observed 2026-08-03, grace:** a verifier reply contained both words and the
+> loop reported `the verifier's answer gave more than one verdict: ['FAIL',
+> 'PASS']`, correctly refusing to pick. Refusing is right; **inviting** the
+> ambiguity is not.
+
+Demand a verdict line and nothing else, so `UNVERIFIED` is reserved for genuine
+uncertainty rather than for chattiness.
+
+### 8. `questions` — open escalations in one place
+
+Answerable from either surface. `attention` surfaces gates; escalated questions
+deserve the same treatment.
+
+### 9. `undo the last outward act`
+
+You approve a send and regret it within a minute. Nothing can retract, and the
+outward ledger already holds enough to *try*. Load-bearing, per doc A.
+
+### 10. `what did you decide without me?`
+
+This worker's own A2-level answers since you last looked. The rung is recorded;
+nothing reads it back — **so the one number that would show over-reach is
+invisible.**
+
+### 11. A step and wall-clock budget per task
+
+A session that loops burns tokens until someone looks. A declared budget that
+pauses and reports beats one that runs all night.
+
+### 12. `handoff`
+
+Writes `HANDOFF.md` before a context clear. The spec's layout names it; nothing
+writes it.
+
+### 13. Task dependencies
+
+`funding` drafting an application that needs `work`'s benchmark numbers is the
+obvious case. Without them the owner is the scheduler.
+
+### 14. A workspace fold
+
+History is bounded with the overflow counted, but never summarised — a long
+task's early context is dropped rather than compressed. Matters most during
+planning, which is exactly where it is worth keeping.
+
+### 15. Per-agent house rules
+
+A file each worker injects into every kickoff.
+
+> **Observed 2026-08-03, grace:** the session ran `python demo.py`, hit
+> `/bin/sh: 1: python: not found`, and retried with `python3`. Cheap once; paid
+> again on every new session. *"Always use python3 on this host"* belongs in the
+> agent's host workspace, not in each session's trial and error.
+
+### 16. `digest`
+
+§6's `DIG` — one daily read across tasks.
+
+---
+
+## Part 3 — Deliberately later
+
+- **Handoff between workers** (`work` → `funding`).
+- **`sarsi-machine` routing** — "who should do this?"
+- **Per-agent web pages** at `physicsworldmodel.org/<agent>/`.
+
+All three are more valuable now that tasks close and retry, but they are still
+after the list above.
+
+---
+
+## Part 4 — What NOT to build
+
+Both source documents refuse the same things, for the same reasons. Each is a
+plausible convenience that would cost the property it sits next to.
+
+- **Auto-approving permission gates** — even "safe" ones. The moment the worker
+  can approve, the ceiling means nothing. Two of the three gates hit on
+  2026-08-03 were things the owner would want to see.
+- **`approve all pending`** — batching approvals is how consent stops meaning
+  anything. Each outward act must be read.
+- **`trust this agent more`** — *the one to refuse hardest.* It widens authority
+  from a **feeling**, and the whole competence design exists to make that
+  impossible. Trust is earned in the ledger or it is not trust.
+- **A worker that starts work on its own** — `run` is the owner's opt-in, and it
+  is the only thing separating *"I asked a question"* from *"I authorised
+  work"*.
+- **A worker choosing its own concurrency** — RSI proposes, the owner signs.
+- **Relaying keystrokes in Interact** — a relay is a lossy imitation of a
+  terminal and puts two things typing into one pane. The attach line is honest.
+
+### The one refusal that was overruled, and why
+
+`singularity/docs/sarsi-worker-functions.md` lists **`retry`** as *do not
+build*: *"a bare retry re-runs a plan that already failed its criteria."*
+
+That objection is correct, and the `retry` that was built satisfies it rather
+than ignoring it:
+
+- the verdict's **reason** is the instruction — a retry with no new information
+  is exactly what the doc warns against, and is impossible here;
+- a task with **no verdict** is refused outright;
+- **`UNVERIFIED`** is refused by name — nothing was judged, so a retry would
+  spend a session on a *looking* problem rather than a *doing* one;
+- it **caps at 3** and then reports.
+
+What the doc refuses is a *button*. What exists is a *reason carrier*.
+
+---
+
+## Two implementations
+
+These functions exist twice, in two repositories, from one spec:
+
+| | `AI4Science/ai4science/harness/agents/sarsi/` | `singularity/sarsi/` |
+|---|---|---|
+| Answering the session's questions | **wired into the supervision loop** (`operator.py`) | built, tested, *called by nothing* |
+| `UNVERIFIED` verdict | yes | yes (originated here) |
+| Task lifecycle | `stop` / `archive` / `reopen` | proposed |
+| `retry` | built, reason-carrying | listed as "do not build" |
+| Entry cursor | built | `shell.py`, half-written, uncommitted |
+| `attention` | built | proposed — *"the one to do before anything else"* |
+
+The single highest-value item in the `singularity` proposal — *"wire `answer.py`
+into the timer… largest value per line of new code anywhere in the system"* — is
+already wired in this implementation and unwired in that one.
+
+**Recommendation: make one canonical.** Two builds of one spec now disagree on
+whether `retry` should exist, on the stale-plan rule, and on whether answering is
+wired — and each disagreement is a place where the documentation is true of one
+repository and false of the other.
+
+---
+
+See also: [`SARSI_AGENTS_GUIDE.md`](SARSI_AGENTS_GUIDE.md) — how to use what is
+built today.
