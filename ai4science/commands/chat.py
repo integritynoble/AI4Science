@@ -166,6 +166,32 @@ def _maybe_offer_login() -> None:
                       "or use [cyan]/feedback[/cyan] to earn PWM.[/dim]")
 
 
+#: Tried in order when the requested mode is not installed. The requested mode
+#: itself is skipped — offering it as its own fallback is what produced
+#: "Unknown --mode 'unified-LLM'; using 'unified-LLM'".
+_FALLBACK_MODES = ("unified-LLM", "general-purpose")
+
+
+def _resolve_spec(mode, registry):
+    """(spec, note). `spec` is None only when NOTHING is installed, and then the
+    note says so and says what to do about it."""
+    spec = registry.get(mode)
+    if spec is not None:
+        return spec, None
+    names = ", ".join(sorted(registry.AGENT_REGISTRY))
+    for fallback in _FALLBACK_MODES:
+        if fallback == mode:
+            continue
+        alt = registry.get(fallback)
+        if alt is not None:
+            return alt, (f"Unknown --mode {mode!r}; using {fallback!r}. "
+                         f"Available: {names}")
+    return None, (f"No agent mode is available in this install "
+                  f"(asked for {mode!r}; registry has: {names or 'nothing'}). "
+                  f"Install one, e.g. `pip install pwm-agent-unified`, or run "
+                  f"`ai4science sarsi …`, which needs no agent package.")
+
+
 def chat(
     agent: str = typer.Option(
         "claude", "--agent", "-a",
@@ -269,14 +295,14 @@ def chat(
     backend = backend or os.environ.get("AI4SCIENCE_BACKEND")
     from ai4science.harness.tui import resolve_mode
     mode = resolve_mode(mode)          # display name (e.g. 'claude') → id 'claude-code'
-    spec = agent_registry.get(mode)
+    spec, note = _resolve_spec(mode, agent_registry)
+    if note:
+        console.print(f"[yellow]{note}[/yellow]")
     if spec is None:
-        names = ", ".join(sorted(agent_registry.AGENT_REGISTRY))
-        # An unknown/typo mode falls back to the safe generalist (not the
-        # moat-gated default), and we list the valid modes.
-        console.print(f"[yellow]Unknown --mode {mode!r}; using 'unified-LLM'. "
-                      f"Available: {names}[/yellow]")
-        spec = agent_registry.get("unified-LLM")
+        # Never dereference it. A fresh install has no agent package at all,
+        # and `spec.name` two lines down is how that became an AttributeError
+        # instead of an answer.
+        raise typer.Exit(code=2)
 
     # Entering chat: if not signed in, offer to log in now so the first turn
     # isn't blocked by the PWM gate (applies to every mode/engine below).
