@@ -165,3 +165,57 @@ def test_a_proposal_leaves_the_owners_version_in_place():
                                                  verified_when="I say so")])
     out = edited.polish(phases=_phases())
     assert out.plan.criteria() == ["I say so"]
+
+
+# ── real model output, from a live planning run ───────────────────────
+
+LIVE_PLAN = """\
+# count the lines in every .txt file here and write counts.md
+
+## Phase 1 — Fix the file set
+Enumerate the `.txt` files at the top level of this folder.
+
+Verified when: the run's transcript shows the output of `ls -1 *.txt` executed in
+this folder, and that list is exactly the set of filenames appearing as rows in
+the final `counts.md`.
+
+## Phase 2 — Count lines
+Verified when: the transcript shows raw `wc -l` output for every file, and each
+number is reproducible by re-running `wc -l <file>`.
+
+## Permissions needed
+Nothing outside this folder. Concretely:
+- Read `*.txt` in this folder.
+- Create one new file, `counts.md`, in that same folder.
+- No network, no credentials or secrets, no accounts.
+"""
+
+
+def test_a_wrapped_criterion_keeps_all_of_itself():
+    """A `Verified when:` clause that wraps is one criterion, not its first
+    line. Truncating it hands the verifier a weaker standard than the plan
+    states — and the plan is the standard."""
+    parsed = pl.parse(LIVE_PLAN)
+    first = parsed.criteria()[0]
+    assert first.endswith("`counts.md`.")
+    assert "exactly the set of filenames" in first
+
+
+def test_a_wrapped_criterion_stops_at_the_next_phase():
+    parsed = pl.parse(LIVE_PLAN)
+    assert "wc -l" not in parsed.criteria()[0]
+    assert len(parsed.criteria()) == 2
+
+
+def test_a_negative_line_is_a_constraint_not_a_permission_to_grant():
+    """The model wrote "No network, no credentials" among the bullets. Asking
+    the owner to GRANT that is nonsense; it is a limit the plan is accepting."""
+    parsed = pl.parse(LIVE_PLAN)
+    assert not any(p.lower().startswith("no ") for p in parsed.permissions)
+    assert any("no network" in c.lower() for c in parsed.constraints)
+
+
+def test_the_real_permissions_survive():
+    parsed = pl.parse(LIVE_PLAN)
+    assert any("Read" in p for p in parsed.permissions)
+    assert any("counts.md" in p for p in parsed.permissions)

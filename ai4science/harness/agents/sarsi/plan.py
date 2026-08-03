@@ -66,12 +66,16 @@ class Plan:
     version: str = "plan0"
     stale: bool = False
     owner_edited: bool = False
+    #: Limits the plan states rather than asks for — "no network", "no
+    #: credentials". Asking the owner to GRANT one of these is nonsense.
+    constraints: Sequence[str] = field(default_factory=tuple)
 
     def __post_init__(self) -> None:
         if not self.phases:
             raise BadPlan("a plan needs at least one phase")
         object.__setattr__(self, "phases", tuple(self.phases))
         object.__setattr__(self, "permissions", tuple(self.permissions))
+        object.__setattr__(self, "constraints", tuple(self.constraints))
 
     # ── what the verifier is given ────────────────────────────────────
 
@@ -186,9 +190,12 @@ def parse(text: str) -> Plan:
     current_body: List[str] = []
     current_verified = ""
     in_permissions = False
+    in_verified = False
+    constraints: List[str] = []
 
     def flush() -> None:
-        nonlocal current_title, current_body, current_verified
+        nonlocal current_title, current_body, current_verified, in_verified
+        in_verified = False
         if current_title is not None:
             phases.append(Phase(title=current_title,
                                 verified_when=current_verified,
@@ -209,13 +216,42 @@ def parse(text: str) -> Plan:
         if in_permissions:
             if line.strip().startswith("- "):
                 item = line.strip()[2:].strip()
-                if item.lower() != "none":
+                if item.lower() == "none":
+                    continue
+                if _is_constraint(item):
+                    # a limit the plan accepts, not a request to grant
+                    constraints.append(item)
+                else:
                     permissions.append(item)
             continue
         if current_title is not None:
             if line.startswith(VERIFIED_PREFIX):
                 current_verified = line[len(VERIFIED_PREFIX):].strip()
-            elif line.strip():
+                in_verified = True
+                continue
+            if in_verified:
+                # A criterion that wraps is ONE criterion. Taking only its first
+                # line hands the verifier a weaker standard than the plan states
+                # — and the plan is the standard. It ends at a blank line.
+                if line.strip():
+                    current_verified += " " + line.strip()
+                    continue
+                in_verified = False
+                continue
+            if line.strip():
                 current_body.append(line)
     flush()
-    return Plan(goal=goal, phases=phases, permissions=permissions)
+    return Plan(goal=goal, phases=phases, permissions=permissions,
+                constraints=constraints)
+
+
+_NEGATIVE = re.compile(r"^(no|none|not|never|nothing)\b", re.I)
+
+
+def _is_constraint(item: str) -> bool:
+    """A line that states a limit rather than asks for a capability.
+
+    The model writes these among the bullets — *"No network, no credentials"* —
+    and putting one in front of the owner as something to grant is nonsense.
+    """
+    return bool(_NEGATIVE.match(item.strip()))
