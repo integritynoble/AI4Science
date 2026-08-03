@@ -120,6 +120,58 @@ def test_the_session_is_governed_at_the_agents_ceiling(config, agent):
     assert rt.started[0]["ceiling"] == agent.ceiling
 
 
+# ── the ceiling an agent actually gets ────────────────────────────────
+
+@pytest.fixture
+def trust_ledger(tmp_path, monkeypatch):
+    monkeypatch.setenv("PWM_CP_STATE_DIR", str(tmp_path / "cp"))
+    monkeypatch.setenv("PWM_TRUST_OWNER", "tester")
+    from ai4science.harness.agents.machine import trust
+    return trust
+
+
+def test_a_configured_a3_is_capped_until_it_is_earned(config, agent, trust_ledger):
+    """`A3 is earned, not set.` Writing it in the registry must not be a way to
+    hand an agent full autonomy by editing a file."""
+    agent.ceiling = "A3"
+    rt = FakeRuntime()
+    ses.assign(config, agent, _task(config, agent), runtime=rt)
+    assert rt.started[0]["ceiling"] == "A2"
+
+
+def test_the_task_records_the_ceiling_it_actually_got(config, agent, trust_ledger):
+    """Recording the requested one would make the board lie about what is
+    running."""
+    agent.ceiling = "A3"
+    t = ses.assign(config, agent, _task(config, agent), runtime=FakeRuntime())
+    assert t.session["ceiling"] == "A2"
+    assert t.session["ceiling_requested"] == "A3"
+
+
+def test_a2_needs_no_earning(config, agent, trust_ledger):
+    agent.ceiling = "A2"
+    rt = FakeRuntime()
+    ses.assign(config, agent, _task(config, agent), runtime=rt)
+    assert rt.started[0]["ceiling"] == "A2"
+
+
+def test_an_earned_a3_passes_through(config, agent, trust_ledger):
+    trust_ledger.unlock_a3(force=True)
+    agent.ceiling = "A3"
+    rt = FakeRuntime()
+    ses.assign(config, agent, _task(config, agent), runtime=rt)
+    assert rt.started[0]["ceiling"] == "A3"
+
+
+def test_each_agent_carries_its_own_ceiling(config, trust_ledger):
+    work, abraham = config.agents["work"], config.agents["abraham"]
+    work.ceiling, abraham.ceiling = "A2", "A0"
+    rt = FakeRuntime()
+    ses.assign(config, work, _task(config, work), runtime=rt)
+    ses.assign(config, abraham, _task(config, abraham), runtime=rt)
+    assert [s["ceiling"] for s in rt.started] == ["A2", "A0"]
+
+
 def test_a_session_that_will_not_start_is_reported_not_pretended(config, agent):
     rt = FakeRuntime(ok=False)
     t = _task(config, agent)

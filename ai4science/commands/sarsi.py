@@ -55,7 +55,11 @@ def agents(bindings: bool = typer.Option(False, "--bindings",
     for row in rows:
         # the invariant, shown rather than assumed: the manager may not execute
         drives = "[green]yes[/green]" if row["drives_sessions"] else "[yellow]no[/yellow]"
-        table.add_row(row["id"], row["role"], drives, row["ceiling"], row["telegram"])
+        # what it would actually run at, not what the file asks for
+        ceiling = row["ceiling"]
+        if row.get("ceiling_effective") != ceiling:
+            ceiling = f"{row['ceiling_effective']} (asked {ceiling})"
+        table.add_row(row["id"], row["role"], drives, ceiling, row["telegram"])
     console.print(table)
     if bindings:
         # printed as lines rather than a table column: a wrapped cell can split

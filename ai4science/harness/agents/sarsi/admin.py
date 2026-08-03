@@ -68,6 +68,8 @@ def agent_rows(config: reg.Config) -> List[Dict[str, Any]]:
             # the invariant, reported as a fact: the manager may not execute
             "drives_sessions": agent.is_worker,
             "ceiling": agent.ceiling,
+            # A3 is earned, not set: show what the ledger would actually grant
+            "ceiling_effective": _effective(agent.ceiling),
             "self_aware": agent.self_aware,
             "tools": list(agent.tools),
             "bindings": bindings,
@@ -75,6 +77,11 @@ def agent_rows(config: reg.Config) -> List[Dict[str, Any]]:
             "dir": str(agent.agent_dir),
         })
     return rows
+
+
+def _effective(requested: str) -> str:
+    from ai4science.harness.agents.sarsi.session import _effective_ceiling
+    return _effective_ceiling(requested)
 
 
 def _accounts(config: reg.Config) -> Dict[str, Any]:

@@ -84,7 +84,12 @@ def assign(config: Config, agent: Agent, task: tsk.Task, *,
     workdir.mkdir(parents=True, exist_ok=True)
     name = f"{agent.id}-{task.id[-4:]}"
 
-    started = runtime.start(name, str(workdir), govern=True, ceiling=agent.ceiling,
+    # `A3 is earned, not set.` The registry states what this agent WANTS; the
+    # trust ledger decides what it gets. Passing the configured value straight
+    # through would make editing one line of JSON a way to hand an agent full
+    # autonomy, which is the one thing the ladder exists to prevent.
+    ceiling = _effective_ceiling(agent.ceiling)
+    started = runtime.start(name, str(workdir), govern=True, ceiling=ceiling,
                             env=secrets)
     if not (started or {}).get("ok"):
         reason = (started or {}).get("reason") or "the session would not start"
@@ -94,7 +99,10 @@ def assign(config: Config, agent: Agent, task: tsk.Task, *,
         raise CouldNotStart(reason)
 
     task.session = {"name": started.get("name", name), "pid": started.get("pid"),
-                    "cwd": str(workdir), "ceiling": agent.ceiling,
+                    "cwd": str(workdir), "ceiling": ceiling,
+                    # what was asked for, beside what was granted: a board that
+                    # showed the request would be lying about what is running
+                    "ceiling_requested": agent.ceiling,
                     # what ACTUALLY executes the session — the CLI the runtime
                     # drives. Independence is a claim about the engine that did
                     # the work, not the one the worker planned with.
@@ -109,6 +117,16 @@ def assign(config: Config, agent: Agent, task: tsk.Task, *,
                   {"agent": agent.id, "task": task.id, "assigned": True,
                    "session": task.session["name"], "goal": task.goal}, now=now)
     return task
+
+
+def _effective_ceiling(requested: str) -> str:
+    """What the trust ledger actually allows. Fail-safe: if it cannot be read,
+    the answer is the requested ceiling capped at A2, never above it."""
+    try:
+        from ai4science.harness.agents.machine import trust
+        return trust.effective_ceiling(requested)
+    except Exception:
+        return "A2" if str(requested).upper() == "A3" else requested
 
 
 def _unlock(config: Config, agent: Agent, task: tsk.Task,
