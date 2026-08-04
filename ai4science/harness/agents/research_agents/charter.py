@@ -67,6 +67,11 @@ class Charter:
     includes: Tuple[str, ...] = ()
     #: The generalist this agent narrows, if any. A specialist names it here.
     specialises: Optional[str] = None
+    #: Subfields this agent owns outright, as opposed to merely covering. Two
+    #: agents may cover `drug-response` — the one that owns it is the one whose
+    #: field it is core to, and it takes the work when both are installed.
+    #: Empty means "no claim of primacy", and routing falls back to specificity.
+    owns: Tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.may_improve:
@@ -80,6 +85,11 @@ class Charter:
         if overlap:
             raise ValueError("%s: %s is both improvable and forbidden"
                              % (self.name, sorted(overlap)))
+        unowned = set(self.owns) - set(self.subfields)
+        if unowned:
+            raise ValueError("%s: owns %s without covering it — a claim of "
+                             "primacy over work it does not do"
+                             % (self.name, sorted(unowned)))
 
     @property
     def never_touch(self) -> Tuple[str, ...]:
@@ -93,6 +103,9 @@ class Charter:
 
     def covers(self, subfield: str) -> bool:
         return subfield in self.subfields
+
+    def owns_subfield(self, subfield: str) -> bool:
+        return subfield in self.owns
 
     def may(self, substrate: str) -> bool:
         return substrate in self.may_improve and substrate not in self.never_touch

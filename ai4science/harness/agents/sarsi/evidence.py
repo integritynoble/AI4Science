@@ -66,9 +66,19 @@ def gather(folder, criteria: Sequence[str], screen: str = "") -> str:
     the boundary moves when the plan says so, never because a criterion names a
     path.
     """
-    root = Path(folder).expanduser().resolve()
+    roots = ([Path(f).expanduser().resolve() for f in folder]
+             if isinstance(folder, (list, tuple, set))
+             else [Path(folder).expanduser().resolve()])
     parts: List[str] = []
+    for root in roots:
+        parts.extend(_from_root(root, criteria))
 
+    text = "\n\n".join(p for p in parts if p)
+    return _with_pane(text, screen)
+
+
+def _from_root(root, criteria: Sequence[str]) -> List[str]:
+    parts: List[str] = []
     if not root.is_dir():
         # NOT an empty listing. "the folder is empty" and "the folder is not
         # there" are different facts, and the first is far more damning.
@@ -81,9 +91,10 @@ def gather(folder, criteria: Sequence[str], screen: str = "") -> str:
 
     for name in named_files(criteria):
         parts.append(_read(root, name))
+    return parts
 
-    text = "\n\n".join(p for p in parts if p)
 
+def _with_pane(text: str, screen: str) -> str:
     pane = (screen or "").strip()
     if pane:
         # last, and named for what it is: what the session SAID

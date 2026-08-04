@@ -214,20 +214,39 @@ def clear_phase(task: Task, index: Optional[int] = None) -> Task:
     return task
 
 
-def evidence_root(agent: Agent, task: Task) -> Path:
-    """Where this task's evidence is gathered from.
+def evidence_roots(agent: Agent, task: Task) -> List[Path]:
+    """Everywhere this task's evidence may be gathered from.
 
-    The plan's declared `Working directory:` when it has one, the task's own
-    folder otherwise. Declared, never inferred — a criterion naming a path does
-    not move this, or "read /etc/passwd" would be a criterion away.
+    **The task's own folder is always one of them.** It is the session's cwd,
+    where the plan lives, and where an agent naturally writes — live, `abraham`
+    was given a working directory, wrote its note into its task folder, and
+    `check` answered FAIL saying the file "does not exist". A wrong verdict
+    about work that was done.
+
+    A declared `Working directory:` therefore ADDS a place to look; it never
+    replaces the one the session is standing in. Both are declarations, and
+    neither is inferred from a criterion — "read /etc/passwd" must stay a thing
+    no criterion can arrange.
     """
+    roots = [dir_of(agent, task.id).resolve()]
     declared = (task.work_root or "").strip()
-    if not declared:
-        return dir_of(agent, task.id).resolve()
-    try:
-        return Path(declared).expanduser().resolve()
-    except OSError:
-        return dir_of(agent, task.id).resolve()
+    if declared:
+        try:
+            extra = Path(declared).expanduser().resolve()
+            if extra not in roots:
+                roots.append(extra)
+        except OSError:
+            pass
+    return roots
+
+
+def evidence_root(agent: Agent, task: Task) -> Path:
+    """The primary root — the declared one when there is one.
+
+    Kept for the delete rule, which needs a single boundary to name in its
+    refusals. Everything that GATHERS uses `evidence_roots`.
+    """
+    return evidence_roots(agent, task)[-1]
 
 
 def dir_of(agent: Agent, task_id: str) -> Path:

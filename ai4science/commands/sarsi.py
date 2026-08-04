@@ -1269,7 +1269,7 @@ def check_cmd(agent_id: str = typer.Argument(..., help="Worker id"),
         # run wrote its artefacts correctly and was recorded "nothing visible
         # was supplied" purely because nobody had typed a listing in.
         from ai4science.harness.agents.sarsi import evidence as evd, task as _t
-        evidence = evd.gather(_t.evidence_root(agent, t), t.criteria or [])
+        evidence = evd.gather(_t.evidence_roots(agent, t), t.criteria or [])
     try:
         t = ses.verify(config, agent, t, verifier=judge, evidence=evidence,
                        engine=engine or None,

@@ -167,7 +167,7 @@ def tick(config: Config, agent: Agent, task: tsk.Task, *, pane: Any,
         # The task's own folder unless the plan declared a working directory.
         # A live run wrote its artefacts to the declared folder and was recorded
         # UNVERIFIED because the gatherer was looking somewhere else.
-        proof = evd.gather(tsk.evidence_root(agent, task), criteria,
+        proof = evd.gather(tsk.evidence_roots(agent, task), criteria,
                            screen=screen)
         task = ses.verify(config, agent, task, verifier=verifier,
                           evidence=proof, engine=engine, runtime=_Sender(pane),

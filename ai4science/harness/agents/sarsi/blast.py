@@ -88,7 +88,9 @@ def declared(agent: Agent, task: tsk.Task) -> List[Path]:
     never inferred — the same rule the evidence root follows, for the same
     reason: a path the agent touched must not be able to authorise itself.
     """
-    roots = [tsk.evidence_root(agent, task)]
+    # every evidence root, which always includes the task's own folder — the
+    # session runs there, and writing where it runs is not an escape
+    roots = list(tsk.evidence_roots(agent, task))
     for extra in (task.may_touch or []):
         try:
             roots.append(Path(str(extra)).expanduser().resolve())

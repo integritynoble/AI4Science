@@ -73,9 +73,14 @@ def _bash(command="ls"):
 
 # ── the declaration ───────────────────────────────────────────────────
 
-def test_the_working_directory_is_the_radius_by_default(config, agent, tmp_path):
+def test_the_working_directory_is_in_the_radius(config, agent, tmp_path):
+    """It is added to the radius, not swapped for it: the task's own folder is
+    where the session runs, and writing where it runs is not an escape. Live,
+    `abraham` wrote into its task folder and was told the file did not exist."""
     t = _task(config, agent, tmp_path / "work")
-    assert blast.declared(agent, t) == [(tmp_path / "work").resolve()]
+    roots = blast.declared(agent, t)
+    assert (tmp_path / "work").resolve() in roots
+    assert tsk.dir_of(agent, t.id).resolve() in roots
 
 
 def test_a_plan_can_declare_more_than_one_path(config, agent, tmp_path):

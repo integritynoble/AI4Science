@@ -231,3 +231,82 @@ def test_check_gathers_its_own_evidence_when_none_is_given(tmp_path, monkeypatch
     result = runner.invoke(app, ["sarsi", "check", "work", t.id])
     assert result.exit_code == 0
     assert "25.41" in seen.get("evidence", "")
+
+
+# ── the task folder is never out of scope ─────────────────────────────
+
+def test_the_task_folder_is_always_an_evidence_root(config, agent, tmp_path):
+    """Observed live: `abraham` was given `--workdir`, wrote its note into its
+    own task folder — which is its session's cwd, where the plan lives — and
+    `check` answered FAIL, saying the file "does not exist".
+
+    A wrong verdict, not a refusal to judge. Declaring a working directory has
+    to ADD a place to look, never replace the one the session is standing in.
+    """
+    root = tmp_path / "declared"
+    root.mkdir()
+    plan = pl.Plan(goal="g", work_root=str(root),
+                   phases=[pl.Phase(title="x", verified_when="note.md exists")])
+    d = worker.Directive(agent_id=agent.id, goal="g")
+    t = tsk.attach_plan(config, agent, tsk.create(config, agent, d), plan)
+    folder = tsk.dir_of(agent, t.id)
+    (folder / "note.md").write_text("happy birthday")
+
+    assert folder.resolve() in tsk.evidence_roots(agent, t)
+    out = evd.gather(tsk.evidence_roots(agent, t), ["note.md exists"])
+    assert "happy birthday" in out
+
+
+def test_the_declared_root_is_still_read(config, agent, tmp_path):
+    root = tmp_path / "declared"
+    root.mkdir()
+    (root / "result.json").write_text('{"psnr": 25.41}')
+    plan = pl.Plan(goal="g", work_root=str(root),
+                   phases=[pl.Phase(title="x", verified_when="result.json")])
+    d = worker.Directive(agent_id=agent.id, goal="g")
+    t = tsk.attach_plan(config, agent, tsk.create(config, agent, d), plan)
+    out = evd.gather(tsk.evidence_roots(agent, t), ["result.json exists"])
+    assert "25.41" in out
+
+
+def test_both_are_listed_so_the_verifier_knows_where_it_looked(config, agent,
+                                                                tmp_path):
+    root = tmp_path / "declared"
+    root.mkdir()
+    plan = pl.Plan(goal="g", work_root=str(root),
+                   phases=[pl.Phase(title="x", verified_when="y")])
+    d = worker.Directive(agent_id=agent.id, goal="g")
+    t = tsk.attach_plan(config, agent, tsk.create(config, agent, d), plan)
+    out = evd.gather(tsk.evidence_roots(agent, t), [])
+    assert str(root) in out and str(tsk.dir_of(agent, t.id)) in out
+
+
+def test_a_path_outside_every_root_is_still_refused(config, agent, tmp_path):
+    """Adding a root widens where it looks, not what it will read."""
+    root = tmp_path / "declared"
+    root.mkdir()
+    secret = tmp_path / "secret.txt"
+    secret.write_text("PRIVATE")
+    plan = pl.Plan(goal="g", work_root=str(root),
+                   phases=[pl.Phase(title="x", verified_when="y")])
+    d = worker.Directive(agent_id=agent.id, goal="g")
+    t = tsk.attach_plan(config, agent, tsk.create(config, agent, d), plan)
+    out = evd.gather(tsk.evidence_roots(agent, t), [f"{secret} has the key"])
+    assert "PRIVATE" not in out
+    assert "outside" in out
+
+
+def test_blast_radius_covers_the_task_folder_too(config, agent, tmp_path):
+    """It is where the session runs. Writing there is not an escape."""
+    from ai4science.harness.agents.sarsi import blast
+    root = tmp_path / "declared"
+    root.mkdir()
+    plan = pl.Plan(goal="g", work_root=str(root),
+                   phases=[pl.Phase(title="x", verified_when="y")])
+    d = worker.Directive(agent_id=agent.id, goal="g")
+    t = tsk.attach_plan(config, agent, tsk.create(config, agent, d), plan)
+    t.session = {"name": "n", "cwd": str(tsk.dir_of(agent, t.id))}
+    tsk._touch(agent, t, __import__("time").time)
+    got = blast.check(config, agent, t, acts=lambda cwd: [
+        {"name": "Write", "input": {"file_path": str(tsk.dir_of(agent, t.id) / "note.md")}}])
+    assert got.escaped is False
