@@ -7,6 +7,9 @@
     budget       what a night costs, and a stop that does not ask for more
     fieldmap     what the field claims and which claims nobody has checked
     improvement  the six checks a candidate survives before it is an improvement
+    dual         the two functions: ordinary work for a person (runs with the
+                 switch off) and autonomous research (refuses without it)
+    runners      each agent's runnable benchmark, answer key withheld
     coverage     who takes the work when a generalist and a specialist overlap,
                  and why the generalist inherits the specialist's refusals
     registry     the six, built
@@ -28,6 +31,8 @@ from __future__ import annotations
 from .budget import Budget, BudgetExhausted, Switch
 from .charter import Charter, CharterViolation, FORBIDDEN, IMPROVABLE
 from .coverage import Assignment, Coverage, NoAgentForWork, load_known
+from .dual import (BENCHMARK, Ledgers, OWNER_SET, SELF_DIRECTED,
+                   autonomous_loop, autonomous_round, run_user_task)
 from .fieldmap import Claim, FieldMap
 from .improvement import Improvement, SeedResult, no_change
 from .registry import NAMES, ResearchAgent, build, build_all
@@ -38,6 +43,8 @@ __all__ = [
     "Charter", "CharterViolation", "FORBIDDEN", "IMPROVABLE",
     "Assignment", "Coverage", "NoAgentForWork", "load_known",
     "Claim", "FieldMap",
+    "Ledgers", "OWNER_SET", "BENCHMARK", "SELF_DIRECTED",
+    "run_user_task", "autonomous_round", "autonomous_loop",
     "Improvement", "SeedResult", "no_change",
     "NAMES", "ResearchAgent", "build", "build_all",
     "Dimension", "SelfModel", "Unobserved",

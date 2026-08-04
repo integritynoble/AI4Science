@@ -1,0 +1,308 @@
+"""The two functions every research agent has.
+
+    1. the ordinary one   a person asks for something and the agent works it,
+                          through the governed session runtime, like any other
+                          sarsi agent. Plan → execute → verify → repair.
+
+    2. the autonomous one  it does research on its own — owner-set tasks, a
+                          benchmark, or the charter it shipped with — without
+                          being asked each time.
+
+**Function 1 does not need the switch.** A person asking for help is not the
+agent deciding to spend their money, and requiring the autonomous permission for
+ordinary work would make the off switch mean "the agent is useless" instead of
+"the agent does not act unasked". So `run_user_task` runs with the switch off,
+and `autonomous_round` refuses without it.
+
+**Function 2 stops; it does not ask.** Three things end it — the owner turning
+the switch off, the budget running out, and the field map running dry — and none
+of them produces a request for more. An agent that could ask would be asking at
+3 a.m., of whoever is least equipped to say no.
+
+**The three ledgers are never summed.** An agent that wrote its own benchmark,
+passed it, and counted the pass toward its record would have published its own
+reputation, so owner-set work, benchmark scores and self-directed research are
+three lines and stay three lines.
+"""
+from __future__ import annotations
+
+import time
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
+
+from .budget import BudgetExhausted
+from .improvement import Improvement, SeedResult, no_change
+from .runners import DomainBenchmark, run_domain_task
+
+OWNER_SET, BENCHMARK, SELF_DIRECTED = "owner_set", "benchmark", "self_directed"
+
+
+# ------------------------------------------------------------------ ledgers
+
+class Ledgers:
+    """Three records that are never added together."""
+
+    def __init__(self, agent: str):
+        self.agent = agent
+        self._rows: Dict[str, List[Dict[str, Any]]] = {
+            OWNER_SET: [], BENCHMARK: [], SELF_DIRECTED: []}
+
+    def record(self, kind: str, row: Dict[str, Any]) -> Dict[str, Any]:
+        if kind not in self._rows:
+            raise KeyError("no ledger %r — the three are fixed on purpose" % kind)
+        row = dict(row, at=time.time())
+        self._rows[kind].append(row)
+        return row
+
+    def of(self, kind: str) -> List[Dict[str, Any]]:
+        return list(self._rows[kind])
+
+    def total(self):
+        """Deliberately absent. There is no single number, and offering one
+        would be offering the agent its own reputation."""
+        raise NotImplementedError(
+            "%s: owner-set work, benchmark scores and self-directed research are "
+            "three lines and are never one number — an agent that could sum them "
+            "could pass its own exam and count it" % self.agent)
+
+    def report(self) -> str:
+        L = ["%s — three ledgers, never summed:" % self.agent]
+        for kind in (OWNER_SET, BENCHMARK, SELF_DIRECTED):
+            rows = self._rows[kind]
+            passed = sum(1 for r in rows if r.get("passed"))
+            L.append("  %-14s %d run%s, %d passed"
+                     % (kind, len(rows), "" if len(rows) == 1 else "s", passed))
+        return "\n".join(L)
+
+
+# -------------------------------------------------- 1. the ordinary function
+
+@dataclass
+class DomainPlanner:
+    """Run the solver; on a repairable failure, run it again.
+
+    The same shape as `ReferenceImagingPlanner`, which is the reference for
+    every agent's ordinary path. It carries no domain knowledge — a domain that
+    needs a cleverer planner supplies one."""
+
+    max_repairs: int = 2
+    _attempts: int = 0
+
+    def next_step(self, state):
+        from ai4science.harness.runtime.pev import PlanStep
+        if self._attempts > self.max_repairs:
+            return PlanStep(summary="deliver", command=[], done=True)
+        return PlanStep(summary="run the domain solver",
+                        command=["python3", "code/run_solver.py",
+                                 "--workspace", "."],
+                        action_type="sandbox_exec")
+
+    def replan(self, state, verdict) -> None:
+        self._attempts += 1
+
+
+class DomainVerifier:
+    """The field's own judge, wrapped for the runtime.
+
+    Scores host-side against the withheld answer key — the sandbox never had it,
+    and a verifier that read its evidence from inside the sandbox would be
+    judging whatever the solver chose to write."""
+
+    def __init__(self, bench: DomainBenchmark, seed_ws: Path, run_ws: Path):
+        self.bench, self.seed_ws, self.run_ws = bench, Path(seed_ws), Path(run_ws)
+        self.last: Optional[Dict[str, float]] = None
+
+    def check(self, result: dict, contract):
+        from ai4science.harness.runtime.verifier import Verdict as RtVerdict
+        missing = [d for d in self.bench.deliverables
+                   if not (self.run_ws / d).exists()]
+        if result.get("exit_code") not in (0, None) or missing:
+            return RtVerdict(complete=False, repairable=True,
+                             evidence={"missing": missing,
+                                       "exit_code": result.get("exit_code")})
+        metrics = self.bench.score(self.seed_ws, self.run_ws)
+        verdict = self.bench.judge(metrics)
+        self.last = metrics
+        return RtVerdict(complete=verdict.passed, repairable=not verdict.passed,
+                         evidence={"metrics": metrics,
+                                   "reasons": list(verdict.reasons)})
+
+
+def run_user_task(agent, bench: DomainBenchmark, *, client, store, task_id: str,
+                  workspace: Path, seed: int = 42, interaction_mode: str = "I2",
+                  capability_profile: str = "A1", max_repairs: int = 2,
+                  ledgers: Optional[Ledgers] = None, on_ask=None) -> Dict[str, Any]:
+    """Function 1. A person asked; the agent works it through the runtime.
+
+    Runs with the autonomous switch **off** — that is the point of the
+    distinction."""
+    from ai4science.harness.runtime.contract import compile_contract
+    from ai4science.harness.runtime.pev import run_task
+    from .runners.common import seed_workspace
+
+    workspace = Path(workspace)
+    seed_workspace(bench, workspace, seed=seed)
+    run = client.open_run(bench.goal, capability_profile, {"actions": max_repairs + 3},
+                          interaction_profile=interaction_mode)
+    run_ws = Path(run["workspace_path"])
+    for p in sorted(workspace.rglob("*")):
+        if not p.is_file():
+            continue
+        rel = p.relative_to(workspace).as_posix()
+        if rel in bench.answer_key:
+            continue
+        client.stage_input(run["run_id"], rel, p.read_bytes())
+
+    contract = compile_contract(
+        objective=bench.goal, capability_profile=capability_profile,
+        interaction_mode=interaction_mode,
+        deliverables=list(bench.deliverables),
+        success_criteria=list(bench.criteria),
+        approval_required_for=["publish", "spend", "deploy"])
+    verifier = DomainVerifier(bench, workspace, run_ws)
+    out = run_task(run_id=run["run_id"], contract=contract, client=client,
+                   planner=DomainPlanner(max_repairs=max_repairs),
+                   verifier=verifier, store=store, task_id=task_id, on_ask=on_ask)
+    out["metrics"] = verifier.last
+    out["agent"] = agent.name if hasattr(agent, "name") else str(agent)
+    if ledgers is not None:
+        ledgers.record(OWNER_SET, {"task": task_id, "goal": bench.goal,
+                                   "passed": out.get("status") == "delivered",
+                                   "metrics": verifier.last})
+    return out
+
+
+# ------------------------------------------------ 2. the autonomous function
+
+@dataclass
+class Round:
+    """One night's work on one question."""
+    agent: str
+    claim: Optional[str]
+    metric: str
+    spent: float
+    improvement: Optional[Improvement] = None
+    outcome: Dict[str, Any] = field(default_factory=dict)
+    stopped: str = ""
+
+    def report(self) -> str:
+        L = ["%s — %s" % (self.agent, self.claim or "no open claim")]
+        if self.improvement is not None:
+            L.append(self.improvement.report())
+        elif self.outcome:
+            L.append("  %s" % self.outcome.get("why", ""))
+        if self.stopped:
+            L.append("  stopped: %s" % self.stopped)
+        return "\n".join(L)
+
+
+def autonomous_round(agent, bench: DomainBenchmark, *, client_factory,
+                     workspace_root: Path, seeds: Sequence[int] = (0, 1, 2, 3, 4),
+                     metric: str = "", cost_per_seed: float = 0.5,
+                     ledgers: Optional[Ledgers] = None,
+                     candidate: str = "current-method") -> Round:
+    """Function 2, one round. Refuses unless the owner turned it on.
+
+    Every seed in the set is run and every seed is reported. Keeping the run
+    that looked good is the easiest mistake for an unattended agent to make and
+    the commonest way a real-looking result turns out to be nothing."""
+    budget = agent.switch.require_on()          # raises PermissionError when off
+    claim = agent.field_map.next_work()
+    metric = metric or next(iter(bench.criteria), "the field's metric")
+
+    cost = cost_per_seed * len(seeds)
+    if not budget.would_fit(cost):
+        return Round(agent.name, claim.statement if claim else None, metric, 0.0,
+                     stopped="the budget would not cover %d seeds (%.3g needed, "
+                             "%.3g left) — it stops rather than asking"
+                             % (len(seeds), cost, budget.remaining()))
+
+    results, spent = [], 0.0
+    for s in seeds:
+        if not agent.switch.on:                 # the owner may pull it mid-round
+            return Round(agent.name, claim.statement if claim else None, metric,
+                         spent, stopped="the owner turned it off mid-round")
+        budget.spend(cost_per_seed, what="seed %d of %s" % (s, candidate))
+        spent += cost_per_seed
+        out = run_domain_task(bench, client=client_factory(s),
+                              workspace=Path(workspace_root) / ("s%d" % s), seed=s)
+        results.append(out)
+        if ledgers is not None:
+            ledgers.record(BENCHMARK, {"seed": s, "candidate": candidate,
+                                       "passed": out.get("status") == "delivered",
+                                       "metrics": out.get("metrics")})
+
+    key = _headline_metric(bench, results)
+    if key is None:
+        r = Round(agent.name, claim.statement if claim else None, metric, spent,
+                  outcome=no_change(agent.name,
+                                    because="no run produced a comparable number"))
+    else:
+        base = [r["metrics"][key] for r in results if r.get("metrics")]
+        imp = Improvement(
+            agent=agent.name, candidate=candidate, metric=key,
+            baseline_reproduced=True, held_out=True, comparisons=1,
+            mechanism="", verifier_passed=all(r.get("status") == "delivered"
+                                              for r in results),
+            seeds=[SeedResult(s, b, b) for s, b in zip(seeds, base)])
+        r = Round(agent.name, claim.statement if claim else None, key, spent,
+                  improvement=imp)
+        if not imp.survives():
+            r.outcome = no_change(agent.name,
+                                  because="; ".join(imp.failures())[:200])
+    if ledgers is not None:
+        ledgers.record(SELF_DIRECTED,
+                       {"claim": r.claim, "metric": r.metric, "spent": spent,
+                        "passed": bool(r.improvement and r.improvement.survives())})
+    return r
+
+
+def _headline_metric(bench: DomainBenchmark, results) -> Optional[str]:
+    for r in results:
+        m = r.get("metrics")
+        if m:
+            return sorted(m)[0]
+    return None
+
+
+def autonomous_loop(agent, bench: DomainBenchmark, *, client_factory,
+                    workspace_root: Path, rounds: int = 3,
+                    seeds: Sequence[int] = (0, 1, 2),
+                    cost_per_seed: float = 0.5,
+                    ledgers: Optional[Ledgers] = None) -> List[Round]:
+    """Rounds until the switch goes off, the budget runs out, or the map is dry.
+
+    None of the three asks for anything."""
+    out: List[Round] = []
+    for i in range(rounds):
+        if not agent.switch.on:
+            out.append(Round(agent.name, None, "", 0.0,
+                             stopped="the switch is off"))
+            break
+        if agent.field_map.next_work() is None:
+            out.append(Round(agent.name, None, "", 0.0,
+                             stopped="the field map is dry — nothing left "
+                                     "unchecked that this agent can check"))
+            break
+        try:
+            r = autonomous_round(agent, bench, client_factory=client_factory,
+                                 workspace_root=Path(workspace_root) / ("r%d" % i),
+                                 seeds=seeds, cost_per_seed=cost_per_seed,
+                                 ledgers=ledgers, candidate="round-%d" % i)
+        except BudgetExhausted as e:
+            out.append(Round(agent.name, None, "", 0.0, stopped=str(e)))
+            break
+        out.append(r)
+        if r.stopped:
+            break
+        # A claim that has been checked is not checked again: the map is how the
+        # second night differs from the first.
+        if r.claim:
+            for key, c in agent.field_map.claims.items():
+                if c.statement == r.claim:
+                    agent.field_map.reproduced(
+                        key, evidence="ran %d seeds of %s" % (len(seeds), bench.agent),
+                        agrees=bool(r.improvement and r.improvement.survives()))
+                    break
+    return out
