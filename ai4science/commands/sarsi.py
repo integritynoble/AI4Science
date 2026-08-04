@@ -409,6 +409,81 @@ def spend(agent_id: Optional[str] = typer.Option(None, "--agent",
         console.print(f"  {row.summary}", markup=False, highlight=False)
 
 
+@app.command("publish", help="Publish one fact to the shared tier every granted agent reads.")
+def publish_cmd(agent_id: str = typer.Argument(..., help="Who is saying it"),
+                kind: str = typer.Argument(..., help="deadline · entity · decision · outcome · note"),
+                text: str = typer.Argument(..., help="The fact, one sentence"),
+                about: List[str] = typer.Option(None, "--about",
+                                                help="An entity it concerns (repeatable)."),
+                source: str = typer.Option("", "--source",
+                                           help="Where it came from — mail, a page, the owner."),
+                trusted: bool = typer.Option(False, "--trusted",
+                                             help="Only if the source itself is trusted.")) -> None:
+    from ai4science.harness.agents.sarsi import shared
+
+    config = _load()
+    agent = _worker_or_exit(config, agent_id)
+    try:
+        fact = shared.publish(config, agent, kind=kind, text=text,
+                              about=list(about or []), source=source,
+                              trusted=trusted)
+    except (shared.NotShareable, ValueError) as e:
+        console.print(str(e), style="yellow", markup=False, highlight=False)
+        raise typer.Exit(code=2)
+    console.print(f"published — {fact['kind']}: {fact['text']}", markup=False,
+                  highlight=False)
+    console.print("nothing was started by this; whoever plans next will find it",
+                  style="dim")
+
+
+@app.command("shared", help="What has been published, and who may read it.")
+def shared_cmd(agent_id: Optional[str] = typer.Option(None, "--agent",
+                                                      help="Read as this agent."),
+               grant: bool = typer.Option(False, "--grant",
+                                          help="Let that agent read the tier."),
+               revoke: bool = typer.Option(False, "--revoke",
+                                           help="Take the permission back.")) -> None:
+    from ai4science.harness.agents.sarsi import shared
+
+    config = _load()
+    if (grant or revoke) and not agent_id:
+        console.print("[red]--grant and --revoke need --agent[/red]")
+        raise typer.Exit(code=2)
+    if agent_id:
+        agent = _worker_or_exit(config, agent_id)
+        if grant:
+            shared.grant(config, agent)
+            console.print(f"{agent_id} may read the shared tier", markup=False,
+                          highlight=False)
+        if revoke:
+            shared.revoke(config, agent)
+            console.print(f"{agent_id} may no longer read it", markup=False,
+                          highlight=False)
+        if not shared.may_read(config, agent):
+            console.print(f"{agent_id} is not granted the shared tier — it is "
+                          f"declared, not implied", style="yellow",
+                          markup=False, highlight=False)
+            console.print(f"  grant it: sarsi shared --agent {agent_id} --grant",
+                          style="dim")
+            return
+        facts = shared.read(config, agent)
+    else:
+        console.print("readers: " + (", ".join(shared.readers(config)) or "none"),
+                      style="dim", markup=False, highlight=False)
+        facts = shared._all(config)
+
+    if not facts:
+        console.print("nothing has been published")
+        return
+    for f in facts:
+        prov = f.get("provenance") or {}
+        trust = "" if prov.get("trusted") else ", not verified"
+        console.print(f"  [{f.get('kind')}] {f.get('text')}", markup=False,
+                      highlight=False)
+        console.print(f"      {f.get('by')}, from {prov.get('source')}{trust}",
+                      style="dim", markup=False, highlight=False)
+
+
 @app.command("board", help="The board as a page — served on this machine only.")
 def board_cmd(agent_id: Optional[str] = typer.Argument(None,
                                                        help="Write just this worker's board."),

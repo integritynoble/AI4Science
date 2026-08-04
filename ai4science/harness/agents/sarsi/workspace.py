@@ -44,6 +44,14 @@ def render(config: Config, agent: Agent, task: tsk.Task) -> str:
     """What this agent already knows that bears on this task."""
     blocks: List[str] = []
 
+    # W_shared, when the owner granted it. Read at PLAN time, never pushed: an
+    # agent that is not planning does not read, and a fact published today is
+    # found by whoever plans tomorrow.
+    from ai4science.harness.agents.sarsi import shared as _shared
+    published = _shared.render(config, agent)
+    if published:
+        blocks.append(published)
+
     said = ownerlog.said(config, agent, limit=0)
     if said:
         blocks.append(_block(

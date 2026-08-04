@@ -1103,3 +1103,25 @@ def test_cli_board_refuses_a_non_local_host(isolated):
     result = runner.invoke(app, ["sarsi", "board", "--host", "0.0.0.0"])
     assert result.exit_code != 0
     assert "network" in result.output.lower() or "local" in result.output.lower()
+
+
+def test_cli_publish_and_read_the_shared_tier(isolated):
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    runner.invoke(app, ["sarsi", "publish", "work", "deadline",
+                        "the imaging grant closes on 2026-09-14",
+                        "--about", "imaging-grant", "--source", "mail"])
+    denied = runner.invoke(app, ["sarsi", "shared", "--agent", "funding"])
+    assert "not granted" in denied.output.lower()
+
+    runner.invoke(app, ["sarsi", "shared", "--agent", "funding", "--grant"])
+    allowed = runner.invoke(app, ["sarsi", "shared", "--agent", "funding"])
+    assert "imaging grant closes" in allowed.output
+    assert "mail" in allowed.output
+
+
+def test_cli_publish_refuses_a_host_fact(isolated):
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    result = runner.invoke(app, ["sarsi", "publish", "work", "note",
+                                 "/home/grace/live-psnr is writable"])
+    assert result.exit_code != 0
+    assert "host" in result.output.lower()

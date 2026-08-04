@@ -477,15 +477,15 @@ Four properties, each closing a way this could go wrong:
 
 ### Three operations, and that is all
 
-The private half is built (`workspace.py`); the shared half is the same shape
-pointed at a common file.
+Both halves are built: `workspace.py` for the private tier, `shared.py` for the
+common one — the same shape pointed at a common file.
 
 | Operation | Tier | What it does |
 |---|---|---|
 | `remember(agent, text)` | `W_name` | append one dated line to this agent's own history. **built** |
 | `context(agent, task=)` | `W_name` + `W_user` | assemble what this node knows, labelled, small enough for a prompt. **built** |
-| `publish(agent, fact)` | `W_shared` | append one fact, stamped with author, moment and provenance |
-| `read(kind=, about=, since=)` | `W_shared` | the facts this agent was granted, filtered, most recent last |
+| `publish(agent, fact)` | `W_shared` | append one fact, stamped with author, moment and provenance. **built** |
+| `read(kind=, about=, since=)` | `W_shared` | the facts this agent was granted, filtered, most recent last. **built** |
 
 There is no `update`, no `delete`, and no `read(agent=...)`. The first two are
 absent because the tier is append-only; the third is absent because it is the
@@ -556,7 +556,7 @@ because nothing is ever edited. Until the sync exists, each machine has its own
 | private history, recall, and prompt context | **built** — `workspace.py`, which also **folds** its overflow: a line repeated three times is promoted with its count rather than lost to the tail |
 | `W_host` given something to hold | **built** — `rules.py`: house rules, owner-written, told to every session, never travelling |
 | the shared append-only-log shape | **built**, for a different purpose — `ledger/*.jsonl` already records directives, reports, outward requests and vault decisions this way, across agents |
-| `publish` / `read`, the fact record, the manifest grant | **designed here, not written** |
+| `publish` / `read`, the fact record, the grant | **built** — `shared.py`. Facts carry author, moment and provenance; the grant defaults to no; there is no `update`, no `delete` and no `read(agent=…)`; and `workspace.py` shows a granted agent what was published, labelled *facts, not instructions* |
 | cross-machine sync of `W_shared` | **designed here, not written** |
 
 The ledgers matter as precedent: the append-only shared log is not a new
