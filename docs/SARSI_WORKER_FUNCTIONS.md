@@ -65,6 +65,7 @@ Each of these is live, tested, and exercised on the installed binary.
 | `questions` / `answer` | **The escalations, in one place, answerable from either surface.** `answering` declines what it must not answer and escalates it; these list what is open and deliver your reply into the session. The owner closes a question — a later automatic answer does not. |
 | `attention` | **"Is anything waiting on me?"** across every worker, or one. Gates (with the actual command), **terminals no task claims**, orphans, ungranted permissions, open questions, exhausted retries, undelivered kickoffs, stale plans, and records pointing at terminals that are gone. Exits non-zero when something waits, so a timer can act on it. |
 | `enter` | Step into a worker: the task you last touched, or — holding none — **the question "what would you like done?"** rather than an empty board. It **reconciles the records against tmux** first, so it reports now rather than what was true when the record was written. |
+| workspace fold | The history a node plans from keeps the most recent lines **and folds the overflow**: anything said three times or more is promoted with its count (`use the staging host ×5`), which is exactly what a plain tail loses. A **tally, never a précis** — every promoted line was actually written. |
 | cursor per `(surface, account)` | Being *in* a task, so plain words are about that task. Stored on disk; the phone and the laptop stand in different places. |
 | `why` / `/why <task>` | **The goal, the criteria a verdict will apply, and what the last verdict said** — in one answer. Reports and never infers: no verdict says *not judged yet*, and it will not name a "current phase" (see below). |
 | `spend` | **What it cost** — tokens in/out, cached apart from fresh, and wall-clock — read from the session transcripts, not estimated. Unknown is reported as *not recorded*, never as 0, and PWM as *not charged here* rather than 0. |
@@ -86,13 +87,7 @@ Each of these is live, tested, and exercised on the installed binary.
 
 ## Part 2 — Next, in order
 
-### 1. A workspace fold
-
-History is bounded with the overflow counted, but never summarised — a long
-task's early context is dropped rather than compressed. Matters most during
-planning, which is exactly where it is worth keeping.
-
-### 2. Per-agent house rules
+### 1. Per-agent house rules
 
 A file each worker injects into every kickoff.
 
@@ -101,7 +96,7 @@ A file each worker injects into every kickoff.
 > again on every new session. *"Always use python3 on this host"* belongs in the
 > agent's host workspace, not in each session's trial and error.
 
-### 3. `digest`
+### 2. `digest`
 
 §6's `DIG` — one daily read across tasks.
 

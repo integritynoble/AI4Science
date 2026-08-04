@@ -157,3 +157,64 @@ def test_the_planning_kickoff_still_carries_the_goal(config, agent):
     from ai4science.harness.agents.sarsi import session as ses
     t = _task(config, agent)
     assert "finish the export" in ses.planning_kickoff(config, agent, t)
+
+
+# ── the fold: what a tail drops ───────────────────────────────────────
+
+def test_the_overflow_is_folded_rather_than_only_counted():
+    """A tail keeps the most RECENT. What it silently loses is the thing said
+    five times and then not again — which is usually the thing that matters."""
+    items = ["use the staging host"] * 6 + [f"note {i}" for i in range(8)]
+    out = ws._block("said", items, keep=3)
+    assert "use the staging host" in out
+    assert "6" in out                       # said six times, and it says so
+
+
+def test_a_repeated_line_is_promoted_with_its_count():
+    items = ["never touch prod"] * 4 + [f"note {i}" for i in range(10)]
+    out = ws._block("said", items, keep=2)
+    assert "never touch prod" in out
+    assert "×4" in out or "4 times" in out
+
+
+def test_something_said_once_and_long_ago_stays_folded_away():
+    """Promotion is for recurrence, not for age. Everything old surfacing would
+    make the fold a second full history."""
+    items = ["a one-off aside"] + [f"note {i}" for i in range(12)]
+    out = ws._block("said", items, keep=3)
+    assert "a one-off aside" not in out
+    assert "more, not shown" in out
+
+
+def test_the_remainder_is_still_counted_after_promotion():
+    """Nothing is silently dropped — promotion changes what is shown, never
+    whether the rest is admitted to."""
+    items = ["repeat me"] * 3 + [f"note {i}" for i in range(10)]
+    out = ws._block("said", items, keep=2)
+    assert "more, not shown" in out
+
+
+def test_the_fold_is_a_tally_not_a_precis():
+    """This module's rule: built from records, never summarised by a model.
+    Every promoted line is a line that was actually written."""
+    items = ["exact words that were said"] * 3 + [f"note {i}" for i in range(10)]
+    out = ws._block("said", items, keep=2)
+    for line in out.splitlines():
+        body = line.strip().lstrip("- ").split("  ×")[0].strip()
+        if body and not body.startswith(("said:", "…")):
+            assert body in items or body.startswith("note ")
+
+
+def test_promotion_is_bounded_so_a_pathological_history_cannot_flood_it():
+    items = []
+    for i in range(50):
+        items += [f"recurring {i}"] * 3
+    out = ws._block("said", items, keep=2)
+    assert len(out.splitlines()) <= 2 + 2 + ws.KEEP_FOLDED + 1
+
+
+def test_nothing_recurring_leaves_the_old_behaviour_untouched():
+    items = [f"note {i}" for i in range(10)]
+    out = ws._block("said", items, keep=3)
+    assert "note 9" in out and "note 0" not in out
+    assert "7 more, not shown" in out

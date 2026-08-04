@@ -32,6 +32,12 @@ MAX_CHARS = 6000
 KEEP_SAID = 8
 KEEP_PRECEDENT = 5
 KEEP_MISSES = 5
+#: How many RECURRING lines the fold may promote out of the overflow. Bounded,
+#: or a history that repeats itself becomes a second full history.
+KEEP_FOLDED = 3
+#: A line has to appear at least this often to be worth promoting past newer
+#: ones. Twice is coincidence; three times is the owner insisting.
+FOLD_AT = 3
 
 
 def render(config: Config, agent: Agent, task: tsk.Task) -> str:
@@ -78,11 +84,40 @@ def render(config: Config, agent: Agent, task: tsk.Task) -> str:
 
 
 def _block(title: str, items: List[str], keep: int) -> str:
-    shown = items[-keep:]
-    lines = [f"{title}:"] + [f"  - {i}" for i in shown if i]
-    hidden = len(items) - len(shown)
+    """The most recent `keep`, plus a **fold** of what recurs in the overflow.
+
+    A tail keeps what is newest. What it silently loses is the thing said five
+    times and then not again — usually the thing that matters most, because
+    repetition is how an owner insists.
+
+    The fold is a **tally, not a précis**: every promoted line is a line that
+    was actually written, with the number of times it was written. This module
+    does not let a model summarise its history, and a fold that paraphrased
+    would be exactly that with a different name.
+    """
+    shown = [i for i in items[-keep:] if i]
+    overflow = items[:len(items) - len(items[-keep:])] if keep else list(items)
+
+    counts: dict = {}
+    for item in overflow:
+        if item:
+            counts[item] = counts.get(item, 0) + 1
+    # recurrence, not age: promoting everything old would make the fold a
+    # second full history
+    folded = [(item, n) for item, n in counts.items()
+              if n >= FOLD_AT and item not in shown]
+    folded.sort(key=lambda pair: (-pair[1], pair[0]))
+    folded = folded[:KEEP_FOLDED]
+
+    lines = [f"{title}:"] + [f"  - {i}" for i in shown]
+    for item, n in folded:
+        lines.append(f"  - {item}  ×{n}")
+
+    promoted = sum(n for _, n in folded)
+    hidden = len(items) - len(shown) - promoted
     if hidden > 0:
-        # counted, not quietly dropped
+        # still counted after promotion: the fold changes what is SHOWN, never
+        # whether the rest is admitted to
         lines.append(f"  … and {hidden} more, not shown")
     return "\n".join(lines)
 
