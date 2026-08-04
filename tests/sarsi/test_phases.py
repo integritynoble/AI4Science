@@ -284,3 +284,28 @@ def test_the_supervision_loop_judges_the_phase_the_work_is_on(config, agent):
 
     op.tick(config, agent, t, pane=Pane(), verifier=judge, engine="gpt")
     assert seen == [["the queue length reads 0"]]
+
+
+def test_a_fully_verified_task_is_not_told_to_redo_phase_one(config, agent):
+    """Observed live: the kickoff said "Already verified, do not redo: X" and
+    "Earliest incomplete phase: X" in consecutive lines.
+
+    `earliest_incomplete` returns None when every phase has passed, and
+    `None or 0` collapses to phase 0 — so a finished task was pointed back at
+    its first phase while being told not to redo it. Two contradictory
+    instructions, and the session must obey one of them.
+    """
+    t = _task(config, agent)
+    for i in (0, 1):
+        t = ses.verify(config, agent, t, verifier=_pass, evidence="…", phase=i)
+    t = tsk.get(config, agent, t.id)
+    text = ses.kickoff(t, tsk.read_plan(config, agent, t), agent)
+    assert "Earliest incomplete phase" not in text
+    assert "every phase" in text.lower() or "all phases" in text.lower()
+
+
+def test_the_first_phase_is_still_pointed_at_when_nothing_has_passed(config, agent):
+    """The falsy-zero half of the same bug: phase 0 is a real answer."""
+    t = _task(config, agent)
+    text = ses.kickoff(t, tsk.read_plan(config, agent, t), agent)
+    assert "Earliest incomplete phase: drain the queue" in text

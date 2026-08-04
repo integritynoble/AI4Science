@@ -620,12 +620,19 @@ def kickoff(task: tsk.Task, plan: Optional[pl.Plan],
         # The real number: the first phase without a PASS of its own. A phase is
         # complete when the VERIFIER said so about that phase — the session
         # saying it is finished does not move this.
-        index = tsk.earliest_incomplete(task) or 0
+        # `None` means every phase has passed. `None or 0` would collapse that
+        # to phase 0 — and a finished task would be pointed back at its first
+        # phase in the same breath as being told not to redo it.
+        index = tsk.earliest_incomplete(task)
         done = [p.title for i, p in enumerate(plan.phases)
                 if tsk.phase_passed(task, i)]
         if done:
             lines.append("Already verified, do not redo: " + "; ".join(done))
-        if index < len(plan.phases):
+        if index is None:
+            lines.append("Every phase has been verified. Do not start again — "
+                         "report what is there and let the verifier judge the "
+                         "task as a whole.")
+        elif index < len(plan.phases):
             here = plan.phases[index]
             lines.append(f"Earliest incomplete phase: {here.title}")
             lines.append(f"Verified when: {here.verified_when}")
