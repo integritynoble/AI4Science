@@ -129,6 +129,17 @@ def tick(config: Config, agent: Agent, task: tsk.Task, *, pane: Any,
         bdg.enforce(config, agent, task, acts=acts, runtime=runtime, now=now)
         return Action("over-budget", spent.why)
 
+    # A screen this loop cannot read is a screen it must not type at. Blind
+    # keystrokes are not a brief: they are input to whatever menu happens to be
+    # showing, and on the ai4science TUI they walked the cursor onto "No, exit"
+    # and killed the session the loop was supervising.
+    from ai4science.harness.agents.sarsi import session as _ses
+    if not _ses.drivable(agent.spec):
+        return Action("attended",
+                      f"{agent.id} runs the {agent.spec!r} interface, which "
+                      f"this loop cannot read — take the wheel yourself: "
+                      f"tmux attach -t {session}")
+
     # A task that has not been briefed yet cannot have done anything to judge.
     if task.kickoff_pending and not planning:
         from ai4science.harness.agents.sarsi import session as ses
@@ -392,14 +403,20 @@ def _report(config: Config, agent: Agent, task: tsk.Task, *, state: str,
 class TmuxPane:
     """The real one: read and type into a live tmux pane."""
 
-    def capture(self, name: str) -> str:
+    def capture(self, name: str):
+        """The pane's text, or **None** when there is no such pane.
+
+        Not `""`. "The pane is gone" and "the pane is empty" were the same
+        string, so a session whose terminal had died read as a quiet one and
+        `attention` reported nothing waiting about it.
+        """
         import subprocess
         try:
             out = subprocess.run(["tmux", "capture-pane", "-p", "-t", name],
                                  capture_output=True, text=True, timeout=10)
-            return out.stdout if out.returncode == 0 else ""
         except Exception:
-            return ""
+            return None
+        return out.stdout if out.returncode == 0 else None
 
     def send(self, name: str, text: str):
         from ai4science.harness.agents.machine import sessions

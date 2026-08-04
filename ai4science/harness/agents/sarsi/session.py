@@ -345,6 +345,10 @@ def deliver_kickoff(config: Config, agent: Agent, task: tsk.Task, *,
                     now=time.time) -> tsk.Task:
     """Hand the session its first instruction, and confirm it actually landed.
 
+    Never for a spec this loop cannot read. Typing at an interface it does not
+    understand is not briefing: on the ai4science TUI a brief full of `j`s and
+    `k`s walked a menu cursor onto "No, exit" and killed the session.
+
     `assign` does not type it: a session started microseconds ago is still
     booting and the text is dropped. But *sending* is not *delivering* either —
     grace's run typed the kickoff while Claude Code was still showing its
@@ -354,6 +358,10 @@ def deliver_kickoff(config: Config, agent: Agent, task: tsk.Task, *,
     So it stays pending until a distinctive piece of it is **seen on screen**,
     and is retyped up to `MAX_KICKOFF_TRIES` before the owner is told.
     """
+    if not drivable(agent.spec):
+        # Reported, not typed. The owner briefs an attended session by hand.
+        return task
+
     pending = task.kickoff_pending
     if not pending:
         return task

@@ -34,8 +34,8 @@ from ai4science.harness.agents.sarsi.registry import Agent, Config
 #: decision. The order is the whole value of the list — the owner reads down it
 #: until they run out of time, so what they read first has to be what matters.
 ORDER = ("gate", "unclaimed", "orphan", "grant", "question", "over-budget",
-         "exhausted", "undelivered", "handoff", "proposal", "dead-session",
-         "stale")
+         "exhausted", "attended", "undelivered", "handoff", "proposal",
+         "dead-session", "stale")
 
 #: States in which nothing is steering the session any more. A terminal still
 #: running past one of these is an ORPHAN — the reverse of a dead session, and
@@ -226,8 +226,17 @@ def _for_task(config: Config, agent: Agent, task: tsk.Task, *,
                         action=f"sarsi ask {agent.id} \"/edit {task.id} 1 "
                                f"<criterion>\""))
 
+    from ai4science.harness.agents.sarsi import session as _ses
     name = (task.session or {}).get("name")
-    if name and pane is not None:
+    if name and not _ses.drivable(agent.spec):
+        # It is running an interface this loop cannot read, so it will make no
+        # progress on its own. Saying so is the difference between a session
+        # waiting for its owner and one that is simply slow.
+        out.append(Item("attended", task.id,
+                        f"{agent.id} runs the {agent.spec!r} interface, which "
+                        f"the supervision loop cannot read — it needs you",
+                        action=f"tmux attach -t {name}"))
+    elif name and pane is not None:
         out.extend(_from_pane(agent, task, name, pane))
     return out
 
