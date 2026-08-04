@@ -38,6 +38,19 @@ class ResearchAgent:
     def name(self) -> str:
         return self.charter.name
 
+    def benchmark(self):
+        """This agent's runnable problem, or None.
+
+        `imaging` is the exception and deliberately so: it had a runner before
+        this package existed (`agents/imaging/`, driven by `run_imaging_task`),
+        and pointing it at a second one would give the same agent two ways to be
+        scored. Its runner is reached through its own AgentSpec's RUNNER."""
+        from .runners import BENCHMARKS
+        return BENCHMARKS.get(self.name)
+
+    def can_compute(self) -> bool:
+        return self.benchmark() is not None or self.name == "imaging"
+
     def night_budget(self) -> Budget:
         units, unit = self.night
         return Budget(self.name, units=units, unit=unit)
