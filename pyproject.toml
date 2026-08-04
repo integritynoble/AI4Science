@@ -65,6 +65,17 @@ claude = [
   # in env OR `claude login` for subscription-based auth.
   "claude-agent-sdk>=0.1",
 ]
+research-agents = [
+  # The governor's research agents run their benchmarks on real corpora, and
+  # two of the five cannot run at all without these — this is not a convenience
+  # group. `rdkit` computes the Morgan fingerprints the drug-design benchmark
+  # is built on, at benchmark-generation time and not merely at fetch time;
+  # without it that agent raises rather than degrading. `pydicom` and `pillow`
+  # are needed to fetch the CT and capsule corpora respectively.
+  "rdkit>=2023.9",
+  "pydicom>=2.4",
+  "pillow>=10.0",
+]
 
 [project.scripts]
 ai4science = "ai4science.cli:main"

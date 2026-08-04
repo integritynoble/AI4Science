@@ -169,6 +169,31 @@ The PyPI package is `pwm-ai4science`; the command is `ai4science` (same package-
 
 **Lean install** (deterministic CLI only, no agent): `pipx install pwm-ai4science`.
 
+**Research agents** (the six governor agents and their benchmarks):
+
+```bash
+pip install "pwm-ai4science[research-agents]"
+```
+
+Two of the five benchmarks **cannot run without this** — it is not a
+convenience group. `rdkit` computes the Morgan fingerprints the drug-design
+benchmark is built on, and it is needed at benchmark-generation time, not only
+when fetching the corpus; without it that agent raises rather than quietly
+doing less. `pydicom` and `pillow` are needed to fetch the CT and capsule
+corpora.
+
+The corpora themselves live outside the package, under `~/.ai4science/data` or
+wherever `AI4SCIENCE_DATA` points, and are fetched one at a time:
+
+```bash
+python3 -m ai4science.harness.agents.research_agents.runners.fetch --status
+python3 -m ai4science.harness.agents.research_agents.runners.fetch tcga-survival
+```
+
+A benchmark whose corpus is absent **refuses to run and says which command
+fetches it**. It never falls back to generated data, because a synthetic
+substitute produces numbers that look like results and are not.
+
 **Before the first PyPI release**, install from GitHub (still one command):
 ```bash
 pipx install "git+https://github.com/integritynoble/AI4Science.git"
