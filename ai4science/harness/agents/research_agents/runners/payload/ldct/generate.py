@@ -1,59 +1,86 @@
-"""Sparse-view low-dose CT: a phantom, a sinogram, and a low-contrast lesion.
+"""Real paired CT: the same patient at full dose and at reduced dose.
 
-The lesion is the point. A denoiser raises PSNR most easily by smoothing, and
-the first thing smoothing removes is exactly this disk — so the benchmark
-carries a signal whose disappearance the judge can see.
+No dose simulation. This collection reconstructs the same acquisition twice,
+which is the thing a simulated noise model is only ever an approximation of.
+The full-dose reconstruction is the reference and is withheld from the sandbox.
+
+Detectability needs a signal whose location is known, and the collection ships
+no lesion masks — so a low-contrast disk is INSERTED into both images at the
+same place, which is standard for task-based image quality and is labelled as
+inserted rather than passed off as pathology. It is small and faint on purpose:
+a large or high-contrast lesion survives any amount of blurring, and a benchmark
+built on one cannot show the failure this agent exists to catch.
 """
-import argparse, json
+import argparse, json, os, sys
 import numpy as np
-from scipy.ndimage import rotate
 
-N, ANGLES, I0 = 96, 60, 40000.0         # sparse views, low photon count
-
-
-def phantom(rng):
-    y, x = np.mgrid[0:N, 0:N]
-    img = np.zeros((N, N), float)
-    img[((x - N/2)**2 / (0.40*N)**2 + (y - N/2)**2 / (0.30*N)**2) <= 1] = 1.0
-    img[((x - 0.38*N)**2 + (y - 0.42*N)**2) <= (0.09*N)**2] = 1.35   # high contrast
-    img[((x - 0.62*N)**2 + (y - 0.58*N)**2) <= (0.07*N)**2] = 0.72
-    # the lesion: 14% contrast against the body, the thing that must
-    # survive. Low enough that smoothing erases it, high enough that a
-    # competent reconstruction keeps it — a benchmark no method can pass
-    # cannot tell a good method from a bad one.
-    # SMALL and low contrast. Size is the point: a large lesion survives any
-    # amount of blurring, so a benchmark built on one cannot show the failure
-    # this agent exists to catch. At ~3 px a Gaussian that maximises PSNR
-    # erases it, and an edge-preserving prior does not.
-    les = ((x - 0.55*N)**2 + (y - 0.36*N)**2) <= (0.032*N)**2
-    img[les] = 1.13
-    return img, les
+# Calibrated to this collection's actual noise, which is not a free choice:
+# the series are reconstructed with B50f, a sharp lung kernel, and measure
+# ~100 HU noise at full dose and 226-336 HU at low dose. A 45 HU lesion — the
+# first value tried here — sits far below that and is invisible to every
+# method, which makes a benchmark that cannot rank anything. 150 HU is still
+# low contrast against 100 HU of full-dose noise, and small enough at 5 px
+# that a PSNR-maximising blur erases it.
+LESION_HU = 150.0
+LESION_R = 5
 
 
-def radon(img, angles):
-    return np.stack([rotate(img, a, reshape=False, order=1).sum(axis=0)
-                     for a in angles])
+def pick_site(img, r):
+    """A uniform soft-tissue patch, away from bone and air."""
+    from scipy.ndimage import uniform_filter
+    soft = (img > -20) & (img < 90)
+    local_var = uniform_filter(img.astype(float) ** 2, 15) - \
+        uniform_filter(img.astype(float), 15) ** 2
+    ok = soft & (local_var < 900)
+    ok[:r * 6, :] = ok[-r * 6:, :] = False
+    ok[:, :r * 6] = ok[:, -r * 6:] = False
+    ys, xs = np.nonzero(ok)
+    if len(ys) == 0:
+        return img.shape[0] // 2, img.shape[1] // 2
+    k = len(ys) // 2
+    return int(ys[k]), int(xs[k])
+
+
+def insert(img, cy, cx, r, hu):
+    y, x = np.ogrid[:img.shape[0], :img.shape[1]]
+    m = (y - cy) ** 2 + (x - cx) ** 2 <= r ** 2
+    out = img.copy()
+    out[m] += hu
+    return out, m
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--workspace", default="."); ap.add_argument("--seed", type=int, default=42)
     a = ap.parse_args()
-    ws, rng = a.workspace, np.random.default_rng(a.seed)
-    import os
-    os.makedirs(os.path.join(ws, "data"), exist_ok=True)
-    img, les = phantom(rng)
-    angles = np.linspace(0., 180., ANGLES, endpoint=False)
-    sino = radon(img, angles)
-    # Poisson counting statistics at a low dose
-    expected = I0 * np.exp(-sino / sino.max() * 2.2)
-    counts = rng.poisson(np.clip(expected, 1e-6, None)).astype(float)
-    noisy = -np.log(np.clip(counts, 1.0, None) / I0) / 2.2 * sino.max()
-    np.save(os.path.join(ws, "data", "sinogram.npy"), noisy)
-    np.save(os.path.join(ws, "data", "angles.npy"), angles)
-    np.save(os.path.join(ws, "data", "ground_truth.npy"), img)      # the answer key
-    np.save(os.path.join(ws, "data", "lesion_mask.npy"), les)       # also withheld
-    print(json.dumps({"n": N, "angles": ANGLES, "I0": I0, "seed": a.seed}))
+    sys.path.insert(0, os.environ.get("AI4SCIENCE_PKG", ""))
+    from ai4science.harness.agents.research_agents.runners import corpus
+    root = corpus.LDCT.require()
+    meta = json.loads(open(os.path.join(root, "metadata.json")).read())
+    z = np.load(os.path.join(root, "volumes.npz"))
+
+    pats = sorted(meta["patients"])
+    pid = pats[a.seed % len(pats)]
+    full = z["full_%s" % pid]
+    low = z["low_%s" % pid]
+    k = full.shape[0] // 2
+    full, low = full[k].astype(np.float32), low[k].astype(np.float32)
+
+    cy, cx = pick_site(full, LESION_R)
+    full_l, mask = insert(full, cy, cx, LESION_R, LESION_HU)
+    low_l, _ = insert(low, cy, cx, LESION_R, LESION_HU)
+
+    d = os.path.join(a.workspace, "data")
+    os.makedirs(d, exist_ok=True)
+    np.save(os.path.join(d, "low_dose.npy"), low_l)          # the input
+    np.save(os.path.join(d, "full_dose.npy"), full_l)        # the answer key
+    np.save(os.path.join(d, "lesion_mask.npy"), mask)        # also withheld
+    np.save(os.path.join(d, "lesion_amplitude.npy"),
+            np.array([LESION_HU, LESION_R]))                 # also withheld
+    print(json.dumps({"patient": pid, "slice": int(k),
+                      "shape": list(full.shape), "lesion_hu": LESION_HU,
+                      "lesion_radius_px": LESION_R, "lesion": "INSERTED",
+                      "real": True}))
 
 
 if __name__ == "__main__":

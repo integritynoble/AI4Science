@@ -84,8 +84,7 @@ def test_each_agent_computes_and_is_judged(name, tmp_path):
     assert out["provenance"], "a result must say where its data came from"
 
 
-@pytest.mark.parametrize("name", ["low-dose-ct", "medical-physics",
-                                  "pill-camera", "drug-design"])
+@pytest.mark.parametrize("name", ["low-dose-ct", "pill-camera", "drug-design"])
 def test_the_intended_method_passes(name, tmp_path):
     out = _run(benchmark_for(name), tmp_path)
     assert out["verdict"].passed, out["verdict"].report()
@@ -118,7 +117,7 @@ def test_the_answer_key_never_reaches_the_sandbox(name, tmp_path):
     for key in bench.answer_key:
         assert not (run_ws / key).exists(), "%s leaked %s" % (name, key)
         assert (tmp_path / "seed" / key).exists(), "the key should exist outside"
-    assert list(out["withheld"]) == list(bench.answer_key)
+    assert set(out["withheld"]) == set(bench.answer_key)
 
 
 def test_a_run_is_reproducible_from_its_seed(tmp_path):
@@ -129,70 +128,130 @@ def test_a_run_is_reproducible_from_its_seed(tmp_path):
 
 # ------------------------------------- low-dose CT: the smoothing failure
 
-BLUR = '''
-import argparse, os, sys
+GAUSS = """
+import argparse, os
 import numpy as np
 from scipy.ndimage import gaussian_filter
-sys.path.insert(0, os.path.dirname(__file__))
-from run_solver import fbp
 ap = argparse.ArgumentParser(); ap.add_argument("--workspace", default=".")
+ap.add_argument("--sigma", type=float, default=1.0)
 ws = ap.parse_args().workspace
-sino = np.load(os.path.join(ws, "data", "sinogram.npy"))
-ang = np.load(os.path.join(ws, "data", "angles.npy"))
-rec = fbp(sino, ang, sino.shape[1])
-rec = (rec - rec.min()) / max(float(np.ptp(rec)), 1e-9) * 1.35
-rec = gaussian_filter(rec, 3.2)
+low = np.load(os.path.join(ws, "data", "low_dose.npy"))
+rec = gaussian_filter(low, SIGMA)
 os.makedirs(os.path.join(ws, "results"), exist_ok=True)
 np.save(os.path.join(ws, "results", "reconstruction.npy"), rec)
-'''
+"""
 
 
-def test_a_higher_psnr_that_erases_the_lesion_FAILS(tmp_path):
-    """The refusal this agent exists for, executable.
+def test_the_psnr_maximising_restoration_FAILS(tmp_path):
+    """The refusal this agent exists for, on real paired clinical CT.
 
-    The blur wins on PSNR — the metric the field reports — and loses, because
-    the low-contrast finding the scan was ordered to detect is gone."""
+    Light smoothing wins on PSNR — the number the field reports — and leaves the
+    low-contrast lesion below the Rose criterion for reliable detection. A
+    fidelity gain with the finding gone is a failure, not a mixed result."""
     good = _run(LDCT, tmp_path / "good")
-    blur = _run(LDCT, tmp_path / "blur", override=BLUR)
+    light = _run(LDCT, tmp_path / "light", override=GAUSS.replace("SIGMA", "1.0"))
 
-    assert blur["metrics"]["psnr"] > good["metrics"]["psnr"], \
-        "the blur is supposed to win on PSNR; otherwise this proves nothing"
-    assert good["verdict"].passed
-    assert not blur["verdict"].passed
-    assert any("smooth" in r or "gone" in r for r in blur["verdict"].reasons)
-    assert blur["metrics"]["lesion_cnr"] < good["metrics"]["lesion_cnr"]
+    assert light["metrics"]["psnr"] > good["metrics"]["psnr"], \
+        "the light blur is supposed to win on PSNR; otherwise this proves nothing"
+    assert good["verdict"].passed, good["verdict"].report()
+    assert not light["verdict"].passed
+    assert light["metrics"]["lesion_cnr"] < 3.0
+    assert any("Rose criterion" in r for r in light["verdict"].reasons)
+
+
+def test_over_smoothing_FAILS_the_other_way(tmp_path):
+    """And the opposite error is caught too: heavy smoothing keeps the lesion
+    visible against a very quiet background while erasing most of its contrast."""
+    heavy = _run(LDCT, tmp_path / "heavy", override=GAUSS.replace("SIGMA", "6.0"))
+    assert not heavy["verdict"].passed
+    assert heavy["metrics"]["lesion_contrast_retained"] < 0.5
+
+
+def test_the_paired_scans_are_the_same_anatomy(tmp_path):
+    """Sorting zip entries does not order a DICOM series: the first version of
+    the fetcher paired full[0] with low[2]. Slices are matched by
+    ImagePositionPatient now, and this asserts the pairing rather than trusting
+    it — once smoothed, the two scans must be the same picture."""
+    from scipy.ndimage import gaussian_filter
+    _needs_corpus(LDCT)
+    seed_workspace(LDCT, tmp_path / "s", seed=42)
+    import numpy as np
+    full = np.load(tmp_path / "s" / "data" / "full_dose.npy")
+    low = np.load(tmp_path / "s" / "data" / "low_dose.npy")
+    corr = np.corrcoef(gaussian_filter(full, 3).ravel(),
+                       gaussian_filter(low, 3).ravel())[0, 1]
+    assert corr > 0.99, "smoothed correlation %.4f — these are different slices" % corr
+    # And the low-dose scan really is noisier, or it is not a dose pair.
+    hi = lambda a: float((a - gaussian_filter(a, 2)).std())
+    assert hi(low) > 1.5 * hi(full)
 
 
 # ------------------------------- medical physics: modulation is not optional
 
-NAIVE_PLAN = '''
+NAIVE_PLAN = """
 import argparse, json, os, sys
 import numpy as np
 sys.path.insert(0, os.path.dirname(__file__))
 from run_solver import beamlets, ANGLES
 ap = argparse.ArgumentParser(); ap.add_argument("--workspace", default=".")
 ws = ap.parse_args().workspace
-target = np.load(os.path.join(ws, "data", "target.npy"))
 proto = json.load(open(os.path.join(ws, "data", "protocol.json")))
-ty, tx = np.argwhere(target).mean(axis=0)
-A = np.stack([b for a in ANGLES for b in beamlets(a, ty, tx)])
-dose = np.tensordot(np.ones(len(A)), A, axes=(0, 0))
-dose = dose * (proto["prescription"] / max(np.percentile(dose[target], 5), 1e-9))
+ptv = np.load(os.path.join(ws, "data", "PTV70.npy"))
+k = int(np.argmax(ptv.sum(axis=(0, 1))))
+prim = ptv[:, :, k]
+body = np.load(os.path.join(ws, "data", "possible.npy"))[:, :, k]
+cy, cx = np.argwhere(prim).mean(axis=0)
+A = np.stack([b for a in ANGLES for b in beamlets(prim.shape, a, cy, cx)])
+dose = np.tensordot(np.ones(len(A)), A, axes=(0, 0)) * body
+d = dose[prim]
+dose = dose * (proto["PTV70"]["prescription"] / max(float(np.percentile(d, 1)), 1e-9))
 os.makedirs(os.path.join(ws, "results"), exist_ok=True)
 np.save(os.path.join(ws, "results", "dose.npy"), dose)
-json.dump({"status": "candidate"}, open(os.path.join(ws, "results", "plan_candidate.json"), "w"))
-'''
+np.save(os.path.join(ws, "results", "slice_index.npy"), np.array([k]))
+json.dump({"status": "candidate", "requires": "sign-off by a qualified medical physicist"},
+          open(os.path.join(ws, "results", "plan_candidate.json"), "w"))
+"""
 
 
-def test_an_unmodulated_plan_fails_the_protocol(tmp_path):
-    """Every beamlet wide open covers the target and irradiates the organ. If
-    this passed, the benchmark would not be measuring planning at all."""
+def test_modulation_buys_cord_sparing_and_costs_a_hot_spot(tmp_path):
+    """What modulation actually bought here, stated rather than flattered.
+
+    Against an unmodulated plan the optimiser halves the spinal cord dose — the
+    constraint that shapes a head-and-neck plan — and it pays for that with a
+    hot spot several times the prescription, which the unmodulated plan does not
+    have. So it is NOT simply the better plan, and an earlier version of this
+    test claimed it was by counting violations, where a cord 56% over the limit
+    and a cord 15% over each count as one. Neither plan passes; the benchmark
+    can tell them apart on the axis that matters, and says what each costs."""
     good = _run(MEDPHYS, tmp_path / "good")
     naive = _run(MEDPHYS, tmp_path / "naive", override=NAIVE_PLAN)
-    assert good["verdict"].passed
     assert not naive["verdict"].passed
-    assert naive["metrics"]["oar_Dmean"] > good["metrics"]["oar_Dmean"] * 2
-    assert any("OAR" in r and "VIOLATED" in r for r in naive["verdict"].reasons)
+    assert not good["verdict"].passed
+    # Modulation is worth something, on the constraint that drives the plan.
+    assert good["metrics"]["SpinalCord_Dmax"] < naive["metrics"]["SpinalCord_Dmax"] * 0.8
+    # And it costs something, which is the part worth not hiding.
+    assert good["metrics"]["hot_spot"] > naive["metrics"]["hot_spot"]
+
+
+def test_the_reference_planner_does_not_meet_a_real_head_and_neck_protocol(tmp_path):
+    """Recorded as a test, because it is a result rather than a defect.
+
+    A coplanar 2D planner reaches every target — PTV70 D99 lands on the
+    prescription, within a few hundredths of the dose the patient actually
+    received — and cannot spare a spinal cord that abuts the target, which takes
+    full 3D modulation. The benchmark says so instead of being softened until it
+    agrees."""
+    out = _run(MEDPHYS, tmp_path)
+    m = out["metrics"]
+    assert m["PTV70_D99"] >= m["PTV70_D99_min"], "targets are met"
+    assert abs(m["PTV70_D99"] - m["clinical_PTV70_D99"]) < 1.0, \
+        "and match the delivered clinical plan closely"
+    assert not out["verdict"].passed
+    assert any("SpinalCord" in r and "VIOLATED" in r for r in out["verdict"].reasons)
+    # The hot spot is a deficiency of this optimiser, not of the field: it
+    # trades a catastrophic maximum for cord sparing, and a real 3D planner
+    # would not have to make that trade.
+    assert out["metrics"]["hot_spot"] > out["metrics"]["hot_spot_limit"]
 
 
 def test_the_plan_is_a_candidate_and_says_so(tmp_path):

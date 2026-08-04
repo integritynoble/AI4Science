@@ -378,32 +378,49 @@ def ldct(argv=()) -> str:
         if "full" not in by or "low" not in by:
             continue
         try:
-            vols = {}
+            # Read every slice's z position, then pair the two series BY
+            # POSITION. Sorting zip entry names does not order a DICOM series
+            # anatomically, and pairing on that order silently compares one
+            # patient's lung to a different part of the same lung: the first
+            # version of this had full[0] matching low[2] better than low[0].
+            byz = {}
             for kind, s_ in by.items():
                 raw = _get(_TCIA % "getImage" + "?" + urllib.parse.urlencode(
                     {"SeriesInstanceUID": s_["SeriesInstanceUID"]}),
                     timeout=900, binary=True)
                 import zipfile
                 zf = zipfile.ZipFile(io.BytesIO(raw))
-                names = sorted(zf.namelist())
-                mid = len(names) // 2
-                take = names[mid - per_pat // 2: mid - per_pat // 2 + per_pat]
-                sl = []
-                for nm in take:
-                    ds = pydicom.dcmread(io.BytesIO(zf.read(nm)))
+                zmap = {}
+                for nm in zf.namelist():
+                    try:
+                        ds = pydicom.dcmread(io.BytesIO(zf.read(nm)))
+                        z = float(ds.ImagePositionPatient[2])
+                    except Exception:
+                        continue
                     arr = ds.pixel_array.astype(np.float32)
                     slope = float(getattr(ds, "RescaleSlope", 1) or 1)
                     inter = float(getattr(ds, "RescaleIntercept", 0) or 0)
-                    sl.append(arr * slope + inter)          # Hounsfield units
-                vols[kind] = np.stack(sl)
+                    zmap[round(z, 2)] = arr * slope + inter      # Hounsfield units
+                byz[kind] = zmap
+            shared = sorted(set(byz["full"]) & set(byz["low"]))
+            if len(shared) < per_pat:
+                meta.append({"patient": pid,
+                             "skipped": "only %d shared slice positions" % len(shared)})
+                continue
+            mid = len(shared) // 2
+            take = shared[mid - per_pat // 2: mid - per_pat // 2 + per_pat]
+            vols = {k: np.stack([byz[k][z] for z in take]) for k in ("full", "low")}
         except Exception as e:
             meta.append({"patient": pid, "skipped": str(e)[:120]})
             continue
         if vols["full"].shape != vols["low"].shape:
             continue
         pairs.append((pid, vols["full"], vols["low"]))
+        rmse = float(np.sqrt(((vols["full"] - vols["low"]) ** 2).mean()))
         meta.append({"patient": pid, "slices": int(vols["full"].shape[0]),
-                     "shape": list(vols["full"].shape[1:])})
+                     "shape": list(vols["full"].shape[1:]),
+                     "z_positions": [float(z) for z in take],
+                     "pair_rmse_hu": rmse})
 
     if len(pairs) < 2:
         raise RuntimeError("only %d paired patients fetched from TCIA" % len(pairs))

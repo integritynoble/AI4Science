@@ -73,37 +73,65 @@ def _psnr(a: np.ndarray, b: np.ndarray) -> float:
 # ------------------------------------------------------------- low-dose CT
 
 def _score_ldct(seed_ws: Path, run_ws: Path) -> Dict[str, float]:
-    truth = np.load(seed_ws / "data" / "ground_truth.npy")
+    """Fidelity against the real full-dose scan, and detectability of the
+    inserted signal — reported together or not at all."""
+    truth = np.load(seed_ws / "data" / "full_dose.npy")
     lesion = np.load(seed_ws / "data" / "lesion_mask.npy")
+    low = np.load(run_ws / "data" / "low_dose.npy")
     rec = np.load(run_ws / "results" / "reconstruction.npy")
-    body = (truth > 0.5) & ~lesion
-    # Detectability: contrast of the lesion over the surrounding tissue,
-    # divided by the noise it has to be seen against.
-    ring = body & ~lesion
-    # Peak, not mean: blurring a small object spreads its signal into the
-    # surround, so the mean over the lesion mask stays put while the thing a
-    # radiologist would actually see — the peak above background — collapses.
-    contrast = float(rec[lesion].max() - rec[ring].mean())
+
+    # Background: an annulus of soft tissue around the lesion, excluding it.
+    ys, xs = np.nonzero(lesion)
+    cy, cx = int(ys.mean()), int(xs.mean())
+    yy, xx = np.ogrid[:rec.shape[0], :rec.shape[1]]
+    d2 = (yy - cy) ** 2 + (xx - cx) ** 2
+    r = int(np.sqrt(lesion.sum() / np.pi)) + 1
+    ring = (d2 > (2 * r) ** 2) & (d2 <= (5 * r) ** 2)
+    noise_ref = float(np.load(seed_ws / "data" / "full_dose.npy")[ring].std())
+
+    # Contrast is measured against the KNOWN inserted amplitude, using the
+    # lesion's core rather than its peak.
+    #
+    # Not the peak, and not against the reference image: the full-dose scan
+    # carries ~100 HU of noise, so the peak inside a 150 HU lesion is inflated
+    # by a noise spike of several hundred HU. Scoring a restoration against
+    # that peak punishes it for removing exactly the noise it was asked to
+    # remove — a correct denoiser scored 0.37 by that measure. The core mean is
+    # robust to noise and still collapses when a small object is blurred, which
+    # is the failure this metric exists to catch.
+    amp, r_les = np.load(seed_ws / "data" / "lesion_amplitude.npy")
+    core = d2 <= max(1.0, (r_les * 0.6) ** 2)
+    contrast = float(rec[core].mean() - rec[ring].mean())
+    truth_contrast = float(amp)
     noise = float(rec[ring].std())
-    truth_contrast = float(truth[lesion].max() - truth[ring].mean())
     return {"psnr": _psnr(rec, truth),
-            "rmse": float(np.sqrt(np.mean((rec - truth) ** 2))),
+            "rmse_hu": float(np.sqrt(np.mean((rec - truth) ** 2))),
+            "psnr_before": _psnr(low, truth),
+            "noise_hu": noise,
+            "noise_before_hu": float(low[ring].std()),
             "lesion_cnr": abs(contrast) / max(noise, 1e-9),
             "lesion_contrast_retained": abs(contrast) / max(abs(truth_contrast), 1e-9)}
 
 
 def _judge_ldct(m: Dict[str, float]) -> Verdict:
     reasons, ok = [], True
-    if m["psnr"] < 12.0:
+    if m["psnr"] <= m["psnr_before"]:
         ok = False
-        reasons.append("PSNR %.3g dB — the reconstruction did not converge" % m["psnr"])
-    if m["lesion_cnr"] < 1.0:
+        reasons.append("PSNR %.4g dB, against %.4g for the untouched low-dose "
+                       "scan — the restoration made it worse"
+                       % (m["psnr"], m["psnr_before"]))
+    if m["lesion_cnr"] < 3.0:
         ok = False
         reasons.append(
-            "lesion CNR %.3g: the low-contrast signal is gone. A fidelity gain "
-            "with the lesion smoothed away is a FAILURE, not a mixed result — "
-            "the scan was ordered to find that lesion." % m["lesion_cnr"])
-    if m["lesion_contrast_retained"] < 1.0:
+            "lesion CNR %.3g, below the Rose criterion of 3 for reliable "
+            "detection. A fidelity gain with the lesion smoothed away is a "
+            "FAILURE, not a mixed result — the scan was ordered to find that "
+            "lesion." % m["lesion_cnr"])
+    # Half the inserted contrast. Demanding all of it fails every denoiser,
+    # since any smoothing reduces a small object's amplitude somewhat; the
+    # clinical question is whether the lesion stays detectable, which the CNR
+    # check above answers.
+    if m["lesion_contrast_retained"] < 0.5:
         ok = False
         reasons.append(
             "only %.0f%% of the lesion's peak contrast survived — this is the "
@@ -116,14 +144,15 @@ def _judge_ldct(m: Dict[str, float]) -> Verdict:
 
 LDCT = DomainBenchmark(
     agent="low-dose-ct",
-    goal="reconstruct a sparse-view low-dose CT scan without losing the lesion",
+    goal="restore a real low-dose CT scan without losing the low-contrast lesion",
     package="ldct",
     deliverables=("results/reconstruction.npy",),
-    answer_key=("data/ground_truth.npy", "data/lesion_mask.npy"),
-    score=_score_ldct, judge=_judge_ldct,
-    criteria=("PSNR ≥ 12 dB against the paired full-dose phantom",
-              "lesion CNR ≥ 1.0 — detectability reported beside fidelity, always",
-              "the lesion's peak contrast survives reconstruction",
+    answer_key=("data/full_dose.npy", "data/lesion_mask.npy",
+                "data/lesion_amplitude.npy"),
+    score=_score_ldct, judge=_judge_ldct, corpus="ldct",
+    criteria=("PSNR above the untouched low-dose scan, against the paired full-dose scan",
+              "lesion CNR ≥ 3 — the Rose criterion, reported beside fidelity, always",
+              "at least half the inserted contrast survives restoration",
               "an edge-preserving prior clears these; a PSNR-maximising blur "
               "does not, which is the whole point of scoring both"),
 )
