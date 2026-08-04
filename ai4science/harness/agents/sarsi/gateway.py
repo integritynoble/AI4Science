@@ -24,7 +24,8 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
 from ai4science.harness.agents.machine import telegram as tg
-from ai4science.harness.agents.sarsi import ledger, ownerlog, router
+from ai4science.harness.agents.sarsi import (digest, ledger, ownerlog,
+                                             router)
 from ai4science.harness.agents.sarsi.registry import Agent, Config
 
 OFFSETS_NAME = "gateway-offsets.json"
@@ -59,6 +60,13 @@ class Gateway:
 
     def poll_once(self) -> int:
         handled = 0
+        # Unprompted digests. Almost every pass does nothing — the sweep holds
+        # the once-a-period rule, and this only supplies the way to send.
+        try:
+            digest.sweep(self.config, send=self._deliver_digest)
+        except Exception:
+            pass                              # a digest must not stop the poll
+
         for account_id, token in _accounts(self.config).items():
             if not token:
                 continue                      # no token: this agent is not on Telegram
@@ -89,6 +97,23 @@ class Gateway:
             n += 1
             if passes is None or n < passes:
                 sleep(interval)
+
+    def _deliver_digest(self, agent, text: str) -> bool:
+        """To the OWNER, on that agent's own bot. Returns whether it landed.
+
+        An agent with no token has nowhere to send, and that returns False
+        rather than True: marking it delivered would lose the content, because
+        the next digest begins where this one ended.
+        """
+        token = (_accounts(self.config).get(agent.id) or "").strip()
+        if not token:
+            return False
+        try:
+            answer = self.transport.send_message(token, self.config.owner_id,
+                                                 text)
+        except Exception:
+            return False
+        return bool((answer or {}).get("ok", True))
 
     # ── one update ────────────────────────────────────────────────────
 

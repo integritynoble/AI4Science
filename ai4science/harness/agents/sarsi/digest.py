@@ -31,6 +31,11 @@ from ai4science.harness.agents.sarsi.registry import Agent, Config
 
 MARK_NAME = "digest-delivered.json"
 
+#: How long a digest period is. ELAPSED time, not a wall-clock hour: "at 08:00"
+#: means a machine that was asleep at 08:00 skips the day entirely and nobody
+#: learns that it did.
+PERIOD_SECONDS = 24 * 60 * 60
+
 #: What the agent did on its own authority — the same set `decisions` counts,
 #: named here rather than imported so the two cannot drift apart silently.
 _DECIDED = ("answered", "submitted", "steered", "answered-question", "retried")
@@ -102,8 +107,13 @@ def _mark(agent: Agent) -> dict:
 
 
 def deliver(config: Config, agent: Agent, *, now=time.time) -> Digest:
-    """Compile it and move the line. The line moves only here."""
+    """Compile it and move the line. The line moves only here and in `sweep`."""
     out = compile(config, agent)
+    _stamp(config, agent, now=now)
+    return out
+
+
+def _stamp(config: Config, agent: Agent, *, now) -> None:
     seen = _counts(config, agent)
     path = _mark_path(agent)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -113,7 +123,6 @@ def deliver(config: Config, agent: Agent, *, now=time.time) -> Digest:
         path.chmod(0o600)
     except Exception:
         pass
-    return out
 
 
 def compile(config: Config, agent: Agent) -> Digest:
@@ -161,6 +170,58 @@ def _counts(config: Config, agent: Agent) -> dict:
                 "outward": len(_mine(ledger.read(config, "outward"), agent))}
     except Exception:
         return {"reports": 0, "outward": 0}
+
+
+def sweep(config: Config, *, send, now=time.time) -> List[str]:
+    """Deliver a digest, unprompted, to each agent whose roster asked for one.
+
+    Meant to be called from a poll that runs constantly, so almost every call
+    does nothing — that is the point. Four rules hold it together:
+
+      * **once a period, not once a poll.** Delivering on every pass would be
+        the running commentary a digest exists to abolish.
+      * **a quiet period is not delivered.** A daily "nothing happened" trains
+        the owner to ignore the channel, and an ignored channel is worse than a
+        silent one. An *unreadable* period is delivered — that is news.
+      * **a failed delivery does not move the line.** `questions` paid for this
+        one: sent is not delivered, and recording it as sent would lose the
+        content for good, because the next digest starts after it.
+      * **one agent's failure does not stop the next.** A digest is per agent.
+    """
+    delivered: List[str] = []
+    for agent in due(config):
+        if not _period_elapsed(agent, now=now):
+            continue
+
+        report = compile(config, agent)
+        if report.readable and report.quiet and not report.waiting:
+            # Nothing to say. The line still moves, so a quiet week does not
+            # deliver a week's worth the moment something finally happens.
+            _stamp(config, agent, now=now)
+            continue
+
+        try:
+            ok = send(agent, report.text)
+        except Exception:
+            ok = False
+        if not ok:
+            continue                  # undelivered, so still owed
+
+        _stamp(config, agent, now=now)
+        delivered.append(agent.id)
+    return delivered
+
+
+def _period_elapsed(agent: Agent, *, now) -> bool:
+    last = _mark(agent).get("at") or ""
+    if not last:
+        return True
+    try:
+        from datetime import datetime
+        then = datetime.fromisoformat(last).timestamp()
+    except Exception:
+        return True                   # unreadable stamp: due rather than never
+    return (float(now()) - then) >= PERIOD_SECONDS
 
 
 def across(config: Config) -> List[Digest]:

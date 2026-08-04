@@ -224,7 +224,10 @@ def test_the_fleet_view_names_which_agent(config):
     work, social = config.agents["work"], config.agents["social"]
     _task(config, work, "read my mail", secrets=["mail.read"])
     _task(config, social, "draft the thread", secrets=["x.post"])
-    rows = att.across(config, pane=Pane())
+    # `live` is injected: without it this asks the REAL tmux, and a session
+    # someone else started on this machine walks into the assertion. A live
+    # `sarsi-worker-…` did exactly that.
+    rows = att.across(config, pane=Pane(), live=lambda: set())
     assert {r.agent_id for r in rows.items} == {"work", "social"}
 
 

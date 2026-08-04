@@ -82,8 +82,12 @@ def needs(config: Config, agent: Agent, *, pane: Optional[Any] = None,
           live: Optional[Any] = None) -> Attention:
     """What is waiting on the owner across everything this worker holds.
 
-    `live` lists the tmux sessions that actually exist, so a terminal NO task
-    claims can be reported — the reverse of a dead-session record, and the more
+    `live` lists the tmux sessions that actually exist. **Left as `None` it
+    asks the real machine**, which is right in the CLI and a trap in a test: a
+    session some other process started here will be reported as this agent's.
+    Tests inject it.
+
+    It is what lets a terminal NO task claims be reported — the reverse of a dead-session record, and the more
     dangerous one: something is running, still holding whatever it was granted,
     and the board shows nothing at all.
     """

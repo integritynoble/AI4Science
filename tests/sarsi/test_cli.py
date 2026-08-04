@@ -595,7 +595,12 @@ def test_cli_retry_refuses_an_unverified_task(isolated):
     assert "judged" in result.output.lower()
 
 
-def test_cli_attention_says_nothing_is_waiting(isolated):
+def test_cli_attention_says_nothing_is_waiting(isolated, monkeypatch):
+    """`entry._live_names` is patched out: unpatched this asks the real tmux,
+    and a session another process started on this machine would be reported as
+    an unclaimed terminal belonging to one of these agents."""
+    from ai4science.harness.agents.sarsi import entry
+    monkeypatch.setattr(entry, "_live_names", lambda: set())
     runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
     result = runner.invoke(app, ["sarsi", "attention"])
     assert result.exit_code == 0 and "nothing" in result.output.lower()
