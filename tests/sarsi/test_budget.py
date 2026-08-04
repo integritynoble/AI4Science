@@ -283,3 +283,32 @@ def test_attention_carries_a_task_that_ran_out(config, agent):
 
     kinds = [i.kind for i in att.needs(config, agent, pane=Blank()).items]
     assert "over-budget" in kinds
+
+
+def test_the_loop_closes_the_terminal_when_it_stops_a_task(config, agent):
+    """Observed live: the task went `off` and its tmux session kept running,
+    so `attention` reported it as a terminal no task claims — holding whatever
+    it was granted. Stopping a task must take its session with it, whichever
+    path stopped it."""
+    from ai4science.harness.agents.sarsi import operator as op
+
+    rt = FakeRuntime()
+    t = _running(config, agent, rt, steps=1)
+    t.plan_agreed = True
+    t.kickoff_pending = None
+    name = t.session["name"]
+    tsk._touch(agent, t, time.time)
+
+    class Pane:
+        def capture(self, name):
+            return "idle\n❯ "
+
+        def send(self, name, text):
+            pass
+
+        def key(self, name, key):
+            pass
+
+    op.tick(config, agent, t, pane=Pane(), acts=_acts(5), runtime=rt)
+    assert rt.stopped == [name]
+    assert tsk.get(config, agent, t.id).session is None

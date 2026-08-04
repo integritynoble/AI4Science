@@ -83,7 +83,7 @@ class Action:
 
 
 def tick(config: Config, agent: Agent, task: tsk.Task, *, pane: Any,
-         acts=None,
+         acts=None, runtime: Optional[Any] = None,
          verifier: Optional[Callable[..., dict]] = None,
          model: Optional[Callable[[str], str]] = None,
          engine: Optional[str] = None, now=time.time) -> Action:
@@ -121,8 +121,12 @@ def tick(config: Config, agent: Agent, task: tsk.Task, *, pane: Any,
     from ai4science.harness.agents.sarsi import budget as bdg
     spent = bdg.check(config, agent, task, acts=acts, now=now)
     if spent.over:
-        bdg.enforce(config, agent, task, acts=acts, runtime=_Sender(pane),
-                    now=now)
+        # NOT `_Sender(pane)`: that can only type into a pane, and `ses.stop`
+        # swallows the missing `stop` — so the task went `off` while its
+        # terminal kept running, which `attention` then reported as a session
+        # no task claims, holding whatever it was granted. Stopping a task must
+        # take its session with it, whichever path stopped it.
+        bdg.enforce(config, agent, task, acts=acts, runtime=runtime, now=now)
         return Action("over-budget", spent.why)
 
     # A task that has not been briefed yet cannot have done anything to judge.

@@ -495,6 +495,14 @@ def stop(config: Config, agent: Agent, task: tsk.Task, *,
     if name:
         try:
             runtime.stop(name)
+        except AttributeError:
+            # A runtime that cannot stop is a caller's mistake, not a machine
+            # failure: it leaves a live terminal behind a stopped task. Fall
+            # back to the real one rather than silently leaving it running.
+            try:
+                MachineRuntime().stop(name)
+            except Exception:
+                pass
         except Exception:
             pass                      # the record matters more than the cleanup
         # Keep what it cost. Clearing the record outright took the working
