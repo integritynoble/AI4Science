@@ -28,6 +28,7 @@ Each of these is live, tested, and exercised on the installed binary.
 | Function | What it does |
 |---|---|
 | `do` / `/new <goal>` | Open a task. `/new` works from inside the worker; `do` from the CLI. |
+| `board` | **The board's third face — a page**, over the same records the CLI and chat show. **Loopback only**, and a non-local host is refused: the board holds goals, criteria and verdicts, and `abraham`'s are personal. Read-only, no form and no button — a page that could start work would be an unauthenticated door into the fleet. |
 | `tasks` / `/task` / `/tasks` | The board — every task, its state, and what each waits on. |
 | `plan` | A task's phases, criteria and declared permissions. |
 | `grant` | Grant one permission the plan declared — including `delete files in the working directory`, the **only** destructive gate the loop may answer, and only for a non-recursive delete of named paths inside that directory in a command that does nothing else. |
@@ -100,7 +101,12 @@ Tier 3 below is still deliberately later.
 
 ## Part 3 — Deliberately later
 
-- **Per-agent web pages** at `physicsworldmodel.org/<agent>/`.
+*(The per-agent page was built **local** instead — see `board` above. The
+Tier 3 entry said `physicsworldmodel.org/<agent>/`, which I had written by
+conflating this repo's own `board.py` — "CLI, chat, and a **local** HTML page" —
+with a passing suggestion of that URL. They are different products: the site
+page would need the board uploaded off the machine, and every other rule here
+refuses to let a local fact travel. The owner chose local.)*
 
 All three are more valuable now that tasks close and retry, but they are still
 after the list above.

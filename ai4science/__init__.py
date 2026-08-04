@@ -1,3 +1,3 @@
 """AI4Science — open-source contribution tool for Physics World Model (PWM)."""
-__version__ = "1.0.2.dev40"
+__version__ = "1.0.2.dev41"
 __all__ = ["__version__"]

@@ -1079,3 +1079,27 @@ def test_cli_handoff_refuses_unfinished_work(isolated):
                                  "--because", "x"])
     assert result.exit_code != 0
     assert "claim" in result.output.lower() or "pass" in result.output.lower()
+
+
+def test_cli_board_writes_a_page_without_serving(isolated, tmp_path):
+    """So it can be opened from a file, with no listener at all."""
+    _one_task("tidy the report folder")
+    out = tmp_path / "board.html"
+    result = runner.invoke(app, ["sarsi", "board", "work", "--write", str(out)])
+    assert result.exit_code == 0
+    assert "tidy the report folder" in out.read_text()
+
+
+def test_cli_board_written_without_an_agent_is_the_index(isolated, tmp_path):
+    _one_task()
+    out = tmp_path / "index.html"
+    runner.invoke(app, ["sarsi", "board", "--write", str(out)])
+    text = out.read_text()
+    assert "work" in text and "social" in text
+
+
+def test_cli_board_refuses_a_non_local_host(isolated):
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    result = runner.invoke(app, ["sarsi", "board", "--host", "0.0.0.0"])
+    assert result.exit_code != 0
+    assert "network" in result.output.lower() or "local" in result.output.lower()

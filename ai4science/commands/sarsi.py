@@ -409,6 +409,43 @@ def spend(agent_id: Optional[str] = typer.Option(None, "--agent",
         console.print(f"  {row.summary}", markup=False, highlight=False)
 
 
+@app.command("board", help="The board as a page — served on this machine only.")
+def board_cmd(agent_id: Optional[str] = typer.Argument(None,
+                                                       help="Write just this worker's board."),
+              host: str = typer.Option("127.0.0.1", "--host",
+                                       help="Loopback only; anything else is refused."),
+              port: int = typer.Option(0, "--port", help="Port to serve on."),
+              write: Optional[str] = typer.Option(None, "--write",
+                                                  help="Write the HTML to a file and serve nothing.")) -> None:
+    from pathlib import Path
+
+    from ai4science.harness.agents.sarsi import board as bd
+
+    config = _load()
+    if write:
+        agent = _worker_or_exit(config, agent_id) if agent_id else None
+        html = bd.render(config, agent) if agent else bd.index(config)
+        target = Path(write).expanduser()
+        target.write_text(html)
+        console.print(f"wrote {target}", markup=False, highlight=False)
+        return
+
+    try:
+        server = bd.serve(config, host=host, port=port or bd.DEFAULT_PORT,
+                          serve_forever=False)
+    except bd.NotLocal as e:
+        console.print(str(e), style="yellow", markup=False, highlight=False)
+        raise typer.Exit(code=2)
+    where = f"http://{host}:{server.server_address[1]}/"
+    console.print(f"board on {where}  (read-only; nothing here leaves this "
+                  f"machine)", markup=False, highlight=False)
+    console.print("Ctrl-C to stop", style="dim")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        console.print("stopped")
+
+
 @app.command("who", help="Who should do this? The manager suggests; it creates nothing.")
 def who_cmd(demand: str = typer.Argument(..., help="What you want done")) -> None:
     from ai4science.harness.agents.sarsi import triage
