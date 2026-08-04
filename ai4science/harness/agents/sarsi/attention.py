@@ -244,10 +244,7 @@ def _for_task(config: Config, agent: Agent, task: tsk.Task, *,
         # It is running an interface this loop cannot read, so it will make no
         # progress on its own. Saying so is the difference between a session
         # waiting for its owner and one that is simply slow.
-        out.append(Item("attended", task.id,
-                        f"{agent.id} runs the {agent.spec!r} interface, which "
-                        f"the supervision loop cannot read — it needs you",
-                        action=f"tmux attach -t {name}"))
+        out.append(_attended(agent, task, name, pane))
     elif name and pane is not None:
         out.extend(_from_pane(agent, task, name, pane))
     return out
@@ -272,6 +269,70 @@ def _over_budget(config: Config, agent: Agent, task: tsk.Task) -> bool:
             if state in ("verified", "retried", "steered"):
                 return False          # it moved on
     return False
+
+
+#: A block of numbered options — the one shape worth pointing at on an
+#: interface nobody has parsed. It says a choice is probably on screen; it says
+#: nothing about what the options mean, and neither does the item.
+_CHOICE = re.compile(r"^\s*❯?\s*1[.)]\s+\S", re.M)
+
+#: How much of a pane belongs in a line about what is waiting. A pane is a
+#: screenful; an attention item is a line.
+_SCREEN_LINES = 8
+_SCREEN_CHARS = 400
+
+
+def _attended(agent: Agent, task: tsk.Task, name: str, pane: Any) -> Item:
+    """An attended session, and — when it can be read — what is on its screen.
+
+    The loop cannot *drive* this interface, and that is the reason it will make
+    no progress on its own. It is not a reason to leave the owner guessing:
+    `capture-pane` is read-only, and the danger that argued for standing back
+    was blind *typing*, not looking. So this looks, and reports what it saw
+    without claiming to know what it means.
+    """
+    head = (f"{agent.id} runs the {agent.spec!r} interface, which the "
+            f"supervision loop cannot read — it needs you")
+    action = f"tmux attach -t {name}"
+    if pane is None:
+        return Item("attended", task.id, head, action=action)
+
+    try:
+        screen = pane.capture(name)
+    except Exception:
+        screen = None
+    if screen is None:
+        # Unknown is not "nothing is waiting". An attended session whose pane
+        # will not read may be gone, and that is the more urgent fact.
+        return Item("attended", task.id,
+                    f"{head}. Its pane could not be read, so whether it is "
+                    f"waiting, working or gone is unknown", action=action)
+
+    tail = _screen_tail(screen)
+    if not tail:
+        return Item("attended", task.id, f"{head}. Its screen is blank",
+                    action=action)
+    # Hedged, and only on a shape: naming what the options MEAN would be the
+    # same over-claim as driving them.
+    hint = (" It looks like it is showing a numbered choice."
+            if _CHOICE.search(screen) else "")
+    return Item("attended", task.id, f"{head}.{hint} On its screen:\n{tail}",
+                action=action)
+
+
+def _screen_tail(screen: str) -> str:
+    """The last few lines that have anything on them, newest kept.
+
+    Trimmed from the FRONT when it is too long: what a session is waiting for
+    is at the bottom of its pane, so a cap taken off the end would drop exactly
+    the part worth reading.
+    """
+    lines = [line.rstrip() for line in (screen or "").splitlines()
+             if line.strip()]
+    kept = lines[-_SCREEN_LINES:]
+    while kept and len("\n".join(kept)) > _SCREEN_CHARS:
+        kept.pop(0)
+    return "\n".join(f"    {line}" for line in kept)
 
 
 def _from_pane(agent: Agent, task: tsk.Task, name: str, pane: Any) -> List[Item]:
