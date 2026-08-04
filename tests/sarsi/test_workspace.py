@@ -218,3 +218,37 @@ def test_nothing_recurring_leaves_the_old_behaviour_untouched():
     out = ws._block("said", items, keep=3)
     assert "note 9" in out and "note 0" not in out
     assert "7 more, not shown" in out
+
+
+def test_duplicates_do_not_eat_the_visible_window():
+    """Observed live: four identical lines filled the whole block while
+    distinct history sat unshown. Folding the overflow and leaving the tail
+    duplicated is half the job — the window is the scarce thing."""
+    items = ["something distinct"] + ["the same gate"] * 6
+    out = ws._block("seen", items, keep=4)
+    assert out.count("the same gate") == 1
+    assert "something distinct" in out
+
+
+def test_a_collapsed_duplicate_keeps_its_count():
+    items = ["the same gate"] * 5
+    out = ws._block("seen", items, keep=4)
+    assert "×5" in out
+
+
+def test_collapsing_frees_slots_for_distinct_history():
+    """Before: the window was `repeated` three times — one fact in three slots.
+    After: three DIFFERENT facts, the repeat carrying its own count."""
+    items = [f"note {i}" for i in range(4)] + ["repeated"] * 5
+    out = ws._block("seen", items, keep=3)
+    body = [l for l in out.splitlines() if l.strip().startswith("- ")]
+    assert len(body) == 3
+    assert len({l.split("×")[0] for l in body}) == 3
+    assert "repeated  ×5" in out
+
+
+def test_distinct_lines_are_unaffected():
+    items = [f"note {i}" for i in range(6)]
+    out = ws._block("seen", items, keep=3)
+    assert out.count("note ") == 3
+    assert "3 more, not shown" in out

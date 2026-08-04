@@ -95,13 +95,30 @@ def _block(title: str, items: List[str], keep: int) -> str:
     does not let a model summarise its history, and a fold that paraphrased
     would be exactly that with a different name.
     """
-    shown = [i for i in items[-keep:] if i]
-    overflow = items[:len(items) - len(items[-keep:])] if keep else list(items)
+    # The visible window is the scarce thing, so a repeated line takes ONE
+    # slot and carries its count. Live, four identical gate notices filled a
+    # whole block while distinct history sat unshown.
+    total: dict = {}
+    for item in items:
+        if item:
+            total[item] = total.get(item, 0) + 1
+
+    shown: List[str] = []
+    taken = set()
+    for item in reversed(items):
+        if not item or item in taken:
+            continue
+        taken.add(item)
+        shown.append(item)
+        if len(shown) >= keep:
+            break
+    shown.reverse()
+
+    overflow = [i for i in items if i and i not in taken]
 
     counts: dict = {}
     for item in overflow:
-        if item:
-            counts[item] = counts.get(item, 0) + 1
+        counts[item] = counts.get(item, 0) + 1
     # recurrence, not age: promoting everything old would make the fold a
     # second full history
     folded = [(item, n) for item, n in counts.items()
@@ -109,12 +126,16 @@ def _block(title: str, items: List[str], keep: int) -> str:
     folded.sort(key=lambda pair: (-pair[1], pair[0]))
     folded = folded[:KEEP_FOLDED]
 
-    lines = [f"{title}:"] + [f"  - {i}" for i in shown]
+    lines = [f"{title}:"]
+    for item in shown:
+        n = total.get(item, 1)
+        lines.append(f"  - {item}" + (f"  ×{n}" if n > 1 else ""))
     for item, n in folded:
         lines.append(f"  - {item}  ×{n}")
 
     promoted = sum(n for _, n in folded)
-    hidden = len(items) - len(shown) - promoted
+    seen_in_shown = sum(total.get(i, 1) for i in shown)
+    hidden = len(items) - seen_in_shown - promoted
     if hidden > 0:
         # still counted after promotion: the fold changes what is SHOWN, never
         # whether the rest is admitted to
