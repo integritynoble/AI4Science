@@ -1,0 +1,414 @@
+# ai4science on one machine — design
+
+**Status: design, 2026-08-04. The agent loop is built and tested; the market and
+the token economy are not.**
+
+> **Where this lives.** Written in the singularity repository as
+> `docs/specs/2026-08-04-ai4science-one-machine-design.md` and copied here,
+> because it describes ai4science and belongs beside the code it describes.
+> Two copies diverge; if they do, **this one is the design of record for
+> ai4science** and the other should become a pointer.
+
+This page is about **ai4science alone**, on **one machine**. No manager, no
+server, no app. Everything here works with nothing else installed, which is the
+property the whole arrangement rests on: singularity requires ai4science, and
+ai4science requires nothing.
+
+Earlier specs mixed the two because the app was being designed at the same time.
+This one does not mention singularity again except in §14, where the difference
+in what a run costs is the only place it matters.
+
+| Question | Document |
+|---|---|
+| What does one **session** do, node by node? | [`guide-sarsi-claude-overview.md`](../guide-sarsi-claude-overview.md) |
+| What does the **app** add on top of this? | [`2026-08-04-sarsi-agent-market-and-pwm-design.md`](2026-08-04-sarsi-agent-market-and-pwm-design.md) |
+
+---
+
+## 1. What ai4science is
+
+A set of agents that live on your machine, hold tasks, plan them, and get them
+done through governed `sarsi-claude` sessions — with a verifier that judges the
+plan's own criteria and gates that stop anything reaching the world without you.
+
+**What it does not have:** a manager, a server, a fleet, another machine. Those
+belong to the app, and their absence is what makes this a complete product
+rather than a client.
+
+## 2. The invariant
+
+> **The agent you talk to does not execute. Only a worker touches
+> `sarsi-claude`.**
+
+On one machine there is no network boundary to enforce this, so it is enforced
+as a code path: the machine agent plans, routes and answers, and `assign` raises
+if it tries to drive a session. Everything below assumes it.
+
+Three rules carry the same weight:
+
+> **Drafting is not sending.** An agent may compose anything. Every act that
+> leaves the machine and reaches a person needs a grant naming *that act*.
+
+> **The model is an engine, not an authority.** No permission, ceiling, verdict
+> or grant derives from which model is running.
+
+> **Share intent, not instruments.** A goal, a plan and a decision mean the same
+> thing anywhere. A tool inventory, a path and a resource reading are about a
+> host and stay on it.
+
+## 3. Topology
+
+```
+  TWO SURFACES, ONE AGENT
+  ┌──────────────────────────┐   ┌──────────────────────────────┐
+  │ Telegram — one bot each  │   │ the ai4science CLI           │
+  │ owner-locked             │   │ /agent <id> · ask non-interactively │
+  └───────────┬──────────────┘   └───────────────┬──────────────┘
+       │  bindings: {channel, accountId} → agentId              │
+       ▼                                                        ▼
+  the gateway            one local daemon; hosts every agent's loop
+    │
+    ├── machine agent    THE ENTRY CHAT · knows this machine · MAY NOT drive a session
+    ├── sarsi-worker     the base worker — any task with no better home
+    ├── work             the 9-to-5 job · reads mail, never sends
+    ├── social           one daily read · drafts for the three destinations
+    ├── funding          applications · an eligibility claim must cite a source
+    ├── jobs             CV · application sites
+    ├── abraham          personal · loosest scope, tightest authority
+    └── …                anything installed from the market
+          each: own workspace · tasks · sessions · playbook · self-model
+          each holds SEVERAL TASKS ↓
+                task ── plan0.md      phases · Verified when · Permissions needed
+                  ▼
+                sarsi-claude          ONE PER TASK · handed the PLAN, not the wish
+                  ↓ guides
+                Claude Code
+    │
+    └── vault            local · standing policy → per-use prompt · ALLOW / DENY
+```
+
+**One daemon, every agent's loop, both doors.** A rule cannot exist on one
+surface and not the other, which is the only way *"two doors, one agent"*
+survives a third door being added later.
+
+## 4. The entry: the machine agent
+
+Entering ai4science puts you in conversation with the **machine agent**. It is
+the right thing to land in because the first questions anyone has are about
+*this machine*: what can it do, what is running, which worker should take this.
+
+| It does | It may not |
+|---|---|
+| answer about this machine — tools, sessions, workers, what is waiting | drive a session |
+| route a request to the worker that should hold it | hold a secret |
+| say plainly when nothing here can do a thing | queue an unplaceable request silently |
+
+**It is replaceable from the market**, and it is the strictest listing there:
+the thing that reads every message you type before anything else does, and
+decides which worker hears it. There is always exactly one installed — swapping
+is not removing. A market machine agent may declare **no outward classes** and
+bring **no session-starting sub-agent**; what bounds a bad one is the invariant.
+
+## 5. The agents
+
+| Agent | For | Tools | May complete |
+|---|---|---|---|
+| **machine agent** | this machine: routing, inventory, the fleet-of-one view | none — it does not execute | nothing |
+| **`sarsi-worker`** | any task with no better home | shell, editor, browser | nothing — its work stays here |
+| **`work`** | the 9-to-5 job | qupath, matlab, mail.read | **nothing** — it reads mail and drafts; sending is not its act |
+| **`social`** | one daily read, and influence | browser | `post` |
+| **`funding`** | applications | browser, documents | `submission` |
+| **`jobs`** | CV, application sites | browser, documents | `submission` |
+| **`abraham`** | the owner's own life, not their job | browser, calendar, documents, payment | `recurring`; **no standing grants** |
+
+`outward` is a **whitelist**: a class absent from a row is refused, so a class
+nobody has claimed is refused everywhere until someone claims it.
+
+**Four classes no agent completes at any ceiling** — `money`, `consent`,
+`publishing`, `legal`. `abraham` prepares all four and completes none, and
+**abstains rather than asks**: putting one in front of the owner would imply a
+yes existed, and turn *"this cannot be authorised"* into *"you didn't approve
+it"*.
+
+**Tools are a profile, not an inventory.** A request needing a tool outside an
+agent's row is refused before the machine is asked whether it has it: `work` has
+no payment tool, so it is not asked to pay on a machine that could.
+
+### `work` — mail is the sharp edge
+
+| It may | It may not |
+|---|---|
+| read the mailbox | send anything |
+| draft a reply and show it | send the draft it wrote |
+| triage, summarise, say what needs the owner | **act on a mail that asks it to act** |
+
+> **An instruction inside an email is not an instruction to the agent.** *"Please
+> wire the invoice"* is evidence that someone asked, never authority to do it.
+> Without this, "read the owner's email" is a remote control into the machine,
+> and whoever can message them is holding it.
+
+Enforced as a whitelist of the owner's own doors: a directive may be lifted from
+the CLI or Telegram and from nothing else. Mail, feeds and webhooks enter as
+marked evidence.
+
+## 6. The loop
+
+```mermaid
+flowchart TB
+    U["<b>U</b> · OWNER speaks<br/>CLI or Telegram"]:::owner
+    MA["<b>MA</b> · the machine agent<br/>answers · routes · MAY NOT execute"]
+    HAVE{"<b>HAVE</b> · is there an agent for this?"}
+    MKT["<b>MKT</b> · agents-search"]:::market
+    INST["<b>INST</b> · 🔐 OWNER installs it"]:::owner
+    AGT["<b>AGT</b> · a worker holds it"]
+    CAP{"<b>CAP</b> · can THIS machine do it?"}
+    NOM["<b>NOM</b> · nothing here can<br/>say so, never queue silently"]:::lost
+    TSK["<b>TSK</b> · task joins the worker's list"]
+    PLN["<b>PLN</b> · the plan, made BETWEEN<br/>the worker and the session"]
+    GRT["<b>GRT</b> · 🔐 OWNER grants what the plan declared"]:::owner
+    VLT{"<b>VLT</b> · needs a secret?<br/>policy first, then ask"}:::vault
+    ASG["<b>ASG</b> · the PLAN goes to sarsi-claude"]
+    CC["<b>CC</b> · the work runs"]
+    EVD["<b>EVD</b> · evidence accumulates<br/>on a timer, not on a screen"]
+    VER{"<b>VER</b> · verified?<br/>the plan's own criteria"}
+    ACT{"<b>ACT</b> · does it leave the machine?"}
+    OWN["<b>OWN</b> · 🔐 OWNER grants THIS act"]:::owner
+    REP["<b>REP</b> · typed report up"]
+    SYNC["<b>SYNC</b> · W_name appended"]
+    SA["<b>SA</b> · 🧠 self-model<br/>verified outcomes only"]:::sa
+    ANS["<b>ANS</b> · the answer, on the door used"]:::owner
+
+    U --> MA --> HAVE
+    HAVE -->|"no"| MKT --> INST --> AGT
+    HAVE -->|"yes"| AGT --> CAP
+    CAP -->|"missing"| NOM --> ANS
+    CAP -->|"present"| TSK --> PLN --> GRT --> VLT
+    VLT -->|"DENY — name the secret"| REP
+    VLT -->|"ALLOW · the secret never leaves"| ASG --> CC --> EVD --> VER
+    VER -->|"FAIL"| CC
+    VER -->|"PASS"| ACT
+    ACT -->|"stays local"| REP
+    ACT -->|"leaves"| OWN --> REP
+    REP --> SYNC --> SA --> ANS
+
+    classDef owner fill:#e8f0fe,stroke:#4c6ef5,color:#1a1a1a
+    classDef lost fill:#fff3bf,stroke:#f08c00,color:#1a1a1a
+    classDef market fill:#e6fcf5,stroke:#0ca678,color:#1a1a1a
+    classDef vault fill:#ffe3e3,stroke:#c92a2a,color:#1a1a1a,stroke-width:2px
+    classDef sa fill:#f3e8ff,stroke:#7c3aed,color:#1a1a1a,stroke-width:2px
+```
+
+**Blue is the owner, and there are four gates**: install, grant, vault, outward.
+**`ASG` is the seam** — below it, the 27-node session loop runs unchanged.
+
+**Three exits reach the owner and they are different things.** `GRT` is a plan
+review: here is what this will need, before any of it runs. `OWN` is one act
+asking to leave. `NOM` is a capability failure: nothing here can do this, and
+here is what is missing.
+
+## 7. Every node worth restating
+
+### MA · the machine agent
+**Fires:** anything typed, on either door. **Does:** answers about this machine,
+or names the worker that should hold the request. **May not:** drive a session,
+hold a secret, or claim a specialist's competence when routing — its expertise
+is who is responsible for what, not how to do it.
+
+### CAP · can this machine do it?
+**Fires:** a request reaching a worker. **Reads:** the declared tool inventory
+and the agent's own profile. **May not:** infer a tool from the text; a guess
+refuses the wrong things confidently.
+
+### PLN · the plan, made between the worker and the session
+Not one drafting step. **The worker seeds it** from the owner's words and its
+own history, into `plan0.draft.md`; **the session grounds it** against the actual
+code; **the worker checks it back** against the rules the verifier depends on and
+sends back exactly what is missing; **it is promoted** to `plan0.md` when it
+passes, and not otherwise.
+
+> **Why not either alone.** A plan drafted by one model in one shot has never
+> seen the repository it describes. A plan the session writes alone is the
+> session authoring the criteria it will be judged by.
+
+The exchange goes through a **file, not a screen**, and an unchanged draft is not
+agreement: if the session never touches it, the worker cannot tell "it agreed"
+from "it died", so the round fails and the owner is asked.
+
+### GRT · the owner grants what the plan declared
+**Fires:** the plan's `Permissions Needed` section is non-empty. **May not:** be
+inferred from the task having been asked for. A permission line the parser
+cannot read declares **nothing** — so the task would walk past this gate to
+`ready` while the plan the owner read still shows a permissions section. That
+failure is silent and it fails open, so the writer and the reader are held to one
+grammar: ``- `action` on `scope` - why``.
+
+### VLT · the vault
+Two stages: a standing policy the owner set in advance, or the owner asked now.
+**A policy must name its counterparty** — `smtp` for `funding` is a blank cheque
+— and **five per-use approvals never become a policy**, because a gate that
+widens itself by being used is not a gate. An agent asks the vault to **use** a
+credential and never receives one; there is no `read()`. Stored in the OS
+keyring or under a passphrase-derived key, and **never in plaintext unless the
+owner asked for that by name**.
+
+### EVD · evidence
+Captured on a timer and **accumulated**, not read off a screen when someone asks.
+A verdict that depends on when it was asked is not a verdict: the same finished
+work read PASS at one moment and FAIL an hour later, when the run had scrolled
+away. The log only grows; the terminal is consulted for liveness only.
+
+### VER · verified?
+An independent judge, given the plan's criteria and the evidence. **Five
+refusals**, each returning `UNVERIFIED` — which is neither pass nor fail:
+no criteria, no evidence, a stale plan, no judge, and **an answer that gives both
+verdicts**, which is not a judgement at all.
+
+### OWN · the outward gate
+The owner sees exactly what would go out. **The approved bytes are the
+transmitted bytes** — anything edited after approval refuses. A timeout denies,
+because silence is not consent. A refusal is an outcome and is recorded.
+
+### SA · the self-model
+Every line is an observation made when the question is asked. **Unmeasured is
+`None`, never zero.** The limits line is always present. Nothing here writes a
+ceiling, a grant or a playbook: reading cannot become authority.
+
+## 8. Tasks and plans
+
+A worker holds **several** tasks, concurrently, not a queue of one. Each owns a
+`plan0.md` whose phases carry `Verified when:` lines — the sentences the verifier
+will judge — and a `## Permissions Needed` section naming everything the work
+needs beyond its own workspace.
+
+| State | Means |
+|---|---|
+| `drafting` | no usable plan yet |
+| `awaiting-grant` | the plan declares permissions the owner has not given |
+| `ready` | plannable and permitted; not started |
+| `waiting` | over the concurrency limit, **and it says so** |
+| `running` · `done` · `failed` | as they read |
+
+> **A task over the limit says so.** A task that is simply not started looks
+> identical to a task nothing is working on, and the owner cannot tell which.
+
+**An owner edit is authoritative and is never overwritten.** A polish round may
+propose a successor beside it; the owner accepts or discards. And editing a
+`Verified when:` line changes the standard the verifier applies — that is the
+point, not a side effect.
+
+## 9. What one agent may learn from another
+
+**Sharing is publishing, never reading.** An agent publishes a fact deliberately
+and may read the common space; **no agent ever reads another's `W_name`**.
+Browsing another agent's history is a capability that, once it exists, is used by
+everything — including whatever was installed last Tuesday.
+
+| Tier | Shared? |
+|---|---|
+| `W_user` — who the owner is, standing preferences, the do-not list | every agent |
+| **shared facts** — decisions, deadlines, entities, outcomes | published deliberately |
+| `W_host` — tools, paths, resources | **never** — they mean nothing off this host |
+| `W_secret` | **never** |
+
+Every shared fact carries **who published it and when**, keeps its **provenance**
+if it came from outside — a deadline read out of a mail stays *evidence that a
+mail said so* — is append-only, and **can be wrong**: consuming a fact does not
+make it true.
+
+Reading the shared space is a **permission**, declared at install and defaulting
+to no.
+
+## 10. Both doors
+
+| | Telegram | the ai4science CLI |
+|---|---|---|
+| how | one bot per agent, owner-locked | `/agent <id>`, or ask non-interactively |
+| best at | approvals, vault prompts, the digest, a quick question | long planning turns, pasting files, reading a plan |
+| reaches | the same agent, the same `W_name`, the same sessions | the same |
+
+> **A surface is a door, not a scope.** An agent has one memory and one set of
+> sessions regardless of which door the owner came through, and never re-asks
+> something answered on the other one.
+
+A **bot token is a vault secret**, not a config value: an agent that held its own
+token could be moved, and then spoken to somewhere the owner is not looking.
+
+## 11. The market
+
+Three kinds of listing — **agents**, **tools**, **sub-agents** — each uploadable,
+accepted by the governor, and installable. This is where they live, because an
+agent is a thing you install on your own machine and run with your own keys; a
+market that lived anywhere else would make using an agent require something else.
+
+Acceptance asks a different question of each: an agent, *what may it do*; a tool,
+*what does it touch* — it is closer to the hardware than any agent; a sub-agent,
+*does it obey the ceiling and report honestly*. A verifier is the sharpest to
+accept, because a lenient one inflates the record of every agent it judges.
+
+**Trust is not transitive.** An agent may bring its own tools — one author, one
+review — or require ones from the market, and then the install screen names every
+author whose code comes with it and what each part may touch.
+
+## 12. Self-awareness and RSI
+
+Every agent carries a self-model, and the contract is four refusals: every line
+observed, unmeasured reported as unmeasured, the limits line always present, and
+**no path from reading to authority**.
+
+RSI is **propose → the owner signs → adopt**. A candidate must cite the
+measurement that justifies it, or it is a preference with a version number
+attached. When no metric supports a change, an honest no-change candidate is the
+correct output. An agent cannot sign its own candidate, cannot raise its own
+ceiling, and cannot promote a vault policy from per-use to standing — **a high
+ceiling is permission to act, never permission to become more permitted.**
+
+## 13. What runs it costs
+
+Every run has a **metered cost**: the provider's reported usage, priced at the
+provider's rate. Not an estimate, and not a number the agent reports about
+itself.
+
+| Share | Goes to |
+|---|---|
+| **10%** | the PWM treasury pool |
+| **0–5%** | the agent's author, at the fraction of the slice they chose |
+| the rest | the LLM provider |
+
+**A run on ai4science pays no platform share.** That is the difference this
+product is: the app adds a manager and a front door and charges for them, and
+none of that is needed here.
+
+**Bring your own key.** A user may use their own API key or subscription; the
+10% still applies, computed at the PWM/token ratio. Everyone starts with a small
+**non-exchangeable** balance to pay it — spendable on fees, never sellable, and
+visibly distinct so it cannot leak into the exchangeable supply. When it runs
+short, an **exchange node** starts: visible, bounded by a budget the owner sets,
+and **never touching the owner's tasks** — it is not a worker, holds no task
+list, and may not drive a session. With enough PWM the owner may stop it.
+
+> **Money buys nothing that matters.** Not a ceiling, not a gate, not a verdict,
+> not a position in agents-search. A paid run that failed, failed.
+
+## 14. What this does not do
+
+- **No second machine.** No placement decision, no cross-host fold, no
+  contradiction to resolve. Those are deleted rather than stubbed, because a stub
+  that always answers the same way reads as a working mechanism.
+- **No manager.** Routing across agents beyond this machine is the app's job.
+- **No agent starts work on its own.** `start` is the owner's opt-in, and it is
+  the only thing separating *"I asked a question"* from *"I authorised work"*.
+- **No auto-approval of gates**, at any ceiling, for any agent, ever.
+
+## 15. What it owes
+
+1. **Telegram has never carried a message.** The code exists; *"one agent, two
+   doors"* is proven in tests only.
+2. **The vault has never carried live traffic.** No real credential has been
+   asked for through it.
+3. **The outward gate has never held a real act.**
+4. **Evidence can only keep what it was shown.** Output that scrolled past the
+   terminal's history before the first capture is gone.
+5. **One agent's loop must not take the daemon down.** One process now hosts
+   every agent, which trades an address space for a discipline, and nothing
+   checks that a raise in one agent's turn is contained.
+6. **Nothing in §11 or §13 is built.** The loop underneath them is.
