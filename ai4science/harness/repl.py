@@ -536,9 +536,14 @@ def run_common_repl(
     # agent pool). Base Claude-Code tools are platform infra, not contributions.
     turn_tools: set = set()
 
+    # Settled here rather than just before _build_session: the meter is filed
+    # under this id, and it has to be the SAME one persistence.save() uses or
+    # the ledger points at a session no workspace index maps to.
+    _sid = session_id or secrets.token_hex(8)
+
     def _make_wrapped_meter(b: str, m: str):
         """Return a meter that accumulates into turn_tokens AND calls real meter."""
-        real = make_meter(backend=b, model=m)
+        real = make_meter(backend=b, model=m, session=_sid)
 
         def _meter(u) -> None:
             turn_tokens["total"] += getattr(u, "total", 0) or 0
@@ -597,8 +602,6 @@ def run_common_repl(
         if seed_prompt:
             s.history.insert(0, Message(role="system", content=seed_prompt))
         return s
-
-    _sid = session_id or secrets.token_hex(8)
 
     session = _build_session()
 

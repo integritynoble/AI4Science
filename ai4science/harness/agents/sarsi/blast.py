@@ -109,7 +109,12 @@ def acts_of(cwd: str) -> List[Dict[str, Any]]:
 
     path = sessions._transcript_path(str(cwd))
     if not path:
-        raise FileNotFoundError(f"no Claude Code transcript for {cwd}")
+        # An ATTENDED session — `social`, `funding`, `jobs`, `abraham` run the
+        # ai4science TUI, which writes its own record and no Claude Code
+        # transcript. Same question, different file. This raises in turn when
+        # there is no record there either, so nothing becomes a clean bill.
+        from ai4science.harness.agents.sarsi import attended
+        return attended.acts(str(cwd))
     out: List[Dict[str, Any]] = []
     for file in sorted(Path(path).parent.glob("*.jsonl")):
         try:

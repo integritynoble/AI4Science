@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Callable
+from typing import Callable, Optional
 
 from ai4science.harness.adapters.anthropic import AnthropicAdapter
 from ai4science.harness.adapters.openai import OpenAIAdapter
@@ -76,14 +76,23 @@ def harness_available(backend: str) -> bool:
     return _local_available(backend) or _proxy_creds() is not None
 
 
-def make_meter(*, backend: str, model: str) -> Callable[[Usage], None]:
+def make_meter(*, backend: str, model: str,
+               session: Optional[str] = None) -> Callable[[Usage], None]:
+    """A meter for one running session.
+
+    `session` is the id that session persists its history under. It is what
+    lets a call be traced back to the task that spent it: without it every
+    interactive call is filed under one name, and `sarsi spend` reports nothing
+    for agents that have plainly been working.
+    """
     def _meter(u: Usage) -> None:
         try:
             _src, _pid, wallet, mult = routing._select_source(backend)
             usage = {"input": u.input, "output": u.output, "total": u.total}
             cost = pricing.price_call(model, usage, price_multiplier=mult)
             ledger.record(agent="common-interactive", backend=backend, model=model,
-                          wallet=wallet, usage=usage, cost=cost)
+                          wallet=wallet, usage=usage, cost=cost,
+                          session=session)
         except Exception:
             pass
     return _meter

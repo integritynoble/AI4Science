@@ -30,12 +30,19 @@ def _utcnow() -> str:
 
 def record(*, agent: str, backend: str, model: str, wallet: Optional[str],
            usage: Dict[str, Any], cost: Dict[str, float],
+           session: Optional[str] = None,
            path: Optional[Path] = None) -> None:
-    """Append one metered call. Defensive — never raises into the caller."""
+    """Append one metered call. Defensive — never raises into the caller.
+
+    `session` says which harness session the call belongs to. Without it every
+    interactive call is filed under one agent name and nothing can be attributed
+    to the task that spent it — which is why `sarsi spend` could report no
+    tokens for agents that had plainly been running.
+    """
     path = path or default_path()
     entry = {
         "ts": _utcnow(), "agent": agent, "backend": backend, "model": model,
-        "wallet": wallet,
+        "wallet": wallet, "session": session,
         "input_tokens": usage.get("input"), "output_tokens": usage.get("output"),
         "total_tokens": usage.get("total"),
         "usd_official": cost.get("usd_official"),

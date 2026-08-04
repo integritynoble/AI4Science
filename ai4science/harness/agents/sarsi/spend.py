@@ -4,10 +4,17 @@ One live task burned about eight minutes of unattended waiting and nothing
 recorded it. Without this, "is this agent worth running?" is answered from
 memory.
 
-The numbers are **read, not estimated**. Claude Code writes a transcript per
-working directory, each sarsi session has its own directory, and every turn in
-that transcript carries a `usage` block. So the token counts here are the ones
-the model reported, attributed per task by construction.
+The numbers are **read, not estimated**, from whichever book the session kept.
+A `claude-code` session writes a transcript per working directory, each turn of
+which carries a `usage` block. An *attended* session — `social`, `funding`,
+`jobs`, `abraham` run the ai4science TUI — writes no such transcript, and its
+calls are read from the meter's ledger instead. Either way the counts are the
+ones the model reported, attributed per task by construction.
+
+The two differ in one respect that must not be flattened: an attended session
+went through the meter, so it has a **PWM price**; a Claude Code session was
+never metered here at all. Reporting both as `0 PWM` would read as *free*, so
+the unmetered one says it is unmetered.
 
 The shape of the *not*-knowing matters more than the numbers:
 
@@ -42,6 +49,10 @@ class Spend:
     cached_tokens: Optional[int] = None
     cache_write_tokens: Optional[int] = None
     wall_seconds: Optional[float] = None
+    #: what the meter priced these calls at. `None` means *this session was not
+    #: metered by us* — an attended session is, a Claude Code one is not, and
+    #: the two must not be reported the same way.
+    pwm: Optional[float] = None
     still_running: bool = False
     #: how many tasks contributed no measurement at all
     unmeasured: int = 0
@@ -71,9 +82,13 @@ class Spend:
                          (" so far" if self.still_running else ""))
         if self.unmeasured:
             parts.append(f"{self.unmeasured} task(s) could not be measured")
-        # never "0 PWM": these sessions are Claude Code, which this system does
-        # not meter, and a zero reads as free
-        parts.append("PWM: not charged here (Claude Code sessions)")
+        if self.pwm is not None:
+            # an ATTENDED session: it went through the meter, which priced it
+            parts.append(f"PWM: {self.pwm:g}")
+        else:
+            # never "0 PWM": a Claude Code session is not metered by this
+            # system at all, and a zero reads as free
+            parts.append("PWM: not charged here (Claude Code sessions)")
         return " · ".join(parts)
 
 
@@ -93,7 +108,8 @@ def _duration(seconds: float) -> str:
 # ── reading the transcript ────────────────────────────────────────────
 
 def usage_of(cwd: str) -> List[Dict[str, Any]]:
-    """Every `usage` block in this working directory's Claude Code transcript.
+    """Every `usage` block recorded for this working directory — from the
+    Claude Code transcript, or from the meter's ledger for an attended session.
 
     Raises rather than returning `[]` when the transcript cannot be found or
     read — the caller distinguishes "nothing was spent" from "nothing could be
@@ -103,7 +119,12 @@ def usage_of(cwd: str) -> List[Dict[str, Any]]:
 
     path = sessions._transcript_path(str(cwd))
     if not path:
-        raise FileNotFoundError(f"no Claude Code transcript for {cwd}")
+        # An ATTENDED session — the ai4science TUI writes no Claude Code
+        # transcript, but the meter records every call it made. Same numbers,
+        # different book. Raises in turn when that book has nothing either, so
+        # an unmeasured session stays unmeasured rather than becoming zero.
+        from ai4science.harness.agents.sarsi import attended
+        return attended.metered(str(cwd))
     # EVERY transcript in that project directory, not just the newest: each
     # `claude` launch writes a new one, so a task that was stopped and resumed
     # has several, and taking the newest would drop every earlier run's cost.
@@ -183,6 +204,12 @@ def for_task(config: Config, agent: Agent, task: tsk.Task, *,
                             for b in blocks)
     out.cache_write_tokens = sum(int(b.get("cache_creation_input_tokens") or 0)
                                  for b in blocks)
+    # Only when the blocks came from the meter. A Claude Code transcript has no
+    # `pwm` key at all, and summing absent keys to 0.0 would report an unmetered
+    # session as one that cost nothing — the same wrong, one line down.
+    priced = [b for b in blocks if "pwm" in b]
+    if priced:
+        out.pwm = sum(float(b.get("pwm") or 0.0) for b in priced)
     return out
 
 
@@ -222,6 +249,8 @@ def for_agent(config: Config, agent: Agent, *,
             total.cached_tokens = (total.cached_tokens or 0) + (one.cached_tokens or 0)
             total.cache_write_tokens = ((total.cache_write_tokens or 0)
                                         + (one.cache_write_tokens or 0))
+        if one.pwm is not None:
+            total.pwm = (total.pwm or 0.0) + one.pwm
         if one.wall_seconds is not None:
             total.wall_seconds = (total.wall_seconds or 0.0) + one.wall_seconds
         total.still_running = total.still_running or one.still_running
