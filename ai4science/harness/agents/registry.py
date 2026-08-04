@@ -49,7 +49,7 @@ def install_hint(name: str) -> str:
 def _claude_code_base(ctx: BuildContext) -> Registry:
     """Pure Claude Code: fs read/write/edit/grep/glob + bash + MCP. NO PWM."""
     from ai4science.harness.tools import default_registry
-    reg = default_registry()
+    reg = default_registry(writable_roots=getattr(ctx, "writable_roots", None))
     if ctx.enable_mcp:
         from ai4science.harness.mcp_client import mcp_tools
         for client in (ctx.mcp_clients or []):

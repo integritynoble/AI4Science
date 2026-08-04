@@ -30,7 +30,9 @@ class AgentSession:
         self.model = model
         self.backend = backend
         self.workspace = workspace
-        self.registry = registry or default_registry()
+        # Built from the SAME roots the gate is built from, so what the agent
+        # is told it may write and what it is actually allowed cannot drift.
+        self.registry = registry or default_registry(writable_roots=writable_roots)
         self.reasoning = reasoning
         self.on_text = on_text
         self.meter = meter

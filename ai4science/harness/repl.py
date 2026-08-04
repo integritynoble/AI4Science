@@ -321,10 +321,12 @@ RESEARCH_PROMPT = (
 
 
 def _make_build_context(*, workspace, brand_provider, session_factory=None,
-                        read_only=False, auto_yes=False, mcp_clients=None) -> BuildContext:
+                        read_only=False, auto_yes=False, mcp_clients=None,
+                        writable_roots=None) -> BuildContext:
     return BuildContext(workspace=workspace, brand_provider=brand_provider,
                         session_factory=session_factory, read_only=read_only,
-                        auto_yes=auto_yes, mcp_clients=mcp_clients)
+                        auto_yes=auto_yes, mcp_clients=mcp_clients,
+                        writable_roots=writable_roots)
 
 
 def _registry_for_spec(spec, *, is_subagent, ctx):
@@ -597,6 +599,7 @@ def run_common_repl(
                     brand_provider=lambda: (active_backend, active_model),
                     session_factory=_child_session_factory,
                     read_only=state["read_only"], auto_yes=state["auto_yes"],
+                    writable_roots=writable_roots,
                 )),
         )
         # Seed the system prompt on every build (initial AND /clear rebuild) so the

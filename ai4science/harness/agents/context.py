@@ -13,6 +13,12 @@ class BuildContext:
     session_factory: Callable[..., object]          # (spec, ctx) -> AgentSession (child)
     read_only: bool = False
     auto_yes: bool = False
+    #: Directories outside the workspace this session may WRITE, declared by
+    #: the caller (for sarsi, the plan's working directory). They reach the
+    #: tool DESCRIPTIONS from here: a capability the model cannot discover
+    #: changes nothing, which a live run demonstrated by reaching for a
+    #: heredoc into a directory `write` had just been given.
+    writable_roots: Optional[List[Path]] = None
     enable_mcp: bool = True
     mcp_clients: Optional[List[object]] = None
     # Builds an MCP client from a spec's mcp_servers entry: server_dict -> client
