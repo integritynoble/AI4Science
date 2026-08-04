@@ -843,6 +843,17 @@ add up to.
   > Blind keystrokes at an unknown screen are not a brief — they are input to
   > whatever menu happens to be showing, and one option is always the worst one.
 
+  **Not driving one is not the same as not measuring one.** `blast` and `spend`
+  were written against Claude Code's transcript, so for three live runs in a row
+  they answered *"the transcript could not be read"* and *"tokens: not
+  recorded"* for over half the fleet — honest, and useless. An attended session
+  keeps its own books: the harness persists its tool calls per workspace, and
+  the meter prices every call it makes. Both readers read those now, and the
+  step ceiling, which counts through the same records, binds on attended agents
+  in consequence. What did **not** change is the rule underneath: no record
+  still *raises*, because "we have no idea" must never be reported as "it
+  touched nothing and cost nothing".
+
 ## 15. What it owes
 
 1. **Telegram has never carried a message.** The code exists; *"one agent, two

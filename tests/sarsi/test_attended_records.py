@@ -242,6 +242,17 @@ def test_an_attended_sessions_pwm_is_reported_not_denied(config, tmp_path):
     assert "0.25" in got.summary
 
 
+def test_a_metered_zero_is_not_printed_as_a_bare_zero(config, tmp_path):
+    """Observed on the live check: a real attended turn priced at 0 PWM — the
+    route bills a subscription, not the token pool. That is a MEASURED zero and
+    it is worth reporting, but bare `PWM: 0` is indistinguishable from the free
+    this module refuses to imply. Three states, three sentences: not metered,
+    metered at nothing, metered at something."""
+    assert "metered" in sp.Spend(input_tokens=1, pwm=0.0).summary
+    assert sp.Spend(input_tokens=1, pwm=0.0).summary != \
+        sp.Spend(input_tokens=1).summary
+
+
 def test_a_claude_code_session_still_says_it_is_not_metered(config, tmp_path):
     """Unchanged where it was true — and never `0 PWM`, which reads as free."""
     got = sp.Spend(input_tokens=5, output_tokens=1)

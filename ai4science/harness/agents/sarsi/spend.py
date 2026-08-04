@@ -82,9 +82,15 @@ class Spend:
                          (" so far" if self.still_running else ""))
         if self.unmeasured:
             parts.append(f"{self.unmeasured} task(s) could not be measured")
-        if self.pwm is not None:
+        if self.pwm:
             # an ATTENDED session: it went through the meter, which priced it
             parts.append(f"PWM: {self.pwm:g}")
+        elif self.pwm is not None:
+            # Priced at nothing — a subscription-backed route, seen on the live
+            # check. Worth reporting, but a bare `PWM: 0` is indistinguishable
+            # from the "free" this module refuses to imply, so it says which
+            # zero it is.
+            parts.append("PWM: 0 (metered, charged nothing)")
         else:
             # never "0 PWM": a Claude Code session is not metered by this
             # system at all, and a zero reads as free
