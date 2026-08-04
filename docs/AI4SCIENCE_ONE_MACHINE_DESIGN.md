@@ -1,7 +1,15 @@
 # ai4science on one machine — design
 
-**Status: design, 2026-08-04. The agent loop is built and tested; the market and
-the token economy are not.**
+**Status: design, 2026-08-04.** The agent loop is built, tested, and exercised
+live on a second user account: tasks, plans, per-phase verdicts, the supervision
+loop, the vault, the outward gates, and the reporting around them —
+`attention`, `why`, `spend`, `decisions`, `blast`, `questions`, `board`. **The
+market and the token economy are not built.** §11 and §13 are design.
+
+Where a row below says **built**, it means built in
+`AI4Science/ai4science/harness/agents/sarsi/`, which is the canonical
+implementation. `singularity/sarsi/` is a second, superseded build of the same
+spec and is not evidence for anything here.
 
 > **Copied to `AI4Science/docs/AI4SCIENCE_ONE_MACHINE_DESIGN.md`**, which is the
 > design of record for ai4science — it sits beside the code it describes. This
@@ -544,8 +552,9 @@ because nothing is ever edited. Until the sync exists, each machine has its own
 
 | | Status |
 |---|---|
-| `W_name`, `W_host`, `W_user` as separate directories | **built** — `layout.py` |
-| private history, recall, and prompt context | **built** — `workspace.py` |
+| `W_name`, `W_host`, `W_user` as separate directories | **built** — `registry.py`: `Agent.workspace`, `Agent.host`, `Config.user_workspace`, created by `ensure_dirs()` |
+| private history, recall, and prompt context | **built** — `workspace.py`, which also **folds** its overflow: a line repeated three times is promoted with its count rather than lost to the tail |
+| `W_host` given something to hold | **built** — `rules.py`: house rules, owner-written, told to every session, never travelling |
 | the shared append-only-log shape | **built**, for a different purpose — `ledger/*.jsonl` already records directives, reports, outward requests and vault decisions this way, across agents |
 | `publish` / `read`, the fact record, the manifest grant | **designed here, not written** |
 | cross-machine sync of `W_shared` | **designed here, not written** |
@@ -653,7 +662,7 @@ provides.
 | `shell` | `sarsi-worker` | the machine, as the owner |
 | `editor` | `sarsi-worker` | files in the task's reach |
 | `browser` | `sarsi-worker`, `social`, `funding`, `jobs`, `abraham` | the network, and pages that can lie to it |
-| `mail.read` | `work` | the mailbox — **read only; there is no `mail.send`** |
+| `mail.read` | `work` | the mailbox — **read only. No agent on this plane has a `mail.send`**, and the console's email agent, which does send, is not reachable from here |
 | `documents` | `funding`, `jobs`, `abraham` | office files and PDFs |
 | `calendar` | `abraham` | other people's whereabouts — `W_host`, never shared |
 | `payment` | `abraham` | **prepare only.** `money` is reserved and no agent completes it |
@@ -666,7 +675,7 @@ provides.
 | **GUI control** | `qupath` and `matlab` are desktop applications. A tool that "has MATLAB" and cannot drive its window can run a script and nothing else. `jobs` filling an application site hits the same wall the moment a page is not automatable. | it can click anything on the screen, including windows that are not the task's |
 | **file transfer** | getting a result off the machine is an outward act and must go through `OWN`; getting an input *onto* it is not, and has no tool | where a file came from, and whether an agent chose it |
 | **secrets rotation** | the vault stores; nothing rotates | it holds every credential at once |
-| **notification** | the digest and `attention` have no way to reach an owner who is not looking | it can interrupt a person |
+| **notification** | `digest` composes and the Telegram bot delivers, so an owner *with Telegram configured* is reachable — and it is off by default. What is missing is a notifier that does not depend on that one channel | it can interrupt a person |
 
 ### Figma and TeamViewer
 
@@ -817,7 +826,22 @@ add up to.
 - **No manager.** Routing across agents beyond this machine is the app's job.
 - **No agent starts work on its own.** `start` is the owner's opt-in, and it is
   the only thing separating *"I asked a question"* from *"I authorised work"*.
-- **No auto-approval of gates**, at any ceiling, for any agent, ever.
+- **No auto-approval of gates**, at any ceiling, for any agent, ever. The one
+  narrow exception is a *delete* the plan declared, confined to the declared
+  working directory, in a command that does nothing else, when the owner has
+  granted it — and the command that prompted the exception still stops, because
+  it chained the delete to running a script.
+- **The loop drives only what it can read.** Its gate detection, stranded-prompt
+  reading and busy marker are tuned to Claude Code's TUI. An agent whose spec
+  runs a different interface — `social`, `funding`, `jobs`, `abraham` — is
+  started and reported **attended**, and the loop will not type at it.
+
+  > This was a *reported* limit before it was an *enforced* one, and the gap cost
+  > a session. The loop typed a brief into an attended session three times; the
+  > interface underneath was a menu where `j` and `k` move the selection, the
+  > cursor walked onto **"No, exit"**, and the session it was supervising died.
+  > Blind keystrokes at an unknown screen are not a brief — they are input to
+  > whatever menu happens to be showing, and one option is always the worst one.
 
 ## 15. What it owes
 
@@ -827,8 +851,15 @@ add up to.
    asked for through it.
 3. **The outward gate has never held a real act.**
 4. **Evidence can only keep what it was shown.** Output that scrolled past the
-   terminal's history before the first capture is gone.
-5. **One agent's loop must not take the daemon down.** One process now hosts
+   terminal's history before the first capture is gone. It is also *bounded by a
+   declaration*: it reads the plan's working directory, so a session that writes
+   somewhere the plan never named produces a verdict of `UNVERIFIED` rather than
+   a wrong one.
+5. **Two thirds of what a session does names no file.** `blast` reports what was
+   written from `Write` and `Edit` records; `Bash` says only that it ran. So
+   "nothing observed outside the declared paths" is exactly that, and the count
+   of unchecked commands is printed beside it rather than rounded away.
+6. **One agent's loop must not take the daemon down.** One process now hosts
    every agent, which trades an address space for a discipline, and nothing
    checks that a raise in one agent's turn is contained.
-6. **Nothing in §11 or §13 is built.** The loop underneath them is.
+7. **Nothing in §11 or §13 is built.** The loop underneath them is.
