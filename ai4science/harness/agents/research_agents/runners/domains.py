@@ -48,6 +48,22 @@ def _c_index(risk: np.ndarray, time: np.ndarray, event: np.ndarray) -> float:
     return float(num / den) if den else float("nan")
 
 
+def _km_at(time: np.ndarray, event: np.ndarray, horizon: float) -> float:
+    """Kaplan-Meier survival probability at `horizon`."""
+    if len(time) == 0:
+        return float("nan")
+    order = np.argsort(time)
+    t, e = time[order], event[order]
+    s, n = 1.0, len(t)
+    for i, (ti, ei) in enumerate(zip(t, e)):
+        if ti > horizon:
+            break
+        at_risk = n - i
+        if ei == 1 and at_risk > 0:
+            s *= (1.0 - 1.0 / at_risk)
+    return float(s)
+
+
 def _psnr(a: np.ndarray, b: np.ndarray) -> float:
     mse = float(np.mean((a - b) ** 2))
     peak = float(max(b.max() - b.min(), 1e-9))
@@ -233,37 +249,83 @@ def _score_screening(seed_ws: Path, run_ws: Path) -> Dict[str, float]:
     y = np.load(seed_ws / "data" / "labels.npy")
     tid = np.load(run_ws / "data" / "target_id.npy")
     D = np.load(run_ws / "data" / "descriptors.npy")
+    known = np.load(run_ws / "data" / "known_active.npy")
     s = np.load(run_ws / "results" / "scores.npy")
-    held = np.unique(tid)[-2:]                      # targets held out entirely
-    m = np.isin(tid, held)
-    # Decoy property bias: if actives and decoys differ in bulk properties, then
-    # enrichment is measuring molecular weight and not binding.
+
+    # Enrichment is measured only on molecules NOT handed to the solver.
+    # Scoring the query set would be scoring the answer back to itself.
+    unseen = known == 0
+    held = np.unique(tid)[-2:]                    # two whole targets held out
+    m_held = np.isin(tid, held) & unseen
+    m_all = unseen
+
+    # DUD-E matches decoys to actives on bulk properties. It is known not to
+    # match them perfectly, so the residual bias is measured and reported
+    # rather than assumed away: if actives and decoys separate on molecular
+    # weight alone, enrichment is partly a weight detector.
     bulk_gap = float(abs(D[y == 1][:, 0].mean() - D[y == 0][:, 0].mean())
                      / max(D[:, 0].std(), 1e-9))
-    return {"ef_at_1pct": _ef(s[m], y[m]), "auc_heldout": _auc(s[m], y[m]),
-            "auc_seen_targets": _auc(s[~m], y[~m]),
+    # The property baseline: what molecular weight alone achieves on this
+    # library. DUD-E's decoys are property-matched but not perfectly, and the
+    # residual bias is large enough that ranking by weight enriches — a
+    # documented result, and the reason a screening claim has to be measured
+    # against this rather than against random.
+    ef_prop = _ef(D[m_all][:, 0], y[m_all])
+    frac = float(y[m_all].mean())
+    return {"active_fraction": frac,
+            "ef_property_baseline": ef_prop,
+            "ef_ceiling": (1.0 / frac) if frac > 0 else float("inf"),
+            "ef_at_1pct": _ef(s[m_all], y[m_all]),
+            "ef_at_1pct_heldout_targets": _ef(s[m_held], y[m_held]),
+            "auc_unseen": _auc(s[m_all], y[m_all]),
+            "auc_heldout_targets": _auc(s[m_held], y[m_held]),
             "decoy_bulk_bias_sd": bulk_gap,
             "heldout_targets": float(len(held)),
-            "actives_heldout": float(y[m].sum())}
+            "actives_scored": float(y[m_all].sum())}
 
 
 def _judge_screening(m: Dict[str, float]) -> Verdict:
     reasons, ok = [], True
-    if m["decoy_bulk_bias_sd"] > 0.35:
+    # Calibrated to DUD-E's actual matching, which is imperfect and documented
+    # as such. The number is always reported so a reader can weigh it — an
+    # enrichment on a badly matched set is partly a property detector, and
+    # hiding the figure would be the way to never have to say so.
+    reasons.append("decoy property match: %.2g SD apart on molecular weight"
+                   % m["decoy_bulk_bias_sd"])
+    if m["decoy_bulk_bias_sd"] > 0.75:
         ok = False
-        reasons.append("actives and decoys differ by %.2g SD in bulk property — "
-                       "this enrichment is a molecular-weight detector"
-                       % m["decoy_bulk_bias_sd"])
-    else:
-        reasons.append("decoys are property-matched (%.2g SD apart)"
-                       % m["decoy_bulk_bias_sd"])
+        reasons.append("that is too far — this enrichment is measuring bulk "
+                       "properties rather than binding")
+    # A library dense in actives makes EF@1% saturate, and then every method
+    # scores the ceiling — including ranking by molecular weight, which is how
+    # this was caught. A saturated metric is not a lenient one, it is a broken
+    # one, so the benchmark refuses rather than reporting the ceiling as a win.
+    if m["active_fraction"] > 0.05:
+        ok = False
+        reasons.append("the library is %.1f%% active — EF@1%% saturates at %.3g "
+                       "and stops discriminating between methods"
+                       % (100 * m["active_fraction"], m["ef_ceiling"]))
     if m["ef_at_1pct"] < 2.0:
         ok = False
-        reasons.append("EF@1%% %.3g — no useful enrichment on held-out targets"
-                       % m["ef_at_1pct"])
-    if m["actives_heldout"] < 3:
+        reasons.append("EF@1%% %.3g — no useful enrichment" % m["ef_at_1pct"])
+    # Beating random is not the bar. Beating what bulk properties alone deliver
+    # on this exact library is, because anything less is a property detector
+    # wearing a screening result's clothes.
+    lift = m["ef_at_1pct"] / max(m["ef_property_baseline"], 1e-9)
+    if lift < 1.5:
         ok = False
-        reasons.append("too few held-out actives to say anything")
+        reasons.append("EF@1%% %.3g against a molecular-weight baseline of %.3g "
+                       "(%.2gx) — this is not screening, it is that baseline"
+                       % (m["ef_at_1pct"], m["ef_property_baseline"], lift))
+    else:
+        reasons.append("EF@1%% %.3g vs %.3g for molecular weight alone (%.2gx "
+                       "over the property baseline)"
+                       % (m["ef_at_1pct"], m["ef_property_baseline"], lift))
+    if m["actives_scored"] < 20:
+        ok = False
+        reasons.append("too few scored actives to say anything")
+    reasons.append("EF@1%% %.3g overall, %.3g on targets held out entirely"
+                   % (m["ef_at_1pct"], m["ef_at_1pct_heldout_targets"]))
     reasons.append("a score ranks; it does not measure. Nothing here has been "
                    "made or assayed, and no compound is a candidate")
     return Verdict(ok, tuple(reasons), m)
@@ -274,10 +336,11 @@ SCREENING = DomainBenchmark(
     goal="rank a library against held-out targets and report honest enrichment",
     package="screening",
     deliverables=("results/scores.npy",),
-    answer_key=("data/labels.npy", "data/pharmacophores.npy"),
-    score=_score_screening, judge=_judge_screening,
-    criteria=("EF@1% ≥ 2 on targets held out entirely",
-              "decoys property-matched to within 0.35 SD",
+    answer_key=("data/labels.npy",),
+    score=_score_screening, judge=_judge_screening, corpus="dude",
+    criteria=("EF@1% ≥ 2 on molecules not handed to the solver",
+              "and ≥ 1.5x what molecular weight alone achieves on the same library",
+              "the decoy property match is measured and reported",
               "no activity claimed without an assay"),
 )
 
@@ -290,17 +353,27 @@ def _score_onco(seed_ws: Path, run_ws: Path) -> Dict[str, float]:
     re_ = np.load(run_ws / "results" / "risk_ext.npy")
     c_int = _c_index(rd, d("dev_time"), d("dev_event"))
     c_ext = _c_index(re_, d("ext_time"), d("ext_event"))
-    # Calibration: do the risk tertiles order the observed median survival?
+    # Calibration by Kaplan-Meier at a fixed horizon, per risk tertile.
+    #
+    # NOT the median observed time, which was the first version of this and is
+    # wrong: in a real cohort most cases are censored — alive at last contact —
+    # so "observed time" measures how long someone has been in the study, not
+    # how long they survived. A group followed for longer looks sicker. KM uses
+    # the censored cases for as long as they were observed and drops them after,
+    # which is the whole reason it exists.
     t, e = d("ext_time"), d("ext_event")
-    q = np.quantile(re_, [1/3, 2/3])
-    groups = [t[(re_ <= q[0])], t[(re_ > q[0]) & (re_ <= q[1])], t[re_ > q[1]]]
-    meds = [float(np.median(g)) if len(g) else float("nan") for g in groups]
-    monotone = float(meds[0] >= meds[1] >= meds[2])
+    q = np.quantile(re_, [1 / 3, 2 / 3])
+    masks = [re_ <= q[0], (re_ > q[0]) & (re_ <= q[1]), re_ > q[1]]
+    horizon = float(np.quantile(t, 0.5))
+    surv = [_km_at(t[m], e[m], horizon) for m in masks]
+    monotone = float(surv[0] >= surv[1] >= surv[2])
     return {"c_index_internal": c_int, "c_index_external": c_ext,
             "external_drop": c_int - c_ext,
             "calibration_monotone": monotone,
-            "median_survival_low_risk": meds[0],
-            "median_survival_high_risk": meds[2]}
+            "km_horizon_days": horizon,
+            "survival_low_risk": surv[0],
+            "survival_mid_risk": surv[1],
+            "survival_high_risk": surv[2]}
 
 
 def _judge_onco(m: Dict[str, float]) -> Verdict:
@@ -330,7 +403,7 @@ ONCO = DomainBenchmark(
     package="onco",
     deliverables=("results/risk_dev.npy", "results/risk_ext.npy"),
     answer_key=(),      # outcomes are the data; what is tested is transport
-    score=_score_onco, judge=_judge_onco,
+    score=_score_onco, judge=_judge_onco, corpus="tcga-survival",
     criteria=("external C-index ≥ 0.58 on a cohort the model never saw",
               "calibration reported with discrimination",
               "no patient-level claim"),

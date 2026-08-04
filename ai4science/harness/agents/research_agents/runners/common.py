@@ -39,8 +39,12 @@ class Verdict:
     reasons: Tuple[str, ...]
     metrics: Dict[str, float]
 
+    provenance: str = ""
+
     def report(self) -> str:
         L = ["verdict: %s" % ("PASS" if self.passed else "FAIL")]
+        if self.provenance:
+            L.append("  %s" % self.provenance)
         for k, v in sorted(self.metrics.items()):
             L.append("  %-26s %.6g" % (k, v))
         for r in self.reasons:
@@ -66,6 +70,23 @@ class DomainBenchmark:
     #: Given metrics, decide. One per field; see the module docstring.
     judge: Callable[[Dict[str, float]], Verdict]
     criteria: Tuple[str, ...] = ()
+    #: The corpus this benchmark reads, if it reads one. None means the data is
+    #: generated rather than measured — and a result from generated data is
+    #: evidence about a method, never about the world.
+    corpus: Optional[str] = None
+
+    @property
+    def real(self) -> bool:
+        return self.corpus is not None
+
+    def provenance(self) -> str:
+        if not self.real:
+            return ("SYNTHETIC — generated, not measured. This exercises the "
+                    "field's characteristic failure and says nothing about real "
+                    "%s data." % self.agent)
+        from . import corpus as _c
+        c = _c.ALL[self.corpus]
+        return "real data: %s (%s)" % (c.title, c.source)
 
     def files(self) -> List[Path]:
         d = PAYLOAD / self.package
@@ -129,8 +150,11 @@ def run_domain_task(bench: DomainBenchmark, *, client, workspace: Path,
     # Scored here, against the key the sandbox never saw.
     metrics = bench.score(workspace, run_ws)
     verdict = bench.judge(metrics)
+    verdict = Verdict(verdict.passed, verdict.reasons, verdict.metrics,
+                      provenance=bench.provenance())
     return {"status": "delivered" if verdict.passed else "rejected",
             "agent": bench.agent, "seed": seed, "benchmark": meta,
+            "real": bench.real, "provenance": bench.provenance(),
             "withheld": withheld, "metrics": metrics, "verdict": verdict,
             "run_workspace": str(run_ws), "criteria": list(bench.criteria)}
 

@@ -1,0 +1,151 @@
+"""Where the real data lives, and what happens when it is not there.
+
+The five benchmarks began synthetic. Synthetic was honest while it lasted — each
+one exercised its field's characteristic failure — but a synthetic benchmark
+measures a method against a problem someone invented, and no field is moved by
+that.
+
+**A missing corpus refuses; it never falls back.** This is the whole module. A
+benchmark that quietly substitutes synthetic data when the real corpus is absent
+produces numbers that look like results and are not, and the person reading them
+has no way to tell. So `require()` raises, and the message says exactly which
+command fetches what is missing.
+
+**Licensed data is fetched by a person, not by an agent.** Kvasir-Capsule and
+the Mayo low-dose CT set carry terms someone has to accept. `require()` names
+them and stops; there is deliberately no code path that clicks through a licence
+on the owner's behalf, because accepting terms is not a thing an agent may do.
+"""
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Dict, Optional, Tuple
+
+#: Override with AI4SCIENCE_DATA. Kept outside the repo: data is not source.
+DEFAULT_ROOT = Path(os.environ.get("AI4SCIENCE_DATA",
+                                   Path.home() / ".ai4science" / "data"))
+
+
+class CorpusMissing(FileNotFoundError):
+    """The real data is not on this machine. Carries how to get it."""
+
+
+@dataclass(frozen=True)
+class Corpus:
+    """One real dataset, and how it is obtained."""
+
+    key: str
+    title: str
+    #: Files that must exist under the corpus directory for it to count as here.
+    required: Tuple[str, ...]
+    source: str
+    licence: str
+    #: True when a human must accept terms before download. No agent may.
+    needs_agreement: bool = False
+    fetch: str = ""
+    approx_size: str = ""
+
+    def dir(self, root: Optional[Path] = None) -> Path:
+        return Path(root or DEFAULT_ROOT) / self.key
+
+    def present(self, root: Optional[Path] = None) -> bool:
+        d = self.dir(root)
+        return all((d / f).exists() for f in self.required)
+
+    def missing(self, root: Optional[Path] = None) -> Tuple[str, ...]:
+        d = self.dir(root)
+        return tuple(f for f in self.required if not (d / f).exists())
+
+    def require(self, root: Optional[Path] = None) -> Path:
+        if self.present(root):
+            return self.dir(root)
+        d = self.dir(root)
+        lines = ["%s is not on this machine." % self.title,
+                 "  expected under: %s" % d,
+                 "  missing:        %s" % ", ".join(self.missing(root)),
+                 "  source:         %s" % self.source,
+                 "  licence:        %s" % self.licence]
+        if self.approx_size:
+            lines.append("  size:           %s" % self.approx_size)
+        if self.needs_agreement:
+            lines.append("  ** this dataset requires a person to accept its terms. "
+                         "An agent may not accept them on your behalf, so nothing "
+                         "here will fetch it automatically. **")
+        if self.fetch:
+            lines.append("  fetch:          %s" % self.fetch)
+        lines.append("  This benchmark refuses to run rather than substituting "
+                     "synthetic data, which would produce numbers that look like "
+                     "results and are not.")
+        raise CorpusMissing("\n".join(lines))
+
+
+# --------------------------------------------------------------- the corpora
+
+FETCH = "python3 -m ai4science.harness.agents.research_agents.runners.fetch %s"
+
+TCGA_SURVIVAL = Corpus(
+    key="tcga-survival",
+    title="TCGA clinical survival (LUAD development, LUSC external)",
+    required=("dev.json", "ext.json"),
+    source="GDC Data Portal API — api.gdc.cancer.gov",
+    licence="open access clinical data; NIH GDC terms",
+    fetch=FETCH % "tcga-survival",
+    approx_size="~2 MB",
+)
+
+DUDE = Corpus(
+    key="dude",
+    title="DUD-E actives and property-matched decoys",
+    required=("targets.json",),
+    source="dude.docking.org",
+    licence="free for academic use",
+    fetch=FETCH % "dude",
+    approx_size="~40 MB for the target subset used here",
+)
+
+OPENKBP = Corpus(
+    key="open-kbp",
+    title="OpenKBP — AAPM 2020 knowledge-based planning challenge",
+    required=("index.json",),
+    source="github.com/ababier/open-kbp",
+    licence="CC BY 4.0",
+    fetch=FETCH % "open-kbp",
+    approx_size="~1 GB",
+)
+
+KVASIR_CAPSULE = Corpus(
+    key="kvasir-capsule",
+    title="Kvasir-Capsule — wireless capsule endoscopy",
+    required=("frames.npz", "metadata.json"),
+    source="osf.io/dv2ag — Simula",
+    licence="CC BY 4.0, with a data-use statement to read first",
+    needs_agreement=True,
+    fetch=FETCH % "kvasir-capsule",
+    approx_size="~4 GB for the labelled frames",
+)
+
+LDCT = Corpus(
+    key="ldct",
+    title="Low-dose CT — real thoracic anatomy with a simulated dose reduction",
+    required=("volumes.npz", "metadata.json"),
+    source="TCIA public collections (see fetch); the Mayo/AAPM paired set "
+           "requires TCIA restricted access and a signed agreement",
+    licence="TCIA public collections are CC BY 3.0; Mayo LDCT is restricted",
+    fetch=FETCH % "ldct",
+    approx_size="~200 MB for the slice subset used here",
+)
+
+ALL: Dict[str, Corpus] = {c.key: c for c in
+                          (TCGA_SURVIVAL, DUDE, OPENKBP, KVASIR_CAPSULE, LDCT)}
+
+
+def status(root: Optional[Path] = None) -> str:
+    L = ["real corpora under %s" % (root or DEFAULT_ROOT), ""]
+    for c in ALL.values():
+        state = "present" if c.present(root) else (
+            "MISSING — needs a person to accept terms" if c.needs_agreement
+            else "missing")
+        L.append("  %-16s %-46s %s" % (c.key, c.title[:46], state))
+    return "\n".join(L)

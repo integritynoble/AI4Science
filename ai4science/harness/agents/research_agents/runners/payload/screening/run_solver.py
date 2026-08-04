@@ -1,8 +1,9 @@
-"""Rank each target's library by a shape/pharmacophore similarity score.
+"""Ligand-based virtual screening: rank by similarity to the known actives.
 
-It has descriptors and target ids, and no labels. The score is a docking-like
-heuristic: distance to the consensus of the target's own library, which is a
-weak signal on purpose — a docking score ranks, it does not measure."""
+Maximum Tanimoto similarity to the query set, per target — the oldest and still
+one of the most competitive ligand-based baselines. It reads the query set,
+which it is given, and never the labels, which it is not.
+"""
 import argparse, os
 import numpy as np
 
@@ -10,20 +11,21 @@ import numpy as np
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument("--workspace", default=".")
     ws = ap.parse_args().workspace
-    D = np.load(os.path.join(ws, "data", "descriptors.npy"))
-    tid = np.load(os.path.join(ws, "data", "target_id.npy"))
-    feat = D[:, 2:]
-    scores = np.zeros(len(D))
+    d = lambda n: np.load(os.path.join(ws, "data", n + ".npy"))
+    FP, tid, known = d("fingerprints").astype(bool), d("target_id"), d("known_active")
+
+    scores = np.full(len(FP), -np.inf)
     for t in np.unique(tid):
         m = tid == t
-        f = feat[m]
-        # actives cluster; decoys are diffuse. A robust centre finds the cluster.
-        centre = np.median(f, axis=0)
-        for _ in range(6):
-            d = np.linalg.norm(f - centre, axis=1)
-            keep = d <= np.percentile(d, 35)
-            centre = f[keep].mean(axis=0)
-        scores[m] = -np.linalg.norm(f - centre, axis=1)
+        q = FP[m & (known == 1)]
+        if len(q) == 0:
+            scores[m] = 0.0
+            continue
+        F = FP[m]
+        inter = F.astype(np.uint16) @ q.T.astype(np.uint16)
+        union = F.sum(1)[:, None] + q.sum(1)[None, :] - inter
+        tan = inter / np.clip(union, 1, None)
+        scores[m] = tan.max(axis=1)          # nearest known active
     os.makedirs(os.path.join(ws, "results"), exist_ok=True)
     np.save(os.path.join(ws, "results", "scores.npy"), scores)
     print("scored", len(scores))

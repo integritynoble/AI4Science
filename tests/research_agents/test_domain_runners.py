@@ -51,7 +51,19 @@ class Sim:
                 "stdout": p.stdout, "stderr": p.stderr}
 
 
+def _needs_corpus(bench):
+    """Skip, do not fail, when the real data is not on this machine. A dataset
+    someone has to accept terms for is not a broken build."""
+    if not bench.real:
+        return
+    from ai4science.harness.agents.research_agents.runners import corpus
+    c = corpus.ALL[bench.corpus]
+    if not c.present():
+        pytest.skip("%s not fetched on this machine (%s)" % (c.key, c.fetch))
+
+
 def _run(bench, tmp_path, override=""):
+    _needs_corpus(bench)
     return run_domain_task(bench, client=Sim(tmp_path / "run", override),
                            workspace=tmp_path / "seed", seed=42)
 
@@ -60,10 +72,42 @@ def _run(bench, tmp_path, override=""):
 
 @pytest.mark.parametrize("name", sorted(BENCHMARKS))
 def test_each_agent_computes_and_is_judged(name, tmp_path):
+    """Computed and judged — not necessarily passed.
+
+    On real data a correct benchmark may return FAIL, and asserting a pass here
+    would make the suite demand a result rather than a measurement. `cancer` is
+    exactly that case; see the test below."""
     out = _run(benchmark_for(name), tmp_path)
-    assert out["status"] == "delivered", out.get("why") or out["verdict"].report()
-    assert out["verdict"].passed
+    assert out["status"] in ("delivered", "rejected"), out.get("why")
     assert out["metrics"], "a verdict with no metrics is an opinion"
+    assert out["verdict"] is not None
+    assert out["provenance"], "a result must say where its data came from"
+
+
+@pytest.mark.parametrize("name", ["low-dose-ct", "medical-physics",
+                                  "pill-camera", "drug-design"])
+def test_the_intended_method_passes(name, tmp_path):
+    out = _run(benchmark_for(name), tmp_path)
+    assert out["verdict"].passed, out["verdict"].report()
+
+
+def test_a_clinical_only_model_does_not_transport_across_histologies(tmp_path):
+    """The finding that arrived with the real data, kept as a test.
+
+    A Cox model on age, sex, stage and prior malignancy, fitted on TCGA-LUAD and
+    validated on TCGA-LUSC, discriminates internally and does not transport. The
+    judge refuses it, which is the correct answer and not a bug to tune away —
+    it is also what the literature says happens to prognostic models that are
+    never externally validated."""
+    out = _run(ONCO, tmp_path)
+    m = out["metrics"]
+    assert m["c_index_internal"] > 0.6, "it does discriminate on its own cohort"
+    assert m["c_index_external"] < 0.6, "and it does not transport"
+    assert m["external_drop"] > 0.05
+    assert not out["verdict"].passed
+    assert any("did not transport" in r for r in out["verdict"].reasons)
+    # Calibration is measured by Kaplan-Meier, so censoring does not fake it.
+    assert m["calibration_monotone"] == 1.0
 
 
 @pytest.mark.parametrize("name", sorted(BENCHMARKS))
@@ -195,14 +239,26 @@ np.save(os.path.join(ws, "results", "scores.npy"), D[:, 0])
 '''
 
 
-def test_ranking_by_molecular_weight_does_not_enrich(tmp_path):
-    """With property-matched decoys, the weight detector gets no enrichment.
-    That is what property matching is for."""
+def test_ranking_by_molecular_weight_is_not_screening(tmp_path):
+    """DUD-E's decoys are property-matched but not perfectly, and molecular
+    weight alone enriches — a documented bias. So the bar is not "beats random",
+    it is "beats what bulk properties achieve on this same library". Without
+    that, a weight detector passes as a virtual screen."""
     good = _run(SCREENING, tmp_path / "good")
     weight = _run(SCREENING, tmp_path / "w", override=BIASED_DECOYS)
-    assert good["verdict"].passed
+    assert good["verdict"].passed, good["verdict"].report()
     assert not weight["verdict"].passed
-    assert weight["metrics"]["ef_at_1pct"] < good["metrics"]["ef_at_1pct"]
+    assert any("it is that baseline" in r for r in weight["verdict"].reasons)
+    assert weight["metrics"]["auc_unseen"] < good["metrics"]["auc_unseen"]
+
+
+def test_the_library_is_not_dense_enough_to_saturate_the_metric(tmp_path):
+    """EF@1% has a ceiling of 1/active_fraction. Capping decoys while keeping
+    every active once left the library 40% active, the ceiling at 2.5, and
+    molecular weight scoring exactly what fingerprint similarity scored."""
+    out = _run(SCREENING, tmp_path)
+    assert out["metrics"]["active_fraction"] < 0.05
+    assert out["metrics"]["ef_ceiling"] > 20
 
 
 def test_enrichment_is_reported_on_targets_held_out_entirely(tmp_path):
