@@ -847,17 +847,25 @@ def answer(config: Config, agent: Agent, task: tsk.Task) -> str:
 
     In a fleet, "it worked" is an incomplete sentence.
     """
-    session = (task.session or {}).get("name") or "no session"
+    # No `or "no session"`: filling the hole with a phrase that reads like a
+    # name produced `session no session, verdict PASS` on a task whose session
+    # had already been released. Where there is no session there is no session
+    # clause — the sentence is about the verdict either way.
+    name = (task.session or {}).get("name") or ""
     if task.state == tsk.VERIFIED and (task.verdict or {}).get("state") == PASS:
         independence = "" if (task.verdict or {}).get("independent") \
             else " (judged by the same engine that did the work)"
+        where = f"session {name}, " if name else ""
         return (f"verified — {task.goal}\n"
-                f"session {session}, verdict {PASS}{independence}")
+                f"{where}verdict {PASS}{independence}")
     verdict = task.verdict or {}
     if str(verdict.get("state", "")).upper() == "UNVERIFIED":
         # distinct from "in progress": the work may be done and nobody looked
+        where = f"session {name}: " if name else ""
         return (f"not judged — {task.goal}\n"
-                f"session {session}: {verdict.get('why', '')}")
+                f"{where}{verdict.get('why', '')}")
     if task.state == tsk.RUNNING:
-        return f"recorded — {task.goal} is in progress in session {session}"
-    return f"I think — {task.goal} is {task.state} in session {session}"
+        where = f" in session {name}" if name else ""
+        return f"recorded — {task.goal} is in progress{where}"
+    where = f" in session {name}" if name else ""
+    return f"I think — {task.goal} is {task.state}{where}"

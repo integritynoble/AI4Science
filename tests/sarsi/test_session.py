@@ -474,3 +474,64 @@ def test_an_unverified_task_answers_at_a_weaker_authority(config, agent):
     answer = ses.answer(config, agent, t)
     assert not answer.startswith("verified")
     assert t.session["name"] in answer          # and names the session doing it
+
+
+def test_the_answer_does_not_say_session_no_session(config, agent):
+    """Observed live: `sarsi check work tsk_…` on a task whose session had
+    already been released printed
+
+        session no session, verdict PASS
+
+    The line assumes there is a name to print and fills the hole with a phrase
+    that reads as one. Where there is no session, there is no session clause."""
+    t = _task(config, agent)                     # never assigned
+    t = ses.verify(config, agent, t, evidence="ok",
+                   verifier=lambda **kw: {"state": "PASS"})
+    said = ses.answer(config, agent, t)
+    assert "no session" not in said
+    assert said.startswith("verified")
+
+
+def test_it_still_reports_the_verdict_and_its_authority(config, agent):
+    """Dropping the clause must not drop what the clause was carrying."""
+    t = _task(config, agent)
+    t = ses.verify(config, agent, t, evidence="ok",
+                   verifier=lambda **kw: {"state": "PASS"})
+    said = ses.answer(config, agent, t)
+    assert "PASS" in said
+    assert "same engine" in said
+
+
+def test_a_verified_task_with_a_session_still_names_it(config, agent):
+    rt = FakeRuntime()
+    t = ses.assign(config, agent, _task(config, agent), runtime=rt)
+    t = ses.verify(config, agent, t, evidence="ok",
+                   verifier=lambda **kw: {"state": "PASS"})
+    assert t.session["name"] in ses.answer(config, agent, t)
+
+
+def test_an_unjudged_task_with_no_session_reads_as_a_sentence(config, agent):
+    """The other half of the same line: `session no session: <reason>`."""
+    t = _task(config, agent)
+    t.verdict = {"state": "UNVERIFIED", "why": "nothing visible was supplied"}
+    said = ses.answer(config, agent, t)
+    assert "no session" not in said
+    assert "nothing visible was supplied" in said
+
+
+def test_a_running_task_with_no_session_does_not_invent_one(config, agent):
+    """`is in progress in session no session` — the same hole, two lines down.
+    A task can be RUNNING with its session already released."""
+    t = _task(config, agent)
+    t.state = tsk.RUNNING
+    said = ses.answer(config, agent, t)
+    assert "no session" not in said
+    assert "in progress" in said
+
+
+def test_the_fallback_line_does_not_invent_one_either(config, agent):
+    t = _task(config, agent)
+    t.state = tsk.BLOCKED
+    said = ses.answer(config, agent, t)
+    assert "no session" not in said
+    assert tsk.BLOCKED in said
