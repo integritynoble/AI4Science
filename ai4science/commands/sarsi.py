@@ -94,7 +94,8 @@ def ask(agent_id: str = typer.Argument(..., help="Agent id, e.g. work"),
         raise typer.Exit(code=2)
     agent = decision.agent
     ownerlog.append(config, agent, text, surface=router.CLI_CHANNEL)
-    reply = gateway.handle(config, agent=agent, text=text, surface=router.CLI_CHANNEL)
+    reply = gateway.handle(config, agent=agent, text=text,
+                           surface=router.CLI_CHANNEL)
     # markup off: an agent's reply is data. `[abraham]` is a name, not a style.
     console.print(reply or "(no reply)", markup=False, highlight=False)
 
@@ -229,12 +230,15 @@ def answer_cmd(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
                task_id: str = typer.Argument(..., help="Task id"),
                question: str = typer.Argument(..., help="The question, as listed"),
                reply: str = typer.Argument(..., help="Your answer")) -> None:
-    from ai4science.harness.agents.sarsi import questions as qst
+    from ai4science.harness.agents.sarsi import (operator as op,
+                                                 questions as qst)
 
     config, agent, t = _load_task(agent_id, task_id)
     try:
-        qst.answer(config, agent, t, question, reply)
-    except (qst.NotAsked, qst.NoSession) as e:
+        # a real pane, so the delivery is CONFIRMED before the question closes:
+        # a booting session swallows what is typed at it
+        qst.answer(config, agent, t, question, reply, pane=op.TmuxPane())
+    except (qst.NotAsked, qst.NoSession, qst.NotDelivered) as e:
         console.print(str(e), style="yellow", markup=False, highlight=False)
         raise typer.Exit(code=2)
     console.print(f"answered — {t.id} has been told, and the question is closed",

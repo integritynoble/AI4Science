@@ -204,11 +204,11 @@ def test_attention_carries_an_open_question(config, agent):
     t = _task(config, agent)
     _escalate(config, agent, t.id, "which directory should I index?")
 
-    class Pane:
+    class Blank:
         def capture(self, name):
             return ""
 
-    kinds = [i.kind for i in att.needs(config, agent, pane=Pane()).items]
+    kinds = [i.kind for i in att.needs(config, agent, pane=Blank()).items]
     assert "question" in kinds
 
 
@@ -252,3 +252,67 @@ def test_chat_answer_without_the_separator_says_how(config, agent):
     out = chat.handle(config, agent, f"/answer {t.id} which directory?",
                       surface="cli", runtime=rt)
     assert "usage" in out.lower() or "|" in out
+
+
+# ── delivered, not merely typed ───────────────────────────────────────
+
+class Pane:
+    """The same tmux session the runtime types into — so what the runtime sent
+    is what the pane sees, once the session is listening.
+
+    A booting session swallows input: `ready=False` is that, and it is the
+    condition observed live.
+    """
+
+    def __init__(self, runtime, *, ready=True):
+        self.runtime, self.ready = runtime, ready
+
+    def capture(self, name):
+        head = 'Claude Code — welcome\n❯ Try "edit x"\n'
+        return head + ("\n".join(self.runtime.sent) if self.ready else "")
+
+    def key(self, name, key):
+        pass
+
+
+def test_an_answer_seen_on_screen_closes_the_question(config, agent):
+    rt = FakeRuntime()
+    t = _running(config, agent, rt)
+    _escalate(config, agent, t.id, "which directory?")
+    qs.answer(config, agent, t, "which directory?", "/srv/exports",
+              runtime=rt, pane=Pane(rt))
+    assert qs.open_of(config, agent) == []
+
+
+def test_an_answer_that_never_appears_leaves_the_question_open(config, agent):
+    """Observed live: the session was still on its splash screen, the answer
+    was typed into a terminal that was not listening, and the question closed
+    anyway. Typed is not delivered."""
+    rt = FakeRuntime()
+    t = _running(config, agent, rt)
+    _escalate(config, agent, t.id, "which directory?")
+    with pytest.raises(qs.NotDelivered):
+        qs.answer(config, agent, t, "which directory?", "/srv/exports",
+                  runtime=rt, pane=Pane(rt, ready=False))
+    assert len(qs.open_of(config, agent)) == 1
+
+
+def test_the_refusal_says_the_session_was_not_listening(config, agent):
+    rt = FakeRuntime()
+    t = _running(config, agent, rt)
+    _escalate(config, agent, t.id, "which directory?")
+    try:
+        qs.answer(config, agent, t, "which directory?", "/srv/exports",
+                  runtime=rt, pane=Pane(rt, ready=False))
+    except qs.NotDelivered as e:
+        assert "not" in str(e).lower() and t.session["name"] in str(e)
+
+
+def test_without_a_pane_it_still_works_and_says_it_was_unconfirmed(config, agent):
+    """Callers that cannot read a screen are not blocked — but the record says
+    the delivery was never seen."""
+    rt = FakeRuntime()
+    t = _running(config, agent, rt)
+    _escalate(config, agent, t.id, "which directory?")
+    qs.answer(config, agent, t, "which directory?", "/srv/exports", runtime=rt)
+    assert qs.open_of(config, agent) == []

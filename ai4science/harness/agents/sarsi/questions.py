@@ -44,6 +44,16 @@ class NotAsked(Exception):
     """No open question matches — answering one nobody asked helps nobody."""
 
 
+class NotDelivered(Exception):
+    """It was typed and never appeared. Typed is not delivered.
+
+    Observed live: the session was still on Claude Code's splash screen, the
+    answer went into a terminal that was not listening, and the question closed
+    anyway — the owner believing they had answered while the session sat exactly
+    where it was.
+    """
+
+
 @dataclass(frozen=True)
 class Question:
     task_id: str
@@ -93,12 +103,22 @@ def across(config: Config) -> List[Question]:
     return sorted(out, key=lambda q: (q.agent_id, q.at))
 
 
+#: How many times the answer is typed before the owner is told it did not land.
+MAX_TRIES = 3
+
+
 def answer(config: Config, agent: Agent, task: tsk.Task, question: str,
-           reply: str, *, runtime: Optional[Any] = None, now=time.time) -> None:
+           reply: str, *, runtime: Optional[Any] = None,
+           pane: Optional[Any] = None, now=time.time) -> None:
     """Deliver the owner's answer into the session, then close the question.
 
     In that order, and only in that order: closing first would record an answer
     that may never have arrived.
+
+    When a `pane` is given the delivery is **confirmed on screen** before the
+    question is closed, the same way the kickoff is — a session that is still
+    booting swallows what is typed at it, and a closed question is the owner
+    believing they answered.
     """
     from ai4science.harness.agents.sarsi import session as ses
 
@@ -120,14 +140,37 @@ def answer(config: Config, agent: Agent, task: tsk.Task, question: str,
             f"Start one with `sarsi run {agent.id} {task.id}` first.")
 
     # by_owner: their word goes through even while the worker holds the wheel.
-    ses.guide(config, agent, task,
-              f"The owner answers your question.\nYou asked: {matching[0].text}\n"
-              f"They say: {body}",
-              runtime=runtime, by_owner=True, now=now)
+    text_in = (f"The owner answers your question.\nYou asked: {matching[0].text}\n"
+               f"They say: {body}")
+    for attempt in range(MAX_TRIES if pane is not None else 1):
+        ses.guide(config, agent, task, text_in, runtime=runtime,
+                  by_owner=True, now=now)
+        if pane is None:
+            break                     # nothing to read; recorded as sent
+        try:
+            screen = pane.capture(task.session["name"]) or ""
+        except Exception:
+            screen = ""
+        if _landed(screen, body):
+            break
+    else:
+        raise NotDelivered(
+            f"the answer was typed {MAX_TRIES} times into "
+            f"{task.session['name']} and never appeared — the session is not "
+            f"listening yet (a booting session swallows input). The question "
+            f"stays open; try again once it is at its prompt.")
+
     ledger.append(config, "reports",
                   {"agent": agent.id, "task": task.id, "state": CLOSED,
                    "evidence": [f"Q: {matching[0].text}", f"A: {body[:300]}"]},
                   now=now)
+
+
+def _landed(screen: str, body: str) -> bool:
+    """Did the answer reach the screen? Matched on a distinctive fragment
+    rather than the whole text, which a narrow pane wraps."""
+    probe = body.strip().splitlines()[0][:40] if body.strip() else ""
+    return bool(probe) and probe in screen
 
 
 def _read(evidence: List[Any]) -> tuple:

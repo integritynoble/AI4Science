@@ -32,7 +32,7 @@ COMMANDS = ("/tasks", "/<task>", "/guided <task> <instruction>",
 
 
 def handle(config: Config, agent: Agent, text: str, *, surface: str,
-           runtime: Optional[Any] = None) -> str:
+           runtime: Optional[Any] = None, pane: Optional[Any] = None) -> str:
     body = (text or "").strip()
     if not body.startswith("/"):
         verb = _self_verb(body)
@@ -72,7 +72,7 @@ def handle(config: Config, agent: Agent, text: str, *, surface: str,
         found = _resolve(config, agent, token.strip())
         if isinstance(found, str):
             return found
-        return _answer(config, agent, found, tail.strip(), runtime)
+        return _answer(config, agent, found, tail.strip(), runtime, pane)
     if verb in ("guided", "interact", "resume", "history", "plan", "edit",
                 "stop", "archive", "reopen", "resume-task", "goal", "why"):
         token, _, tail = rest.partition(" ")
@@ -195,7 +195,8 @@ def _questions(config: Config, agent: Agent) -> str:
     return "\n".join(lines)
 
 
-def _answer(config: Config, agent: Agent, t: tsk.Task, tail: str, runtime) -> str:
+def _answer(config: Config, agent: Agent, t: tsk.Task, tail: str, runtime,
+            pane=None) -> str:
     """`/answer <task> <question> | <answer>`.
 
     The separator is explicit because a question and an answer are both free
@@ -208,8 +209,8 @@ def _answer(config: Config, agent: Agent, t: tsk.Task, tail: str, runtime) -> st
     question, _, reply = tail.partition("|")
     try:
         qst.answer(config, agent, t, question.strip(), reply.strip(),
-                   runtime=runtime)
-    except (qst.NotAsked, qst.NoSession) as e:
+                   runtime=runtime, pane=pane)
+    except (qst.NotAsked, qst.NoSession, qst.NotDelivered) as e:
         return str(e)
     return f"answered — {t.id} has been told, and the question is closed"
 
