@@ -296,6 +296,56 @@ propose a successor beside it; the owner accepts or discards. And editing a
 `Verified when:` line changes the standard the verifier applies — that is the
 point, not a side effect.
 
+### Asking for a task, and finding it again
+
+Two things the owner does constantly, and they are different acts:
+
+| | |
+|---|---|
+| **ask** | say what you want in a sentence; a task is created and planned |
+| **recall** | ask what tasks exist; get them back **with a link each** |
+
+**Recall is a read.** Listing tasks starts nothing, spends nothing and changes
+nothing — it answers *what is going on*, which is a question the owner should
+never have to pay for or think twice about asking.
+
+**Every task has a stable address.** Not "the second one in the list": a name
+that survives the listing being reprinted, that can be kept, pasted and come
+back to tomorrow. Handles that are positions are wrong the moment anything
+finishes, and a handle that means a different task than it did an hour ago is
+worse than no handle.
+
+**Following the link enters the task**, and entering a task means being in its
+`sarsi-claude` session's context — its plan, its phases, its verdicts, its
+evidence, and the modes that act on it.
+
+> **A link identifies; it does not authorise.** Entering a task still requires
+> being the owner. This matters more in the app, where a link is a URL and URLs
+> travel — but it is a property of the address itself and not of the transport,
+> so it holds here too: an address that granted access would make every list of
+> tasks a list of keys.
+
+**The machine agent can recall** — it is the front door, and *"what am I working
+on"* is a question about this machine. So can any worker, about its own tasks.
+Neither of them starts anything by answering.
+
+### One worker, several tasks
+
+A worker holds **several tasks at once**, concurrently, not a queue of one. Each
+has its own plan, its own session, its own evidence and its own verdict, and
+they do not share a context.
+
+| | |
+|---|---|
+| **why concurrent** | a task waits on a model, a test run, a gate. A worker that could hold one would spend most of its life blocked |
+| **the limit** | set per agent in its playbook, and a task over it is `waiting` **and says so** |
+| **what is shared between them** | the worker's `W_name` and its history. Nothing else — two tasks are two sessions, two plans, two records |
+
+> **A task over the limit says so, and that is the whole point of the state.** A
+> task that is simply not started looks identical to a task nothing is working
+> on, and the owner cannot tell which — so `waiting` carries the reason and the
+> limit that caused it.
+
 ## 9. How the workspaces talk to each other
 
 Every agent has its own workspace and its own history. They still need to share:
