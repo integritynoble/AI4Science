@@ -200,3 +200,45 @@ def test_a_drivable_agent_gets_no_attended_item(config):
     items = att.needs(config, agent, pane=Pane(GATE),
                       live=["work-abcd"]).items
     assert [i for i in items if i.kind == "attended"] == []
+
+
+# ── the bottom of a pane is not the interesting part ──────────────────
+
+REAL = """\
+⏺ bash
+  $ printf 'hello' > /home/grace/live-att/note.txt
+Do you want to proceed?
+  1. Yes
+  2. Yes, and don't ask again for bash this session
+  3. No, and tell the agent what to do differently (esc)
+Type a number (1-3) and press Enter ❯
+ ai4science · social   ⏎ send · ⌥⏎ newline · ↑ edit · /exit
+────────────────────────────────────────────────────────────────────────────────
+❯
+────────────────────────────────────────────────────────────────────────────────
+"""
+
+
+def test_the_question_survives_the_chrome(config, attended):
+    """Captured live. Keeping the last N lines kept the INPUT BOX — two rules,
+    a status bar and an empty prompt — and pushed "Do you want to proceed?" and
+    the command it is asking about off the top. The bottom of this pane is
+    furniture; the question sits above it."""
+    _, _, items = _attended(config, attended, REAL)
+    said = items[0].detail
+    assert "Do you want to proceed?" in said
+    assert "note.txt" in said
+
+
+def test_the_rules_and_the_empty_prompt_are_dropped(config, attended):
+    """Filtering decoration is not interpreting content — a line of box-drawing
+    characters says nothing, in any interface."""
+    _, _, items = _attended(config, attended, REAL)
+    assert "────" not in items[0].detail
+
+
+def test_a_screen_that_is_only_chrome_still_says_something(config, attended):
+    """Dropping every line must not turn a live idle session into "blank",
+    which reads as broken."""
+    _, _, items = _attended(config, attended, IDLE)
+    assert items and "blank" not in items[0].detail.lower()

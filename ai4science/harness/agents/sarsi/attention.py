@@ -320,6 +320,15 @@ def _attended(agent: Agent, task: tsk.Task, name: str, pane: Any) -> Item:
                 action=action)
 
 
+#: Furniture: a rule of box-drawing characters, or an empty input prompt. Seen
+#: live — keeping the last N lines of a real gate kept the INPUT BOX (two
+#: rules, a status bar, a bare `❯`) and pushed the question and the command it
+#: was asking about off the top. Dropping a line that is only box-drawing
+#: characters is filtering decoration, not interpreting content: it says
+#: nothing, in any interface.
+_CHROME = re.compile(r"^[\s─━═\-_|│┃┆┊]*$|^\s*❯\s*$")
+
+
 def _screen_tail(screen: str) -> str:
     """The last few lines that have anything on them, newest kept.
 
@@ -328,7 +337,7 @@ def _screen_tail(screen: str) -> str:
     the part worth reading.
     """
     lines = [line.rstrip() for line in (screen or "").splitlines()
-             if line.strip()]
+             if line.strip() and not _CHROME.match(line)]
     kept = lines[-_SCREEN_LINES:]
     while kept and len("\n".join(kept)) > _SCREEN_CHARS:
         kept.pop(0)
