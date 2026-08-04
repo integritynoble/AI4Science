@@ -989,3 +989,39 @@ def test_cli_rules_can_remove_one(isolated):
     runner.invoke(app, ["sarsi", "rules", "work", "--remove", "use python3"])
     result = runner.invoke(app, ["sarsi", "rules", "work"])
     assert "no house rules" in result.output.lower()
+
+
+def test_cli_digest_reports_across_the_fleet(isolated):
+    from ai4science.harness.agents.sarsi import ledger
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    config = reg.load()
+    ledger.append(config, "reports",
+                  {"agent": "social", "task": "tsk_1", "state": "verified",
+                   "ceiling": "A2", "evidence": ["done"]})
+    result = runner.invoke(app, ["sarsi", "digest"])
+    assert result.exit_code == 0
+    assert "social" in result.output and "1 verified" in result.output
+
+
+def test_cli_digest_reading_does_not_consume_it(isolated):
+    from ai4science.harness.agents.sarsi import ledger
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    config = reg.load()
+    ledger.append(config, "reports",
+                  {"agent": "social", "task": "tsk_1", "state": "verified",
+                   "ceiling": "A2", "evidence": ["done"]})
+    runner.invoke(app, ["sarsi", "digest"])
+    result = runner.invoke(app, ["sarsi", "digest"])
+    assert "1 verified" in result.output
+
+
+def test_cli_digest_deliver_moves_the_line(isolated):
+    from ai4science.harness.agents.sarsi import ledger
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    config = reg.load()
+    ledger.append(config, "reports",
+                  {"agent": "social", "task": "tsk_1", "state": "verified",
+                   "ceiling": "A2", "evidence": ["done"]})
+    runner.invoke(app, ["sarsi", "digest", "--agent", "social", "--deliver"])
+    result = runner.invoke(app, ["sarsi", "digest", "--agent", "social"])
+    assert "nothing happened" in result.output.lower()

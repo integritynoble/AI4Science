@@ -69,6 +69,7 @@ Each of these is live, tested, and exercised on the installed binary.
 | cursor per `(surface, account)` | Being *in* a task, so plain words are about that task. Stored on disk; the phone and the laptop stand in different places. |
 | `why` / `/why <task>` | **The goal, the criteria a verdict will apply, and what the last verdict said** — in one answer. Reports and never infers: no verdict says *not judged yet*, and it will not name a "current phase" (see below). |
 | `spend` | **What it cost** — tokens in/out, cached apart from fresh, and wall-clock — read from the session transcripts, not estimated. Unknown is reported as *not recorded*, never as 0, and PWM as *not charged here* rather than 0. |
+| `digest` | **One read across what an agent did**, instead of many — `social` and `abraham` asked for it in the roster. It reports what *happened* and **points at** what is still waiting rather than restating it, so one obligation keeps one home. The span is stated, not implied; a quiet period and an unreadable ledger are different answers. |
 | `decisions` | **What it decided without you, and at which rung.** Only the agent's own acts — the owner's guidance is not the agent deciding. An act recorded with no ceiling reads `unknown`, never `A2`. Reading does not acknowledge; `--ack` moves the line and `--all` still shows everything under it. |
 | `rules` | **House rules for this machine**, told to every session that agent starts — the host facts it would otherwise rediscover (`use python3 on this host`). They live in `W_host` and never travel; the **owner** writes them, because an agent that can write its own standing instructions can widen them. A rule may *name* a credential, never carry one. |
 | `ask` / `self model` | What the worker observes about itself. |
@@ -88,11 +89,25 @@ Each of these is live, tested, and exercised on the installed binary.
 
 ## Part 2 — Next, in order
 
-### 1. `digest`
+Everything the merged list named is built. What follows now comes from use, not
+from the original three documents — the next entries should be written the way
+the ones above were: named by the run that exposed them.
 
-§6's `DIG` — one daily read across tasks.
+Two already are, and both are consequences of finishing the list:
 
----
+### 1. Deliver the digest unprompted
+
+`social` and `abraham` asked for a daily read, and `digest --deliver` is still a
+command somebody types. The roster's `digest` flag names who should receive one
+without asking; a timer, or the gateway's poll, is what would make the flag mean
+what it says.
+
+### 2. Let an agent PROPOSE a house rule
+
+The owner writes house rules, deliberately — an agent that can write its own
+standing instructions can widen them. But the motivating case was an agent
+*learning* that `python3` is the right binary. The RSI playbook already has the
+shape for this: propose, hold, and take effect only when the owner signs.
 
 ## Part 3 — Deliberately later
 

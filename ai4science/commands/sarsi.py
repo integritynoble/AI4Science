@@ -409,6 +409,31 @@ def spend(agent_id: Optional[str] = typer.Option(None, "--agent",
         console.print(f"  {row.summary}", markup=False, highlight=False)
 
 
+@app.command("digest", help="One read across what an agent did — instead of many.")
+def digest_cmd(agent_id: Optional[str] = typer.Option(None, "--agent",
+                                                      help="Only this worker."),
+               deliver: bool = typer.Option(False, "--deliver",
+                                            help="Mark it read (needs --agent).")) -> None:
+    from ai4science.harness.agents.sarsi import digest as dg
+
+    config = _load()
+    if deliver and not agent_id:
+        console.print("[red]--deliver needs --agent[/red] — one agent at a time")
+        raise typer.Exit(code=2)
+
+    if agent_id:
+        agent = _worker_or_exit(config, agent_id)
+        got = dg.deliver(config, agent) if deliver else dg.compile(config, agent)
+        rows = [got]
+    else:
+        rows = dg.across(config)
+
+    for row in rows:
+        console.print(row.text, markup=False, highlight=False)
+    if deliver:
+        console.print("delivered — the next one starts from here", style="dim")
+
+
 @app.command("rules", help="House rules for this machine — told to every session.")
 def rules_cmd(agent_id: str = typer.Argument(..., help="Agent id, e.g. work"),
               add: Optional[str] = typer.Option(None, "--add",
