@@ -193,7 +193,7 @@ def assign(config: Config, agent: Agent, task: tsk.Task, *,
         task.kickoff_pending = planning_kickoff(config, agent, task)
         task = tsk._touch(agent, task, now)
     else:
-        task.kickoff_pending = kickoff(task, plan)
+        task.kickoff_pending = kickoff(task, plan, agent)
         task = tsk._touch(agent, task, now)
     ledger.append(config, "directives",
                   {"agent": agent.id, "task": task.id, "assigned": True,
@@ -472,7 +472,7 @@ def release(config: Config, agent: Agent, task: tsk.Task, *,
     if task.session:
         task.session["ceiling"] = raised
         task = tsk._touch(agent, task, now)
-    rt.send((task.session or {}).get("name", ""), kickoff(task, plan))
+    rt.send((task.session or {}).get("name", ""), kickoff(task, plan, agent))
     return task
 
 
@@ -490,6 +490,15 @@ def stop(config: Config, agent: Agent, task: tsk.Task, *,
     for it stopped; refusing to record that because the cleanup failed would
     leave the board lying in the other direction.
     """
+    # Written BEFORE the session is closed: once the terminal is gone the
+    # record is all there is, and this is the moment it is worth having.
+    try:
+        from ai4science.harness.agents.sarsi import handoff as _ho
+        _ho.write(config, agent, task)
+    except Exception:
+        pass                          # a handoff that cannot be written must
+                                      # not stop the task from stopping
+
     runtime = runtime or MachineRuntime()
     name = (task.session or {}).get("name")
     if name:
@@ -600,7 +609,8 @@ def guide(config: Config, agent: Agent, task: tsk.Task, instruction: str, *,
     return task
 
 
-def kickoff(task: tsk.Task, plan: Optional[pl.Plan]) -> str:
+def kickoff(task: tsk.Task, plan: Optional[pl.Plan],
+            agent: Optional[Agent] = None) -> str:
     """What the session is told first: the goal, its plan file, and the phase to
     work. Never the conversation that produced them."""
     lines = [f"Goal: {task.goal}"]
@@ -619,6 +629,15 @@ def kickoff(task: tsk.Task, plan: Optional[pl.Plan]) -> str:
             here = plan.phases[index]
             lines.append(f"Earliest incomplete phase: {here.title}")
             lines.append(f"Verified when: {here.verified_when}")
+    # An earlier session's handoff, when there is one. `agent` is needed to
+    # find the task folder; without it this simply says nothing rather than
+    # guessing at a path.
+    if agent is not None:
+        from ai4science.harness.agents.sarsi import handoff as _ho
+        if _ho.exists(agent, task):
+            lines.append("An earlier session ended here: read HANDOFF.md in "
+                         "this folder before starting. It says what was "
+                         "already verified — do not redo it.")
     lines.append("Report what you did with the evidence for it. "
                  "An independent verifier decides whether the goal is met.")
     return "\n".join(lines)

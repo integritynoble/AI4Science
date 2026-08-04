@@ -391,6 +391,18 @@ def spend(agent_id: Optional[str] = typer.Option(None, "--agent",
         console.print(f"  {row.summary}", markup=False, highlight=False)
 
 
+@app.command("handoff", help="Write HANDOFF.md for the next session, and show it.")
+def handoff_cmd(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
+                task_id: str = typer.Argument(..., help="Task id")) -> None:
+    from ai4science.harness.agents.sarsi import handoff as ho
+
+    config, agent, t = _load_task(agent_id, task_id)
+    path = ho.write(config, agent, t)
+    console.print(path.read_text(), markup=False, highlight=False)
+    console.print(f"\nwritten to {path}", style="dim", markup=False,
+                  highlight=False)
+
+
 @app.command("why", help="Why is it doing this: the goal, the criteria, and the last verdict.")
 def why(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
         task_id: str = typer.Argument(..., help="Task id")) -> None:

@@ -933,3 +933,11 @@ def test_cli_do_refuses_a_budget_of_zero(isolated):
     runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
     result = runner.invoke(app, ["sarsi", "do", "work", "x", "--steps", "0"])
     assert result.exit_code != 0
+
+
+def test_cli_handoff_writes_and_shows_it(isolated):
+    _config, _agent, t = _one_task("tidy the report folder")
+    result = runner.invoke(app, ["sarsi", "handoff", "work", t.id])
+    assert result.exit_code == 0
+    assert "tidy the report folder" in result.output
+    assert "HANDOFF.md" in result.output

@@ -49,6 +49,7 @@ Each of these is live, tested, and exercised on the installed binary.
 | `guide` / `/guided` | Steer by hand. The owner's word always goes through; the worker's stands down when the owner holds the wheel. |
 | `/interact` | Hands over the `tmux attach` line and stands back. **It does not relay.** |
 | `/history` | What has happened, from the record. |
+| `handoff` | **`HANDOFF.md` for the next session**, written automatically when a task stops. Names the phases already verified so they are not redone, the verifier's last objection, open questions and grants held. It records what the RECORD knows — never what the session believed. |
 | `check` | Ask the verifier: **PASS / FAIL / UNVERIFIED**, with a reason. The verdict is read from a verdict **line**, decoration and all (`**PASS**:`, `- FAIL:`), so prose containing the words is not a judgment and a bolded judgment is not discarded. **Gathers its own evidence** when none is given. A **stale plan is refused, not judged** — see decision 2. |
 | `blast` | **What it wrote, against the paths its plan declared.** Read from the session's own `Write`/`Edit` records. `Bash` names no file, so it is counted as *unchecked* and never reported as clean — "nothing escaped" and "nothing was left unobserved" are separate answers. |
 | `do --steps N --minutes M` | **A declared ceiling.** Past it the task *stops and keeps its plan* — it does not fail, because running out of budget says nothing about whether the work was right. Checked **before** the loop acts. Steps come from the transcript; unreadable means *not enforced*, never *over*. No default. |
@@ -84,23 +85,18 @@ Each of these is live, tested, and exercised on the installed binary.
 
 ## Part 2 — Next, in order
 
-### 1. `handoff`
-
-Writes `HANDOFF.md` before a context clear. The spec's layout names it; nothing
-writes it.
-
-### 2. Task dependencies
+### 1. Task dependencies
 
 `funding` drafting an application that needs `work`'s benchmark numbers is the
 obvious case. Without them the owner is the scheduler.
 
-### 3. A workspace fold
+### 2. A workspace fold
 
 History is bounded with the overflow counted, but never summarised — a long
 task's early context is dropped rather than compressed. Matters most during
 planning, which is exactly where it is worth keeping.
 
-### 4. Per-agent house rules
+### 3. Per-agent house rules
 
 A file each worker injects into every kickoff.
 
@@ -109,7 +105,7 @@ A file each worker injects into every kickoff.
 > again on every new session. *"Always use python3 on this host"* belongs in the
 > agent's host workspace, not in each session's trial and error.
 
-### 5. `digest`
+### 4. `digest`
 
 §6's `DIG` — one daily read across tasks.
 
