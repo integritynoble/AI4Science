@@ -238,10 +238,84 @@ def dude(argv=()) -> str:
 
 # ---------------------------------------------------------- not yet implemented
 
-def open_kbp(_argv=()) -> str:
-    raise NotImplementedError(
-        "open-kbp: the OpenKBP data is distributed through the challenge "
-        "repository's own downloader; wire it here before claiming real RT data")
+_KBP_RAW = ("https://raw.githubusercontent.com/ababier/open-kbp/master/"
+            "provided-data/%s/pt_%d/%s")
+#: 128^3, the OpenKBP grid.
+KBP_SHAPE = (128, 128, 128)
+KBP_STRUCTURES = ("PTV70", "PTV63", "PTV56", "Brainstem", "SpinalCord",
+                  "LeftParotid", "RightParotid", "Mandible")
+
+
+def _kbp_sparse(text, shape=KBP_SHAPE, dtype=float):
+    """OpenKBP ships each volume as (flat_index, value) pairs. A structure mask
+    has the value column empty — the index alone is the membership."""
+    import numpy as np
+    vol = np.zeros(int(np.prod(shape)), dtype)
+    for line in text.splitlines()[1:]:
+        if not line.strip():
+            continue
+        idx, _, val = line.partition(",")
+        try:
+            k = int(idx)
+        except ValueError:
+            continue
+        vol[k] = float(val) if val.strip() else 1.0
+    return vol.reshape(shape)
+
+
+def open_kbp(argv=()) -> str:
+    """Real head-and-neck plans: CT, clinical dose, targets and organs at risk.
+
+    The clinical dose is the answer key and never enters the sandbox, exactly as
+    the reconstruction ground truth does not elsewhere. A planner able to read
+    the delivered plan would be copying it, not planning."""
+    import numpy as np
+    c = _corpus.OPENKBP
+    d = c.dir()
+    d.mkdir(parents=True, exist_ok=True)
+    n = int(argv[0]) if argv else 12
+
+    kept, index = [], {}
+    for pid in range(1, n * 4):
+        if len(kept) >= n:
+            break
+        try:
+            vox = _get(_KBP_RAW % ("train-pats", pid, "voxel_dimensions.csv"), timeout=90)
+            ct = _kbp_sparse(_get(_KBP_RAW % ("train-pats", pid, "ct.csv"), timeout=240))
+            dose = _kbp_sparse(_get(_KBP_RAW % ("train-pats", pid, "dose.csv"), timeout=240))
+            mask = _kbp_sparse(_get(_KBP_RAW % ("train-pats", pid,
+                                                "possible_dose_mask.csv"), timeout=240))
+        except (urllib.error.URLError, urllib.error.HTTPError):
+            continue
+        structs = {}
+        for name in KBP_STRUCTURES:
+            try:
+                structs[name] = _kbp_sparse(
+                    _get(_KBP_RAW % ("train-pats", pid, name + ".csv"), timeout=120),
+                    dtype=np.uint8).astype(bool)
+            except (urllib.error.URLError, urllib.error.HTTPError):
+                structs[name] = np.zeros(KBP_SHAPE, bool)
+        if not structs["PTV70"].any() or float(dose.max()) <= 0:
+            continue
+        spacing = [float(x) for x in vox.split()]
+        np.savez_compressed(d / ("pt_%d.npz" % pid), ct=ct.astype(np.float32),
+                            dose=dose.astype(np.float32),
+                            possible=mask.astype(bool),
+                            spacing=np.array(spacing),
+                            **{k: v for k, v in structs.items()})
+        kept.append(pid)
+        index[str(pid)] = {"file": "pt_%d.npz" % pid,
+                           "structures": [k for k, v in structs.items() if v.any()],
+                           "dose_max": float(dose.max())}
+    if len(kept) < 4:
+        raise RuntimeError("only %d OpenKBP patients fetched" % len(kept))
+    (d / "index.json").write_text(json.dumps({"patients": index,
+                                              "shape": list(KBP_SHAPE)}))
+    _provenance(d, c, patients=kept, n=len(kept), shape=list(KBP_SHAPE),
+                structures=list(KBP_STRUCTURES),
+                note="the clinical dose is the answer key and is withheld from "
+                     "the sandbox")
+    return "%s: %d real head-and-neck plans -> %s" % (c.key, len(kept), d)
 
 
 def kvasir_capsule(_argv=()) -> str:
@@ -251,7 +325,96 @@ def kvasir_capsule(_argv=()) -> str:
         "AI4SCIENCE_DATA at it.")
 
 
-def ldct(_argv=()) -> str:
-    raise NotImplementedError(
-        "ldct: real thoracic CT with a simulated dose reduction; wire the TCIA "
-        "public-collection download here before claiming real CT data")
+_TCIA = "https://services.cancerimagingarchive.net/nbia-api/services/v1/%s"
+
+
+def _tcia(endpoint: str, **params) -> Any:
+    q = urllib.parse.urlencode(params)
+    return json.loads(_get("%s?%s" % (_TCIA % endpoint, q), timeout=180))
+
+
+def ldct(argv=()) -> str:
+    """Real paired full-dose and low-dose CT from TCIA.
+
+    No dose simulation: this collection ships the *same patient* reconstructed
+    at full dose and at reduced dose, which is the thing a simulated reduction
+    is only ever an approximation of. The full-dose reconstruction is the answer
+    key and never enters the sandbox.
+
+    Lesion masks are not part of the collection, so detectability is measured on
+    an inserted low-contrast signal — standard practice for task-based image
+    quality, and labelled as inserted rather than passed off as pathology."""
+    import numpy as np
+    import pydicom
+
+    c = _corpus.LDCT
+    d = c.dir()
+    d.mkdir(parents=True, exist_ok=True)
+    want = int(argv[0]) if argv else 4          # patients
+    per_pat = 3                                 # slices each
+
+    patients = _tcia("getPatient", Collection="LDCT-and-Projection-data")
+    pairs, meta = [], []
+    for p in patients:
+        if len(pairs) >= want:
+            break
+        pid = p.get("PatientId") or p.get("PatientID")
+        try:
+            series = _tcia("getSeries", Collection="LDCT-and-Projection-data",
+                           PatientID=pid)
+        except Exception:
+            continue
+        by = {}
+        for s_ in series:
+            desc = (s_.get("SeriesDescription") or "").lower()
+            # Reconstructed images only. The projection series are raw sinograms
+            # and are two orders of magnitude larger.
+            if "images" not in desc:
+                continue
+            if "full" in desc:
+                by["full"] = s_
+            elif "low" in desc:
+                by["low"] = s_
+        if "full" not in by or "low" not in by:
+            continue
+        try:
+            vols = {}
+            for kind, s_ in by.items():
+                raw = _get(_TCIA % "getImage" + "?" + urllib.parse.urlencode(
+                    {"SeriesInstanceUID": s_["SeriesInstanceUID"]}),
+                    timeout=900, binary=True)
+                import zipfile
+                zf = zipfile.ZipFile(io.BytesIO(raw))
+                names = sorted(zf.namelist())
+                mid = len(names) // 2
+                take = names[mid - per_pat // 2: mid - per_pat // 2 + per_pat]
+                sl = []
+                for nm in take:
+                    ds = pydicom.dcmread(io.BytesIO(zf.read(nm)))
+                    arr = ds.pixel_array.astype(np.float32)
+                    slope = float(getattr(ds, "RescaleSlope", 1) or 1)
+                    inter = float(getattr(ds, "RescaleIntercept", 0) or 0)
+                    sl.append(arr * slope + inter)          # Hounsfield units
+                vols[kind] = np.stack(sl)
+        except Exception as e:
+            meta.append({"patient": pid, "skipped": str(e)[:120]})
+            continue
+        if vols["full"].shape != vols["low"].shape:
+            continue
+        pairs.append((pid, vols["full"], vols["low"]))
+        meta.append({"patient": pid, "slices": int(vols["full"].shape[0]),
+                     "shape": list(vols["full"].shape[1:])})
+
+    if len(pairs) < 2:
+        raise RuntimeError("only %d paired patients fetched from TCIA" % len(pairs))
+    np.savez_compressed(d / "volumes.npz",
+                        **{("full_%s" % pid): f for pid, f, _ in pairs},
+                        **{("low_%s" % pid): l for pid, _, l in pairs})
+    (d / "metadata.json").write_text(json.dumps(
+        {"patients": [p for p, _, _ in pairs], "units": "HU", "detail": meta}))
+    _provenance(d, c, patients=[p for p, _, _ in pairs],
+                note="paired full-dose and low-dose reconstructions of the same "
+                     "patient; no dose simulation. Lesions are inserted for "
+                     "task-based assessment and are labelled as inserted.")
+    return ("%s: %d patients, real paired full/low dose → %s"
+            % (c.key, len(pairs), d))

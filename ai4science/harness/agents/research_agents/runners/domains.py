@@ -132,34 +132,74 @@ LDCT = DomainBenchmark(
 # -------------------------------------------------------- medical physics
 
 def _score_medphys(seed_ws: Path, run_ws: Path) -> Dict[str, float]:
-    import json
-    target = np.load(seed_ws / "data" / "target.npy")
-    oar = np.load(seed_ws / "data" / "oar.npy")
-    proto = json.loads((seed_ws / "data" / "protocol.json").read_text())
+    """Real DVH statistics, per structure, on the slice the plan was made for.
+
+    The clinical dose is loaded here — outside the sandbox — purely to report
+    how the candidate compares with what the patient actually received. It is
+    context for a physicist, never a target the planner could optimise toward."""
+    import json as _json
+    proto = _json.loads((seed_ws / "data" / "protocol.json").read_text())
     dose = np.load(run_ws / "results" / "dose.npy")
-    return {"target_D95": float(np.percentile(dose[target], 5)),
-            "target_D95_min": float(proto["target_D95_min"]),
-            "oar_Dmax": float(dose[oar].max()),
-            "oar_Dmax_limit": float(proto["oar_Dmax"]),
-            "oar_Dmean": float(dose[oar].mean()),
-            "oar_Dmean_limit": float(proto["oar_Dmean"]),
-            "hot_spot": float(dose.max()),
-            "hot_spot_limit": float(proto["hot_spot_max"])}
+    k = int(np.load(run_ws / "results" / "slice_index.npy")[0])
+    clinical = np.load(seed_ws / "data" / "clinical_dose.npy")[:, :, k]
+
+    out: Dict[str, float] = {}
+    for name, rule in proto.items():
+        f = seed_ws / "data" / ("%s.npy" % name)
+        if not f.exists():
+            continue
+        m = np.load(f)[:, :, k]
+        if not m.any():
+            continue
+        d = dose[m]
+        if "D99_min" in rule:
+            out["%s_D99" % name] = float(np.percentile(d, 1))
+            out["%s_D99_min" % name] = float(rule["D99_min"])
+        if "Dmax" in rule:
+            out["%s_Dmax" % name] = float(d.max())
+            out["%s_Dmax_limit" % name] = float(rule["Dmax"])
+        if "Dmean" in rule:
+            out["%s_Dmean" % name] = float(d.mean())
+            out["%s_Dmean_limit" % name] = float(rule["Dmean"])
+    out["clinical_PTV70_D99"] = float(np.percentile(
+        clinical[np.load(seed_ws / "data" / "PTV70.npy")[:, :, k]], 1))
+    out["hot_spot"] = float(dose.max())
+    out["hot_spot_limit"] = float(proto["PTV70"]["prescription"] * 1.15)
+    return out
 
 
 def _judge_medphys(m: Dict[str, float]) -> Verdict:
-    """Per constraint, and the headline is the max — the tail is the clinical
-    event, and a mean would hide exactly the failure this field cares about."""
-    checks = (("target D95", m["target_D95"] >= m["target_D95_min"],
-               "%.4g vs ≥ %.4g Gy" % (m["target_D95"], m["target_D95_min"])),
-              ("OAR Dmax", m["oar_Dmax"] <= m["oar_Dmax_limit"],
-               "%.4g vs ≤ %.4g Gy" % (m["oar_Dmax"], m["oar_Dmax_limit"])),
-              ("OAR Dmean", m["oar_Dmean"] <= m["oar_Dmean_limit"],
-               "%.4g vs ≤ %.4g Gy" % (m["oar_Dmean"], m["oar_Dmean_limit"])),
-              ("hot spot", m["hot_spot"] <= m["hot_spot_limit"],
-               "%.4g vs ≤ %.4g Gy" % (m["hot_spot"], m["hot_spot_limit"])))
+    """Every constraint, one at a time, with the max as the headline.
+
+    A mean would hide the tail, and in this field the tail is the clinical
+    event. An aggregate score across structures would let a good parotid pay
+    for a cord overdose, which is not a trade anyone is allowed to make."""
+    checks = []
+    for key in sorted(m):
+        if key.endswith("_D99"):
+            n = key[:-4]
+            lim = m.get("%s_D99_min" % n)
+            if lim is not None:
+                checks.append(("%s D99" % n, m[key] >= lim,
+                               "%.4g vs >= %.4g Gy" % (m[key], lim)))
+        elif key.endswith("_Dmax") and not key.startswith("clinical"):
+            n = key[:-5]
+            lim = m.get("%s_Dmax_limit" % n)
+            if lim is not None:
+                checks.append(("%s Dmax" % n, m[key] <= lim,
+                               "%.4g vs <= %.4g Gy" % (m[key], lim)))
+        elif key.endswith("_Dmean"):
+            n = key[:-6]
+            lim = m.get("%s_Dmean_limit" % n)
+            if lim is not None:
+                checks.append(("%s Dmean" % n, m[key] <= lim,
+                               "%.4g vs <= %.4g Gy" % (m[key], lim)))
+    checks.append(("hot spot", m["hot_spot"] <= m["hot_spot_limit"],
+                   "%.4g vs <= %.4g Gy" % (m["hot_spot"], m["hot_spot_limit"])))
     reasons = ["%s %s — %s" % (n, "met" if ok else "VIOLATED", d)
                for n, ok, d in checks]
+    reasons.append("the delivered clinical plan reached PTV70 D99 = %.4g Gy on "
+                   "this slice, for comparison only" % m.get("clinical_PTV70_D99", float("nan")))
     reasons.append("this is a plan CANDIDATE; a qualified medical physicist "
                    "signs anything that reaches a patient")
     return Verdict(all(ok for _, ok, _ in checks), tuple(reasons), m)
@@ -170,11 +210,13 @@ MEDPHYS = DomainBenchmark(
     goal="produce a plan candidate meeting every protocol constraint",
     package="medphys",
     deliverables=("results/dose.npy", "results/plan_candidate.json"),
-    answer_key=(),      # the protocol IS given; what is withheld is approval
-    score=_score_medphys, judge=_judge_medphys,
-    criteria=("target D95 ≥ the prescribed minimum",
-              "OAR Dmax and Dmean within protocol",
-              "no hot spot above the limit",
+    # The clinical dose is what the patient actually received. A planner that
+    # could read it would copy it, so it stays outside the sandbox.
+    answer_key=("data/clinical_dose.npy",),
+    score=_score_medphys, judge=_judge_medphys, corpus="open-kbp",
+    criteria=("each PTV reaches D99 ≥ 95% of its prescription",
+              "brainstem ≤ 54 Gy, cord ≤ 45 Gy, parotid mean ≤ 26 Gy, mandible ≤ 70 Gy",
+              "no hot spot above 115% of the primary prescription",
               "output is a candidate; a physicist signs"),
 )
 

@@ -1,42 +1,61 @@
-"""A phantom with a target and an organ at risk, and the protocol it must meet."""
-import argparse, json, os
+"""A real head-and-neck case from OpenKBP: CT, contours, and a clinical plan.
+
+The clinical dose is the answer key. It is what the patient was actually
+treated with, it is the thing a planner is trying to match, and a planner that
+could read it would be copying rather than planning — so it never enters the
+sandbox, exactly like the reconstruction ground truth elsewhere.
+
+The protocol is the real one for head and neck: prescription doses to three
+target volumes, and the standard organ-at-risk limits (brainstem 54 Gy, cord
+45 Gy, parotid mean 26 Gy, mandible 70 Gy). Those are clinical decisions made
+by people accountable for them, and nothing in this system may relax one.
+"""
+import argparse, json, os, sys
 import numpy as np
 
-N = 64
+# Real head-and-neck constraints. Input, never tunable.
+PROTOCOL = {
+    "PTV70": {"prescription": 70.0, "D99_min": 66.5},
+    "PTV63": {"prescription": 63.0, "D99_min": 59.9},
+    "PTV56": {"prescription": 56.0, "D99_min": 53.2},
+    "Brainstem": {"Dmax": 54.0},
+    "SpinalCord": {"Dmax": 45.0},
+    "LeftParotid": {"Dmean": 26.0},
+    "RightParotid": {"Dmean": 26.0},
+    "Mandible": {"Dmax": 70.0},
+}
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--workspace", default="."); ap.add_argument("--seed", type=int, default=42)
     a = ap.parse_args()
-    rng = np.random.default_rng(a.seed)
-    os.makedirs(os.path.join(a.workspace, "data"), exist_ok=True)
-    y, x = np.mgrid[0:N, 0:N]
-    target = ((x - 0.42*N)**2 + (y - 0.50*N)**2) <= (0.13*N)**2
-    # The organ sits beside the target with a real gap between them. At
-    # 0.66N its edge touched the target's, and no beam arrangement can spare an
-    # organ it must pass through — the plan then fails for a reason that is
-    # about the phantom, not the planner. Widening the gap is a benchmark fix;
-    # relaxing the protocol to make a plan pass would be the thing this whole
-    # design refuses.
-    oar = ((x - 0.78*N)**2 / (0.09*N)**2 + (y - 0.50*N)**2 / (0.22*N)**2) <= 1
-    np.save(os.path.join(a.workspace, "data", "target.npy"), target)
-    np.save(os.path.join(a.workspace, "data", "oar.npy"), oar)
-    np.save(os.path.join(a.workspace, "data", "density.npy"),
-            np.clip(rng.normal(1.0, 0.03, (N, N)), 0.8, 1.2))
-    # The clinical protocol. Input, never a tunable: an agent that could relax a
-    # constraint could make any plan pass, and the passing plan is delivered.
-    # Calibrated to achievable dosimetry for this phantom and beam model, the
-    # way a clinical protocol is derived — from what competent planning
-    # actually reaches, with a margin. Set tighter than any planner can hit and
-    # the benchmark fails everything, which cannot tell a good method from a
-    # bad one; set looser and an unmodulated plan sails through. The property
-    # that matters is checked in the tests: modulated passes, naive fails.
-    protocol = {"prescription": 60.0, "target_D95_min": 57.0,
-                "oar_Dmax": 50.0, "oar_Dmean": 33.0, "hot_spot_max": 78.0}
-    with open(os.path.join(a.workspace, "data", "protocol.json"), "w") as f:
-        json.dump(protocol, f)
-    print(json.dumps({"n": N, "seed": a.seed, **protocol}))
+    sys.path.insert(0, os.environ.get("AI4SCIENCE_PKG", ""))
+    from ai4science.harness.agents.research_agents.runners import corpus
+    root = corpus.OPENKBP.require()
+    index = json.loads(open(os.path.join(root, "index.json")).read())
+
+    # One patient, chosen by the seed: a different seed is a different case,
+    # which is what makes a seed set here mean something.
+    pids = sorted(index["patients"])
+    pid = pids[a.seed % len(pids)]
+    z = np.load(os.path.join(root, index["patients"][pid]["file"]))
+
+    d = os.path.join(a.workspace, "data")
+    os.makedirs(d, exist_ok=True)
+    np.save(os.path.join(d, "ct.npy"), z["ct"])
+    np.save(os.path.join(d, "possible.npy"), z["possible"])
+    np.save(os.path.join(d, "spacing.npy"), z["spacing"])
+    present = []
+    for name in PROTOCOL:
+        if name in z.files and z[name].any():
+            np.save(os.path.join(d, "%s.npy" % name), z[name])
+            present.append(name)
+    np.save(os.path.join(d, "clinical_dose.npy"), z["dose"])      # withheld
+    with open(os.path.join(d, "protocol.json"), "w") as f:
+        json.dump({k: v for k, v in PROTOCOL.items() if k in present}, f)
+    print(json.dumps({"patient": pid, "structures": present,
+                      "shape": list(z["ct"].shape), "real": True}))
 
 
 if __name__ == "__main__":

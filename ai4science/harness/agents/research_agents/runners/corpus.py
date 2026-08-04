@@ -128,11 +128,10 @@ KVASIR_CAPSULE = Corpus(
 
 LDCT = Corpus(
     key="ldct",
-    title="Low-dose CT — real thoracic anatomy with a simulated dose reduction",
+    title="LDCT — real paired full-dose and low-dose reconstructions",
     required=("volumes.npz", "metadata.json"),
-    source="TCIA public collections (see fetch); the Mayo/AAPM paired set "
-           "requires TCIA restricted access and a signed agreement",
-    licence="TCIA public collections are CC BY 3.0; Mayo LDCT is restricted",
+    source="TCIA — LDCT-and-Projection-data, the paired Mayo/AAPM collection",
+    licence="TCIA data usage policy",
     fetch=FETCH % "ldct",
     approx_size="~200 MB for the slice subset used here",
 )
