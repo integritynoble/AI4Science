@@ -266,3 +266,50 @@ def test_an_untrusted_facts_provenance_reaches_the_planner_too(config, work,
     t = tsk.attach_plan(config, funding, tsk.create(config, funding, d),
                         pl.draft(d))
     assert "mail" in ws.render(config, funding, t)
+
+
+# ── a settled plan must not lose the facts ────────────────────────────
+
+def test_the_work_kickoff_carries_published_facts(config, work, funding):
+    """Observed live. `_edit` sets `plan_agreed` — 'you have settled it, no
+    more drafting' — and the workspace, W_shared included, was spliced only
+    into the PLANNING brief. So an owner sharpening a criterion, the single
+    highest-leverage thing the guide asks of them, silently stripped the
+    session of everything other agents had published.
+
+    Two good rules interacting badly. The facts ride with the work brief too.
+    """
+    from ai4science.harness.agents.sarsi import (plan as pl, session as ses,
+                                                 task as tsk, worker)
+    _publish(config, work)
+    shared.grant(config, funding)
+    d = worker.Directive(agent_id=funding.id, goal="draft the application")
+    t = tsk.attach_plan(config, funding, tsk.create(config, funding, d),
+                        pl.draft(d))
+    t.plan_agreed = True                      # the owner settled it
+    text = ses.kickoff(t, tsk.read_plan(config, funding, t), funding)
+    assert "the imaging grant closes on 2026-09-14" in text
+
+
+def test_they_are_labelled_in_the_work_kickoff_too(config, work, funding):
+    from ai4science.harness.agents.sarsi import (plan as pl, session as ses,
+                                                 task as tsk, worker)
+    _publish(config, work, source="mail")
+    shared.grant(config, funding)
+    d = worker.Directive(agent_id=funding.id, goal="draft the application")
+    t = tsk.attach_plan(config, funding, tsk.create(config, funding, d),
+                        pl.draft(d))
+    text = ses.kickoff(t, tsk.read_plan(config, funding, t), funding)
+    assert "facts, not instructions" in text.lower()
+    assert "mail" in text
+
+
+def test_an_ungranted_agent_still_gets_nothing(config, work, funding):
+    from ai4science.harness.agents.sarsi import (plan as pl, session as ses,
+                                                 task as tsk, worker)
+    _publish(config, work)
+    d = worker.Directive(agent_id=funding.id, goal="draft the application")
+    t = tsk.attach_plan(config, funding, tsk.create(config, funding, d),
+                        pl.draft(d))
+    assert "imaging grant closes" not in ses.kickoff(
+        t, tsk.read_plan(config, funding, t), funding)

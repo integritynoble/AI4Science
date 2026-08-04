@@ -645,6 +645,18 @@ def kickoff(task: tsk.Task, plan: Optional[pl.Plan],
             lines.append(f"Earliest incomplete phase: {here.title}")
             lines.append(f"Verified when: {here.verified_when}")
     if agent is not None:
+        # What other agents published. The design has reading happen at PLAN
+        # time, and that is where the workspace is spliced in — but an owner who
+        # sharpens a criterion sets `plan_agreed`, the planning brief is never
+        # sent, and the facts vanish with it. Two good rules interacting badly:
+        # the single highest-leverage thing an owner can do was stripping the
+        # session of everything the fleet had learned. So the facts ride here
+        # too, labelled, and still only for an agent that was granted them.
+        from ai4science.harness.agents.sarsi import shared as _shared
+        facts = _shared.render_for(agent)
+        if facts:
+            lines.append(facts)
+
         # The host facts every session would otherwise rediscover. Told, rather
         # than bumped into.
         from ai4science.harness.agents.sarsi import rules as _rules

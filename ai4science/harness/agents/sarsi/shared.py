@@ -233,6 +233,22 @@ def render(config: Config, agent: Agent, *, limit: int = 6) -> str:
     return "\n".join(lines)
 
 
+class _Root:
+    """Just the state root, for callers that have an agent and no `Config`.
+
+    `Agent.root` and `Config.root` are the same directory — the registry hands
+    both the same value — so everything here needs is that path.
+    """
+
+    def __init__(self, root):
+        self.root = root
+
+
+def render_for(agent: Agent, *, limit: int = 6) -> str:
+    """`render`, from the agent alone. `kickoff` has no `Config` to pass."""
+    return render(_Root(agent.root), agent, limit=limit)
+
+
 def _write_json(target: Path, payload: Dict[str, Any]) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(payload, indent=2) + "\n")
