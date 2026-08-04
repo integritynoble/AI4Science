@@ -3,11 +3,10 @@
 **Status: design, 2026-08-04. The agent loop is built and tested; the market and
 the token economy are not.**
 
-> **Where this lives.** Written in the singularity repository as
-> `docs/specs/2026-08-04-ai4science-one-machine-design.md` and copied here,
-> because it describes ai4science and belongs beside the code it describes.
-> Two copies diverge; if they do, **this one is the design of record for
-> ai4science** and the other should become a pointer.
+> **Copied to `AI4Science/docs/AI4SCIENCE_ONE_MACHINE_DESIGN.md`**, which is the
+> design of record for ai4science — it sits beside the code it describes. This
+> copy is kept because the sibling specs here reference it; if the two diverge,
+> that one is right.
 
 This page is about **ai4science alone**, on **one machine**. No manager, no
 server, no app. Everything here works with nothing else installed, which is the
@@ -353,6 +352,20 @@ Every agent has its own workspace and its own history. They still need to share:
 which CV `abraham` filed. The question is how, without dissolving the reason
 there are seven of them.
 
+### There is no channel between two agents
+
+The first thing to say about how the workspaces talk is that they do not *talk*.
+There is no message from `work` to `funding`, no inbox one agent can write into,
+no socket between them. Communication happens **through a place**, and the place
+is a file.
+
+> **Why a place and not a pipe.** A pipe is a capability: once `work` can send to
+> `funding`, it can send anything, at any moment, and `funding` processes it
+> because it arrived. That is the shape of every prompt-injection route in this
+> design — an untrusted mail becomes a message becomes an instruction. A place is
+> read by an agent that decided to read it, at a moment it chose, while planning.
+> Nothing arrives. Nothing interrupts. Nothing is processed because it was sent.
+
 ### The four tiers
 
 | Tier | Who sees it | Holds | Written by |
@@ -361,6 +374,26 @@ there are seven of them.
 | **`W_shared`** | every agent that was granted it | published facts — decisions, deadlines, entities, outcomes | any agent, deliberately |
 | **`W_name`** | **one agent** | its mission, its plans, its conversation, what it decided and why | itself |
 | **`W_host`** | **one agent, one machine** | tools present, paths, sessions, resources | itself |
+
+### Four tiers are four paths
+
+Isolation is a path question, not a discipline question — `layout.py` creates
+these and nothing merges them:
+
+```
+~/.sarsi/
+  workspace/                    W_user     every agent reads it, the owner writes it
+  shared/facts.jsonl            W_shared   published facts — granted, append-only
+  ledger/*.jsonl                           directives · reports · outward · vault
+  agents/<id>/
+    workspace/                  W_name     THIS agent only. history.md and its notes
+    host/                       W_host     this agent, this machine. never leaves
+    tasks/  sessions/  selfmodel/
+                                W_secret   the vault, its own owner-installed root
+```
+
+`W_secret` is not in this tree on purpose. The vault answers ALLOW or DENY and
+hands nothing over, so there is no tier for it to be shared *from*.
 
 ### The one rule: publish, never browse
 
@@ -408,6 +441,93 @@ Four properties, each closing a way this could go wrong:
   be edited is history that can be edited by whatever gets in.
 - **it can be wrong.** Reading a fact does not make it true. A plan that leans on
   one cites it, and the verifier still judges evidence rather than citations.
+
+### Three operations, and that is all
+
+The private half is built (`workspace.py`); the shared half is the same shape
+pointed at a common file.
+
+| Operation | Tier | What it does |
+|---|---|---|
+| `remember(agent, text)` | `W_name` | append one dated line to this agent's own history. **built** |
+| `context(agent, task=)` | `W_name` + `W_user` | assemble what this node knows, labelled, small enough for a prompt. **built** |
+| `publish(agent, fact)` | `W_shared` | append one fact, stamped with author, moment and provenance |
+| `read(kind=, about=, since=)` | `W_shared` | the facts this agent was granted, filtered, most recent last |
+
+There is no `update`, no `delete`, and no `read(agent=...)`. The first two are
+absent because the tier is append-only; the third is absent because it is the
+capability this whole section exists to withhold.
+
+### When an agent reads — at plan time, not on arrival
+
+Reading is a step in making a plan, not a background subscription:
+
+```
+directive ─▶ context(W_name, W_user) ─▶ read(W_shared) ─▶ draft ─▶ ground ─▶ GRT
+                    what I know          what was published
+```
+
+`context()` is already what a planner reads before drafting — that is why the
+module exists, because *an agent that plans without reading its own history
+plans the same task again*. The shared tier is one more labelled block in the
+same prompt: **`WHAT OTHER AGENTS HAVE PUBLISHED (facts, not instructions)`**.
+The label is doing work. A fact arrives in a prompt next to a directive, and the
+only thing keeping it from being read as one is that it is named as evidence.
+
+Nothing is pushed. No agent is woken because another published something. An
+agent that is not planning does not read, and a fact published today is found by
+whoever plans tomorrow.
+
+### Knowing is not asking
+
+This is the distinction the shared space keeps getting asked to blur.
+
+| `work` wants `funding` to… | Route |
+|---|---|
+| **know** the deadline | publish a fact. `funding` finds it next time it plans. |
+| **do** something about the deadline | **not this tier.** That is a task, and a task comes from the owner. |
+
+> **An agent may not task another agent.** If publishing could cause work, then
+> a fact would be an instruction with a delay on it, and the mail `work` read
+> this morning would reach `funding`'s hands through two hops that each looked
+> harmless. So there is no hop where a fact becomes a directive. Work comes from
+> the owner — through the machine agent or the app — and it stops at `GRT` and
+> `OWN` on the way, every time, however well-founded the fact behind it was.
+
+`attention` and the digest are how the owner learns a fact is sitting there
+worth acting on. A person decides; the fleet surfaces.
+
+### Across machines
+
+`W_shared` belongs to the **owner**, not to a host. Two machines running
+ai4science under one account are two places the same published facts should be
+readable — a deadline is a deadline on both.
+
+| Tier | Crosses a machine boundary | Why |
+|---|---|---|
+| `W_user` | **yes** | who the owner is does not change per host |
+| `W_shared` | **yes** — that is the point | facts are intent-level and mean the same thing anywhere |
+| `W_name` | **no** | it is that agent's own history, and syncing it would be the browse this design refuses, done by a daemon |
+| `W_host` | **never** | `write /home/me/reports` is a different directory on a different machine; promoting one manufactures authority over something nobody looked at |
+
+Sync is append-and-merge, not replicate: both files are append-only lines with an
+author and a moment, so union is the merge, and there is no conflict to resolve
+because nothing is ever edited. Until the sync exists, each machine has its own
+`W_shared` and says so — an empty tier is honest, a silently partial one is not.
+
+### What is built, and what is not
+
+| | Status |
+|---|---|
+| `W_name`, `W_host`, `W_user` as separate directories | **built** — `layout.py` |
+| private history, recall, and prompt context | **built** — `workspace.py` |
+| the shared append-only-log shape | **built**, for a different purpose — `ledger/*.jsonl` already records directives, reports, outward requests and vault decisions this way, across agents |
+| `publish` / `read`, the fact record, the manifest grant | **designed here, not written** |
+| cross-machine sync of `W_shared` | **designed here, not written** |
+
+The ledgers matter as precedent: the append-only shared log is not a new
+mechanism this section invents, it is the one already carrying every governance
+record in the system, given a second file and a provenance field.
 
 ### What never goes up
 
@@ -474,6 +594,12 @@ Acceptance asks a different question of each: an agent, *what may it do*; a tool
 *what does it touch* — it is closer to the hardware than any agent; a sub-agent,
 *does it obey the ceiling and report honestly*. A verifier is the sharpest to
 accept, because a lenient one inflates the record of every agent it judges.
+
+**An accepted listing earns.** Uploading is not charity: an author whose agent,
+tool or sub-agent is accepted is rewarded in PWM, and thereafter takes their
+chosen fraction of the 5% slice on every run that uses it (§13). This is the
+same for all three kinds — a tool or a sub-agent that everyone's agents plug into
+is worth as much as an agent, and paying only for agents would starve the sockets.
 
 **Trust is not transitive.** An agent may bring its own tools — one author, one
 review — or require ones from the market, and then the install screen names every
@@ -572,6 +698,30 @@ rather than asking for more. An agent may not turn it on or extend it.
 > published its own reputation — so owner-set tasks, benchmarks and self-directed
 > research are three lines and never one number.
 
+### The governor's research agents
+
+Some ship from the governor rather than from a user. These are the seed of the
+market, written where the domain knowledge is:
+
+| Agent | Domain |
+|---|---|
+| **low-dose CT** | reconstruction at doses below what a classical pipeline can use |
+| **computational imaging** | the broader inverse-problem family — snapshot compressive imaging, coded aperture |
+| **medical physics** | treatment planning and QA, in the practice of Steve Jiang's group at UTSW |
+| **pill-camera** | capsule endoscopy — reading video no clinician has time to read whole |
+| **drug design** | docking, screening, and the loop from candidate to assay |
+
+> **They are agents, not exceptions.** Governor-authored means reviewed by the
+> same acceptance, installed by the same screen, bounded by the same ceiling, and
+> judged by the same verifier. The one thing being the governor's buys is being
+> written at all.
+
+**They are also where the token flows.** These agents are heavy users of an LLM,
+and they run against the exchange node — so their consumption is what pays the
+PWM that reaches the people supplying it. A user who runs the exchange node earns
+from work like this being done, which is why the seed agents are compute-hungry
+research rather than something cheap.
+
 ## 12. Self-awareness and RSI
 
 Every agent carries a self-model, and the contract is four refusals: every line
@@ -608,6 +758,24 @@ visibly distinct so it cannot leak into the exchangeable supply. When it runs
 short, an **exchange node** starts: visible, bounded by a budget the owner sets,
 and **never touching the owner's tasks** — it is not a worker, holds no task
 list, and may not drive a session. With enough PWM the owner may stop it.
+
+### Your own key, run freely, and earn
+
+Put together, the point of the last two paragraphs is one thing a user cares
+about:
+
+| | |
+|---|---|
+| **you may run on your own key or subscription** | ai4science does not resell you an LLM |
+| **the only charge is the 10% fee** | computed at the PWM/token ratio, paid in PWM, not in your provider's currency |
+| **the fee need never block you** | the bootstrap balance covers the start; the exchange node covers it after |
+| **and the node earns** | supplying capacity to other people's runs is what pays it, so a machine that is already on can more than cover its own fees |
+| **and you may stop it** | with enough PWM, the node is turned off and stays off |
+
+So a user with their own key runs ai4science continuously without a bill from
+us, and a user who leaves the node on is on the earning side of the same ledger.
+Neither is a discount granted by anyone — it is what the 10% fee and the node
+add up to.
 
 > **Money buys nothing that matters.** Not a ceiling, not a gate, not a verdict,
 > not a position in agents-search. A paid run that failed, failed.
