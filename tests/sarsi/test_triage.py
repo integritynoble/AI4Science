@@ -175,3 +175,30 @@ def test_purpose_outranks_a_tool_it_merely_holds(config):
     """A tool is a capability; a purpose is what it is there to do."""
     got = triage.suggest(config, "book the dentist appointment")
     assert got.best.agent_id == "abraham"
+
+
+def test_one_shared_word_is_not_precedent(config):
+    """Live: "post the thread about the CASSI results" routed to `work`,
+    because an old verified task shared the single word "cassi". One noun in
+    common is a coincidence, and it outranked what `social` is actually for."""
+    _verified(config, "work", "reconstruct the CASSI cube with GAP-TV")
+    got = triage.suggest(config, "post the thread about the CASSI results")
+    assert got.best and got.best.agent_id == "social"
+
+
+def test_two_shared_words_still_count_as_precedent(config):
+    _verified(config, "jobs", "draft the qupath segmentation writeup")
+    got = triage.suggest(config, "draft the qupath segmentation writeup")
+    assert got.best.agent_id == "jobs"
+
+
+def test_a_registry_written_before_about_existed_still_routes(tmp_path):
+    """Live on grace: an older `sarsi.json` has no `about`, so every purpose
+    match was lost and 'book the dentist appointment' routed nowhere. The
+    `spec` field had this exact gap, and this is the same fix."""
+    raw = reg.default_config(owner_id="1")
+    for entry in raw["agents"]["list"]:
+        entry.pop("about", None)
+    c = reg.parse(raw, root=tmp_path)
+    assert triage.suggest(c, "book the dentist appointment").best.agent_id == \
+        "abraham"

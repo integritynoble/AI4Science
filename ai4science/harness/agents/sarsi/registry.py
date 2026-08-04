@@ -211,7 +211,10 @@ def _agent_from(entry: Dict[str, Any], defaults: Dict[str, Any], root: Path) -> 
         # A registry written before `spec` existed carries none. Falling back
         # to a flat default would silently unbind every agent — and the table
         # would print `claude-code` seven times and look like it was working.
-        about=list(pick("about", []) or []),
+        # A registry written before `about` existed carries none, and every
+        # purpose match is then lost — `spec` had this same gap, and this is
+        # the same fix: consult the roster rather than defaulting to empty.
+        about=list(pick("about", _ROSTER_ABOUT.get(agent_id, [])) or []),
         spec=str(pick("spec", _ROSTER_SPECS.get(agent_id, "claude-code"))),
         root=root,
     )
@@ -273,6 +276,9 @@ _ROSTER = [
 #: id -> spec, so an entry that names no spec still binds to the agent it was
 #: designed on rather than to a flat default.
 _ROSTER_SPECS = {a["id"]: a["spec"] for a in _ROSTER}
+#: id -> what it is for, for the same reason: an older registry must not lose
+#: the routing evidence just because it was written before the field existed.
+_ROSTER_ABOUT = {a["id"]: list(a.get("about") or []) for a in _ROSTER}
 
 
 def default_config(owner_id: str = "", bot_tokens: Optional[Dict[str, str]] = None) -> Dict[str, Any]:

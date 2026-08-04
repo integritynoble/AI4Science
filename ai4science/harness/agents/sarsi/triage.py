@@ -42,6 +42,12 @@ BY_ABOUT = 4
 BY_TOOL = 3
 BY_NAME = 1
 
+#: How many meaningful words a past task must share before it counts as
+#: precedent. ONE is a coincidence: live, "post the thread about the CASSI
+#: results" routed to `work` because an old verified task also said "cassi",
+#: and that outranked what `social` is actually for.
+PRECEDENT_OVERLAP = 2
+
 #: Words too common to distinguish one worker from another.
 _STOP = {"the", "a", "an", "and", "or", "to", "for", "of", "in", "on", "with",
          "my", "our", "this", "that", "it", "is", "be", "do", "run", "make",
@@ -143,7 +149,7 @@ def _precedent(config: Config, agent, words: set):
         if task.state != tsk.VERIFIED and \
                 str((task.verdict or {}).get("state") or "").upper() != "PASS":
             continue
-        if _words(task.goal) & words:
+        if len(_words(task.goal) & words) >= PRECEDENT_OVERLAP:
             if best is None or task.updated_at > best.updated_at:
                 best = task
     return best
