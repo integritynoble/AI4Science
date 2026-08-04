@@ -941,3 +941,26 @@ def test_cli_handoff_writes_and_shows_it(isolated):
     assert result.exit_code == 0
     assert "tidy the report folder" in result.output
     assert "HANDOFF.md" in result.output
+
+
+def test_cli_do_can_declare_a_dependency(isolated):
+    from ai4science.harness.agents.sarsi import task as tsk
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    runner.invoke(app, ["sarsi", "do", "work", "produce the numbers"])
+    config = reg.load()
+    first = tsk.all_of(config, config.agents["work"])[0]
+    result = runner.invoke(app, ["sarsi", "do", "funding", "use the numbers",
+                                 "--after", f"work/{first.id}"])
+    assert result.exit_code == 0
+    assert first.id in result.output
+    second = tsk.all_of(reg.load(), reg.load().agents["funding"])[0]
+    assert second.state != tsk.RUNNING
+
+
+def test_cli_do_refuses_a_dependency_that_does_not_exist(isolated):
+    """A task waiting forever on nothing must say so while you are looking."""
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    result = runner.invoke(app, ["sarsi", "do", "funding", "x",
+                                 "--after", "work/tsk_nothing"])
+    assert result.exit_code != 0
+    assert "tsk_nothing" in result.output

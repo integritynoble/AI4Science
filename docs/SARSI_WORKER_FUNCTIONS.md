@@ -52,6 +52,7 @@ Each of these is live, tested, and exercised on the installed binary.
 | `handoff` | **`HANDOFF.md` for the next session**, written automatically when a task stops. Names the phases already verified so they are not redone, the verifier's last objection, open questions and grants held. It records what the RECORD knows — never what the session believed. |
 | `check` | Ask the verifier: **PASS / FAIL / UNVERIFIED**, with a reason. The verdict is read from a verdict **line**, decoration and all (`**PASS**:`, `- FAIL:`), so prose containing the words is not a judgment and a bolded judgment is not discarded. **Gathers its own evidence** when none is given. A **stale plan is refused, not judged** — see decision 2. |
 | `blast` | **What it wrote, against the paths its plan declared.** Read from the session's own `Write`/`Edit` records. `Bash` names no file, so it is counted as *unchecked* and never reported as clean — "nothing escaped" and "nothing was left unobserved" are separate answers. |
+| `do --after <agent>/<task>` | **One task waits on another, across agents.** Satisfied means **verified** — not stopped, not archived, because closing a task is not succeeding. An unknown dependency and a cycle are both refused at declaration, since a task that can never run must say so while you are still looking. It never auto-starts what it unblocks. |
 | `do --steps N --minutes M` | **A declared ceiling.** Past it the task *stops and keeps its plan* — it does not fail, because running out of budget says nothing about whether the work was right. Checked **before** the loop acts. Steps come from the transcript; unreadable means *not enforced*, never *over*. No default. |
 | `do --workdir <dir>` | Declare **where the work happens**. Evidence is gathered from there instead of the task folder — declared, never inferred, so a criterion naming a path cannot move the boundary. A path outside it is reported as outside, never read and never silently dropped. |
 | `check --phase N` | Judge **one phase against its own criterion**. A phase is done when a verdict says so about *that* phase; the task is verified only when every phase is. Editing a criterion clears that phase's verdict; moving the goal clears all of them. |
@@ -85,18 +86,13 @@ Each of these is live, tested, and exercised on the installed binary.
 
 ## Part 2 — Next, in order
 
-### 1. Task dependencies
-
-`funding` drafting an application that needs `work`'s benchmark numbers is the
-obvious case. Without them the owner is the scheduler.
-
-### 2. A workspace fold
+### 1. A workspace fold
 
 History is bounded with the overflow counted, but never summarised — a long
 task's early context is dropped rather than compressed. Matters most during
 planning, which is exactly where it is worth keeping.
 
-### 3. Per-agent house rules
+### 2. Per-agent house rules
 
 A file each worker injects into every kickoff.
 
@@ -105,7 +101,7 @@ A file each worker injects into every kickoff.
 > again on every new session. *"Always use python3 on this host"* belongs in the
 > agent's host workspace, not in each session's trial and error.
 
-### 4. `digest`
+### 3. `digest`
 
 §6's `DIG` — one daily read across tasks.
 

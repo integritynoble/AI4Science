@@ -112,7 +112,9 @@ def do(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
        steps: Optional[int] = typer.Option(None, "--steps",
                                            help="Stop after this many steps (no default)."),
        minutes: Optional[int] = typer.Option(None, "--minutes",
-                                             help="Stop after this many minutes (no default).")) -> None:
+                                             help="Stop after this many minutes (no default)."),
+       after: List[str] = typer.Option(None, "--after",
+                                       help="Wait until <agent>/<task> is VERIFIED (repeatable).")) -> None:
     from pathlib import Path
 
     from ai4science.harness.agents.sarsi import worker
@@ -161,11 +163,26 @@ def do(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
 
     from ai4science.harness.agents.sarsi import plan as pl, task as tsk
 
+    waits = []
+    if after:
+        from ai4science.harness.agents.sarsi import depends as _dep
+        try:
+            waits = _dep.check(config, agent, list(after))
+        except (_dep.Unknown, _dep.Cycle) as e:
+            # Refused HERE, not at start: a task that can never run must say so
+            # while somebody is still looking at it.
+            console.print(f"[red]{e}[/red]")
+            raise typer.Exit(code=2)
+
     draft = pl.draft(directive)
+    if waits:
+        from dataclasses import replace as _replace2
+        draft = _replace2(draft, depends_on=waits)
     if root or steps or minutes:
         from dataclasses import replace as _replace
         draft = _replace(draft, work_root=root or draft.work_root,
-                         max_steps=steps, max_minutes=minutes)
+                         max_steps=steps, max_minutes=minutes,
+                         depends_on=draft.depends_on)
     t = tsk.attach_plan(config, agent, tsk.create(config, agent, directive), draft)
     t = tsk.start(config, agent, t)
     console.print(f"{agent_id} holds {t.id} — {t.state}", markup=False, highlight=False)
@@ -186,7 +203,8 @@ def do(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
         console.print(f"grant it with: ai4science sarsi grant {agent_id} {t.id} "
                       f"\"{t.awaiting[0]}\"", style="dim", markup=False, highlight=False)
     elif t.blocked_by:
-        console.print(f"not started — {t.blocked_by}", style="yellow")
+        console.print(f"not started — {t.blocked_by}", style="yellow",
+                      markup=False, highlight=False)
 
 
 @app.command("tasks", help="Every task this worker holds, and what each is waiting for.")

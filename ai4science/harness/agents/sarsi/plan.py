@@ -29,6 +29,8 @@ WORK_ROOT_PREFIX = "Working directory:"
 MAY_TOUCH_PREFIX = "May also touch:"
 #: a declared ceiling — "Budget: 40 steps, 30 minutes". Absent means none.
 BUDGET_PREFIX = "Budget:"
+#: another task this one waits on — `<agent>/<task>`, one per line
+DEPENDS_PREFIX = "Depends on:"
 _PHASE_RE = re.compile(r"^##\s+Phase\s+\d+\s+—\s+(?P<title>.+?)\s*$", re.M)
 
 
@@ -88,6 +90,8 @@ class Plan:
     #: default, because one either kills legitimate long work or never fires.
     max_steps: Optional[int] = None
     max_minutes: Optional[int] = None
+    #: tasks that must be VERIFIED before this one starts
+    depends_on: Sequence[str] = field(default_factory=tuple)
 
     def __post_init__(self) -> None:
         if not self.phases:
@@ -95,6 +99,7 @@ class Plan:
         object.__setattr__(self, "phases", tuple(self.phases))
         object.__setattr__(self, "permissions", tuple(self.permissions))
         object.__setattr__(self, "may_touch", tuple(self.may_touch))
+        object.__setattr__(self, "depends_on", tuple(self.depends_on))
         object.__setattr__(self, "constraints", tuple(self.constraints))
 
     # ── what the verifier is given ────────────────────────────────────
@@ -118,6 +123,10 @@ class Plan:
         for path in self.may_touch:
             out += [f"{MAY_TOUCH_PREFIX} {path}"]
         if self.may_touch:
+            out.append("")
+        for ref in self.depends_on:
+            out += [f"{DEPENDS_PREFIX} {ref}"]
+        if self.depends_on:
             out.append("")
         if self.max_steps or self.max_minutes:
             parts = ([f"{self.max_steps} steps"] if self.max_steps else []) + \
@@ -235,6 +244,7 @@ def parse(text: str) -> Plan:
     may_touch: List[str] = []
     max_steps: Optional[int] = None
     max_minutes: Optional[int] = None
+    depends_on: List[str] = []
     for line in lines:
         stripped = line.strip()
         if work_root is None and stripped.lower().startswith(WORK_ROOT_PREFIX.lower()):
@@ -245,6 +255,10 @@ def parse(text: str) -> Plan:
                 may_touch.append(extra)
         elif stripped.lower().startswith(BUDGET_PREFIX.lower()):
             max_steps, max_minutes = _budget(stripped.split(":", 1)[1])
+        elif stripped.lower().startswith(DEPENDS_PREFIX.lower()):
+            ref = stripped.split(":", 1)[1].strip()
+            if ref:
+                depends_on.append(ref)
 
     phases: List[Phase] = []
     permissions: List[str] = []
@@ -306,7 +320,7 @@ def parse(text: str) -> Plan:
     return Plan(goal=goal, phases=phases, permissions=permissions,
                 constraints=constraints, work_root=work_root,
                 may_touch=may_touch, max_steps=max_steps,
-                max_minutes=max_minutes)
+                max_minutes=max_minutes, depends_on=depends_on)
 
 
 _NEGATIVE = re.compile(r"^(no|none|not|never|nothing)\b", re.I)

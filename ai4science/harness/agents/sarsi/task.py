@@ -90,6 +90,8 @@ class Task:
     #: a stopped or archived task cost — the live record is cleared on stop,
     #: and the working directory it names is where the transcript lives.
     past_sessions: List[Dict[str, Any]] = field(default_factory=list)
+    #: Tasks that must be VERIFIED before this one starts — `<agent>/<task>`.
+    depends_on: List[str] = field(default_factory=list)
     #: Declared ceilings from the plan's `Budget:` line. None means no budget.
     max_steps: Optional[int] = None
     max_minutes: Optional[int] = None
@@ -245,6 +247,7 @@ def attach_plan(config: Config, agent: Agent, task: Task, plan: pl.Plan, *,
     task.work_root = plan.work_root
     task.may_touch = list(plan.may_touch)
     task.max_steps, task.max_minutes = plan.max_steps, plan.max_minutes
+    task.depends_on = list(plan.depends_on)
     task.awaiting = [p for p in plan.permissions if p not in task.grants]
     # asking here is the point of the plan step: the worst moment to request a
     # permission is halfway through unattended work
@@ -265,6 +268,7 @@ def adopt_plan(config: Config, agent: Agent, task: Task, plan: pl.Plan, *,
     task.work_root = plan.work_root
     task.may_touch = list(plan.may_touch)
     task.max_steps, task.max_minutes = plan.max_steps, plan.max_minutes
+    task.depends_on = list(plan.depends_on)
     task.awaiting = [p for p in plan.permissions if p not in task.grants]
     task.state = AWAITING_GRANT if task.awaiting else READY
     task.plan_agreed = True           # the session has had its say
@@ -308,6 +312,15 @@ def start(config: Config, agent: Agent, task: Task, *, now=time.time) -> Task:
         return _touch(agent, task, now)
     if task.state not in (READY, OFF):
         return task
+    if task.depends_on:
+        from ai4science.harness.agents.sarsi import depends as _dep
+        waiting = _dep.satisfied(config, agent, task)
+        if waiting:
+            # Not a queue: it stays ready and says WHAT it waits on, so the
+            # board never shows it as though it were working.
+            task.state = READY
+            task.blocked_by = "waiting on " + ", ".join(waiting)
+            return _touch(agent, task, now)
     if _active_count(config, agent, exclude=task.id) >= max(1, _concurrency(config, agent)):
         # not a queue: it stays ready and says why, so the board never shows it
         # as though it were working
