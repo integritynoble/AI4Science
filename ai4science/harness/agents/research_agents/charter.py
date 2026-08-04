@@ -53,8 +53,19 @@ class Charter:
     #: Beyond FORBIDDEN — domain-specific things this agent must not touch, e.g.
     #: the forward model for imaging, the clinical constraint set for RT.
     also_never: Tuple[str, ...] = ()
-    #: Flat refusals, in the agent's own words, shown to the owner and to review.
+    #: **Binding** refusals: methodological or safety constraints that hold for
+    #: anyone doing this kind of work. These travel — an agent working in a
+    #: subfield another agent covers takes on that agent's refusals too.
     refusals: Tuple[str, ...] = ()
+    #: **Scope** statements: where this agent's job ends. These do NOT travel,
+    #: and the distinction is not cosmetic. `imaging` says "it reconstructs; it
+    #: does not interpret what is in the scene" — a statement about its own role.
+    #: Propagated to `pill-camera`, whose entire purpose is interpreting capsule
+    #: frames, it would forbid the specialist's core function. A refusal that is
+    #: right for one agent and absurd for its neighbour is a scope note, and the
+    #: test for which one you have is: would applying it to another agent in this
+    #: subfield ever be wrong? If yes, it is scope.
+    scope: Tuple[str, ...] = ()
     #: Neighbouring subfields whose methods should be tried here (the transfer
     #: surface). Empty is allowed and means nobody has looked.
     transfer_from: Tuple[str, ...] = ()
@@ -158,4 +169,7 @@ class Charter:
         if self.refusals:
             L.append("")
             L += ["refuses: " + r for r in self.refusals]
+        if self.scope:
+            L.append("")
+            L += ["not its job: " + r for r in self.scope]
         return "\n".join(L)

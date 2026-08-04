@@ -130,6 +130,47 @@ either, and the refusal names where it came from. This is enforced in
 `coverage.py` and audited in a test: a non-empty audit is a design error, not a
 runtime condition.
 
+### Peers, not just generalists
+
+`drug-design` and `cancer` overlap too, and neither is inside the other:
+designing against an oncology target is both fields at once, and so is asking
+what a delivered dose did to a patient (`cancer` and `medical-physics`). So the
+arrangement is a **graph, not a hierarchy**, and two rules follow.
+
+**Every shared subfield has exactly one owner**, and the owner takes the work:
+
+| Subfield | Owned by | Also covered by |
+|---|---|---|
+| `drug-response`, `resistance` | **cancer** | drug-design |
+| `target-id`, `clinical-translation` | **drug-design** | cancer |
+| `outcome-modelling` | **medical-physics** | cancer |
+| `low-dose`, `sparse-view`, `photon-counting` | **low-dose-ct** | imaging |
+| `imaging-physics` | **medical-physics** | imaging |
+| `lesion-detection`, `video-reduction` | **pill-camera** | imaging |
+
+A subfield two agents cover and nobody owns routes by a coin toss dressed as a
+decision, so the audit refuses to let that ship — and where a tie is genuinely
+unavoidable the assignment says so rather than presenting an arbitrary pick as a
+principled one.
+
+**Inheritance is symmetric.** An earlier version of this took refusals only from
+*narrower* agents, which is right for a generalist and its specialist and wrong
+for two peers: whichever happened to list more subfields would escape the
+other's refusals, which is an arbitrary basis for a clinical gate. So a binding
+refusal travels to **anyone** working in a subfield its author covers.
+`drug-design` doing oncology work carries *never advises a patient*; `cancer`
+doing molecule work carries *does not optimise for harm*.
+
+> **Not every refusal travels, and the exception matters.** `imaging` says *"it
+> reconstructs; it does not interpret what is in the scene"* — a statement about
+> its own role. Handed to `pill-camera`, whose entire purpose is interpreting
+> capsule frames, it would forbid the specialist's core function. So a charter
+> separates **binding** refusals, which are methodological or safety constraints
+> that hold for anyone doing the work, from **scope** notes, which say where one
+> agent's job ends. Binding travels; scope does not. The test for which you have:
+> *would applying it to another agent in this subfield ever be wrong?* If yes, it
+> is scope.
+
 ## 5. The self-model, and its four refusals
 
 Each agent carries a self-model — what it is for, what it can do, and **what it

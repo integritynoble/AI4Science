@@ -71,7 +71,8 @@ def _computational_imaging() -> ResearchAgent:
                    # coverage.py; this list is what makes the inheritance apply.
                    "low-dose", "sparse-view", "photon-counting",
                    "imaging-physics", "lesion-detection", "video-reduction"),
-        may_improve=("method", "plan", "own_parameters"),
+                owns=("optics-design", "mri", "single-pixel", "sci-cassi", "lensless", "ptychography", "holography", "light-field", "time-of-flight", "event", "interferometric", "photoacoustic"),
+may_improve=("method", "plan", "own_parameters"),
         includes=("low-dose-ct", "medical-physics", "pill-camera"),
         # The forward operator is the measurement's physics. An agent that can
         # change it can improve any number by describing a different experiment.
@@ -82,8 +83,14 @@ def _computational_imaging() -> ResearchAgent:
             "a reconstruction that beats the state of the art while its "
             "forward-model residual worsens is a pipeline bug, not a result",
             "a simulation-only gain is labelled simulation-only in the headline",
-            "it reconstructs; it does not interpret what is in the scene",
-            "on a subfield a narrower agent owns — CT, imaging physics, capsule — it works under that agent's refusals as well as its own, whether or not that agent is installed",
+        ),
+        scope=(
+            "it reconstructs; it does not interpret what is in the scene — a "
+            "boundary of its own role, not a rule for the specialists whose job "
+            "interpreting is",
+            "on a subfield another agent covers — CT, imaging physics, capsule — "
+            "it works under that agent's binding refusals as well as its own, "
+            "whether or not that agent is installed",
         ),
         transfer_from=("mri", "ct", "sci-cassi", "microscopy", "novel-view-synthesis"),
         autonomous_work=("reproduce a published architecture into the common table",
@@ -148,7 +155,8 @@ def _low_dose_ct() -> ResearchAgent:
         subfields=("low-dose", "sparse-view", "limited-angle", "interior",
                    "photon-counting", "dual-energy", "metal-artefact", "motion-4d",
                    "cone-beam", "dose-estimation", "task-based-iq", "reader-studies"),
-        may_improve=("method", "plan", "own_parameters"),
+                owns=("low-dose", "sparse-view", "limited-angle", "interior", "photon-counting", "dual-energy", "metal-artefact", "motion-4d", "cone-beam", "dose-estimation", "task-based-iq", "reader-studies"),
+may_improve=("method", "plan", "own_parameters"),
         also_never=("forward_model", "dose_equivalence_framework", "observer_model",
                     "leaderboard"),
         refusals=(
@@ -220,7 +228,8 @@ def _medical_physics() -> ResearchAgent:
                    "adaptive-rt", "image-guidance", "particle-therapy", "flash",
                    "brachytherapy", "dosimetry-qa", "radiobiology", "imaging-physics",
                    "incident-learning", "outcome-modelling"),
-        may_improve=("method", "plan", "own_parameters"),
+                owns=("treatment-planning", "dose-calculation", "auto-segmentation", "adaptive-rt", "image-guidance", "particle-therapy", "flash", "brachytherapy", "dosimetry-qa", "radiobiology", "imaging-physics", "incident-learning", "outcome-modelling"),
+may_improve=("method", "plan", "own_parameters"),
         also_never=("clinical_constraints", "protocol", "acceptance_criteria",
                     "approval_state"),
         refusals=(
@@ -291,7 +300,8 @@ def _pill_camera() -> ResearchAgent:
                    "lesion-detection", "rare-class", "video-reduction",
                    "temporal-modelling", "quality-completeness", "cross-vendor",
                    "physics-informed", "clinical-validation"),
-        may_improve=("method", "plan", "own_parameters"),
+                owns=("capsule-hardware", "localisation", "active-locomotion", "lesion-detection", "rare-class", "video-reduction", "temporal-modelling", "quality-completeness", "cross-vendor", "physics-informed", "clinical-validation"),
+may_improve=("method", "plan", "own_parameters"),
         also_never=("split", "seed_set", "statistical_test", "correction"),
         refusals=(
             "seed variance is not an improvement — the honest effects in this "
@@ -365,7 +375,15 @@ def _drug_design() -> ResearchAgent:
         subfields=("target-id", "structure-prediction", "binding-site", "docking",
                    "free-energy", "molecular-dynamics", "generative-chemistry",
                    "lead-optimisation", "admet", "retrosynthesis", "del-screening",
-                   "biologics", "closed-loop", "clinical-translation"),
+                   "biologics", "closed-loop", "clinical-translation",
+                   # Shared with cancer: designing against an oncology target is
+                   # both fields at once, and each carries the other's refusals.
+                   "drug-response", "resistance"),
+        owns=("target-id", "structure-prediction", "binding-site", "docking",
+              "free-energy", "molecular-dynamics", "generative-chemistry",
+              "lead-optimisation", "admet", "retrosynthesis", "del-screening",
+              "biologics", "closed-loop", "clinical-translation"),
+        includes=("cancer",),
         may_improve=("method", "plan", "own_parameters"),
         also_never=("actives_decoys_set", "split", "hit_criteria"),
         refusals=(
@@ -440,7 +458,18 @@ def _cancer() -> ResearchAgent:
                    "single-cell-spatial", "tumour-evolution", "immuno-oncology",
                    "liquid-biopsy", "digital-pathology", "radiomics",
                    "drug-response", "prognostic-modelling", "trials",
-                   "real-world-evidence"),
+                   "real-world-evidence",
+                   # Shared: with drug-design where an oncology target is being
+                   # designed against, and with medical-physics where the
+                   # question is what the delivered dose did to the patient.
+                   "resistance", "target-id", "outcome-modelling",
+                   "clinical-translation"),
+        owns=("genomics", "variant-interpretation", "multi-omics",
+              "single-cell-spatial", "tumour-evolution", "immuno-oncology",
+              "liquid-biopsy", "digital-pathology", "radiomics",
+              "drug-response", "prognostic-modelling", "trials",
+              "real-world-evidence", "resistance"),
+        includes=("drug-design",),
         may_improve=("method", "plan", "own_parameters"),
         also_never=("tiering_guidelines", "validation_cohort", "adjudicated_matches",
                     "patient_record"),

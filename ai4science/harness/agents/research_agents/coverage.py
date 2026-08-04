@@ -50,6 +50,14 @@ class Assignment:
     specificity: int          # smaller field = more specific = wins
     because: str
     inherited_from: Tuple[str, ...] = ()
+    #: Other agents that were equally good candidates. Non-empty means the pick
+    #: was deterministic rather than principled, and the caller should say which
+    #: agent it meant.
+    tied_with: Tuple[str, ...] = ()
+
+    @property
+    def ambiguous(self) -> bool:
+        return bool(self.tied_with)
 
     def __str__(self) -> str:
         tail = ("  (carrying %s's refusals)" % ", ".join(self.inherited_from)
@@ -90,31 +98,55 @@ class Coverage:
             raise NoAgentForWork(
                 "nothing installed covers %r — installed: %s"
                 % (subfield, ", ".join(self.installed()) or "nothing"))
-        pool.sort(key=lambda c: (len(c.subfields), c.name))
-        winner = pool[0]
-        why = ("the only agent covering it" if len(pool) == 1 else
-               "the most specific of %d covering it (%s)"
-               % (len(pool), ", ".join(sorted(c.name for c in pool))))
+        owners = [c for c in pool if c.owns_subfield(subfield)]
+        if len(owners) == 1:
+            winner, why = owners[0], (
+                "it owns this subfield" if len(pool) == 1 else
+                "it owns this subfield; %s also covers it"
+                % ", ".join(sorted(c.name for c in pool if c is not owners[0])))
+            tied = ()
+        else:
+            # Nobody owns it, or two agents both claim it. Fall back to the
+            # narrower field, and report the tie rather than hiding it: an
+            # arbitrary pick presented as a decision is worse than an arbitrary
+            # pick presented as arbitrary.
+            candidates = owners or pool
+            candidates.sort(key=lambda c: (len(c.subfields), c.name))
+            winner = candidates[0]
+            close = [c.name for c in candidates
+                     if len(c.subfields) == len(winner.subfields)]
+            tied = tuple(sorted(n for n in close if n != winner.name))
+            why = ("the only agent covering it" if len(pool) == 1 else
+                   "the most specific of %d covering it (%s)"
+                   % (len(pool), ", ".join(sorted(c.name for c in pool))))
+            if tied:
+                why += " — tied with %s, picked deterministically; name the "\
+                       "agent you want if it matters" % ", ".join(tied)
         return Assignment(agent=winner.name, subfield=subfield,
                           specificity=len(winner.subfields), because=why,
+                          tied_with=tied,
                           inherited_from=tuple(
                               sorted(c.name for c in self._refusal_sources(winner, subfield))))
 
     # -------------------------------------------------------------- refusals
 
     def _refusal_sources(self, doer: Charter, subfield: str) -> List[Charter]:
-        """Charters whose refusals apply to `doer` doing work in `subfield`.
+        """Charters whose refusals apply to `doer` doing work in `subfield`:
+        **every** other agent that covers it.
 
-        Looked up from the *known* charters rather than the installed ones,
-        because the whole point is that uninstalling a specialist must not
-        loosen anything. `KNOWN` below is the full six."""
-        out = []
-        for c in KNOWN.values():
-            if c.name == doer.name:
-                continue
-            if c.covers(subfield) and len(c.subfields) < len(doer.subfields):
-                out.append(c)
-        return out
+        Symmetric on purpose. An earlier version inherited only from *narrower*
+        agents, which is right for a generalist and its specialist and wrong for
+        two peers. `cancer` and `drug-design` both cover drug response and
+        neither is inside the other — but cancer's *never advises a patient* has
+        to bind drug-design doing oncology work, and drug-design's *does not
+        optimise for harm* has to bind cancer doing molecule work. Under a
+        size rule, whichever happened to list more subfields would escape the
+        other's refusals, which is an arbitrary basis for a clinical gate.
+
+        Read from the *known* charters rather than the installed ones, because
+        the point is that uninstalling an agent must never loosen anything."""
+        return [c for c in KNOWN.values()
+                if c.name != doer.name and c.covers(subfield)]
 
     def refusals_for(self, agent: str, subfield: str) -> Tuple[str, ...]:
         """Every refusal that binds `agent` doing work in `subfield` — its own,
@@ -163,14 +195,18 @@ class Coverage:
         problems = []
         for c in self.charters.values():
             for sub in c.subfields:
-                for src in self._refusal_sources(c, sub):
-                    missing = set(src.never_touch) - set(c.never_touch)
-                    if missing and src.name not in c.includes:
-                        problems.append(
-                            "%s covers %r, which %s owns, but neither includes it "
-                            "nor forbids %s" % (c.name, sub, src.name,
-                                                sorted(missing)))
-        return problems
+                covering = [x for x in self._refusal_sources(c, sub)]
+                owners = [x for x in covering if x.owns_subfield(sub)]
+                if c.owns_subfield(sub) and owners:
+                    problems.append(
+                        "%r is owned by more than one agent: %s"
+                        % (sub, ", ".join(sorted([c.name] + [o.name for o in owners]))))
+                if covering and not c.owns_subfield(sub) and not owners:
+                    problems.append(
+                        "%r is covered by %s and owned by nobody — routing will "
+                        "be a deterministic guess"
+                        % (sub, ", ".join(sorted([c.name] + [x.name for x in covering]))))
+        return sorted(set(problems))
 
     def report(self) -> str:
         L = ["installed: %s" % ", ".join(self.installed()), ""]

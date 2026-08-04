@@ -337,11 +337,20 @@ def test_a_generalist_on_capsule_work_carries_the_seed_rule():
     assert any("seed variance is not an improvement" in r for r in rs)
 
 
-def test_the_specialist_keeps_its_own_refusals_undiluted():
-    cov = _coverage("imaging", "pill-camera")
-    rs = cov.refusals_for("pill-camera", "lesion-detection")
-    assert any("seed variance" in r for r in rs)
-    assert not any(r.startswith("[") for r in rs), "a specialist inherits from nobody"
+def test_a_scope_statement_does_not_travel_but_a_binding_refusal_does():
+    """imaging says it does not interpret a scene — a boundary of its own role.
+    Handed to pill-camera, whose whole purpose is interpreting capsule frames, it
+    would forbid the specialist's core function. Binding refusals travel; scope
+    statements do not, and the split is what makes symmetric inheritance safe."""
+    rs = _coverage("imaging", "pill-camera").refusals_for("pill-camera",
+                                                          "lesion-detection")
+    assert any("seed variance" in r for r in rs), "its own, undiluted"
+    assert not any("does not interpret" in r for r in rs), "scope did not travel"
+    assert any(r.startswith("[imaging]") for r in rs), "binding ones did"
+
+
+def test_a_scope_note_is_still_shown_to_the_owner():
+    assert "not its job:" in build("imaging").charter.describe()
 
 
 def test_the_arrangement_audits_clean():
@@ -354,3 +363,63 @@ def test_nothing_installed_for_a_subfield_says_so():
     from ai4science.harness.agents.research_agents.coverage import NoAgentForWork
     with pytest.raises(NoAgentForWork):
         _coverage("cancer").route("ptychography")
+
+
+# ------------------------------------------------------- peers, not hierarchies
+
+def test_cancer_and_drug_design_stand_alone_and_overlap():
+    assert _coverage("cancer").route("genomics").agent == "cancer"
+    assert _coverage("drug-design").route("docking").agent == "drug-design"
+    both = _coverage("cancer", "drug-design")
+    assert both.route("drug-response").agent == "cancer"        # cancer owns it
+    assert both.route("target-id").agent == "drug-design"       # drug-design owns it
+
+
+def test_peers_inherit_each_others_refusals_in_both_directions():
+    """The reason inheritance cannot be based on which field is smaller. Neither
+    of these is inside the other, and both refusals have to bind."""
+    cov = _coverage("cancer", "drug-design")
+    # drug-design doing oncology work carries cancer's patient refusal
+    rs = cov.refusals_for("drug-design", "drug-response")
+    assert any("never advises a patient" in r for r in rs)
+    # cancer doing molecule work carries drug-design's harm refusal
+    rs = cov.refusals_for("cancer", "target-id")
+    assert any("does not design, screen for, or optimise toward toxicity" in r
+               for r in rs)
+
+
+def test_a_peer_cannot_be_escaped_by_uninstalling_it():
+    from ai4science.harness.agents.research_agents.charter import CharterViolation
+    alone = _coverage("drug-design")            # cancer not installed at all
+    rs = alone.refusals_for("drug-design", "drug-response")
+    assert any("never advises a patient" in r for r in rs)
+    with pytest.raises(CharterViolation):
+        alone.check("drug-design", "drug-response", "patient_record")
+
+
+def test_cancer_doing_dose_outcome_work_carries_the_physicist_rule():
+    rs = _coverage("cancer").refusals_for("cancer", "outcome-modelling")
+    assert any("physicist signs" in r for r in rs)
+
+
+def test_every_shared_subfield_has_exactly_one_owner():
+    """A subfield two agents cover and nobody owns routes by a coin toss dressed
+    as a decision. The audit refuses to let that ship."""
+    assert _coverage(*NAMES).audit() == []
+
+
+def test_a_tie_is_reported_rather_than_hidden():
+    from ai4science.harness.agents.research_agents.coverage import Coverage
+    from ai4science.harness.agents.research_agents.charter import Charter
+    a = Charter(name="a", field="f", subfields=("x", "y"), may_improve=("method",))
+    b = Charter(name="b", field="f", subfields=("x", "z"), may_improve=("method",))
+    got = Coverage([a, b]).route("x")
+    assert got.ambiguous and got.tied_with == ("b",)
+    assert "name the agent you want" in got.because
+
+
+def test_owning_what_you_do_not_cover_is_refused():
+    from ai4science.harness.agents.research_agents.charter import Charter
+    with pytest.raises(ValueError):
+        Charter(name="x", field="f", subfields=("a",), owns=("b",),
+                may_improve=("method",))
