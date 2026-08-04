@@ -908,3 +908,28 @@ def test_cli_undo_on_an_unknown_platform_refuses_clearly(isolated):
     result = runner.invoke(app, ["sarsi", "undo", "social"])
     assert result.exit_code != 0
     assert "carrier-pigeon" in result.output
+
+
+def test_cli_do_can_declare_a_budget(isolated, tmp_path):
+    from ai4science.harness.agents.sarsi import task as tsk
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    result = runner.invoke(app, ["sarsi", "do", "work", "index the exports",
+                                 "--steps", "40", "--minutes", "30"])
+    assert result.exit_code == 0
+    config = reg.load()
+    t = tsk.all_of(config, config.agents["work"])[0]
+    assert (t.max_steps, t.max_minutes) == (40, 30)
+
+
+def test_cli_do_says_what_the_budget_is(isolated):
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    result = runner.invoke(app, ["sarsi", "do", "work", "x", "--minutes", "30"])
+    assert "30" in result.output and "minute" in result.output.lower()
+
+
+def test_cli_do_refuses_a_budget_of_zero(isolated):
+    """A budget of zero stops the task before it starts, which is not a budget
+    — it is a way to file work that can never run."""
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    result = runner.invoke(app, ["sarsi", "do", "work", "x", "--steps", "0"])
+    assert result.exit_code != 0

@@ -83,6 +83,7 @@ class Action:
 
 
 def tick(config: Config, agent: Agent, task: tsk.Task, *, pane: Any,
+         acts=None,
          verifier: Optional[Callable[..., dict]] = None,
          model: Optional[Callable[[str], str]] = None,
          engine: Optional[str] = None, now=time.time) -> Action:
@@ -114,6 +115,15 @@ def tick(config: Config, agent: Agent, task: tsk.Task, *, pane: Any,
     # abraham sat at the folder-trust prompt for six passes reporting
     # `planning`, because collection used to return before `AN` ever ran.
     planning = task.state == tsk.PLANNING
+
+    # BEFORE anything is answered, submitted or steered: a budget enforced
+    # after the next step has run is one step too late, every time.
+    from ai4science.harness.agents.sarsi import budget as bdg
+    spent = bdg.check(config, agent, task, acts=acts, now=now)
+    if spent.over:
+        bdg.enforce(config, agent, task, acts=acts, runtime=_Sender(pane),
+                    now=now)
+        return Action("over-budget", spent.why)
 
     # A task that has not been briefed yet cannot have done anything to judge.
     if task.kickoff_pending and not planning:

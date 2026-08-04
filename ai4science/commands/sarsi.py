@@ -108,7 +108,11 @@ def do(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
        secret: List[str] = typer.Option(None, "--secret",
                                         help="A secret the work will need (repeatable)."),
        workdir: str = typer.Option("", "--workdir",
-                                   help="Where the work happens — evidence is gathered from here.")) -> None:
+                                   help="Where the work happens — evidence is gathered from here."),
+       steps: Optional[int] = typer.Option(None, "--steps",
+                                           help="Stop after this many steps (no default)."),
+       minutes: Optional[int] = typer.Option(None, "--minutes",
+                                             help="Stop after this many minutes (no default).")) -> None:
     from pathlib import Path
 
     from ai4science.harness.agents.sarsi import worker
@@ -123,6 +127,13 @@ def do(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
             console.print(f"[red]no such directory: {workdir}[/red]")
             raise typer.Exit(code=2)
         root = str(root.resolve())
+
+    for name, value in (("--steps", steps), ("--minutes", minutes)):
+        if value is not None and value < 1:
+            # A budget of zero stops the task before it starts. That is not a
+            # budget; it is a way to file work that can never run.
+            console.print(f"[red]{name} must be at least 1[/red]")
+            raise typer.Exit(code=2)
 
     config = _load()
     agent = config.agents.get(agent_id)
@@ -151,15 +162,22 @@ def do(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
     from ai4science.harness.agents.sarsi import plan as pl, task as tsk
 
     draft = pl.draft(directive)
-    if root:
+    if root or steps or minutes:
         from dataclasses import replace as _replace
-        draft = _replace(draft, work_root=root)
+        draft = _replace(draft, work_root=root or draft.work_root,
+                         max_steps=steps, max_minutes=minutes)
     t = tsk.attach_plan(config, agent, tsk.create(config, agent, directive), draft)
     t = tsk.start(config, agent, t)
     console.print(f"{agent_id} holds {t.id} — {t.state}", markup=False, highlight=False)
     if root:
         console.print(f"evidence will be gathered from {root}", style="dim",
                       markup=False, highlight=False)
+    if steps or minutes:
+        limits = ([f"{steps} steps"] if steps else []) + \
+                 ([f"{minutes} minutes"] if minutes else [])
+        console.print(f"budget: {', '.join(limits)} — it stops and keeps its "
+                      f"plan, it does not fail", style="dim", markup=False,
+                      highlight=False)
     if t.awaiting:
         # asking here is the point of the plan step, and it names what it wants
         console.print("waiting on you to grant:", style="yellow")

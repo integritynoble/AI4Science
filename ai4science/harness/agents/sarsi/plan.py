@@ -27,6 +27,8 @@ VERIFIED_PREFIX = "Verified when:"
 WORK_ROOT_PREFIX = "Working directory:"
 #: other paths the plan may change, one per line
 MAY_TOUCH_PREFIX = "May also touch:"
+#: a declared ceiling — "Budget: 40 steps, 30 minutes". Absent means none.
+BUDGET_PREFIX = "Budget:"
 _PHASE_RE = re.compile(r"^##\s+Phase\s+\d+\s+—\s+(?P<title>.+?)\s*$", re.M)
 
 
@@ -82,6 +84,10 @@ class Plan:
     #: the blast-radius check has something to check against; a path the agent
     #: touched must never be able to authorise itself.
     may_touch: Sequence[str] = field(default_factory=tuple)
+    #: Declared ceilings. `None` means no budget — there is deliberately no
+    #: default, because one either kills legitimate long work or never fires.
+    max_steps: Optional[int] = None
+    max_minutes: Optional[int] = None
 
     def __post_init__(self) -> None:
         if not self.phases:
@@ -113,6 +119,10 @@ class Plan:
             out += [f"{MAY_TOUCH_PREFIX} {path}"]
         if self.may_touch:
             out.append("")
+        if self.max_steps or self.max_minutes:
+            parts = ([f"{self.max_steps} steps"] if self.max_steps else []) + \
+                    ([f"{self.max_minutes} minutes"] if self.max_minutes else [])
+            out += [f"{BUDGET_PREFIX} {', '.join(parts)}", ""]
         for i, phase in enumerate(self.phases, start=1):
             out.append(f"## Phase {i} — {phase.title}")
             if phase.body:
@@ -196,6 +206,23 @@ def draft(directive) -> Plan:
     return Plan(goal=directive.goal, phases=phases, permissions=permissions)
 
 
+def _budget(text: str):
+    """`40 steps, 30 minutes` -> (40, 30). A unit it does not know is ignored
+    rather than guessed at — a budget read wrong is worse than none."""
+    import re as _re
+    steps = minutes = None
+    for value, unit in _re.findall(r"(\d+)\s*(step|minute|min|hour)s?\b",
+                                   text, _re.I):
+        unit = unit.lower()
+        if unit == "step":
+            steps = int(value)
+        elif unit in ("minute", "min"):
+            minutes = int(value)
+        elif unit == "hour":
+            minutes = int(value) * 60
+    return steps, minutes
+
+
 def parse(text: str) -> Plan:
     lines = (text or "").splitlines()
     goal = ""
@@ -206,6 +233,8 @@ def parse(text: str) -> Plan:
 
     work_root = None
     may_touch: List[str] = []
+    max_steps: Optional[int] = None
+    max_minutes: Optional[int] = None
     for line in lines:
         stripped = line.strip()
         if work_root is None and stripped.lower().startswith(WORK_ROOT_PREFIX.lower()):
@@ -214,6 +243,8 @@ def parse(text: str) -> Plan:
             extra = stripped.split(":", 1)[1].strip()
             if extra:
                 may_touch.append(extra)
+        elif stripped.lower().startswith(BUDGET_PREFIX.lower()):
+            max_steps, max_minutes = _budget(stripped.split(":", 1)[1])
 
     phases: List[Phase] = []
     permissions: List[str] = []
@@ -274,7 +305,8 @@ def parse(text: str) -> Plan:
     flush()
     return Plan(goal=goal, phases=phases, permissions=permissions,
                 constraints=constraints, work_root=work_root,
-                may_touch=may_touch)
+                may_touch=may_touch, max_steps=max_steps,
+                max_minutes=max_minutes)
 
 
 _NEGATIVE = re.compile(r"^(no|none|not|never|nothing)\b", re.I)

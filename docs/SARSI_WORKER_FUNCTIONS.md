@@ -51,6 +51,7 @@ Each of these is live, tested, and exercised on the installed binary.
 | `/history` | What has happened, from the record. |
 | `check` | Ask the verifier: **PASS / FAIL / UNVERIFIED**, with a reason. The verdict is read from a verdict **line**, decoration and all (`**PASS**:`, `- FAIL:`), so prose containing the words is not a judgment and a bolded judgment is not discarded. **Gathers its own evidence** when none is given. A **stale plan is refused, not judged** — see decision 2. |
 | `blast` | **What it wrote, against the paths its plan declared.** Read from the session's own `Write`/`Edit` records. `Bash` names no file, so it is counted as *unchecked* and never reported as clean — "nothing escaped" and "nothing was left unobserved" are separate answers. |
+| `do --steps N --minutes M` | **A declared ceiling.** Past it the task *stops and keeps its plan* — it does not fail, because running out of budget says nothing about whether the work was right. Checked **before** the loop acts. Steps come from the transcript; unreadable means *not enforced*, never *over*. No default. |
 | `do --workdir <dir>` | Declare **where the work happens**. Evidence is gathered from there instead of the task folder — declared, never inferred, so a criterion naming a path cannot move the boundary. A path outside it is reported as outside, never read and never silently dropped. |
 | `check --phase N` | Judge **one phase against its own criterion**. A phase is done when a verdict says so about *that* phase; the task is verified only when every phase is. Editing a criterion clears that phase's verdict; moving the goal clears all of them. |
 | `retry` | **Hand a FAIL back carrying the verifier's reason.** Only a judged `FAIL` retries; capped at 3; a `PASS` clears the count. |
@@ -83,28 +84,23 @@ Each of these is live, tested, and exercised on the installed binary.
 
 ## Part 2 — Next, in order
 
-### 1. A step and wall-clock budget per task
-
-A session that loops burns tokens until someone looks. A declared budget that
-pauses and reports beats one that runs all night.
-
-### 2. `handoff`
+### 1. `handoff`
 
 Writes `HANDOFF.md` before a context clear. The spec's layout names it; nothing
 writes it.
 
-### 3. Task dependencies
+### 2. Task dependencies
 
 `funding` drafting an application that needs `work`'s benchmark numbers is the
 obvious case. Without them the owner is the scheduler.
 
-### 4. A workspace fold
+### 3. A workspace fold
 
 History is bounded with the overflow counted, but never summarised — a long
 task's early context is dropped rather than compressed. Matters most during
 planning, which is exactly where it is worth keeping.
 
-### 5. Per-agent house rules
+### 4. Per-agent house rules
 
 A file each worker injects into every kickoff.
 
@@ -113,7 +109,7 @@ A file each worker injects into every kickoff.
 > again on every new session. *"Always use python3 on this host"* belongs in the
 > agent's host workspace, not in each session's trial and error.
 
-### 6. `digest`
+### 5. `digest`
 
 §6's `DIG` — one daily read across tasks.
 

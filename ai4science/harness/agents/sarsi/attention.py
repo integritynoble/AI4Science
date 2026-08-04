@@ -33,8 +33,8 @@ from ai4science.harness.agents.sarsi.registry import Agent, Config
 #: Most blocking first. A gate stops work *now*; a stale plan stops the next
 #: decision. The order is the whole value of the list — the owner reads down it
 #: until they run out of time, so what they read first has to be what matters.
-ORDER = ("gate", "unclaimed", "orphan", "grant", "question", "exhausted",
-         "undelivered", "dead-session", "stale")
+ORDER = ("gate", "unclaimed", "orphan", "grant", "question", "over-budget",
+         "exhausted", "undelivered", "dead-session", "stale")
 
 #: States in which nothing is steering the session any more. A terminal still
 #: running past one of these is an ORPHAN — the reverse of a dead session, and
@@ -154,6 +154,12 @@ def _for_task(config: Config, agent: Agent, task: tsk.Task, *,
                         action=f"sarsi grant {agent.id} {task.id} "
                                f"\"{task.awaiting[0]}\""))
 
+    if _over_budget(config, agent, task):
+        out.append(Item("over-budget", task.id,
+                        "it ran past the budget its plan declared and was "
+                        "stopped — the plan and history are intact",
+                        action=f"sarsi plan {agent.id} {task.id}"))
+
     if int(task.retries or 0) >= rty.MAX_RETRIES:
         verdict = task.verdict or {}
         reason = (verdict.get("why") or verdict.get("reason")
@@ -179,6 +185,27 @@ def _for_task(config: Config, agent: Agent, task: tsk.Task, *,
     if name and pane is not None:
         out.extend(_from_pane(agent, task, name, pane))
     return out
+
+
+def _over_budget(config: Config, agent: Agent, task: tsk.Task) -> bool:
+    """Was this task stopped for running past its budget?
+
+    Read from the ledger rather than recomputed: the session is gone by then,
+    so the numbers that justified stopping cannot be measured again.
+    """
+    from ai4science.harness.agents.sarsi import ledger
+    try:
+        entries = ledger.read(config, "reports")
+    except Exception:
+        return False
+    for entry in reversed(entries):
+        if entry.get("agent") == agent.id and entry.get("task") == task.id:
+            state = str(entry.get("state") or "")
+            if state == "over-budget":
+                return True
+            if state in ("verified", "retried", "steered"):
+                return False          # it moved on
+    return False
 
 
 def _from_pane(agent: Agent, task: tsk.Task, name: str, pane: Any) -> List[Item]:
