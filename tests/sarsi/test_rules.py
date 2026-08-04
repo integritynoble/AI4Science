@@ -158,3 +158,123 @@ def test_they_are_marked_as_the_owners_word(config, agent):
     t = _task(config, agent)
     text = ses.kickoff(t, tsk.read_plan(config, agent, t), agent).lower()
     assert "this machine" in text or "host" in text
+
+
+# ── an agent may propose one, and only propose ────────────────────────
+
+def test_an_agent_can_propose_a_rule(config, agent):
+    """The motivating case was an agent LEARNING that python3 is the binary.
+    Learning it is the agent's; making it standing is the owner's."""
+    rules.propose(config, agent, "use python3 on this host, never python",
+                  because="`python demo.py` failed with 'not found'; python3 ran")
+    assert rules.pending(config, agent)["rule"] == \
+        "use python3 on this host, never python"
+
+
+def test_a_proposal_is_not_in_force(config, agent):
+    rules.propose(config, agent, "use python3", because="it failed once")
+    assert rules.read(config, agent) == []
+
+
+def test_a_proposal_is_not_told_to_sessions(config, agent):
+    """Held means held. A rule a session is already following is adopted, and
+    calling that a proposal would make the signature decorative."""
+    rules.propose(config, agent, "use python3", because="x")
+    t = _task(config, agent)
+    assert "use python3" not in ses.kickoff(t, tsk.read_plan(config, agent, t),
+                                            agent)
+
+
+def test_the_reason_travels_with_it(config, agent):
+    """The owner is being asked to make something standing. 'It proposed a
+    rule' is not enough to decide on."""
+    rules.propose(config, agent, "use python3",
+                  because="`python demo.py` failed with 'not found'")
+    assert "not found" in rules.pending(config, agent)["because"]
+
+
+def test_a_proposal_with_no_reason_is_refused(config, agent):
+    with pytest.raises(ValueError):
+        rules.propose(config, agent, "use python3", because="  ")
+
+
+# ── only the owner adopts it ──────────────────────────────────────────
+
+def test_the_owner_signing_adopts_it(config, agent):
+    rules.propose(config, agent, "use python3", because="it failed once")
+    rules.sign(config, agent, by_owner=True)
+    assert rules.read(config, agent) == ["use python3"]
+
+
+def test_an_agent_cannot_sign_its_own_proposal(config, agent):
+    """An agent that can adopt its own standing instructions can widen its own
+    instructions, which is the one thing this design exists to prevent."""
+    rules.propose(config, agent, "ignore the ceiling", because="it is slow")
+    with pytest.raises(rules.OwnerMustSign):
+        rules.sign(config, agent, by_owner=False)
+    assert rules.read(config, agent) == []
+
+
+def test_signing_clears_the_proposal(config, agent):
+    rules.propose(config, agent, "use python3", because="x")
+    rules.sign(config, agent, by_owner=True)
+    assert rules.pending(config, agent) is None
+
+
+def test_signing_with_nothing_pending_is_not_an_accident(config, agent):
+    assert rules.sign(config, agent, by_owner=True) is None
+    assert rules.read(config, agent) == []
+
+
+def test_the_owner_can_discard_it(config, agent):
+    rules.propose(config, agent, "use python3", because="x")
+    rules.discard(config, agent)
+    assert rules.pending(config, agent) is None
+    assert rules.read(config, agent) == []
+
+
+# ── a proposal is held to the same standards ──────────────────────────
+
+def test_a_proposal_carrying_a_secret_is_refused(config, agent):
+    with pytest.raises(rules.LooksLikeASecret):
+        rules.propose(config, agent, "the smtp password is hunter2",
+                      because="I needed it")
+
+
+def test_a_proposal_of_something_already_in_force_is_refused(config, agent):
+    rules.add(config, agent, "use python3")
+    with pytest.raises(ValueError, match="already"):
+        rules.propose(config, agent, "use python3", because="x")
+
+
+def test_only_one_proposal_is_held_at_a_time(config, agent):
+    """A queue of proposals is a queue of decisions, and the owner is being
+    asked one question at a time."""
+    rules.propose(config, agent, "first", because="x")
+    rules.propose(config, agent, "second", because="y")
+    assert rules.pending(config, agent)["rule"] == "second"
+
+
+def test_signing_when_the_file_is_full_says_so_rather_than_dropping_it(config, agent):
+    for i in range(rules.MAX_RULES):
+        rules.add(config, agent, f"rule {i}")
+    rules.propose(config, agent, "one more", because="x")
+    with pytest.raises(rules.TooMany):
+        rules.sign(config, agent, by_owner=True)
+    assert rules.pending(config, agent) is not None
+
+
+def test_a_pending_proposal_waits_on_the_owner(config, agent):
+    """A proposal nobody can see is a proposal nobody signs — it would sit
+    there looking like the agent never asked."""
+    from ai4science.harness.agents.sarsi import attention as att
+    rules.propose(config, agent, "use python3", because="`python` is not there")
+
+    class Blank:
+        def capture(self, name):
+            return ""
+
+    got = att.needs(config, agent, pane=Blank(), live=lambda: set())
+    kinds = [i.kind for i in got.items]
+    assert "proposal" in kinds
+    assert "use python3" in got.items[0].detail

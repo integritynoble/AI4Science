@@ -439,7 +439,11 @@ def rules_cmd(agent_id: str = typer.Argument(..., help="Agent id, e.g. work"),
               add: Optional[str] = typer.Option(None, "--add",
                                                 help="Add a rule."),
               remove: Optional[str] = typer.Option(None, "--remove",
-                                                   help="Remove one, exactly as written.")) -> None:
+                                                   help="Remove one, exactly as written."),
+              sign: bool = typer.Option(False, "--sign",
+                                        help="Adopt the rule this agent proposed."),
+              discard: bool = typer.Option(False, "--discard",
+                                           help="Refuse the proposal.")) -> None:
     from ai4science.harness.agents.sarsi import rules as rl
 
     config = _load()
@@ -454,9 +458,25 @@ def rules_cmd(agent_id: str = typer.Argument(..., help="Agent id, e.g. work"),
             rl.add(config, agent, add)
         if remove:
             rl.remove(config, agent, remove)
+        if sign:
+            adopted = rl.sign(config, agent, by_owner=True)
+            console.print(f"adopted: {adopted['rule']}" if adopted
+                          else "nothing was pending", markup=False,
+                          highlight=False)
+        if discard:
+            rl.discard(config, agent)
+            console.print("proposal discarded", markup=False, highlight=False)
     except (rl.LooksLikeASecret, rl.TooMany, rl.NoSuchRule, ValueError) as e:
         console.print(str(e), style="yellow", markup=False, highlight=False)
         raise typer.Exit(code=2)
+
+    held = rl.pending(config, agent)
+    if held:
+        console.print(f"{agent_id} proposes: {held['rule']}", style="yellow",
+                      markup=False, highlight=False)
+        console.print(f"  because {held.get('because', '')}", style="dim",
+                      markup=False, highlight=False)
+        console.print(f"  adopt it: sarsi rules {agent_id} --sign", style="dim")
 
     current = rl.read(config, agent)
     if not current:

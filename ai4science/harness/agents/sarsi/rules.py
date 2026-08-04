@@ -33,6 +33,9 @@ from typing import List
 from ai4science.harness.agents.sarsi.registry import Agent, Config
 
 FILE_NAME = "HOUSE_RULES.md"
+#: Held beside the rules, never inside them: a proposal is not a rule, and a
+#: session must not be able to read one as though it were.
+PENDING_NAME = "HOUSE_RULES.pending.json"
 #: Small on purpose. Past this the file stops being read, and a rule nobody
 #: reads is worse than no rule: it looks like coverage.
 MAX_RULES = 12
@@ -54,6 +57,10 @@ class LooksLikeASecret(Exception):
 
 class NoSuchRule(Exception):
     """Nothing here matches what was asked to be removed."""
+
+
+class OwnerMustSign(Exception):
+    """An agent cannot adopt its own standing instruction."""
 
 
 def path(agent: Agent) -> Path:
@@ -121,6 +128,88 @@ def render(config: Config, agent: Agent) -> str:
              "instructions, and they outrank your own guess about this host:"]
     lines += [f"  - {r}" for r in current]
     return "\n".join(lines)
+
+
+# ── an agent may propose one, and only propose ────────────────────────
+
+def _pending_path(agent: Agent) -> Path:
+    return agent.host / PENDING_NAME
+
+
+def pending(config: Config, agent: Agent):
+    """The proposal waiting on the owner, or None."""
+    import json
+    try:
+        raw = json.loads(_pending_path(agent).read_text())
+    except Exception:
+        return None
+    return raw if raw.get("rule") else None
+
+
+def propose(config: Config, agent: Agent, rule: str, *, because: str) -> dict:
+    """An agent asks for a standing instruction. It does not get one.
+
+    The motivating case is an agent LEARNING that `python3` is the binary here.
+    Learning it is the agent's; making it standing is the owner's — an agent
+    that could adopt its own standing instructions could widen its own
+    instructions, which is the single thing this design exists to prevent.
+
+    Held to every standard `add` holds, so a proposal cannot be a way around
+    them, and **one at a time**: a queue of proposals is a queue of decisions,
+    and the owner is being asked one question.
+    """
+    import json
+
+    text = (rule or "").strip()
+    reason = (because or "").strip()
+    if not text:
+        raise ValueError("a rule with nothing in it is not a rule")
+    if not reason:
+        # The owner is being asked to make something standing; "it proposed a
+        # rule" is not enough to decide on.
+        raise ValueError(
+            "a proposal has to say what happened that makes it worth a "
+            "standing rule — the owner is deciding, not rubber-stamping")
+    if _SECRET.search(text):
+        raise LooksLikeASecret(
+            "that reads as a secret VALUE, not the name of one — the vault "
+            "holds values, and a proposal is not a way around that")
+    if text in read(config, agent):
+        raise ValueError(f"{agent.id} already follows that rule")
+
+    record = {"rule": text, "because": reason[:MAX_CHARS]}
+    path = _pending_path(agent)
+    agent.host.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(record, indent=2) + "\n")
+    try:
+        path.chmod(0o600)
+    except OSError:
+        pass
+    return record
+
+
+def sign(config: Config, agent: Agent, *, by_owner: bool):
+    """Adopt the pending proposal. Only the owner may."""
+    if not by_owner:
+        raise OwnerMustSign(
+            f"{agent.id} cannot sign its own proposal; the only path from a "
+            f"proposal to a standing rule is the owner's signature")
+    proposal = pending(config, agent)
+    if proposal is None:
+        return None                   # a signature with nothing pending is a
+                                      # no-op, not an accident
+    # `add` still applies: if the file is full the proposal STAYS pending
+    # rather than being dropped on the floor.
+    add(config, agent, proposal["rule"])
+    discard(config, agent)
+    return proposal
+
+
+def discard(config: Config, agent: Agent) -> None:
+    try:
+        _pending_path(agent).unlink()
+    except OSError:
+        pass
 
 
 def _write(agent: Agent, current: List[str]) -> None:

@@ -34,7 +34,7 @@ from ai4science.harness.agents.sarsi.registry import Agent, Config
 #: decision. The order is the whole value of the list — the owner reads down it
 #: until they run out of time, so what they read first has to be what matters.
 ORDER = ("gate", "unclaimed", "orphan", "grant", "question", "over-budget",
-         "exhausted", "undelivered", "dead-session", "stale")
+         "exhausted", "undelivered", "proposal", "dead-session", "stale")
 
 #: States in which nothing is steering the session any more. A terminal still
 #: running past one of these is an ORPHAN — the reverse of a dead session, and
@@ -98,6 +98,7 @@ def needs(config: Config, agent: Agent, *, pane: Optional[Any] = None,
     for task in tsk.all_of(config, agent):          # archived is not waiting
         items.extend(_for_task(config, agent, task, pane=pane))
     items.extend(_unclaimed(config, agent, live))
+    items.extend(_proposal(config, agent))
     items.sort(key=lambda i: (ORDER.index(i.kind) if i.kind in ORDER
                               else len(ORDER), i.task_id))
     return Attention(items=items)
@@ -115,6 +116,25 @@ def across(config: Config, *, pane: Optional[Any] = None,
     items.sort(key=lambda i: (ORDER.index(i.kind) if i.kind in ORDER
                               else len(ORDER), i.agent_id, i.task_id))
     return Attention(items=items)
+
+
+def _proposal(config: Config, agent: Agent) -> List[Item]:
+    """A house rule the agent has asked for and cannot adopt itself.
+
+    Listed because a proposal nobody sees is a proposal nobody signs — it would
+    sit there looking exactly like an agent that never asked.
+    """
+    from ai4science.harness.agents.sarsi import rules as rl
+    try:
+        held = rl.pending(config, agent)
+    except Exception:
+        return []
+    if not held:
+        return []
+    return [Item("proposal", "",
+                 f"it asks for a standing house rule: {held['rule']!r} "
+                 f"— because {held.get('because', '')}",
+                 action=f"sarsi rules {agent.id} --sign   (or --discard)")]
 
 
 def _unclaimed(config: Config, agent: Agent, live) -> List[Item]:
