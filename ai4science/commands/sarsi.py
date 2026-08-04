@@ -204,6 +204,34 @@ def tasks(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
                       f"[cyan]sarsi tasks {agent_id} --archived[/cyan]", style="dim")
 
 
+@app.command("undo", help="Take back the last outward act — when that is possible at all.")
+def undo_cmd(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
+             show: bool = typer.Option(False, "--show",
+                                       help="Say what the last act was, and attempt nothing.")) -> None:
+    from ai4science.harness.agents.sarsi import undo as ud
+
+    config = _load()
+    agent = _worker_or_exit(config, agent_id)
+    act = ud.last(config, agent)
+    if act is None:
+        console.print(f"{agent_id} has nothing outstanding that left the machine",
+                      markup=False, highlight=False)
+        return
+    console.print(f"last outward act: {act}", markup=False, highlight=False)
+    if show:
+        return
+    try:
+        ud.retract(config, agent)
+    except ud.NothingToUndo as e:
+        console.print(str(e), markup=False, highlight=False)
+        return
+    except (ud.Irreversible, ud.Failed) as e:
+        console.print(str(e), style="yellow", markup=False, highlight=False)
+        raise typer.Exit(code=1)
+    console.print("retracted — and recorded as an outward act of its own",
+                  markup=False, highlight=False)
+
+
 @app.command("questions", help="Escalations waiting on you, across every worker or one.")
 def questions_cmd(agent_id: Optional[str] = typer.Option(None, "--agent",
                                                          help="Only this worker.")) -> None:

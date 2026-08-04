@@ -843,3 +843,37 @@ def test_cli_attention_reports_a_terminal_no_task_claims(isolated, monkeypatch):
     result = runner.invoke(app, ["sarsi", "attention"])
     assert "work-9zz9" in result.output
     assert result.exit_code == 1
+
+
+def test_cli_undo_names_the_last_act_and_refuses_to_recall_mail(isolated):
+    from ai4science.harness.agents.sarsi import ledger
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    config = reg.load()
+    ledger.append(config, "outward",
+                  {"agent": "work", "task": "tsk_1", "kind": "mail",
+                   "destination": "them@example.com", "digest": "abc123",
+                   "chars": 120, "outcome": "sent"})
+    result = runner.invoke(app, ["sarsi", "undo", "work"])
+    assert result.exit_code != 0
+    assert "them@example.com" in result.output
+    assert "recall" in result.output.lower()
+
+
+def test_cli_undo_with_nothing_outstanding_says_so(isolated):
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    result = runner.invoke(app, ["sarsi", "undo", "work"])
+    assert "nothing" in result.output.lower()
+
+
+def test_cli_undo_shows_without_acting_when_asked(isolated):
+    from ai4science.harness.agents.sarsi import ledger
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    config = reg.load()
+    ledger.append(config, "outward",
+                  {"agent": "work", "task": "tsk_1", "kind": "post",
+                   "destination": "mastodon", "digest": "d1", "chars": 40,
+                   "outcome": "posted"})
+    result = runner.invoke(app, ["sarsi", "undo", "work", "--show"])
+    assert result.exit_code == 0
+    assert "mastodon" in result.output
+    assert len(ledger.read(config, "outward")) == 1      # nothing attempted
