@@ -82,8 +82,12 @@ def last(config: Config, agent: Agent) -> Optional[Act]:
     except Exception:
         return None
 
+    # Only a SUCCESSFUL retraction closes an act. An attempt that failed left
+    # the post published, so hiding it here would make the one command that
+    # could take it down stop offering to — the failure reading as handled.
     retracted = {str(e.get("digest") or "") for e in entries
-                 if e.get("agent") == agent.id and e.get("kind") == "retract"}
+                 if e.get("agent") == agent.id and e.get("kind") == "retract"
+                 and str(e.get("outcome") or "") == "retracted"}
     for entry in reversed(entries):
         if entry.get("agent") != agent.id:
             continue

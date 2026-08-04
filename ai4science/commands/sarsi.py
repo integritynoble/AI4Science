@@ -221,7 +221,7 @@ def undo_cmd(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
     if show:
         return
     try:
-        ud.retract(config, agent)
+        ud.retract(config, agent, retractor=_retractor_for(config, agent, act))
     except ud.NothingToUndo as e:
         console.print(str(e), markup=False, highlight=False)
         return
@@ -230,6 +230,25 @@ def undo_cmd(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
         raise typer.Exit(code=1)
     console.print("retracted — and recorded as an outward act of its own",
                   markup=False, highlight=False)
+
+
+def _retractor_for(config, agent, act):
+    """The call that takes a post down, when this platform has one.
+
+    Returns None rather than raising: `undo` already refuses with the right
+    words for a platform nothing can retract, and duplicating that refusal here
+    would give the same situation two different explanations.
+    """
+    from ai4science.harness.agents.sarsi import transmit
+
+    if act.kind != "post":
+        return None
+    try:
+        return transmit.retractor(config, agent, platform=act.destination,
+                                  secret=f"{act.destination}.token",
+                                  prompt=_terminal_vault_prompt)
+    except transmit.NoTransmitter:
+        return None
 
 
 @app.command("questions", help="Escalations waiting on you, across every worker or one.")

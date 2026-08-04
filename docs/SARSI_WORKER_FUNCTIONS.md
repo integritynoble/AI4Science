@@ -74,7 +74,7 @@ Each of these is live, tested, and exercised on the installed binary.
 | Function | What it does |
 |---|---|
 | `send` | Ask to let one act leave the machine. Drafting is not sending. |
-| `undo` | **Take back the last outward act — when that is possible at all.** Mail cannot be recalled and a submitted form cannot be withdrawn; both say so and name the real remedy. A post **is** retractable: the platform's id is recorded when it publishes, cleared before every send so a stale one can never be attributed to the next post. A failed attempt is recorded as an attempt, never as a retraction. |
+| `undo` | **Take back the last outward act — when that is possible at all.** Mail cannot be recalled and a submitted form cannot be withdrawn; both say so and name the real remedy. A post **is** retractable: the platform's id is recorded when it publishes (cleared before every send, so a stale one can never be attributed to the next), and `x` / `linkedin` / `substack` have a delete call wired. Every ambiguity resolves toward doing nothing — a 404 is not called success, because *already gone* and *wrong id* look identical from here. A failed attempt is recorded as an attempt, never as a retraction. |
 | `submit` | Submit a form — every field shown, and it cannot be undone. |
 | `vault` | Two-stage secrets; money policies need a limit, a counterparty and a rate. |
 | `ceiling` | Set the auto level (A0–A3), per agent or all. Reports where it will *actually* land. |
@@ -83,35 +83,28 @@ Each of these is live, tested, and exercised on the installed binary.
 
 ## Part 2 — Next, in order
 
-### 1. A retractor per platform
-
-The handle is recorded, so `undo` can now identify which post to take back. What
-is still missing is the call that takes it down: each platform's delete endpoint,
-wired the way `PLATFORMS` wires publishing. Until then `undo` refuses by saying
-no retraction is wired in, rather than pretending.
-
-### 2. A step and wall-clock budget per task
+### 1. A step and wall-clock budget per task
 
 A session that loops burns tokens until someone looks. A declared budget that
 pauses and reports beats one that runs all night.
 
-### 3. `handoff`
+### 2. `handoff`
 
 Writes `HANDOFF.md` before a context clear. The spec's layout names it; nothing
 writes it.
 
-### 4. Task dependencies
+### 3. Task dependencies
 
 `funding` drafting an application that needs `work`'s benchmark numbers is the
 obvious case. Without them the owner is the scheduler.
 
-### 5. A workspace fold
+### 4. A workspace fold
 
 History is bounded with the overflow counted, but never summarised — a long
 task's early context is dropped rather than compressed. Matters most during
 planning, which is exactly where it is worth keeping.
 
-### 6. Per-agent house rules
+### 5. Per-agent house rules
 
 A file each worker injects into every kickoff.
 
@@ -120,7 +113,7 @@ A file each worker injects into every kickoff.
 > again on every new session. *"Always use python3 on this host"* belongs in the
 > agent's host workspace, not in each session's trial and error.
 
-### 7. `digest`
+### 6. `digest`
 
 §6's `DIG` — one daily read across tasks.
 

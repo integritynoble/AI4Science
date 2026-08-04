@@ -877,3 +877,34 @@ def test_cli_undo_shows_without_acting_when_asked(isolated):
     assert result.exit_code == 0
     assert "mastodon" in result.output
     assert len(ledger.read(config, "outward")) == 1      # nothing attempted
+
+
+def test_cli_undo_wires_a_retractor_for_a_known_platform(isolated, monkeypatch):
+    """Without this the CLI can identify the post and still have nothing to
+    call, which is the gap `undo` shipped with."""
+    from ai4science.harness.agents.sarsi import ledger, transmit
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    config = reg.load()
+    ledger.append(config, "outward",
+                  {"agent": "social", "task": "tsk_1", "kind": "post",
+                   "destination": "x", "digest": "d1", "chars": 12,
+                   "outcome": "sent", "handle": "110045"})
+    seen = []
+    monkeypatch.setattr(transmit, "retractor",
+                        lambda *a, **k: (lambda act: seen.append(act.handle)))
+    result = runner.invoke(app, ["sarsi", "undo", "social"])
+    assert result.exit_code == 0
+    assert seen == ["110045"]
+
+
+def test_cli_undo_on_an_unknown_platform_refuses_clearly(isolated):
+    from ai4science.harness.agents.sarsi import ledger
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    config = reg.load()
+    ledger.append(config, "outward",
+                  {"agent": "social", "task": "tsk_1", "kind": "post",
+                   "destination": "carrier-pigeon", "digest": "d1", "chars": 12,
+                   "outcome": "sent", "handle": "110045"})
+    result = runner.invoke(app, ["sarsi", "undo", "social"])
+    assert result.exit_code != 0
+    assert "carrier-pigeon" in result.output

@@ -170,3 +170,16 @@ def test_the_same_act_is_not_retracted_twice(config, agent):
     ud.retract(config, agent, retractor=lambda act: "deleted")
     with pytest.raises(ud.NothingToUndo):
         ud.retract(config, agent, retractor=lambda act: "deleted")
+
+
+def test_a_failed_attempt_does_not_hide_the_still_published_act(config, agent):
+    """Otherwise the one command that could take it down stops offering to,
+    and the failure reads as handled."""
+    def broken(act):
+        raise RuntimeError("the platform said 500")
+
+    _sent(config, agent, kind="post", destination="mastodon", handle="110045")
+    with pytest.raises(ud.Failed):
+        ud.retract(config, agent, retractor=broken)
+    assert ud.last(config, agent) is not None
+    assert ud.last(config, agent).handle == "110045"

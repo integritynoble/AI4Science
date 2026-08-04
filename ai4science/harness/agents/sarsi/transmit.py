@@ -120,12 +120,18 @@ PLATFORMS: Dict[str, Dict[str, Any]] = {
     # `id_field` is what the platform calls the thing it just published. It is
     # kept so a post can be identified later — without it `undo` cannot say
     # WHICH post to take back, and deleting the wrong one is worse than none.
+    # `delete_url` is how a published post is taken down, `{handle}` standing
+    # for the id the platform returned. `None` means the platform offers no
+    # deletion — stated, so `undo` refuses by name instead of attempting.
     "x": {"url": "https://api.twitter.com/2/tweets", "limit": 280,
-          "field": "text", "id_field": "id"},
+          "field": "text", "id_field": "id",
+          "delete_url": "https://api.twitter.com/2/tweets/{handle}"},
     "linkedin": {"url": "https://api.linkedin.com/v2/ugcPosts", "limit": 3000,
-                 "field": "text", "id_field": "id"},
+                 "field": "text", "id_field": "id",
+                 "delete_url": "https://api.linkedin.com/v2/ugcPosts/{handle}"},
     "substack": {"url": "https://substack.com/api/v1/posts", "limit": None,
-                 "field": "text", "id_field": "id"},
+                 "field": "text", "id_field": "id",
+                 "delete_url": "https://substack.com/api/v1/posts/{handle}"},
 }
 
 
@@ -210,6 +216,79 @@ def post(config: Config, agent: Agent, *, platform: str, secret: str,
     send.precheck = precheck            # so OWN can ask before it asks you
     send.handle = ""                    # set per publish; see `outward._transmit`
     return send
+
+
+def _default_delete(*, url: str, token: str, timeout: float):
+    import json as _json
+    import urllib.error
+    import urllib.request
+    request = urllib.request.Request(
+        url, method="DELETE",
+        headers={"Authorization": f"Bearer {token}"})
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return response.status, _json.loads(response.read().decode() or "{}")
+    except urllib.error.HTTPError as e:
+        return e.code, {"error": e.read()[:200].decode("utf-8", "replace")}
+
+
+def retractor(config: Config, agent: Agent, *, platform: str, secret: str,
+              prompt: Callable[..., Any], http: Callable[..., Any] = _default_delete,
+              timeout: float = 30.0) -> Callable[..., str]:
+    """Take a published post down. Shaped entirely by one asymmetry:
+
+    **failing to delete leaves a post up, which the owner can see and retry;
+    deleting the wrong thing cannot be undone at all.** So every ambiguity here
+    resolves toward doing nothing.
+    """
+    spec = PLATFORMS.get(platform)
+    if spec is None:
+        raise NoTransmitter(
+            f"no transmitter for {platform!r} — known platforms: "
+            f"{', '.join(sorted(PLATFORMS))}")
+    if not spec.get("delete_url"):
+        raise NoTransmitter(
+            f"{platform!r} offers no way to delete a post, so nothing here can "
+            f"take one down. Remove it yourself.")
+
+    def pull(act) -> str:
+        handle = str(getattr(act, "handle", "") or "")
+        if not handle:
+            # Checked before the secret is even asked for: without an id there
+            # is nothing to delete, and a guess would delete someone else's.
+            raise TransmitFailed(
+                "no handle was recorded for this post, so there is nothing to "
+                "identify which one to take down")
+
+        decision = vault.ask(config, agent_id=agent.id, secret=secret,
+                             act="retract", purpose=f"delete a post on {platform}",
+                             prompt=prompt, outward=True,
+                             standing_grants=agent.standing_grants)
+        if not decision.allowed:
+            raise TransmitFailed(decision.reason)
+
+        url = str(spec["delete_url"]).format(handle=handle)
+        try:
+            status, answer = http(url=url, token=decision.value or "",
+                                  timeout=timeout)
+        except Exception as e:
+            raise TransmitFailed(f"the post is still published: {e}")
+
+        status = int(status)
+        if status == 404:
+            # "Already gone" and "wrong id" are indistinguishable from here, and
+            # one of them means this deleted nothing while reporting that it did.
+            raise TransmitFailed(
+                f"{platform} answered 404 for post {handle}: either it is "
+                f"already gone or that is not its id. Nothing was deleted, and "
+                f"this will not claim otherwise — check it yourself.")
+        if not (200 <= status < 300):
+            raise TransmitFailed(
+                f"{platform} refused to delete post {handle}: {status} "
+                f"{(answer or {}).get('error', '')} — it is still published")
+        return handle
+
+    return pull
 
 
 # ── submitting an application ─────────────────────────────────────────
