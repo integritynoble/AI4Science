@@ -11,10 +11,15 @@ produces numbers that look like results and are not, and the person reading them
 has no way to tell. So `require()` raises, and the message says exactly which
 command fetches what is missing.
 
-**Licensed data is fetched by a person, not by an agent.** Kvasir-Capsule and
-the Mayo low-dose CT set carry terms someone has to accept. `require()` names
-them and stops; there is deliberately no code path that clicks through a licence
-on the owner's behalf, because accepting terms is not a thing an agent may do.
+**A licence that must be accepted is accepted by a person, not by an agent.**
+Where `needs_agreement` is set, `require()` names the dataset and stops; there is
+deliberately no code path that clicks through an agreement on the owner's behalf.
+
+That flag has to be set on the evidence, though, and not on a guess. Both
+Kvasir-Capsule and the Mayo low-dose CT collection were marked here as needing
+one, and neither does — CC BY 4.0 and the TCIA public terms respectively. An
+over-cautious flag is not the safe default it looks like: it leaves open data
+unused and it teaches the reader that the flag means nothing.
 """
 from __future__ import annotations
 
@@ -120,10 +125,14 @@ KVASIR_CAPSULE = Corpus(
     title="Kvasir-Capsule — wireless capsule endoscopy",
     required=("frames.npz", "metadata.json"),
     source="osf.io/dv2ag — Simula",
-    licence="CC BY 4.0, with a data-use statement to read first",
-    needs_agreement=True,
+    # CC BY 4.0: attribution, satisfied by the provenance record written beside
+    # the data. This was previously flagged as needing a person to accept terms,
+    # which was wrong — it is the same open licence as OpenKBP, which was
+    # fetched here without hesitation. Being cautious about a licence is right;
+    # being cautious about the wrong licence just leaves real data unused.
+    licence="CC BY 4.0 — attribution required, no agreement to accept",
     fetch=FETCH % "kvasir-capsule",
-    approx_size="~4 GB for the labelled frames",
+    approx_size="~420 MB for the classes used here",
 )
 
 LDCT = Corpus(

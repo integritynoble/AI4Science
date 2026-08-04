@@ -254,19 +254,21 @@ MEDPHYS = DomainBenchmark(
 
 def _score_capsule(seed_ws: Path, run_ws: Path) -> Dict[str, float]:
     y = np.load(seed_ws / "data" / "labels.npy")
-    pid = np.load(run_ws / "data" / "patient_id.npy")
+    vid = np.load(run_ws / "data" / "video_id.npy")
+    is_test = np.load(run_ws / "data" / "is_test.npy")
     s = np.load(run_ws / "results" / "scores.npy")
     base = np.load(run_ws / "results" / "baseline_scores.npy")
-    # Patient-disjoint, verified here rather than asserted anywhere: the test
-    # patients are held out whole, and the check below proves no id crosses.
-    test_p = np.unique(pid)[::2]
-    m = np.isin(pid, test_p)
-    crossed = len(set(pid[m]) & set(pid[~m]))
-    return {"auc": _auc(s[m], y[m]), "baseline_auc": _auc(base[m], y[m]),
-            "auc_train_side": _auc(s[~m], y[~m]),
+
+    # Verified, not asserted: no video may appear on both sides. Consecutive
+    # capsule frames are near-duplicates, so a leak here inflates everything.
+    crossed = len(set(vid[is_test]) & set(vid[~is_test]))
+    return {"auc": _auc(s[is_test], y[is_test]),
+            "baseline_auc": _auc(base[is_test], y[is_test]),
+            "auc_train_side": _auc(s[~is_test], y[~is_test]),
             "patients_crossing_the_split": float(crossed),
-            "test_patients": float(len(test_p)),
-            "positives_in_test": float(y[m].sum())}
+            "test_patients": float(len(set(vid[is_test]))),
+            "train_patients": float(len(set(vid[~is_test]))),
+            "positives_in_test": float(y[is_test].sum())}
 
 
 def _judge_capsule(m: Dict[str, float]) -> Verdict:
@@ -278,6 +280,14 @@ def _judge_capsule(m: Dict[str, float]) -> Verdict:
                        % int(m["patients_crossing_the_split"]))
     else:
         reasons.append("patient-disjoint split verified in code, not asserted")
+    # Patients, not frames. A test side with one or two patients measures
+    # those patients, and this dataset makes that easy to walk into: the
+    # blood class alone spans two videos.
+    if m["test_patients"] < 3:
+        ok = False
+        reasons.append("only %d patients on the test side — that is not a "
+                       "held-out evaluation, whatever the frame count says"
+                       % int(m["test_patients"]))
     if m["positives_in_test"] < 3:
         ok = False
         reasons.append("only %d positives in the test split" % int(m["positives_in_test"]))
@@ -299,8 +309,9 @@ CAPSULE = DomainBenchmark(
     package="capsule",
     deliverables=("results/scores.npy", "results/baseline_scores.npy"),
     answer_key=("data/labels.npy",),
-    score=_score_capsule, judge=_judge_capsule,
+    score=_score_capsule, judge=_judge_capsule, corpus="kvasir-capsule",
     criteria=("the split is patient-disjoint, checked programmatically",
+              "at least three patients on the test side",
               "the prior beats the naive baseline on held-out patients",
               "AUC ≥ 0.6 on the held-out patients"),
 )

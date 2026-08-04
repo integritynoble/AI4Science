@@ -71,12 +71,33 @@ def test_a_user_task_runs_with_the_autonomous_function_OFF(tmp_path):
 
 
 def test_the_user_task_is_verified_by_the_field_s_own_judge(tmp_path):
+    """The judge runs and its verdict decides the outcome — which is not the
+    same as the outcome being 'delivered'.
+
+    On real capsule data the analytic prior does not beat plain intensity, so
+    this field's judge refuses the result and the task ends blocked after its
+    repairs. That is function 1 working: a person asked, the agent worked it,
+    and the domain's own criteria said no. An earlier version asserted
+    'delivered' and so was really asserting that the reference method wins."""
     agent = build("pill-camera")
     out = run_user_task(agent, benchmark_for("pill-camera"),
                         client=Sim(tmp_path / "run"), store=_store(tmp_path),
                         task_id="user-2", workspace=tmp_path / "seed")
-    assert out["status"] == "delivered"
-    assert "auc" in out["metrics"] and "baseline_auc" in out["metrics"]
+    assert out["status"] in ("delivered", "blocked")
+    assert "auc" in out["metrics"] and "baseline_auc" in out["metrics"], \
+        "the field's own judge produced its own metrics"
+    if out["status"] == "blocked":
+        assert out["metrics"]["auc"] <= out["metrics"]["baseline_auc"]
+
+
+def test_a_user_task_delivers_when_the_method_meets_the_field_s_bar(tmp_path):
+    """And the other side of it: where the reference method does clear the
+    domain's criteria, the same path delivers."""
+    agent = build("drug-design")
+    out = run_user_task(agent, benchmark_for("drug-design"),
+                        client=Sim(tmp_path / "run"), store=_store(tmp_path),
+                        task_id="user-2b", workspace=tmp_path / "seed")
+    assert out["status"] == "delivered", out.get("metrics")
 
 
 def test_a_user_task_lands_in_the_owner_ledger_only(tmp_path):

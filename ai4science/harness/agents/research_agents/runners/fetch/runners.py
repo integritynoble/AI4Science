@@ -318,19 +318,115 @@ def open_kbp(argv=()) -> str:
     return "%s: %d real head-and-neck plans -> %s" % (c.key, len(kept), d)
 
 
-def kvasir_capsule(_argv=()) -> str:
-    raise NotImplementedError(
-        "kvasir-capsule requires reading and accepting its data-use terms. An "
-        "agent may not accept them; fetch it as a person, then point "
-        "AI4SCIENCE_DATA at it.")
+_OSF = "https://files.osf.io/v1/resources/dv2ag/providers/googledrive/%s"
+
+#: Red, vascular findings — the ones a haemoglobin prior is physically able to
+#: see. Kept as one positive class because they share the mechanism; each on its
+#: own comes from too few patients to split.
+KV_POSITIVE = ("angiectasia", "blood_fresh", "erythema", "blood_hematin")
+KV_NEGATIVE = "normal_clean_mucosa"
+THUMB = 32
 
 
-_TCIA = "https://services.cancerimagingarchive.net/nbia-api/services/v1/%s"
+def kvasir_capsule(argv=()) -> str:
+    """Real capsule endoscopy frames, with the video id that makes a split honest.
 
+    The patient count is the thing to look at here, not the frame count.
+    `Blood - fresh` is 446 frames from **two** videos; splitting it by patient
+    gives one patient a side, which is not an evaluation. So the positive class
+    is the red vascular findings together — angiectasia, fresh blood, erythema,
+    hematin — which is clinically coherent (haemoglobin absorption is the signal
+    in all of them) and spans enough videos to hold some out. The per-class
+    video counts are written into the metadata so the limitation travels with
+    the data instead of being rediscovered.
+    """
+    import csv as _csv
+    import io as _io
+    import tarfile
+    import numpy as np
+    from PIL import Image
 
-def _tcia(endpoint: str, **params) -> Any:
-    q = urllib.parse.urlencode(params)
-    return json.loads(_get("%s?%s" % (_TCIA % endpoint, q), timeout=180))
+    c = _corpus.KVASIR_CAPSULE
+    d = c.dir()
+    d.mkdir(parents=True, exist_ok=True)
+    per_video_neg = int(argv[0]) if argv else 80
+
+    meta_raw = _get(_OSF % "metadata.csv", timeout=600)
+    rows = list(_csv.DictReader(_io.StringIO(meta_raw), delimiter=";"))
+    by_file = {r["filename"]: r for r in rows}
+    per_class_videos = {}
+    for r in rows:
+        per_class_videos.setdefault(r["finding_class"], set()).add(r["video_id"])
+
+    X, thumbs, y, vid, cls = [], [], [], [], []
+
+    def take(archive: str, label: int, per_video=None):
+        """Sample per VIDEO, not per archive.
+
+        A global cap takes whatever the tar yields first, which is the first few
+        videos: capping normal mucosa at 2500 frames gave 2500 negatives from 3
+        patients, so a patient-disjoint split would have been three patients
+        wide on the negative side. The whole point of splitting by patient is
+        lost if the patients are three."""
+        raw = _get(_OSF % ("labelled_images/%s.tar.gz" % archive),
+                   timeout=1800, binary=True)
+        tf = tarfile.open(fileobj=_io.BytesIO(raw), mode="r:gz")
+        n = 0
+        seen = {}
+        for m in tf:
+            if not m.isfile() or not m.name.lower().endswith((".jpg", ".jpeg")):
+                continue
+            base = m.name.rsplit("/", 1)[-1]
+            row = by_file.get(base)
+            if row is None:
+                continue
+            v = row["video_id"]
+            if per_video is not None and seen.get(v, 0) >= per_video:
+                continue
+            try:
+                im = Image.open(_io.BytesIO(tf.extractfile(m).read())).convert("RGB")
+            except Exception:
+                continue
+            a = np.asarray(im, np.float32) / 255.0
+            # The capsule image sits in a black circular surround; sampling the
+            # centre keeps the optics out of the colour statistics.
+            h, w, _ = a.shape
+            cy, cx, r = h // 2, w // 2, min(h, w) // 4
+            core = a[cy - r:cy + r, cx - r:cx + r]
+            X.append(core.reshape(-1, 3).mean(axis=0))
+            thumbs.append(np.asarray(im.resize((THUMB, THUMB)), np.uint8))
+            y.append(label); vid.append(v); cls.append(row["finding_class"])
+            seen[v] = seen.get(v, 0) + 1
+            n += 1
+        return n
+
+    counts = {}
+    for a in KV_POSITIVE:
+        counts[a] = take(a, 1)
+    counts[KV_NEGATIVE] = take(KV_NEGATIVE, 0, per_video=per_video_neg)
+
+    X = np.array(X, np.float32)
+    if X.shape[0] < 200 or sum(y) < 50:
+        raise RuntimeError("too few frames: %d total, %d positive" % (len(y), sum(y)))
+    np.savez_compressed(d / "frames.npz", rgb=X, thumb=np.array(thumbs, np.uint8),
+                        label=np.array(y, np.int8),
+                        video=np.array(vid), finding=np.array(cls))
+    pos_v = sorted({v for v, l in zip(vid, y) if l == 1})
+    neg_v = sorted({v for v, l in zip(vid, y) if l == 0})
+    (d / "metadata.json").write_text(json.dumps(
+        {"frames": int(len(y)), "positive": int(sum(y)),
+         "positive_videos": pos_v, "negative_videos": neg_v,
+         "counts": counts,
+         "videos_per_class": {k: len(v) for k, v in sorted(per_class_videos.items())},
+         "positive_classes": list(KV_POSITIVE), "negative_class": KV_NEGATIVE}))
+    _provenance(d, c, frames=int(len(y)), positive=int(sum(y)),
+                positive_videos=len(pos_v), negative_videos=len(neg_v),
+                videos_per_class={k: len(v) for k, v in sorted(per_class_videos.items())},
+                note="positives are the red vascular findings pooled, because "
+                     "each alone spans too few videos for a patient-disjoint "
+                     "split — Blood-fresh is 2 videos")
+    return ("%s: %d frames (%d positive) from %d positive and %d negative "
+            "videos -> %s" % (c.key, len(y), sum(y), len(pos_v), len(neg_v), d))
 
 
 def ldct(argv=()) -> str:

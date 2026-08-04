@@ -84,7 +84,7 @@ def test_each_agent_computes_and_is_judged(name, tmp_path):
     assert out["provenance"], "a result must say where its data came from"
 
 
-@pytest.mark.parametrize("name", ["low-dose-ct", "pill-camera", "drug-design"])
+@pytest.mark.parametrize("name", ["low-dose-ct", "drug-design"])
 def test_the_intended_method_passes(name, tmp_path):
     out = _run(benchmark_for(name), tmp_path)
     assert out["verdict"].passed, out["verdict"].report()
@@ -272,11 +272,37 @@ def test_the_split_is_patient_disjoint_and_checked(tmp_path):
     assert any("patient-disjoint" in r for r in out["verdict"].reasons)
 
 
-def test_the_physics_prior_beats_the_naive_baseline(tmp_path):
-    """Illumination gain varies per patient. An absolute intensity carries it;
-    a channel ratio cancels it — which is why the prior is worth having."""
+def test_the_analytic_prior_does_NOT_beat_intensity_on_real_frames(tmp_path):
+    """The synthetic version of this benchmark asserted the opposite, and real
+    data refutes it. Kept as a test because it is a result.
+
+    The synthetic generator gave each patient a lognormal illumination gain
+    specifically so that an absolute intensity would carry it and a channel
+    ratio would cancel it — which made the haemoglobin prior win by
+    construction. On real Kvasir-Capsule frames, split by patient, the prior
+    reaches AUC 0.60 and plain green intensity reaches 0.61.
+
+    That is consistent with the literature rather than against it: the published
+    physics-informed work feeds the prior to a learned model as an extra
+    training channel and reports a modest gain (0.760 to 0.783). Nobody claimed
+    the analytic prior is a standalone detector. The synthetic benchmark did,
+    because I built the data to agree with it."""
     out = _run(CAPSULE, tmp_path)
-    assert out["metrics"]["auc"] > out["metrics"]["baseline_auc"]
+    m = out["metrics"]
+    assert 0.5 < m["auc"] < m["baseline_auc"], \
+        "if the prior ever does beat intensity here, this test should be the " \
+        "thing that notices, not a paragraph someone rewrites"
+    assert not out["verdict"].passed
+    assert any("did not beat the naive baseline" in r for r in out["verdict"].reasons)
+
+
+def test_a_per_pixel_prior_must_not_be_averaged_over_the_frame(tmp_path):
+    """A lesion covers a small part of a capsule frame. Summarising P_blood by
+    the frame mean scored 0.496 — chance — because the mean washes out the
+    strongest region, which is the only place the prior says anything. The
+    solver takes a high percentile instead, and that alone moved it to 0.60."""
+    out = _run(CAPSULE, tmp_path)
+    assert out["metrics"]["auc"] > 0.55, "the percentile aggregation is doing work"
 
 
 def test_one_seed_is_never_presented_as_a_result(tmp_path):
