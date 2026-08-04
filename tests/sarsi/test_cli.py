@@ -1051,3 +1051,31 @@ def test_cli_who_declines_to_guess(isolated):
     runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
     result = runner.invoke(app, ["sarsi", "who", "handle the thing"])
     assert "cannot tell" in result.output.lower()
+
+
+def test_cli_handoff_proposes_and_accepts(isolated):
+    from ai4science.harness.agents.sarsi import task as tsk, verifier as vf
+    config, agent, t = _one_task("produce the benchmark numbers")
+    tsk.finish(config, agent, t, verdict=vf.parse("PASS: 1,204 rows"))
+
+    proposed = runner.invoke(app, ["sarsi", "handoff", "work", t.id,
+                                   "--to", "funding",
+                                   "--goal", "draft the application",
+                                   "--because", "the numbers are verified"])
+    assert proposed.exit_code == 0
+    shown = runner.invoke(app, ["sarsi", "handoff", "funding"])
+    assert "draft the application" in shown.output
+
+    runner.invoke(app, ["sarsi", "handoff", "funding", "--accept"])
+    config = reg.load()
+    goals = [x.goal for x in tsk.all_of(config, config.agents["funding"])]
+    assert goals == ["draft the application"]
+
+
+def test_cli_handoff_refuses_unfinished_work(isolated):
+    _config, _agent, t = _one_task()
+    result = runner.invoke(app, ["sarsi", "handoff", "work", t.id,
+                                 "--to", "funding", "--goal", "draft it",
+                                 "--because", "x"])
+    assert result.exit_code != 0
+    assert "claim" in result.output.lower() or "pass" in result.output.lower()

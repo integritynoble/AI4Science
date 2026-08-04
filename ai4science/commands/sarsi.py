@@ -509,11 +509,80 @@ def rules_cmd(agent_id: str = typer.Argument(..., help="Agent id, e.g. work"),
                   highlight=False)
 
 
-@app.command("handoff", help="Write HANDOFF.md for the next session, and show it.")
+@app.command("handoff", help="HANDOFF.md for a task, or hand finished work to another worker.")
 def handoff_cmd(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
-                task_id: str = typer.Argument(..., help="Task id")) -> None:
-    from ai4science.harness.agents.sarsi import handoff as ho
+                task_id: Optional[str] = typer.Argument(None, help="Task id"),
+                to: Optional[str] = typer.Option(None, "--to",
+                                                 help="Hand it to this worker."),
+                goal: Optional[str] = typer.Option(None, "--goal",
+                                                   help="What they should do."),
+                because: Optional[str] = typer.Option(None, "--because",
+                                                      help="Why this is the next step."),
+                accept: bool = typer.Option(False, "--accept",
+                                            help="Accept the handoff waiting for this worker."),
+                decline: bool = typer.Option(False, "--decline",
+                                             help="Refuse it.")) -> None:
+    from ai4science.harness.agents.sarsi import handoff as ho, relay
 
+    config = _load()
+
+    # ── the owner acting on one that is waiting ───────────────────────
+    if accept or decline or (task_id is None and to is None):
+        agent = _worker_or_exit(config, agent_id)
+        if decline:
+            relay.decline(config, agent)
+            console.print("declined — nothing was created", markup=False,
+                          highlight=False)
+            return
+        if accept:
+            try:
+                made = relay.accept(config, agent, by_owner=True)
+            except relay.OwnerMustAccept as e:
+                console.print(str(e), style="yellow", markup=False,
+                              highlight=False)
+                raise typer.Exit(code=2)
+            if made is None:
+                console.print(f"nothing is waiting for {agent_id}")
+                return
+            console.print(f"{agent_id} holds {made.id} — {made.goal}",
+                          markup=False, highlight=False)
+            console.print(f"  it cites {made.depends_on[0]}", style="dim",
+                          markup=False, highlight=False)
+            return
+        held = relay.pending(config, agent)
+        if held is None:
+            console.print(f"nothing is waiting for {agent_id}")
+            return
+        console.print(f"{held['from_agent']} finished {held['from_task']} "
+                      f"(\"{held['from_goal']}\") and asks {agent_id} to:",
+                      markup=False, highlight=False)
+        console.print(f"  {held['goal']}", markup=False, highlight=False)
+        console.print(f"  because {held['because']}", style="dim",
+                      markup=False, highlight=False)
+        console.print(f"  accept it: sarsi handoff {agent_id} --accept",
+                      style="dim")
+        return
+
+    # ── handing finished work on ──────────────────────────────────────
+    if to:
+        config, agent, t = _load_task(agent_id, task_id)
+        if not (goal and because):
+            console.print("[red]--to needs --goal and --because[/red] — the "
+                          "owner is deciding, and 'it suggested it' is not a "
+                          "reason")
+            raise typer.Exit(code=2)
+        try:
+            relay.propose(config, agent, t, to=to, goal=goal, because=because)
+        except (relay.NotFinished, relay.NotAWorker, KeyError, ValueError) as e:
+            console.print(str(e).strip("\""), style="yellow", markup=False,
+                          highlight=False)
+            raise typer.Exit(code=2)
+        console.print(f"proposed to {to} — nothing was created; they see it in "
+                      f"`sarsi attention --agent {to}`", markup=False,
+                      highlight=False)
+        return
+
+    # ── the per-session handoff file ──────────────────────────────────
     config, agent, t = _load_task(agent_id, task_id)
     path = ho.write(config, agent, t)
     console.print(path.read_text(), markup=False, highlight=False)

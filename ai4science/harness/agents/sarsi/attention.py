@@ -34,7 +34,8 @@ from ai4science.harness.agents.sarsi.registry import Agent, Config
 #: decision. The order is the whole value of the list — the owner reads down it
 #: until they run out of time, so what they read first has to be what matters.
 ORDER = ("gate", "unclaimed", "orphan", "grant", "question", "over-budget",
-         "exhausted", "undelivered", "proposal", "dead-session", "stale")
+         "exhausted", "undelivered", "handoff", "proposal", "dead-session",
+         "stale")
 
 #: States in which nothing is steering the session any more. A terminal still
 #: running past one of these is an ORPHAN — the reverse of a dead session, and
@@ -99,6 +100,7 @@ def needs(config: Config, agent: Agent, *, pane: Optional[Any] = None,
         items.extend(_for_task(config, agent, task, pane=pane))
     items.extend(_unclaimed(config, agent, live))
     items.extend(_proposal(config, agent))
+    items.extend(_handoff(config, agent))
     items.sort(key=lambda i: (ORDER.index(i.kind) if i.kind in ORDER
                               else len(ORDER), i.task_id))
     return Attention(items=items)
@@ -135,6 +137,25 @@ def _proposal(config: Config, agent: Agent) -> List[Item]:
                  f"it asks for a standing house rule: {held['rule']!r} "
                  f"— because {held.get('because', '')}",
                  action=f"sarsi rules {agent.id} --sign   (or --discard)")]
+
+
+def _handoff(config: Config, agent: Agent) -> List[Item]:
+    """Work another worker finished and thinks this one should carry on.
+
+    It creates nothing until the owner accepts, so an unseen handoff is one
+    that never happens — and the worker that raised it has no way to chase.
+    """
+    from ai4science.harness.agents.sarsi import relay
+    try:
+        held = relay.pending(config, agent)
+    except Exception:
+        return []
+    if not held:
+        return []
+    return [Item("handoff", "",
+                 f"{held['from_agent']} finished {held['from_task']} and asks "
+                 f"this one to: {held['goal']!r} — because {held['because']}",
+                 action=f"sarsi handoff {agent.id} --accept   (or --decline)")]
 
 
 def _unclaimed(config: Config, agent: Agent, live) -> List[Item]:

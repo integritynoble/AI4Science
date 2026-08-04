@@ -49,6 +49,7 @@ Each of these is live, tested, and exercised on the installed binary.
 | `guide` / `/guided` | Steer by hand. The owner's word always goes through; the worker's stands down when the owner holds the wheel. |
 | `/interact` | Hands over the `tmux attach` line and stands back. **It does not relay.** |
 | `/history` | What has happened, from the record. |
+| `handoff <agent> <task> --to <worker>` | **One worker hands finished work to another** — `work` → `funding`. A **proposal**: a worker may not give another worker work, so only the owner's `--accept` creates the task. Only *verified* work may be handed on, and the evidence travels as a **dependency link**, not a summary. |
 | `handoff` | **`HANDOFF.md` for the next session**, written automatically when a task stops. Names the phases already verified so they are not redone, the verifier's last objection, open questions and grants held. It records what the RECORD knows — never what the session believed. |
 | `check` | Ask the verifier: **PASS / FAIL / UNVERIFIED**, with a reason. The verdict is read from a verdict **line**, decoration and all (`**PASS**:`, `- FAIL:`), so prose containing the words is not a judgment and a bolded judgment is not discarded. **Gathers its own evidence** when none is given. A **stale plan is refused, not judged** — see decision 2. |
 | `blast` | **What it wrote, against the paths its plan declared.** Read from the session's own `Write`/`Edit` records. `Bash` names no file, so it is counted as *unchecked* and never reported as clean — "nothing escaped" and "nothing was left unobserved" are separate answers. |
@@ -99,7 +100,6 @@ Tier 3 below is still deliberately later.
 
 ## Part 3 — Deliberately later
 
-- **Handoff between workers** (`work` → `funding`).
 - **Per-agent web pages** at `physicsworldmodel.org/<agent>/`.
 
 All three are more valuable now that tasks close and retry, but they are still
