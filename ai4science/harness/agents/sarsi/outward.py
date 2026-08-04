@@ -168,6 +168,14 @@ def _always_asks(agent: Agent, act: Act) -> bool:
 def _transmit(config: Config, act: Act, transmit: Callable[..., str], *,
               via: str, now) -> Outcome:
     approved_body = act.body
+    # Cleared before, read after: the handle arrives out-of-band from the
+    # transmitter, so a leftover from the PREVIOUS post could be recorded
+    # against this one — and a retraction would then delete the wrong thing,
+    # which is worse than the gap the handle was added to close.
+    try:
+        setattr(transmit, "handle", "")
+    except Exception:
+        pass                            # not all transmitters are settable
     try:
         sent = transmit(act, body=approved_body)
     except Exception:
@@ -181,7 +189,8 @@ def _transmit(config: Config, act: Act, transmit: Callable[..., str], *,
         raise NotWhatWasApproved(
             f"what went out is not what was approved for {act.destination}: "
             f"the transmitter changed it")
-    _record(config, act, outcome="sent", now=now)
+    _record(config, act, outcome="sent", now=now,
+            handle=str(getattr(transmit, "handle", "") or ""))
     return Outcome(approved=True, transmitted=True, reason=via, digest=act.digest())
 
 
@@ -259,14 +268,18 @@ def _is_yes(answer: Any) -> bool:
 
 # ── the record ────────────────────────────────────────────────────────
 
-def _record(config: Config, act: Act, *, outcome: str, now) -> None:
+def _record(config: Config, act: Act, *, outcome: str, now,
+            handle: str = "") -> None:
     # a digest, not the body: an outward draft can hold a salary expectation, a
     # medical detail, or someone else's address, and a ledger is not the place
     # for a second copy of it
-    ledger.append(config, "outward",
-                  {"agent": act.agent_id, "task": act.task_id, "kind": act.kind,
-                   "destination": act.destination, "digest": act.digest(),
-                   "chars": len(act.body), "outcome": outcome}, now=now)
+    record = {"agent": act.agent_id, "task": act.task_id, "kind": act.kind,
+              "destination": act.destination, "digest": act.digest(),
+              "chars": len(act.body), "outcome": outcome}
+    if handle:
+        # what the platform called it — an identifier, never the content
+        record["handle"] = handle
+    ledger.append(config, "outward", record, now=now)
 
 
 def _path(config: Config) -> Path:

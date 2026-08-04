@@ -117,12 +117,15 @@ class TooLongToPost(Exception):
 #: Where each platform takes a post, and what it will accept.
 #: `limit=None` means the platform imposes none we need to enforce.
 PLATFORMS: Dict[str, Dict[str, Any]] = {
+    # `id_field` is what the platform calls the thing it just published. It is
+    # kept so a post can be identified later — without it `undo` cannot say
+    # WHICH post to take back, and deleting the wrong one is worse than none.
     "x": {"url": "https://api.twitter.com/2/tweets", "limit": 280,
-          "field": "text"},
+          "field": "text", "id_field": "id"},
     "linkedin": {"url": "https://api.linkedin.com/v2/ugcPosts", "limit": 3000,
-                 "field": "text"},
+                 "field": "text", "id_field": "id"},
     "substack": {"url": "https://substack.com/api/v1/posts", "limit": None,
-                 "field": "text"},
+                 "field": "text", "id_field": "id"},
 }
 
 
@@ -192,6 +195,10 @@ def post(config: Config, agent: Agent, *, platform: str, secret: str,
             raise TransmitFailed(f"{platform} refused the post: {status} "
                                  f"{(answer or {}).get('error', '')}")
 
+        # What the platform called it, for `undo`. Absent is absent: a blank
+        # handle is what stops a retraction from guessing.
+        send.handle = str((answer or {}).get(spec.get("id_field") or "id") or "")
+
         published = (answer or {}).get(spec["field"])
         if not published:
             # Silence about what went out is not confirmation that it matched.
@@ -201,6 +208,7 @@ def post(config: Config, agent: Agent, *, platform: str, secret: str,
         return published
 
     send.precheck = precheck            # so OWN can ask before it asks you
+    send.handle = ""                    # set per publish; see `outward._transmit`
     return send
 
 

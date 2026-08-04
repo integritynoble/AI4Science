@@ -74,7 +74,7 @@ Each of these is live, tested, and exercised on the installed binary.
 | Function | What it does |
 |---|---|
 | `send` | Ask to let one act leave the machine. Drafting is not sending. |
-| `undo` | **Take back the last outward act — when that is possible at all.** Mail cannot be recalled and a submitted form cannot be withdrawn; both say so and name the real remedy. A post is retractable only if the platform offers it *and* a handle was kept. A failed attempt is recorded as an attempt, never as a retraction. |
+| `undo` | **Take back the last outward act — when that is possible at all.** Mail cannot be recalled and a submitted form cannot be withdrawn; both say so and name the real remedy. A post **is** retractable: the platform's id is recorded when it publishes, cleared before every send so a stale one can never be attributed to the next post. A failed attempt is recorded as an attempt, never as a retraction. |
 | `submit` | Submit a form — every field shown, and it cannot be undone. |
 | `vault` | Two-stage secrets; money policies need a limit, a counterparty and a rate. |
 | `ceiling` | Set the auto level (A0–A3), per agent or all. Reports where it will *actually* land. |
@@ -83,13 +83,12 @@ Each of these is live, tested, and exercised on the installed binary.
 
 ## Part 2 — Next, in order
 
-### 1. Record a handle when a platform gives one
+### 1. A retractor per platform
 
-`undo` can retract a post only if something identifies **which** post. Nothing
-records one today — the `post` transmitter returns the published text, for the
-approved-bytes check, and no id. So the retractable case is correctly reported
-as unavailable rather than pretended, and it stays unavailable until a
-transmitter passes a handle through to the outward ledger.
+The handle is recorded, so `undo` can now identify which post to take back. What
+is still missing is the call that takes it down: each platform's delete endpoint,
+wired the way `PLATFORMS` wires publishing. Until then `undo` refuses by saying
+no retraction is wired in, rather than pretending.
 
 ### 2. A step and wall-clock budget per task
 
