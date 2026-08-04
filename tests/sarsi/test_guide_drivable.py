@@ -254,6 +254,56 @@ def test_and_it_does_not_log_a_correction_nobody_received(config, attended):
     assert not any("steered" == r.get("state") for r in rows)
 
 
+# ── nothing to type at ────────────────────────────────────────────────
+
+def test_a_task_with_no_session_says_so(config, attended):
+    """The refusal printed `tmux attach -t ?` for a task that has no session:
+    honest about not knowing, and useless — it sends the owner to attach to a
+    terminal that does not exist. Having nowhere to deliver is a different fact
+    from not being allowed to."""
+    t = _task(config, attended)
+    t.session = None
+    tsk._touch(attended, t, time.time)
+    with pytest.raises(ses.NoSession) as e:
+        ses.guide(config, attended, t, "fix it", runtime=_Runtime())
+    assert "?" not in str(e.value)
+    assert "no session" in str(e.value).lower()
+
+
+def test_it_names_how_to_start_one(config, attended):
+    t = _task(config, attended)
+    t.session = None
+    tsk._touch(attended, t, time.time)
+    with pytest.raises(ses.NoSession) as e:
+        ses.guide(config, attended, t, "fix it", runtime=_Runtime())
+    assert f"sarsi run {attended.id} {t.id}" in str(e.value)
+
+
+def test_this_holds_for_a_drivable_agent_too(config, drivable):
+    """It was silently worse there: `guide` sent to the empty session name and
+    reported `sent to ?` — a delivery nobody received, reported as made."""
+    rt = _Runtime()
+    t = _task(config, drivable)
+    t.session = None
+    tsk._touch(drivable, t, time.time)
+    with pytest.raises(ses.NoSession):
+        ses.guide(config, drivable, t, "fix it", runtime=rt)
+    assert rt.sent == []
+
+
+def test_the_answer_path_still_reports_it_the_same_way(config, drivable):
+    """`answer` already refused this, with its own `NoSession`. One class, so
+    either raise is caught by either name."""
+    t = _task(config, drivable, failed=False)
+    t.session = None
+    tsk._touch(drivable, t, time.time)
+    _ask(config, drivable, t)
+    with pytest.raises(ses.NoSession):
+        qs.answer(config, drivable, t, "which host should I use?", "staging",
+                  runtime=_Runtime(), pane=None)
+    assert qs.NoSession is ses.NoSession
+
+
 # ── the chat door ─────────────────────────────────────────────────────
 
 def test_the_chat_door_does_not_type_at_an_attended_session(config, attended):

@@ -36,8 +36,19 @@ ASKED = "question"
 CLOSED = "question-answered"
 
 
-class NoSession(Exception):
-    """There is nowhere to deliver the answer, so it is not an answer."""
+def __getattr__(name):
+    """`NoSession` now lives in `session`, where `guide` raises it.
+
+    One class, two names: `answer` refused this before `guide` did, and callers
+    catch it as `questions.NoSession`. Two separate classes with the same
+    meaning would mean an `except` that looks right and misses half the raises.
+    Resolved lazily to keep this module free of a `session` import — it is
+    imported *by* the loop that imports `session`.
+    """
+    if name == "NoSession":
+        from ai4science.harness.agents.sarsi.session import NoSession
+        return NoSession
+    raise AttributeError(name)
 
 
 class NotAsked(Exception):
@@ -135,7 +146,10 @@ def answer(config: Config, agent: Agent, task: tsk.Task, question: str,
             f"`sarsi questions` lists what is actually waiting")
 
     if not (task.session or {}).get("name"):
-        raise NoSession(
+        # `guide` refuses this too, in the same class; kept here because the
+        # wording is about an ANSWER reaching nobody, and because a question
+        # must not be marked closed on the way to finding that out.
+        raise ses.NoSession(
             f"{task.id} has no session, so this answer would reach nobody. "
             f"Start one with `sarsi run {agent.id} {task.id}` first.")
 

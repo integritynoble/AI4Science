@@ -47,6 +47,10 @@ class SpecUnavailable(Exception):
     """The ai4science agent this sarsi agent is built on is not installed."""
 
 
+class NoSession(Exception):
+    """There is nowhere to deliver it, so it was not delivered."""
+
+
 class NotDrivable(Exception):
     """Typing at an interface this loop cannot read. The owner delivers it."""
 
@@ -622,6 +626,17 @@ def guide(config: Config, agent: Agent, task: tsk.Task, instruction: str, *,
     hazard is the screen, not the author, and two of the four callers are the
     owner by definition.
     """
+    name = (task.session or {}).get("name") or ""
+    if not name:
+        # Before the interface question, because it is a different fact: not
+        # *may we type here* but *there is nowhere to type*. Reported as
+        # "attach to ?" it sent the owner to a terminal that does not exist,
+        # and on a drivable agent it was quieter and worse — the text went to
+        # the empty session name and the CLI said "sent to ?", a delivery
+        # nobody received, reported as made.
+        raise NoSession(
+            f"{task.id} has no session, so there is nowhere to deliver this. "
+            f"Start one with `sarsi run {agent.id} {task.id}` first.")
     if not drivable(agent.spec):
         # Refused, not silently skipped: `deliver_kickoff` returns quietly
         # because the loop calls it every pass, but these are commands somebody
@@ -632,14 +647,13 @@ def guide(config: Config, agent: Agent, task: tsk.Task, instruction: str, *,
             f"cannot read — typing at it is keystrokes at an unknown screen, "
             f"and on a menu one option is always the worst one. Deliver it "
             f"yourself:\n\n"
-            f"  tmux attach -t {(task.session or {}).get('name', '?')}\n\n"
+            f"  tmux attach -t {name}\n\n"
             f"{instruction}")
     if not by_owner and who_drives(task) == "owner":
         raise OwnerHasTheWheel(
             f"you have the wheel on {task.id}; {agent.id} is standing by. "
             f"Hand it back with /resume {task.id}.")
-    (runtime or MachineRuntime()).send((task.session or {}).get("name", ""),
-                                       instruction)
+    (runtime or MachineRuntime()).send(name, instruction)
     ledger.append(config, "reports",
                   {"agent": agent.id, "task": task.id,
                    "state": "guided-by-owner" if by_owner else "guided",

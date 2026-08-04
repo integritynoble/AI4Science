@@ -807,7 +807,8 @@ def retry(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
     config, agent, t = _load_task(agent_id, task_id)
     try:
         t = rty.retry(config, agent, t)
-    except (rty.NothingToRetry, rty.Exhausted, ses.NotDrivable) as e:
+    except (rty.NothingToRetry, rty.Exhausted, ses.NotDrivable,
+            ses.NoSession) as e:
         console.print(str(e), style="yellow", markup=False, highlight=False)
         raise typer.Exit(code=1)
     console.print(f"{t.id} handed back — attempt {t.retries} of {rty.MAX_RETRIES}",
@@ -1246,7 +1247,7 @@ def guide_cmd(agent_id: str = typer.Argument(..., help="Worker id"),
     # by_owner: this is you, so it goes in even while you hold the wheel
     try:
         ses.guide(config, agent, t, instruction, by_owner=True)
-    except (ses.NotDrivable, ses.OwnerHasTheWheel) as e:
+    except (ses.NoSession, ses.NotDrivable, ses.OwnerHasTheWheel) as e:
         console.print(str(e), style="yellow", markup=False, highlight=False)
         raise typer.Exit(code=2)
     console.print(f"sent to {(t.session or {}).get('name', '?')}",
