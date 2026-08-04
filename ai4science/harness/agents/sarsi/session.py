@@ -732,6 +732,27 @@ def verify(config: Config, agent: Agent, task: tsk.Task, *,
     **fed back into the session** as the next instruction rather than merely
     logged — a reason that only reaches a log steers nothing.
     """
+    drifted = tsk.criteria_drift(agent, task)
+    if drifted:
+        # `sarsi plan` renders the file while this judges the copy taken at
+        # attach time, so an owner sharpening a criterion in the file was
+        # judged against the one they replaced — live, that produced two FAILs
+        # whose reasons were both true of a criterion nobody was looking at.
+        #
+        # Refused rather than resolved: the plan file lives in the session's
+        # own working directory, so "the file wins" would let the agent being
+        # judged restate the question and drop the verdict that failed it.
+        # Which criterion is meant is genuinely unknown, so UNVERIFIED.
+        from ai4science.harness.agents.sarsi import verifier as _vf
+        which = ", ".join(str(i + 1) for i in drifted)
+        task.verdict = dict(_vf._unverified(
+            f"{task.plan_version}.md no longer matches the criteria this task "
+            f"was attached with — phase {which} reads differently. Judging "
+            f"would answer one of two questions without saying which. Take the "
+            f"file as the standard with `sarsi adopt {agent.id} {task.id}`, "
+            f"which clears the verdicts of the phases that changed."))
+        return tsk._touch(agent, task, now)
+
     if task.plan_stale:
         # The owner drove this session by hand, so the plan no longer describes
         # what happened. Judging against the goal alone would silently answer a

@@ -288,12 +288,39 @@ def test_the_verifier_is_given_the_plans_criteria(config, agent):
                                 "export.csv has 1,204 rows"]
 
 
-def test_a_stale_plans_criteria_are_withheld_from_the_verifier(config, agent):
+def test_a_stale_plan_is_refused_rather_than_judged(config, agent):
     """Judging this run against a superseded mission's standard is worse than
-    judging against the goal alone."""
+    judging against the goal alone.
+
+    This used to be written by emptying `criteria` by hand — a state no code
+    produces: `_interact` marks the plan stale AND withholds its criteria in
+    the same breath. Simulating the effect meant the mechanism itself was
+    never covered, which surfaced when the criteria began being re-read from
+    the plan file and the hand-set `[]` no longer stuck. Written against the
+    real flag, the guarantee is stronger: the verifier is not asked at all.
+    """
     rt = FakeRuntime()
     t = ses.assign(config, agent, _task(config, agent), runtime=rt)
-    t.criteria = []                      # what a stale plan yields
+    t.plan_stale = True
+    t.criteria = []                      # exactly what `_interact` leaves
+    seen = {}
+
+    def verifier(*, goal, criteria, evidence):
+        seen.update(criteria=criteria)
+        return {"state": "PASS"}
+
+    out = ses.verify(config, agent, t, verifier=verifier, evidence="")
+    assert seen == {}, "a stale plan must not reach the verifier at all"
+    assert (out.verdict or {}).get("state") == "UNVERIFIED"
+
+
+def test_a_task_with_no_criteria_is_judged_on_its_goal(config, agent):
+    """The case the test above used to cover incidentally: nothing to withhold,
+    so the verifier is asked with an empty list rather than not asked."""
+    rt = FakeRuntime()
+    t = ses.assign(config, agent, _task(config, agent), runtime=rt)
+    t.criteria = []
+    t.plan_version = ""                  # no plan file to re-read them from
     seen = {}
 
     def verifier(*, goal, criteria, evidence):
@@ -301,7 +328,7 @@ def test_a_stale_plans_criteria_are_withheld_from_the_verifier(config, agent):
         return {"state": "PASS"}
 
     ses.verify(config, agent, t, verifier=verifier, evidence="")
-    assert seen["criteria"] == [] and seen != {}
+    assert seen == {"criteria": []}
 
 
 def test_a_pass_verifies_the_task_and_records_the_verdict(config, agent):

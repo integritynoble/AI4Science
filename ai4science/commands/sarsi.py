@@ -1254,6 +1254,35 @@ def guide_cmd(agent_id: str = typer.Argument(..., help="Worker id"),
                   markup=False, highlight=False)
 
 
+@app.command("adopt", help="Take the plan FILE as the standard, after editing it by hand.")
+def adopt_cmd(agent_id: str = typer.Argument(..., help="Worker id"),
+              task_id: str = typer.Argument(..., help="Task id, e.g. tsk_…")) -> None:
+    """The owner's half of the plan-file question.
+
+    `check` refuses a task whose `plan0.md` no longer matches the criteria it
+    was attached with, and refuses rather than resolving it, because that file
+    sits in the session's own working directory — taking it automatically would
+    let the agent being judged restate the question and drop the verdict that
+    failed it. So adopting is an act, and only the owner performs it.
+    """
+    from ai4science.harness.agents.sarsi import task as _t
+
+    config, agent, t = _load_task(agent_id, task_id)
+    moved = _t.adopt_criteria(agent, t)
+    if not moved:
+        console.print(f"{t.id} already judges what {t.plan_version}.md says — "
+                      f"nothing to adopt.", markup=False, highlight=False)
+        return
+    which = ", ".join(str(i + 1) for i in moved)
+    console.print(f"{t.id} now judges what {t.plan_version}.md says. Phase "
+                  f"{which} changed, so any verdict those phases had is "
+                  f"cleared — they were judged against a standard that no "
+                  f"longer exists.", markup=False, highlight=False)
+    for i, criterion in enumerate(t.criteria or [], start=1):
+        console.print(f"  {i}. {criterion}", style="dim", markup=False,
+                      highlight=False)
+
+
 @app.command("check", help="Ask the independent verifier whether this task's goal is met.")
 def check_cmd(agent_id: str = typer.Argument(..., help="Worker id"),
               task_id: str = typer.Argument(..., help="Task id"),

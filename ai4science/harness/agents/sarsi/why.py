@@ -26,12 +26,26 @@ from ai4science.harness.agents.sarsi.registry import Agent, Config
 def explain(config: Config, agent: Agent, task: tsk.Task, *, acts=None) -> str:
     lines: List[str] = [f"{task.id} — {task.goal}", f"state: {task.state}"]
 
+    # "the criteria a verdict WILL apply" is this command's whole promise, so
+    # it says when the plan FILE has moved away from them. It reports and does
+    # not adopt: the file is writable by the session being judged.
+    moved = tsk.criteria_drift(agent, task)
+
     plan = tsk.read_plan(config, agent, task)
     if plan is None or not plan.phases:
         lines.append("plan: no plan yet — nothing has been written to judge "
                      "this against.")
     else:
         lines.append(f"plan: {task.plan_version}.md, {len(plan.phases)} phase(s)")
+        if moved:
+            # Said, not swallowed: a criterion that moved under a task changes
+            # what a PASS would have meant, and any verdict it had is gone.
+            which = ", ".join(str(i + 1) for i in moved)
+            lines.append(f"  {task.plan_version}.md has CHANGED since this was "
+                         f"attached — phase {which} reads differently there. "
+                         f"Until you take it as the standard with `sarsi adopt "
+                         f"{agent.id} {task.id}`, the criteria below are what a "
+                         f"verdict would apply, and judging is refused.")
         here = tsk.earliest_incomplete(task)
         criteria = list(task.criteria or [])
         for i, phase in enumerate(plan.phases):

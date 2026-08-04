@@ -105,10 +105,17 @@ class FakePane:
         return {"ok": True}
 
 
-def _task(config, agent, *, session=True, paused=False):
+def _task(config, agent, *, session=True, paused=False, criterion=None):
+    """`criterion` goes through the PLAN, not onto the record afterwards.
+
+    Setting `t.criteria` by hand produced a state no code path can: the plan
+    file still said something else, which `check` now reads as the owner
+    having edited the plan and refuses to judge until it is adopted.
+    """
     d = worker.Directive(agent_id=agent.id, goal="write DONE.md")
     p = pl.Plan(goal="write DONE.md",
-                phases=[pl.Phase(title="do it", verified_when="DONE.md exists")])
+                phases=[pl.Phase(title="do it",
+                                 verified_when=criterion or "DONE.md exists")])
     t = tsk.attach_plan(config, agent, tsk.create(config, agent, d), p)
     t = tsk.start(config, agent, t)
     if session:
@@ -246,8 +253,8 @@ def test_the_verifier_is_given_gathered_evidence_not_the_pane(config, agent):
     """The live bug: the loop handed the verifier a terminal showing a spinner
     and some narration, and the verifier correctly said it could see no evidence
     of the file. What the session LEFT BEHIND is what a verdict rests on."""
-    t = _task(config, agent)
-    t.criteria = ["report.md exists and states the total 111"]
+    t = _task(config, agent,
+              criterion="report.md exists and states the total 111")
     folder = tsk.dir_of(agent, t.id)
     folder.mkdir(parents=True, exist_ok=True)
     (folder / "report.md").write_text("# Report\n\nThe total is 111.\n")
@@ -265,8 +272,7 @@ def test_the_verifier_is_given_gathered_evidence_not_the_pane(config, agent):
 
 
 def test_a_missing_required_file_reaches_the_verifier_as_missing(config, agent):
-    t = _task(config, agent)
-    t.criteria = ["summary.md exists"]
+    t = _task(config, agent, criterion="summary.md exists")
     tsk.dir_of(agent, t.id).mkdir(parents=True, exist_ok=True)
     seen = {}
 
@@ -304,8 +310,8 @@ Which directory should I write the export to?
 
 
 def test_a_question_is_answered_from_the_workspace(config, agent):
-    t = _task(config, agent)
-    t.criteria = ["export.csv is written under ./reports"]
+    t = _task(config, agent,
+              criterion="export.csv is written under ./reports")
     pane = FakePane(QUESTION_PANE)
     action = op.tick(config, agent, t, pane=pane,
                      model=lambda p: "./reports, per the plan's criterion.")

@@ -35,7 +35,7 @@ from ai4science.harness.agents.sarsi.registry import Agent, Config
 #: until they run out of time, so what they read first has to be what matters.
 ORDER = ("gate", "unclaimed", "orphan", "grant", "question", "over-budget",
          "exhausted", "attended", "undelivered", "handoff", "proposal",
-         "dead-session", "stale")
+         "dead-session", "drift", "stale")
 
 #: States in which nothing is steering the session any more. A terminal still
 #: running past one of these is an ORPHAN — the reverse of a dead session, and
@@ -218,6 +218,18 @@ def _for_task(config: Config, agent: Agent, task: tsk.Task, *,
                         "its first instruction was typed and never appeared on "
                         "screen",
                         action=f"tmux attach -t {(task.session or {}).get('name', '')}"))
+
+    drifted = tsk.criteria_drift(agent, task)
+    if drifted:
+        # `check` refuses a drifted plan, so the owner would otherwise learn
+        # about it only by running `check` and reading a refusal.
+        which = ", ".join(str(i + 1) for i in drifted)
+        out.append(Item("drift", task.id,
+                        f"{task.plan_version}.md was edited after this task "
+                        f"was attached — phase {which} reads differently "
+                        f"there, and judging is refused until you settle "
+                        f"which one is the standard",
+                        action=f"sarsi adopt {agent.id} {task.id}"))
 
     if task.plan_stale:
         out.append(Item("stale", task.id,

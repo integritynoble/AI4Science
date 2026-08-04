@@ -214,6 +214,80 @@ def clear_phase(task: Task, index: Optional[int] = None) -> Task:
     return task
 
 
+def criteria_drift(agent: Agent, task: Task) -> List[int]:
+    """Which phases read differently in the plan FILE than in this record.
+
+    `sarsi plan` renders the file; `why` and `check` used the copy taken when
+    the plan was attached, and nothing kept the two equal. So editing the plan
+    file — the obvious way to sharpen a criterion — produced two plans: the one
+    the owner reads and the one the verifier applies. Live on grace that cost
+    two FAILs whose stated reasons were both true of a criterion nobody was
+    looking at any more.
+
+    **This reports; it never adopts.** Letting the file simply win was the first
+    version of this fix and it was worse than the bug: the plan file lives in
+    the task folder, which is the session's working directory, and the kickoff
+    tells it so. "The file decides" hands the agent being judged the power to
+    restate the question and drop the verdict that already failed it.
+    """
+    if not task.plan_version or task.plan_stale:
+        # A stale plan is exempt: it is stale precisely because it no longer
+        # describes what happened, and `_interact` withheld its criteria on
+        # purpose. Reading them back would undo that.
+        return []
+    path = dir_of(agent, task.id) / f"{task.plan_version}.md"
+    try:
+        fresh = pl.parse(path.read_text()).criteria()
+    except Exception:
+        # Unreadable or unparseable, both. A plan that cannot be read is
+        # UNKNOWN, and unknown is not changed — reporting drift here would stop
+        # judging on every task whose file is missing.
+        return []
+
+    stored = list(task.criteria or [])
+    if fresh == stored:
+        return []
+    if len(fresh) != len(stored):
+        # The shape moved, so the numbering did: verdict 2 is no longer about
+        # phase 2.
+        return list(range(max(len(fresh), len(stored))))
+    return [i for i, (a, b) in enumerate(zip(fresh, stored)) if a != b]
+
+
+def adopt_criteria(agent: Agent, task: Task, *, now=time.time) -> List[int]:
+    """The owner takes the plan FILE as the standard. Only they may.
+
+    This is the sign half of the propose/hold/sign shape `criteria_drift`
+    opens, and it exists as a separate act for the reason written there: the
+    file is writable by the session being judged, so adopting it is a decision,
+    not a refresh.
+
+    What follows is `_edit`'s rule, applied to an edit that arrived from
+    outside it — **a changed criterion clears that phase's verdict**, because
+    the phase was judged against a standard that no longer exists. Only the
+    phases that changed: adopting must not wipe verdicts that are still about
+    the criterion which earned them.
+    """
+    changed = criteria_drift(agent, task)
+    if not changed:
+        return []
+    path = dir_of(agent, task.id) / f"{task.plan_version}.md"
+    try:
+        fresh = pl.parse(path.read_text()).criteria()
+    except Exception:
+        return []
+
+    if len(fresh) != len(list(task.criteria or [])):
+        clear_phase(task, None)          # renumbered: no verdict still applies
+    else:
+        for index in changed:
+            clear_phase(task, index)
+
+    task.criteria = fresh
+    _touch(agent, task, now)
+    return changed
+
+
 def evidence_roots(agent: Agent, task: Task) -> List[Path]:
     """Everywhere this task's evidence may be gathered from.
 
