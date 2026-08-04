@@ -349,6 +349,29 @@ accept, because a lenient one inflates the record of every agent it judges.
 review — or require ones from the market, and then the install screen names every
 author whose code comes with it and what each part may touch.
 
+## 11b. Research agents
+
+A **research agent** — computational imaging, cancer, drug design — has two
+functions. The first is ordinary: it holds tasks and works them through
+`sarsi-claude` like any agent. The second is **autonomous research**, driven by
+its own self-model: it works on owner-set tasks, on benchmarks, or on the
+charter it shipped with, without being asked each time.
+
+**It is off by default**, because it spends money on its own. Turning it on is a
+standing, revocable permission with a budget; reaching the budget stops the loop
+rather than asking for more. An agent may not turn it on or extend it.
+
+> **Every gate still applies.** A research run produces a plan with
+> `Verified when:` lines, stops at the grant for anything the plan declares,
+> stops at the outward gate before anything leaves, and is judged by the same
+> independent verifier. What the owner gave up is being asked each time; what
+> they kept is every gate.
+
+> **Self-directed work is recorded apart from the owner's.** An agent that wrote
+> its own benchmark, passed it, and counted the pass toward its record would have
+> published its own reputation — so owner-set tasks, benchmarks and self-directed
+> research are three lines and never one number.
+
 ## 12. Self-awareness and RSI
 
 Every agent carries a self-model, and the contract is four refusals: every line
