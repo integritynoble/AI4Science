@@ -343,7 +343,7 @@ def attention(agent_id: Optional[str] = typer.Option(None, "--agent",
     pane = op.TmuxPane()
     if agent_id:
         agent = _worker_or_exit(config, agent_id)
-        found = att.needs(config, agent, pane=pane)
+        found = att.needs(config, agent, pane=pane, live=None)
         rows = [att.Item(kind=i.kind, task_id=i.task_id, detail=i.detail,
                          agent_id=agent.id, action=i.action) for i in found.items]
         found = att.Attention(items=rows)

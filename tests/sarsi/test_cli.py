@@ -833,3 +833,13 @@ def test_cli_answer_refuses_when_the_answer_would_reach_nobody(isolated):
                                  "which directory?", "/srv/exports"])
     assert result.exit_code != 0
     assert "no session" in result.output.lower()
+
+
+def test_cli_attention_reports_a_terminal_no_task_claims(isolated, monkeypatch):
+    """The CLI must actually ASK tmux, or the check never engages."""
+    from ai4science.harness.agents.sarsi import entry
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    monkeypatch.setattr(entry, "_live_names", lambda: {"work-9zz9"})
+    result = runner.invoke(app, ["sarsi", "attention"])
+    assert "work-9zz9" in result.output
+    assert result.exit_code == 1

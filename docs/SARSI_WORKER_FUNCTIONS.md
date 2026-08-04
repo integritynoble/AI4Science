@@ -60,7 +60,7 @@ Each of these is live, tested, and exercised on the installed binary.
 | Function | What it does |
 |---|---|
 | `questions` / `answer` | **The escalations, in one place, answerable from either surface.** `answering` declines what it must not answer and escalates it; these list what is open and deliver your reply into the session. The owner closes a question — a later automatic answer does not. |
-| `attention` | **"Is anything waiting on me?"** across every worker, or one. Gates (with the actual command), ungranted permissions, exhausted retries, undelivered kickoffs, stale plans, and records pointing at terminals that are gone. Exits non-zero when something waits, so a timer can act on it. |
+| `attention` | **"Is anything waiting on me?"** across every worker, or one. Gates (with the actual command), **terminals no task claims**, orphans, ungranted permissions, open questions, exhausted retries, undelivered kickoffs, stale plans, and records pointing at terminals that are gone. Exits non-zero when something waits, so a timer can act on it. |
 | `enter` | Step into a worker: the task you last touched, or — holding none — **the question "what would you like done?"** rather than an empty board. It **reconciles the records against tmux** first, so it reports now rather than what was true when the record was written. |
 | cursor per `(surface, account)` | Being *in* a task, so plain words are about that task. Stored on disk; the phone and the laptop stand in different places. |
 | `why` / `/why <task>` | **The goal, the criteria a verdict will apply, and what the last verdict said** — in one answer. Reports and never infers: no verdict says *not judged yet*, and it will not name a "current phase" (see below). |
@@ -82,41 +82,33 @@ Each of these is live, tested, and exercised on the installed binary.
 
 ## Part 2 — Next, in order
 
-### 1. `attention` should carry the unclaimed terminal too
-
-`enter` now reports a live session of this agent that **no task claims** — the
-dangerous direction, because the board shows nothing at all while something runs
-holding whatever it was granted. `attention` reports the reverse (a record with
-no terminal) and the orphan (a terminal past its task's end), but not this one.
-It is the same class and belongs on the same list.
-
-### 2. `undo the last outward act`
+### 1. `undo the last outward act`
 
 You approve a send and regret it within a minute. Nothing can retract, and the
 outward ledger already holds enough to *try*. Load-bearing, per doc A.
 
-### 3. A step and wall-clock budget per task
+### 2. A step and wall-clock budget per task
 
 A session that loops burns tokens until someone looks. A declared budget that
 pauses and reports beats one that runs all night.
 
-### 4. `handoff`
+### 3. `handoff`
 
 Writes `HANDOFF.md` before a context clear. The spec's layout names it; nothing
 writes it.
 
-### 5. Task dependencies
+### 4. Task dependencies
 
 `funding` drafting an application that needs `work`'s benchmark numbers is the
 obvious case. Without them the owner is the scheduler.
 
-### 6. A workspace fold
+### 5. A workspace fold
 
 History is bounded with the overflow counted, but never summarised — a long
 task's early context is dropped rather than compressed. Matters most during
 planning, which is exactly where it is worth keeping.
 
-### 7. Per-agent house rules
+### 6. Per-agent house rules
 
 A file each worker injects into every kickoff.
 
@@ -125,7 +117,7 @@ A file each worker injects into every kickoff.
 > again on every new session. *"Always use python3 on this host"* belongs in the
 > agent's host workspace, not in each session's trial and error.
 
-### 8. `digest`
+### 7. `digest`
 
 §6's `DIG` — one daily read across tasks.
 

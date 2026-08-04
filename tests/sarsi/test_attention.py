@@ -290,3 +290,67 @@ def test_an_orphan_outranks_a_stale_plan(config, agent):
     kinds = [i.kind for i in att.needs(config, agent,
                                        pane=Pane({t.session["name"]: BUSY})).items]
     assert kinds.index("orphan") < kinds.index("stale")
+
+
+# ── a terminal no task claims ─────────────────────────────────────────
+
+def test_a_live_terminal_no_task_claims_is_waiting_on_you(config, agent):
+    """The dangerous direction: a dead-session record makes the board look
+    busier than the machine. This is the reverse — something is running, still
+    holding whatever it was granted, and the board shows NOTHING at all.
+    """
+    got = att.needs(config, agent, pane=Pane(), live=lambda: {"work-9zz9"})
+    assert [i.kind for i in got.items] == ["unclaimed"]
+    assert "work-9zz9" in got.items[0].detail
+
+
+def test_it_says_how_to_close_one(config, agent):
+    got = att.needs(config, agent, pane=Pane(), live=lambda: {"work-9zz9"})
+    assert "tmux" in got.items[0].action
+
+
+def test_another_agents_terminal_is_not_this_agents_problem(config, agent):
+    got = att.needs(config, agent, pane=Pane(), live=lambda: {"social-1234"})
+    assert got.items == []
+
+
+def test_a_terminal_a_task_claims_is_not_unclaimed(config, agent):
+    t = _with_session(config, agent)
+    got = att.needs(config, agent, pane=Pane({t.session["name"]: BUSY}),
+                    live=lambda: {t.session["name"]})
+    assert [i.kind for i in got.items] == []
+
+
+def test_an_archived_tasks_terminal_is_claimed_by_it(config, agent):
+    """Calling it unclaimed would send the owner hunting for a task that is
+    sitting right there in the archive."""
+    t = _with_session(config, agent)
+    name = t.session["name"]
+    tsk.archive(config, agent, t)
+    got = att.needs(config, agent, pane=Pane({name: BUSY}), live=lambda: {name})
+    assert not [i for i in got.items if i.kind == "unclaimed"]
+
+
+def test_tmux_being_unreachable_reports_no_unclaimed_terminals(config, agent):
+    """It cannot see them, so it must not claim there are none OR invent some.
+    `enter` is where an unreachable tmux is reported."""
+    def broken():
+        raise OSError("tmux is not running")
+
+    assert att.needs(config, agent, pane=Pane(), live=broken).items == []
+
+
+def test_an_unclaimed_terminal_outranks_a_stale_plan(config, agent):
+    t = _task(config, agent)
+    t.plan_stale = True
+    tsk._touch(agent, t, __import__("time").time)
+    got = att.needs(config, agent, pane=Pane(), live=lambda: {"work-9zz9"})
+    kinds = [i.kind for i in got.items]
+    assert kinds.index("unclaimed") < kinds.index("stale")
+
+
+def test_the_fleet_view_carries_it_too(config):
+    rows = att.across(config, pane=Pane(), live=lambda: {"work-9zz9",
+                                                         "social-4242"})
+    assert {(i.agent_id, i.kind) for i in rows.items} == {
+        ("work", "unclaimed"), ("social", "unclaimed")}

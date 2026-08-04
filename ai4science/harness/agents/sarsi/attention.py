@@ -33,8 +33,8 @@ from ai4science.harness.agents.sarsi.registry import Agent, Config
 #: Most blocking first. A gate stops work *now*; a stale plan stops the next
 #: decision. The order is the whole value of the list — the owner reads down it
 #: until they run out of time, so what they read first has to be what matters.
-ORDER = ("gate", "orphan", "grant", "question", "exhausted", "undelivered",
-         "dead-session", "stale")
+ORDER = ("gate", "unclaimed", "orphan", "grant", "question", "exhausted",
+         "undelivered", "dead-session", "stale")
 
 #: States in which nothing is steering the session any more. A terminal still
 #: running past one of these is an ORPHAN — the reverse of a dead session, and
@@ -78,30 +78,57 @@ class Attention:
         return bool(self.items)
 
 
-def needs(config: Config, agent: Agent, *, pane: Optional[Any] = None) -> Attention:
-    """What is waiting on the owner across everything this worker holds."""
+def needs(config: Config, agent: Agent, *, pane: Optional[Any] = None,
+          live: Optional[Any] = None) -> Attention:
+    """What is waiting on the owner across everything this worker holds.
+
+    `live` lists the tmux sessions that actually exist, so a terminal NO task
+    claims can be reported — the reverse of a dead-session record, and the more
+    dangerous one: something is running, still holding whatever it was granted,
+    and the board shows nothing at all.
+    """
     if not agent.is_worker:
         # It drives nothing, so it can be blocked on nothing.
         return Attention()
     items: List[Item] = []
     for task in tsk.all_of(config, agent):          # archived is not waiting
         items.extend(_for_task(config, agent, task, pane=pane))
+    items.extend(_unclaimed(config, agent, live))
     items.sort(key=lambda i: (ORDER.index(i.kind) if i.kind in ORDER
                               else len(ORDER), i.task_id))
     return Attention(items=items)
 
 
-def across(config: Config, *, pane: Optional[Any] = None) -> Attention:
+def across(config: Config, *, pane: Optional[Any] = None,
+           live: Optional[Any] = None) -> Attention:
     """The same question across every worker — the fleet view."""
     items: List[Item] = []
     for agent in config.workers():
-        for item in needs(config, agent, pane=pane).items:
+        for item in needs(config, agent, pane=pane, live=live).items:
             items.append(Item(kind=item.kind, task_id=item.task_id,
                               detail=item.detail, agent_id=agent.id,
                               action=item.action))
     items.sort(key=lambda i: (ORDER.index(i.kind) if i.kind in ORDER
                               else len(ORDER), i.agent_id, i.task_id))
     return Attention(items=items)
+
+
+def _unclaimed(config: Config, agent: Agent, live) -> List[Item]:
+    """Live terminals of this agent that no task points at.
+
+    When tmux cannot be asked this reports NOTHING — it cannot see them, so it
+    must neither claim there are none nor invent any. An unreachable tmux is
+    `enter`'s business, where it is stated as unknown rather than as news.
+    """
+    from ai4science.harness.agents.sarsi import entry
+
+    state = entry.reconcile(config, agent, live=live)
+    return [Item("unclaimed", "",
+                 f"session {name} is running and no task claims it — it still "
+                 f"holds whatever it was granted",
+                 action=f"tmux attach -t {name}   (then kill it, or find its "
+                        f"task)")
+            for name in state.unclaimed]
 
 
 # ── one task ──────────────────────────────────────────────────────────
