@@ -7,6 +7,8 @@
     budget       what a night costs, and a stop that does not ask for more
     fieldmap     what the field claims and which claims nobody has checked
     improvement  the six checks a candidate survives before it is an improvement
+    coverage     who takes the work when a generalist and a specialist overlap,
+                 and why the generalist inherits the specialist's refusals
     registry     the six, built
 
 **These are market listings, not private agents.** They are authored by the
@@ -25,6 +27,7 @@ from __future__ import annotations
 
 from .budget import Budget, BudgetExhausted, Switch
 from .charter import Charter, CharterViolation, FORBIDDEN, IMPROVABLE
+from .coverage import Assignment, Coverage, NoAgentForWork, load_known
 from .fieldmap import Claim, FieldMap
 from .improvement import Improvement, SeedResult, no_change
 from .registry import NAMES, ResearchAgent, build, build_all
@@ -33,6 +36,7 @@ from .selfmodel import Dimension, SelfModel, Unobserved
 __all__ = [
     "Budget", "BudgetExhausted", "Switch",
     "Charter", "CharterViolation", "FORBIDDEN", "IMPROVABLE",
+    "Assignment", "Coverage", "NoAgentForWork", "load_known",
     "Claim", "FieldMap",
     "Improvement", "SeedResult", "no_change",
     "NAMES", "ResearchAgent", "build", "build_all",

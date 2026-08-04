@@ -23,7 +23,7 @@ because someone remembered. Six agents is where remembering stops working.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, Iterable, Tuple
+from typing import Dict, Iterable, Optional, Tuple
 
 #: The three substrates no research agent may modify, ever. Extended per agent,
 #: never reduced.
@@ -62,6 +62,11 @@ class Charter:
     autonomous_work: Tuple[str, ...] = ()
     #: Acts that always require an owner grant naming them, whatever the ceiling.
     outward_only: Tuple[str, ...] = ("publish", "submit", "email", "spend")
+    #: Other research agents whose fields this one also covers. A generalist
+    #: names its specialists here. See `coverage.py` for what that costs it.
+    includes: Tuple[str, ...] = ()
+    #: The generalist this agent narrows, if any. A specialist names it here.
+    specialises: Optional[str] = None
 
     def __post_init__(self) -> None:
         if not self.may_improve:
@@ -85,6 +90,9 @@ class Charter:
         return FORBIDDEN + tuple(s for s in self.also_never if s not in FORBIDDEN)
 
     # ------------------------------------------------------------------ checks
+
+    def covers(self, subfield: str) -> bool:
+        return subfield in self.subfields
 
     def may(self, substrate: str) -> bool:
         return substrate in self.may_improve and substrate not in self.never_touch

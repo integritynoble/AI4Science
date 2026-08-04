@@ -97,6 +97,39 @@ so**, not a fact, until this agent reproduced it.
 > weekly output is usually not a result but a picture of where the field is
 > unsupported — what nobody has checked. That is a deliverable, and it is cheap.
 
+## 4b. A generalist and a specialist over the same work
+
+`imaging` is a generalist over computational imaging, and CT, imaging physics
+and capsule imaging sit inside its field. `low-dose-ct`, `medical-physics` and
+`pill-camera` are **also standalone agents** over those same areas. Both are
+true and both are wanted: an owner may install the generalist alone, one
+specialist alone, or all four.
+
+**Who takes the task: the most specific installed agent that covers the
+subfield.** A specialist knows its subfield's protocol, splits and statistics; a
+generalist knows the transfer surface. With both installed the specialist runs
+the work, and the generalist is still the one that notices a method next door
+worth carrying over.
+
+| Installed | `low-dose` work goes to |
+|---|---|
+| `imaging` + `low-dose-ct` | **`low-dose-ct`** — the narrower field wins |
+| `imaging` alone | **`imaging`** — it covers the subfield |
+| `low-dose-ct` alone | **`low-dose-ct`** — it needs no generalist above it |
+
+> **The refusals travel with the subfield, not with the package.** A generalist
+> doing a specialist's work inherits that specialist's refusals **whether or not
+> the specialist is installed**. `medical-physics` refuses to export a
+> deliverable plan because a physicist must sign it; if `imaging` could do that
+> work under its own looser charter, then *uninstalling the specialist would
+> widen what the machine is allowed to do*, and the way round every clinical gate
+> in this design would be to install the generalist instead.
+
+So `imaging` working on `low-dose` may not touch the dose-equivalence framework
+either, and the refusal names where it came from. This is enforced in
+`coverage.py` and audited in a test: a non-empty audit is a design error, not a
+runtime condition.
+
 ## 5. The self-model, and its four refusals
 
 Each agent carries a self-model — what it is for, what it can do, and **what it

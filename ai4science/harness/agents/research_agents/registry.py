@@ -65,8 +65,14 @@ def _computational_imaging() -> ResearchAgent:
         field="computational imaging — the image is computed, not captured",
         subfields=("optics-design", "ct", "mri", "single-pixel", "sci-cassi",
                    "lensless", "ptychography", "holography", "light-field",
-                   "time-of-flight", "event", "interferometric", "photoacoustic"),
+                   "time-of-flight", "event", "interferometric", "photoacoustic",
+                   # Also covered, and each of these is a standalone agent too.
+                   # A generalist here inherits that agent's refusals — see
+                   # coverage.py; this list is what makes the inheritance apply.
+                   "low-dose", "sparse-view", "photon-counting",
+                   "imaging-physics", "lesion-detection", "video-reduction"),
         may_improve=("method", "plan", "own_parameters"),
+        includes=("low-dose-ct", "medical-physics", "pill-camera"),
         # The forward operator is the measurement's physics. An agent that can
         # change it can improve any number by describing a different experiment.
         also_never=("forward_model",),
@@ -77,6 +83,7 @@ def _computational_imaging() -> ResearchAgent:
             "forward-model residual worsens is a pipeline bug, not a result",
             "a simulation-only gain is labelled simulation-only in the headline",
             "it reconstructs; it does not interpret what is in the scene",
+            "on a subfield a narrower agent owns — CT, imaging physics, capsule — it works under that agent's refusals as well as its own, whether or not that agent is installed",
         ),
         transfer_from=("mri", "ct", "sci-cassi", "microscopy", "novel-view-synthesis"),
         autonomous_work=("reproduce a published architecture into the common table",
@@ -136,6 +143,7 @@ def _computational_imaging() -> ResearchAgent:
 def _low_dose_ct() -> ResearchAgent:
     ch = Charter(
         name="low-dose-ct",
+        specialises="imaging",
         field="diagnostic CT from fewer photons, and deciding whether you got one",
         subfields=("low-dose", "sparse-view", "limited-angle", "interior",
                    "photon-counting", "dual-energy", "metal-artefact", "motion-4d",
@@ -206,6 +214,7 @@ def _low_dose_ct() -> ResearchAgent:
 def _medical_physics() -> ResearchAgent:
     ch = Charter(
         name="medical-physics",
+        specialises="imaging",
         field="the physics of radiation used to treat and image people",
         subfields=("treatment-planning", "dose-calculation", "auto-segmentation",
                    "adaptive-rt", "image-guidance", "particle-therapy", "flash",
@@ -276,6 +285,7 @@ def _medical_physics() -> ResearchAgent:
 def _pill_camera() -> ResearchAgent:
     ch = Charter(
         name="pill-camera",
+        specialises="imaging",
         field="wireless capsule endoscopy, and reading GI video nobody has time to read",
         subfields=("capsule-hardware", "localisation", "active-locomotion",
                    "lesion-detection", "rare-class", "video-reduction",

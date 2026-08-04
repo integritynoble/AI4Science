@@ -280,3 +280,77 @@ def test_medical_physics_requires_approval_to_export_a_plan():
     from ai4science.harness.agents import registry as reg
     reg.reload()
     assert "plan-export" in reg.get("medical-physics").approval_required_for
+
+
+# ------------------------------------------------- generalist and specialist
+
+def _coverage(*names):
+    from ai4science.harness.agents.research_agents.coverage import Coverage, load_known
+    k = load_known()
+    return Coverage([k[n] for n in names])
+
+
+def test_the_specialist_takes_the_work_when_both_are_installed():
+    cov = _coverage("imaging", "low-dose-ct")
+    assert cov.route("low-dose").agent == "low-dose-ct"
+    assert cov.route("sci-cassi").agent == "imaging", "outside the specialist's field"
+
+
+def test_the_generalist_takes_it_when_the_specialist_is_not_installed():
+    assert _coverage("imaging").route("low-dose").agent == "imaging"
+
+
+def test_each_specialist_stands_alone():
+    """Installed by itself, with no generalist anywhere."""
+    for name, sub in (("low-dose-ct", "photon-counting"),
+                      ("medical-physics", "brachytherapy"),
+                      ("pill-camera", "localisation")):
+        assert _coverage(name).route(sub).agent == name
+
+
+def test_uninstalling_the_specialist_does_not_widen_the_generalist():
+    """The safety property. If imaging could do CT work under its own looser
+    charter, the way round every gate would be to uninstall the specialist."""
+    from ai4science.harness.agents.research_agents.charter import CharterViolation
+    alone = _coverage("imaging")
+    # imaging never declared this substrate, so its own charter is silent...
+    build("imaging").charter.check("method")
+    with pytest.raises(CharterViolation):
+        build("imaging").charter.check("dose_equivalence_framework")
+    # ...and on CT work it is forbidden by inheritance, with the owner named.
+    with pytest.raises(CharterViolation) as e:
+        alone.check("imaging", "low-dose", "dose_equivalence_framework")
+    assert "inherited from low-dose-ct" in str(e.value)
+
+
+def test_the_clinical_refusal_travels_to_whoever_does_the_work():
+    """medical-physics refuses to export a deliverable plan. imaging doing
+    imaging-physics work carries that refusal too, uninstalled or not."""
+    cov = _coverage("imaging")
+    rs = cov.refusals_for("imaging", "imaging-physics")
+    assert any("physicist signs" in r for r in rs)
+    assert any(r.startswith("[medical-physics]") for r in rs)
+
+
+def test_a_generalist_on_capsule_work_carries_the_seed_rule():
+    rs = _coverage("imaging").refusals_for("imaging", "lesion-detection")
+    assert any("seed variance is not an improvement" in r for r in rs)
+
+
+def test_the_specialist_keeps_its_own_refusals_undiluted():
+    cov = _coverage("imaging", "pill-camera")
+    rs = cov.refusals_for("pill-camera", "lesion-detection")
+    assert any("seed variance" in r for r in rs)
+    assert not any(r.startswith("[") for r in rs), "a specialist inherits from nobody"
+
+
+def test_the_arrangement_audits_clean():
+    """A non-empty audit is a design error, not a runtime condition."""
+    assert _coverage("imaging", "low-dose-ct", "medical-physics",
+                     "pill-camera", "drug-design", "cancer").audit() == []
+
+
+def test_nothing_installed_for_a_subfield_says_so():
+    from ai4science.harness.agents.research_agents.coverage import NoAgentForWork
+    with pytest.raises(NoAgentForWork):
+        _coverage("cancer").route("ptychography")
