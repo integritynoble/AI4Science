@@ -47,7 +47,7 @@ Each of these is live, tested, and exercised on the installed binary.
 | `release` | Raise the ceiling from the planning `A0` to what the agent has earned. |
 | `operate` | One supervision pass: answer the gates it has a rule for, submit a stranded prompt, report the rest. |
 | `supervise` | Drive a task to a verified result. |
-| `guide` / `/guided` | Steer by hand. The owner's word always goes through; the worker's stands down when the owner holds the wheel. |
+| `guide` / `/guided` | Steer by hand. The owner's word always goes through; the worker's stands down when the owner holds the wheel. **Never at an interface the loop cannot read** — `by_owner` is not an exemption, because the hazard is the screen, not the author. Every path that types at a session now passes this: `retry`, `answer`, `steer`, a goal change, the verdict `check` sends back, `release`'s re-brief and the chat door. |
 | `/interact` | Hands over the `tmux attach` line and stands back. **It does not relay.** |
 | `/history` | What has happened, from the record. |
 | `handoff <agent> <task> --to <worker>` | **One worker hands finished work to another** — `work` → `funding`. A **proposal**: a worker may not give another worker work, so only the owner's `--accept` creates the task. Only *verified* work may be handed on, and the evidence travels as a **dependency link**, not a summary. |
@@ -58,13 +58,13 @@ Each of these is live, tested, and exercised on the installed binary.
 | `do --steps N --minutes M` | **A declared ceiling.** Past it the task *stops and keeps its plan* — it does not fail, because running out of budget says nothing about whether the work was right. Checked **before** the loop acts. Steps come from the transcript; unreadable means *not enforced*, never *over*. No default. |
 | `do --workdir <dir>` | Declare **where the work happens**. Evidence is gathered from there instead of the task folder — declared, never inferred, so a criterion naming a path cannot move the boundary. A path outside it is reported as outside, never read and never silently dropped. |
 | `check --phase N` | Judge **one phase against its own criterion**. A phase is done when a verdict says so about *that* phase; the task is verified only when every phase is. Editing a criterion clears that phase's verdict; moving the goal clears all of them. |
-| `retry` | **Hand a FAIL back carrying the verifier's reason.** Only a judged `FAIL` retries; capped at 3; a `PASS` clears the count. |
+| `retry` | **Hand a FAIL back carrying the verifier's reason.** Only a judged `FAIL` retries; capped at 3; a `PASS` clears the count. It **refuses at an interface the loop cannot read** and hands the owner the text plus the attach command, rather than typing prose at whatever screen is showing. A refused hand-back **costs no attempt** — counted first, three refusals would exhaust a task nothing was ever delivered to. |
 
 ### Knowing where you are, and what needs you
 
 | Function | What it does |
 |---|---|
-| `questions` / `answer` | **The escalations, in one place, answerable from either surface.** `answering` declines what it must not answer and escalates it; these list what is open and deliver your reply into the session. The owner closes a question — a later automatic answer does not. |
+| `questions` / `answer` | **The escalations, in one place, answerable from either surface.** `answering` declines what it must not answer and escalates it; these list what is open and deliver your reply into the session. The owner closes a question — a later automatic answer does not. On an **attended** agent it refuses instead of typing, and the question **stays open** — one closed by an undelivered answer is one the owner believes they have dealt with. |
 | `attention` | **"Is anything waiting on me?"** across every worker, or one. Gates (with the actual command), **terminals no task claims**, orphans, ungranted permissions, open questions, exhausted retries, undelivered kickoffs, stale plans, and records pointing at terminals that are gone. Exits non-zero when something waits, so a timer can act on it. |
 | `enter` | Step into a worker: the task you last touched, or — holding none — **the question "what would you like done?"** rather than an empty board. It **reconciles the records against tmux** first, so it reports now rather than what was true when the record was written. |
 | workspace fold | The history a node plans from keeps the most recent lines **and folds the overflow**: anything said three times or more is promoted with its count (`use the staging host ×5`), which is exactly what a plain tail loses. Repeats take **one** slot in the visible window rather than filling it. A **tally, never a précis** — every promoted line was actually written. |
@@ -213,7 +213,7 @@ should not be extended.
 | answering wired | **yes** | no |
 | task lifecycle | `stop` / `archive` / `reopen` | proposed |
 | entry cursor | built | `shell.py`, uncommitted |
-| `questions` / `answer` | **The escalations, in one place, answerable from either surface.** `answering` declines what it must not answer and escalates it; these list what is open and deliver your reply into the session. The owner closes a question — a later automatic answer does not. |
+| `questions` / `answer` | **The escalations, in one place, answerable from either surface.** `answering` declines what it must not answer and escalates it; these list what is open and deliver your reply into the session. The owner closes a question — a later automatic answer does not. On an **attended** agent it refuses instead of typing, and the question **stays open** — one closed by an undelivered answer is one the owner believes they have dealt with. |
 | `attention` | built, incl. **orphan** | proposed |
 
 ### What was salvaged from it before retiring it

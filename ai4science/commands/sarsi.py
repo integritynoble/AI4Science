@@ -314,14 +314,16 @@ def answer_cmd(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
                question: str = typer.Argument(..., help="The question, as listed"),
                reply: str = typer.Argument(..., help="Your answer")) -> None:
     from ai4science.harness.agents.sarsi import (operator as op,
-                                                 questions as qst)
+                                                 questions as qst,
+                                                 session as ses)
 
     config, agent, t = _load_task(agent_id, task_id)
     try:
         # a real pane, so the delivery is CONFIRMED before the question closes:
         # a booting session swallows what is typed at it
         qst.answer(config, agent, t, question, reply, pane=op.TmuxPane())
-    except (qst.NotAsked, qst.NoSession, qst.NotDelivered) as e:
+    except (qst.NotAsked, qst.NoSession, qst.NotDelivered,
+            ses.NotDrivable) as e:
         console.print(str(e), style="yellow", markup=False, highlight=False)
         raise typer.Exit(code=2)
     console.print(f"answered — {t.id} has been told, and the question is closed",
@@ -801,11 +803,11 @@ def goal(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
 @app.command("retry", help="Hand a FAILed task back to its session with the verifier's reason.")
 def retry(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
           task_id: str = typer.Argument(..., help="Task id")) -> None:
-    from ai4science.harness.agents.sarsi import retry as rty
+    from ai4science.harness.agents.sarsi import retry as rty, session as ses
     config, agent, t = _load_task(agent_id, task_id)
     try:
         t = rty.retry(config, agent, t)
-    except (rty.NothingToRetry, rty.Exhausted) as e:
+    except (rty.NothingToRetry, rty.Exhausted, ses.NotDrivable) as e:
         console.print(str(e), style="yellow", markup=False, highlight=False)
         raise typer.Exit(code=1)
     console.print(f"{t.id} handed back — attempt {t.retries} of {rty.MAX_RETRIES}",
@@ -1242,7 +1244,11 @@ def guide_cmd(agent_id: str = typer.Argument(..., help="Worker id"),
     agent = _worker_or_exit(config, agent_id)
     t = _task_or_exit(config, agent, task_id)
     # by_owner: this is you, so it goes in even while you hold the wheel
-    ses.guide(config, agent, t, instruction, by_owner=True)
+    try:
+        ses.guide(config, agent, t, instruction, by_owner=True)
+    except (ses.NotDrivable, ses.OwnerHasTheWheel) as e:
+        console.print(str(e), style="yellow", markup=False, highlight=False)
+        raise typer.Exit(code=2)
     console.print(f"sent to {(t.session or {}).get('name', '?')}",
                   markup=False, highlight=False)
 

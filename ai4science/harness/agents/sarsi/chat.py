@@ -310,6 +310,14 @@ def _guided(config, agent, t, instruction, runtime):
         # the owner has the wheel; the worker must not type over them
         return (f"you have the wheel on {t.id} — the worker is standing by.\n"
                 f"hand it back with /resume {t.id} when you are done.")
+    if not ses.drivable(agent.spec):
+        # In words, not an exception: this answer goes back to a person on
+        # Telegram. They are the delivery mechanism, so hand them the text.
+        return (f"{agent.id} runs the {agent.spec!r} interface, which this loop "
+                f"cannot read — typing at it is keystrokes at an unknown "
+                f"screen. Deliver it yourself:\n"
+                f"  tmux attach -t {t.session['name']}\n"
+                f"  {instruction}")
     (runtime or ses.MachineRuntime()).send(t.session["name"], instruction)
     return f"steered {t.id}: {instruction}"
 
@@ -414,11 +422,21 @@ def _goal(config, agent, t, tail, runtime):
         lines.append(f"  your criteria were kept: {'; '.join(owner_criteria)}")
     if (t.session or {}).get("name"):
         from ai4science.harness.agents.sarsi import session as ses
-        ses.guide(config, agent, t,
-                  f"The owner has changed this task's goal. It is now: {goal}\n"
-                  f"Stop working the old goal and re-read the plan file.",
-                  runtime=runtime, by_owner=True)
-        lines.append("  its running session has been told")
+        notice = (f"The owner has changed this task's goal. It is now: {goal}\n"
+                  f"Stop working the old goal and re-read the plan file.")
+        try:
+            ses.guide(config, agent, t, notice, runtime=runtime, by_owner=True)
+            lines.append("  its running session has been told")
+        except ses.NotDrivable:
+            # The goal change is the record edit; telling the session is a
+            # courtesy on top of it. Letting this escape would mean an attended
+            # agent's goal cannot be changed at all while it holds a session —
+            # and saying "has been told" would be worse.
+            lines.append(f"  its session runs the {agent.spec!r} interface, so "
+                         f"it has NOT been told — deliver this yourself:")
+            lines.append(f"    tmux attach -t "
+                         f"{(t.session or {}).get('name', '?')}")
+            lines.append(f"    {notice}")
     return "\n".join(lines)
 
 

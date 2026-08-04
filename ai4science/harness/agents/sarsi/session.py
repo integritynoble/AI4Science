@@ -47,6 +47,10 @@ class SpecUnavailable(Exception):
     """The ai4science agent this sarsi agent is built on is not installed."""
 
 
+class NotDrivable(Exception):
+    """Typing at an interface this loop cannot read. The owner delivers it."""
+
+
 class OwnerHasTheWheel(Exception):
     """The owner is driving. The worker stands down — top of the ladder."""
 
@@ -419,6 +423,10 @@ def collect_plan(config: Config, agent: Agent, task: tsk.Task, *,
     except pl.BadPlan as e:
         # Not accepted quietly: a phase with no criterion leaves the agent that
         # did the work as the only grader of it.
+        if not drivable(agent.spec):
+            # Same keystrokes, same unknown screen. The task stays `planning`
+            # either way, which is what the owner acts on.
+            return task
         (runtime or MachineRuntime()).send(
             (task.session or {}).get("name", ""),
             f"That plan cannot be used: {e}\n"
@@ -480,7 +488,10 @@ def release(config: Config, agent: Agent, task: tsk.Task, *,
     if task.session:
         task.session["ceiling"] = raised
         task = tsk._touch(agent, task, now)
-    rt.send((task.session or {}).get("name", ""), kickoff(task, plan, agent))
+    if drivable(agent.spec):
+        # Quiet, like `deliver_kickoff`: raising would make `release` fail
+        # outright on an attended agent, and the owner briefs one by hand.
+        rt.send((task.session or {}).get("name", ""), kickoff(task, plan, agent))
     return task
 
 
@@ -603,7 +614,26 @@ def guide(config: Config, agent: Agent, task: tsk.Task, instruction: str, *,
     The owner's guidance always goes through, including while they hold the
     wheel: it is their word arriving on their own session. The **worker's**
     guidance stands down entirely when they do.
+
+    Never at a spec this loop cannot read, whoever is speaking. `retry`,
+    `answer`, `steer` and a goal change all arrive here, and all four are prose
+    typed at a screen: on the ai4science TUI that prose is menu keystrokes, and
+    one option is always "No, exit". `by_owner` is not an exemption — the
+    hazard is the screen, not the author, and two of the four callers are the
+    owner by definition.
     """
+    if not drivable(agent.spec):
+        # Refused, not silently skipped: `deliver_kickoff` returns quietly
+        # because the loop calls it every pass, but these are commands somebody
+        # ran, and a quiet no-op tells them it landed. They are the delivery
+        # mechanism now, so hand them the text and where to put it.
+        raise NotDrivable(
+            f"{agent.id} runs the {agent.spec!r} interface, which this loop "
+            f"cannot read — typing at it is keystrokes at an unknown screen, "
+            f"and on a menu one option is always the worst one. Deliver it "
+            f"yourself:\n\n"
+            f"  tmux attach -t {(task.session or {}).get('name', '?')}\n\n"
+            f"{instruction}")
     if not by_owner and who_drives(task) == "owner":
         raise OwnerHasTheWheel(
             f"you have the wheel on {task.id}; {agent.id} is standing by. "
@@ -753,7 +783,13 @@ def verify(config: Config, agent: Agent, task: tsk.Task, *,
     task = tsk._touch(agent, task, now)
     why = verdict.get("why") or "the verifier was not satisfied"
     steered = False
-    if task.session:
+    # Not at an interface this loop cannot read. `check` on an attended agent
+    # was typing this paragraph at whatever screen happened to be showing —
+    # the same hazard `guide` refuses, one command earlier and unnoticed. Quiet
+    # here rather than raised: judging is not steering, and a verdict must not
+    # be lost because it could not also be delivered. `steered` stays False,
+    # which the ledger below already reports honestly.
+    if task.session and drivable(agent.spec):
         try:
             (runtime or MachineRuntime()).send(
                 task.session["name"],

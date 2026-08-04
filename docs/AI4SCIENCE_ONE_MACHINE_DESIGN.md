@@ -842,6 +842,14 @@ add up to.
   > cursor walked onto **"No, exit"**, and the session it was supervising died.
   > Blind keystrokes at an unknown screen are not a brief — they are input to
   > whatever menu happens to be showing, and one option is always the worst one.
+  >
+  > That guard was then on **one** of the seven paths that type at a session.
+  > A later live run found `retry` typing a paragraph at an attended TUI, and
+  > `check` doing the same one command earlier — harmless only because that
+  > session happened to be at its prompt rather than on the trust menu it had
+  > been showing minutes before. The refusal now sits at every one of them, and
+  > `by_owner` is not an exemption: the owner's words are keystrokes too, and
+  > two of the paths are the owner by definition.
 
   **Not driving one is not the same as not measuring one.** `blast` and `spend`
   were written against Claude Code's transcript, so for three live runs in a row

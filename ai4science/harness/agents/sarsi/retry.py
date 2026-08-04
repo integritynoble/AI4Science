@@ -73,10 +73,15 @@ def retry(config: Config, agent: Agent, task: tsk.Task, *,
         # fresh one rather than sending into a name that no longer exists.
         task = ses.assign(config, agent, task, runtime=runtime, now=now)
 
-    task.retries = int(task.retries or 0) + 1
-    task = tsk._touch(agent, task, now)
+    # Hand it back FIRST, and count only what was delivered. Counted first, a
+    # refusal still spent an attempt: three of them exhaust a task that was
+    # never once told anything, and `Exhausted` then says "this one wants you"
+    # for entirely the wrong reason. Both refusals below are real — an attended
+    # spec, and the owner holding the wheel.
     ses.guide(config, agent, task, _instruction(task, reason),
               runtime=runtime, by_owner=False, now=now)
+    task.retries = int(task.retries or 0) + 1
+    task = tsk._touch(agent, task, now)
     ledger.append(config, "reports",
                   {"agent": agent.id, "task": task.id, "state": "retried",
                    "ceiling": (task.session or {}).get("ceiling") or "unknown",
