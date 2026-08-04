@@ -172,8 +172,26 @@ The PyPI package is `pwm-ai4science`; the command is `ai4science` (same package-
 **Research agents** (the six governor agents and their benchmarks):
 
 ```bash
-pip install "pwm-ai4science[research-agents]"
+# From a source checkout — see the note below before using PyPI.
+pip install ".[research-agents]"
 ```
+
+> **From PyPI this does not yet get you the agents.** The extra resolves its
+> dependencies, but `harness/agents/research_agents/` is not in any published
+> wheel: `pwm-agent-core` 1.0.0 was uploaded 2026-07-07 and the agents were
+> written on 2026-08-04, so the wheel predates them by a month. Nothing is
+> being excluded — `include = ["ai4science*"]` picks the subpackage up — the
+> published dist is simply stale, and the fix is a release rather than a
+> packaging change. The same staleness is why `harness/agents/sarsi/` is
+> missing there.
+>
+> Verify an install from a directory that is **not** the checkout: at the repo
+> root the source tree shadows site-packages and everything imports whether it
+> shipped or not.
+>
+> ```bash
+> cd /tmp && python -c "from ai4science.harness.agents import research_agents"
+> ```
 
 Two of the five benchmarks **cannot run without this** — it is not a
 convenience group. `rdkit` computes the Morgan fingerprints the drug-design
