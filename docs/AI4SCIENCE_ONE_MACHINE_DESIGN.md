@@ -22,9 +22,34 @@ in what a run costs is the only place it matters.
 | What does one **session** do, node by node? | [`guide-sarsi-claude-overview.md`](../guide-sarsi-claude-overview.md) |
 | What does the **app** add on top of this? | [`2026-08-04-sarsi-agent-market-and-pwm-design.md`](2026-08-04-sarsi-agent-market-and-pwm-design.md) |
 
+### Where each of the fourteen points is answered
+
+The requirement came as fourteen numbered points. The sections that answer one
+say so in their own titles, so a point can be found by scrolling:
+
+```
+1. What ai4science is                           (Point 10)
+4. The entry: the machine agent                 (Point 7)
+9. How the workspaces talk to each other        (Points 9 and 14)
+10. Both doors                                  (Point 8)
+11. The market                                  (Points 1 and 2)
+11a. The tools and sub-agents this system needs (Point 13)
+11b. Research agents                            (Point 11)
+     The governor's research agents             (Points 6 and 12)
+13. What runs it costs                          (Points 2, 3 and 4)
+     Your own key, run freely, and earn         (Point 5)
+```
+
+**Points 2 and 7 are answered here in their ai4science form only.** The app's
+half of each — the 5% platform share, and the chatbot front door with its `+` —
+is in [the market design](2026-08-04-sarsi-agent-market-and-pwm-design.md),
+because this page is point 10 and does not describe the app. What is here is the
+half a single machine has: no platform share is charged, and the front door is
+the machine agent.
+
 ---
 
-## 1. What ai4science is
+## 1. What ai4science is (Point 10)
 
 A set of agents that live on your machine, hold tasks, plan them, and get them
 done through governed `sarsi-claude` sessions — with a verifier that judges the
@@ -90,7 +115,7 @@ Three rules carry the same weight:
 surface and not the other, which is the only way *"two doors, one agent"*
 survives a third door being added later.
 
-## 4. The entry: the machine agent
+## 4. The entry: the machine agent (Point 7)
 
 Entering ai4science puts you in conversation with the **machine agent**. It is
 the right thing to land in because the first questions anyone has are about
@@ -345,7 +370,7 @@ they do not share a context.
 > on, and the owner cannot tell which — so `waiting` carries the reason and the
 > limit that caused it.
 
-## 9. How the workspaces talk to each other
+## 9. How the workspaces talk to each other (Points 9 and 14)
 
 Every agent has its own workspace and its own history. They still need to share:
 `funding` should know the deadline `work` found in a mail, and `jobs` should know
@@ -568,7 +593,7 @@ owner's other agents have learned.
 > `W_name`. `W_shared` is asked for in the manifest, shown on the install screen,
 > and granted by the owner or not at all.
 
-## 10. Both doors
+## 10. Both doors (Point 8)
 
 | | Telegram | the ai4science CLI |
 |---|---|---|
@@ -583,7 +608,7 @@ owner's other agents have learned.
 A **bot token is a vault secret**, not a config value: an agent that held its own
 token could be moved, and then spoken to somewhere the owner is not looking.
 
-## 11. The market
+## 11. The market (Points 1 and 2)
 
 Three kinds of listing — **agents**, **tools**, **sub-agents** — each uploadable,
 accepted by the governor, and installable. This is where they live, because an
@@ -605,7 +630,7 @@ is worth as much as an agent, and paying only for agents would starve the socket
 review — or require ones from the market, and then the install screen names every
 author whose code comes with it and what each part may touch.
 
-## 11a. The tools and sub-agents this system needs
+## 11a. The tools and sub-agents this system needs (Point 13)
 
 A **tool** is something a task needs *present* to run — checked at `CAP`,
 declared per agent as a profile, and refused by name when absent. A **sub-agent**
@@ -675,7 +700,7 @@ opposite:
 > is happening is a human at a door, not a second driver — the wheel exists
 > because two of those is one too many.
 
-## 11b. Research agents
+## 11b. Research agents (Point 11)
 
 A **research agent** — computational imaging, cancer, drug design — has two
 functions. The first is ordinary: it holds tasks and works them through
@@ -698,7 +723,7 @@ rather than asking for more. An agent may not turn it on or extend it.
 > published its own reputation — so owner-set tasks, benchmarks and self-directed
 > research are three lines and never one number.
 
-### The governor's research agents
+### The governor's research agents (Points 6 and 12)
 
 Some ship from the governor rather than from a user. These are the seed of the
 market, written where the domain knowledge is:
@@ -735,7 +760,7 @@ correct output. An agent cannot sign its own candidate, cannot raise its own
 ceiling, and cannot promote a vault policy from per-use to standing — **a high
 ceiling is permission to act, never permission to become more permitted.**
 
-## 13. What runs it costs
+## 13. What runs it costs (Points 2, 3 and 4)
 
 Every run has a **metered cost**: the provider's reported usage, priced at the
 provider's rate. Not an estimate, and not a number the agent reports about
@@ -759,7 +784,7 @@ short, an **exchange node** starts: visible, bounded by a budget the owner sets,
 and **never touching the owner's tasks** — it is not a worker, holds no task
 list, and may not drive a session. With enough PWM the owner may stop it.
 
-### Your own key, run freely, and earn
+### Your own key, run freely, and earn (Point 5)
 
 Put together, the point of the last two paragraphs is one thing a user cares
 about:
