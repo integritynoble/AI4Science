@@ -3,7 +3,11 @@
 **Status: design, 2026-08-04. The agent loop, the self-model and the RSI
 proposal path are built and tested. Nothing domain-specific below is built.**
 
-Six agents ship from the governor rather than from the market:
+Six agents are **authored by the governor and listed in the market** like any
+other: accepted the same way, found in agents-search the same way, installed by
+anyone who wants them. Governor-authored means the governor wrote them, not that
+anyone is kept out — there is no visibility gate on these.
+
 [computational imaging](computational-imaging.md), [low-dose CT](low-dose-ct.md),
 [medical physics](medical-physics.md), [pill camera](pill-camera.md),
 [drug design](drug-design.md), [cancer](cancer.md).
