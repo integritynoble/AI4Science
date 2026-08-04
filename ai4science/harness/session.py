@@ -24,7 +24,8 @@ class AgentSession:
                  on_tool_start: Callable[[str, dict], None] = lambda name, args: None,
                  on_tool_end: Callable[[str, str], None] = lambda name, result: None,
                  compact_limit_chars: int = 0,
-                 summarize: Optional[Callable[[str], str]] = None) -> None:
+                 summarize: Optional[Callable[[str], str]] = None,
+                 writable_roots: Optional[List[Path]] = None) -> None:
         self.adapter = adapter
         self.model = model
         self.backend = backend
@@ -38,7 +39,8 @@ class AgentSession:
         self.on_tool_end = on_tool_end
         self.history: List[Message] = []
         self.gate = PermissionGate(workspace=workspace, read_only=read_only,
-                                   auto_yes=auto_yes, confirm=confirm)
+                                   auto_yes=auto_yes, confirm=confirm,
+                                   writable_roots=writable_roots)
         self.compact_limit_chars = compact_limit_chars
         self.summarize = summarize
 

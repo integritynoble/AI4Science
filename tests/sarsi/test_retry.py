@@ -48,7 +48,8 @@ class FakeRuntime:
     def __init__(self):
         self.started, self.sent, self.stopped = [], [], []
 
-    def start(self, name, cwd, *, govern, ceiling, env=None, spec=None):
+    def start(self, name, cwd, *, govern, ceiling, env=None, spec=None,
+              writable=None):
         self.started.append(name)
         return {"ok": True, "name": name, "pid": 1, "cwd": cwd}
 

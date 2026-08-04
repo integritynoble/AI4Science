@@ -22,7 +22,7 @@ above is testable without a terminal or a model.
 from __future__ import annotations
 
 import time
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from ai4science.harness.agents.sarsi import ledger, plan as pl, task as tsk
 from ai4science.harness.agents.sarsi.registry import Agent, Config
@@ -67,7 +67,8 @@ class MachineRuntime:
 
     def start(self, name: str, cwd: str, *, govern: bool, ceiling: str,
               env: Optional[Dict[str, str]] = None,
-              spec: str = "claude-code") -> Dict[str, Any]:
+              spec: str = "claude-code",
+              writable: Optional[List[str]] = None) -> Dict[str, Any]:
         from ai4science.harness.agents.machine import sessions
         if env:
             # The secret reaches the local session and nothing that outlives it.
@@ -78,8 +79,16 @@ class MachineRuntime:
         binary = "claude" if spec == "claude-code" else None
         if binary:
             return sessions.start_session(name, cwd, govern=govern, ceiling=ceiling)
-        return sessions.start_session(name, cwd, govern=govern, ceiling=ceiling,
-                                      claude_bin=f"ai4science chat --mode {spec}")
+        # The plan's working directory reaches the sandbox as a launch flag, so
+        # widening it needs a NEW session: an agent that rewrites its own plan
+        # mid-run does not thereby gain a directory. Quoted — a declared path
+        # may contain spaces, and this string becomes a shell command.
+        import shlex
+        extra = "".join(f" --writable {shlex.quote(str(w))}"
+                        for w in (writable or []) if w)
+        return sessions.start_session(
+            name, cwd, govern=govern, ceiling=ceiling,
+            claude_bin=f"ai4science chat --mode {spec}{extra}")
 
     def send(self, name: str, text: str) -> Dict[str, Any]:
         from ai4science.harness.agents.machine import sessions
@@ -163,8 +172,17 @@ def assign(config: Config, agent: Agent, task: tsk.Task, *,
     # run wrote its artefact during planning because nothing held it back. The
     # ceiling does the holding, and `release` raises it.
     ceiling = "A0" if not task.plan_agreed else _effective_ceiling(agent.ceiling)
+    # Everything the PLAN declared this task may change, beyond the folder the
+    # session runs in. `blast` already treats these as permitted; the sandbox
+    # refusing them did not stop the write, it pushed it into a `bash` heredoc
+    # that `blast` cannot read. Two boundaries that disagree are one boundary
+    # and one blind spot.
+    writable = [str(p) for p in tsk.evidence_roots(agent, task)
+                if str(p) != str(workdir)]
+    writable += [str(p) for p in (task.may_touch or [])]
     started = runtime.start(name, str(workdir), govern=True, ceiling=ceiling,
-                            env=secrets, spec=agent.spec)
+                            env=secrets, spec=agent.spec,
+                            writable=writable or None)
     if not (started or {}).get("ok"):
         reason = (started or {}).get("reason") or "the session would not start"
         ledger.append(config, "reports",

@@ -200,6 +200,12 @@ def chat(
     workspace: Path = typer.Option(
         Path("."), "--workspace", "-w", help="Workspace directory."
     ),
+    writable: Optional[List[Path]] = typer.Option(
+        None, "--writable",
+        help="A directory outside the workspace that mutating tools may "
+             "also change (repeatable). Declared by the caller, never by "
+             "the agent.",
+    ),
     read_only: bool = typer.Option(
         False, "--read-only", "--readonly",
         help="Disable tool use; agent returns text only.",
@@ -370,6 +376,7 @@ def chat(
             model=model,
             resume_history=resume_hist,
             session_id=sid,
+            writable_roots=list(writable or []),
             system_prompt=spec.system_prompt,
             mode_label=spec.name,
             intro=intro,

@@ -675,7 +675,8 @@ def test_cli_enter_reports_a_record_with_no_terminal(isolated, monkeypatch):
     class Rt:
         engine = "claude"
 
-        def start(self, name, cwd, *, govern, ceiling, env=None, spec=None):
+        def start(self, name, cwd, *, govern, ceiling, env=None, spec=None,
+              writable=None):
             return {"ok": True, "name": name, "pid": 1, "cwd": cwd}
 
         def send(self, name, text):

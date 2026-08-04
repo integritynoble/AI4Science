@@ -408,6 +408,7 @@ def run_common_repl(
     on_text=None,
     resume_history: Optional[List[Message]] = None,
     session_id: Optional[str] = None,
+    writable_roots: Optional[List[Path]] = None,
     system_prompt: Optional[str] = None,
     mode_label: str = "unified-LLM",
     intro: Optional[str] = None,
@@ -561,6 +562,7 @@ def run_common_repl(
             model=active_model,
             backend=active_backend,
             workspace=workspace,
+            writable_roots=writable_roots,
             read_only=state["read_only"],
             auto_yes=True,                      # sub-agents auto-approve
             confirm=_confirm,
@@ -580,6 +582,7 @@ def run_common_repl(
             model=active_model,
             backend=active_backend,
             workspace=workspace,
+            writable_roots=writable_roots,
             read_only=state["read_only"],
             auto_yes=state["auto_yes"],
             confirm=_confirm,

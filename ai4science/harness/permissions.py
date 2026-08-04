@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 import shlex
 from pathlib import Path
-from typing import Callable, Dict, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 PROTECTED_DIRS = ("judge", "hidden_tests")
 
@@ -133,11 +133,18 @@ class PermissionGate:
     """Decides whether a tool call may run. Mirrors Claude Code's modes."""
 
     def __init__(self, *, workspace: Path, read_only: bool, auto_yes: bool,
-                 confirm: Optional[Callable[[str, Dict, str], bool]] = None) -> None:
+                 confirm: Optional[Callable[[str, Dict, str], bool]] = None,
+                 writable_roots: Optional[List[Path]] = None) -> None:
         self.workspace = workspace.resolve()
         self.read_only = read_only
         self.auto_yes = auto_yes
         self.confirm = confirm
+        #: Directories a caller DECLARED this session may also change — for
+        #: sarsi, the plan's `Working directory:`. Confining mutating tools to
+        #: the workspace alone did not stop the write, it chose the tool: a
+        #: blocked `write` became a `bash` heredoc, and the one act that
+        #: mattered moved from what `blast` can read to what it cannot.
+        self.writable_roots = [Path(p).resolve() for p in (writable_roots or [])]
         self._mutating = {"write", "edit", "bash"}
 
     def _sandbox_ok(self, name: str, args: Dict) -> Tuple[bool, str]:
@@ -150,9 +157,12 @@ class PermissionGate:
         # Glob/Grep; reading/searching can't damage anything.
         if name in self._mutating:
             target = (self.workspace / path).resolve()
-            try:
-                target.relative_to(self.workspace)
-            except ValueError:
+            # Resolved on both sides, and compared as PATHS rather than
+            # strings: `/home/me/live-jobs-evil` shares a prefix with
+            # `/home/me/live-jobs` and is not inside it.
+            allowed = [self.workspace] + self.writable_roots
+            if not any(root == target or root in target.parents
+                       for root in allowed):
                 return False, "sandbox: path escapes the workspace"
         # Protected subdirs (judge/hidden_tests/…) are blocked only for
         # workspace-relative paths, never for an explicit absolute search root.
