@@ -1,7 +1,18 @@
 # The medical physics agent — how to design it
 
-**Status: design, 2026-08-04. Not built.** The common contract is in
-[`README.md`](README.md).
+**Status: built and running on real data, 2026-08-04.** The benchmark reads
+**OpenKBP** — eight real head-and-neck cases with CT, contours, and the dose the
+patient was actually treated with. The clinical dose is the answer key and never
+enters the sandbox. The protocol is the real one: D99 to three target volumes,
+brainstem 54 Gy, cord 45, parotid mean 26, mandible 70.
+
+**Its reference method fails, and the failure is honest.** A coplanar 2D planner
+reaches every target and tracks the delivered plan closely — PTV70 D99 = **70.0
+Gy against the clinical 70.02** — and cannot spare a spinal cord that abuts the
+target: **51.8 Gy against a 45 Gy limit**, with a hot spot of 190 against 80.5.
+Sparing that cord takes full 3D modulation. Raising the penalties traded cord
+against hot spot and cleared neither, so the tuning stopped rather than
+continuing until something passed.
 
 ## 1. The field
 

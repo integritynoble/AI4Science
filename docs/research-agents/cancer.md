@@ -1,7 +1,17 @@
 # The cancer agent — how to design it
 
-**Status: design, 2026-08-04. The `AgentSpec` package exists; nothing below
-does.** The common contract is in [`README.md`](README.md).
+**Status: built and running on real data, 2026-08-04.** Charter, self-model,
+budget, field map and both functions are implemented in
+`ai4science/harness/agents/research_agents/`. The benchmark reads **TCGA
+clinical survival** through the GDC API — 491 TCGA-LUAD cases to develop on,
+487 TCGA-LUSC as an external cohort.
+
+**Its reference method fails, and that is the result.** A Cox model on age,
+sex, stage and prior malignancy reaches C-index **0.668 internally and 0.577
+externally**: it discriminates on its own cohort and does not transport across
+histologies. Calibration is measured by Kaplan-Meier at a fixed horizon and is
+monotone. Adding T and N stage was tried and made the external number *worse*
+(0.571), because the two cohorts are missing those fields differently.
 
 ## 1. The field
 

@@ -1,7 +1,10 @@
 # The governor's research agents — how they are designed
 
-**Status: design, 2026-08-04. The agent loop, the self-model and the RSI
-proposal path are built and tested. Nothing domain-specific below is built.**
+**Status: built and running on real data, 2026-08-04.** The agent loop, the
+self-model, the charter, the budget, the field map, both functions and five
+domain benchmarks are implemented in
+`ai4science/harness/agents/research_agents/` — 113 tests, verified on two
+machines and from a published wheel.
 
 Six agents are **authored by the governor and listed in the market** like any
 other: accepted the same way, found in agents-search the same way, installed by
@@ -21,6 +24,39 @@ Each covers a **field**, not a project. This page is what they share.
 | What is the self-awareness contract? | `sarsi_intelligence_level/` — *Functional Self-Awareness for SARSI Agents* |
 
 ---
+
+## 0. What is built, and what each benchmark reads
+
+Five of the six read a **measured corpus**. A benchmark whose corpus is absent
+refuses and names the command that fetches it; it never falls back to generated
+data, because a synthetic substitute produces numbers that look like results and
+are not.
+
+| Agent | Corpus | Reference method |
+|---|---|---|
+| [low-dose CT](low-dose-ct.md) | TCIA `LDCT-and-Projection-data` — real paired full/low dose | **passes** — and a higher-PSNR blur fails |
+| [drug design](drug-design.md) | DUD-E — 15,288 molecules, 6 targets | **passes** — EF@1% 66.8 vs a 20.2 property baseline |
+| [cancer](cancer.md) | TCGA via the GDC API — 978 cases, two cohorts | **fails** — C-index 0.668 internal, 0.577 external |
+| [medical physics](medical-physics.md) | OpenKBP — 8 real head-and-neck plans | **fails** — cord 51.8 Gy against a 45 Gy limit |
+| [pill camera](pill-camera.md) | Kvasir-Capsule — 4,443 frames, 46 videos | **fails** — prior 0.598 against 0.614 for intensity |
+| [computational imaging](computational-imaging.md) | generated CASSI scenes | passes its physics judge |
+
+> **Three of the five reference methods fail, and that is the point.** Each
+> failure is a statement about the method, not a defect in the benchmark: a
+> clinical-only model does not transport across histologies, a 2D planner cannot
+> spare a cord that abuts the target, and an analytic prior does not beat plain
+> intensity. Each was a *pass* on synthetic data, and each was overturned by
+> real data. Every one of those synthetic passes had been arranged — by me,
+> writing the generator — to agree with the story the design already told.
+
+```bash
+pip install ".[research-agents]"     # rdkit is required, not optional
+python3 -m ai4science.harness.agents.research_agents.runners.fetch --status
+python3 -m ai4science.harness.agents.research_agents.runners.fetch tcga-survival
+```
+
+Corpora live under `~/.ai4science/data`, or wherever `AI4SCIENCE_DATA` points —
+outside the package, because data is not source.
 
 ## 1. The goal is the field, not the score
 

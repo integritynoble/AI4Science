@@ -1,7 +1,18 @@
 # The drug design agent — how to design it
 
-**Status: design, 2026-08-04. The `AgentSpec` package exists; nothing below
-does.** The common contract is in [`README.md`](README.md).
+**Status: built and running on real data, 2026-08-04.** The benchmark reads
+**DUD-E** — 15,288 molecules across six targets at ~2% active, which is the
+ratio that matters: capping decoys instead of actives once left the library 40%
+active and EF@1% saturated at 2.5, where ranking by molecular weight scored
+exactly what fingerprint similarity scored.
+
+Set up as ligand-based virtual screening actually works: ten actives per target
+are staged as the query set, and enrichment is measured only on molecules the
+solver was never given. Morgan-fingerprint similarity reaches **EF@1% 66.8
+(63.5 on targets held out entirely), AUC 0.943** and passes. The bar is not
+"beats random" but **1.5x what molecular weight alone achieves on the same
+library** — DUD-E's decoys carry 0.56 SD of residual property bias, and weight
+alone enriches at EF 20.
 
 ## 1. The field
 

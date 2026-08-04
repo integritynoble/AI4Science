@@ -1,7 +1,22 @@
 # The pill camera agent — how to design it
 
-**Status: design, 2026-08-04. Not built.** The common contract is in
-[`README.md`](README.md).
+**Status: built and running on real data, 2026-08-04.** The benchmark reads
+**Kvasir-Capsule** — 4,443 frames from 9 positive and 37 negative videos, split
+by video and verified patient-disjoint in code.
+
+**Real frames refuted what the synthetic ones asserted.** The analytic
+haemoglobin prior reaches **AUC 0.598 against 0.614 for plain green
+intensity** — it loses. The synthetic version of this benchmark claimed the
+opposite *by construction*: it gave each patient a lognormal illumination gain
+precisely so an absolute intensity would carry it and a channel ratio would
+cancel it. That matches the literature rather than contradicting it — the
+published work feeds the prior to a learned model as a training channel for
+0.760 -> 0.783, and never claimed it stands alone.
+
+The dataset's shape drove the design. `Blood - fresh` is 446 frames from **two**
+videos, so the positive class is the red vascular findings pooled, and the judge
+refuses any run with fewer than three test patients whatever the frame count
+says.
 
 ## 1. The field
 

@@ -1,7 +1,16 @@
 # The computational imaging agent — how to design it
 
-**Status: design, 2026-08-04. The `AgentSpec` package exists; nothing below
-does.** The common contract is in [`README.md`](README.md).
+**Status: built, 2026-08-04.** This agent had a runner before the others:
+`ai4science/harness/agents/imaging/` seeds a CASSI benchmark, runs GAP-TV in a
+sandboxed workspace and is gated by the real physics judge, with the answer key
+withheld. It is reached through its own `AgentSpec` RUNNER rather than the
+shared `BENCHMARKS` registry, so that one agent does not have two ways to be
+scored.
+
+It is the one of the six still on a **generated** benchmark rather than a
+measured corpus — the scene is synthesised from the same forward model the
+solver inverts. That is honest for a physics check and it is not evidence about
+real instruments; the other five now read real data.
 
 ## 1. The field
 

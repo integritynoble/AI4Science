@@ -1,7 +1,17 @@
 # The low-dose CT agent — how to design it
 
-**Status: design, 2026-08-04. Not built.** The common contract is in
-[`README.md`](README.md).
+**Status: built and running on real data, 2026-08-04.** The benchmark reads
+**TCIA's `LDCT-and-Projection-data`** — the same patient reconstructed at full
+dose and at reduced dose, four patients, paired by `ImagePositionPatient`. No
+simulated noise. The full-dose scan is the answer key and never enters the
+sandbox.
+
+**This is where the agent's central refusal became a measurement.** A light
+Gaussian (sigma 1.0) scores the highest PSNR of anything tried — **27.99
+against the intended method's 27.28** — and *fails*, because the lesion lands
+at CNR 2.14, below the Rose criterion of 3 for reliable detection. Heavy
+smoothing fails the other way. The guided bilateral passes between them at
+PSNR 27.28, CNR 6.04, 62% of the inserted contrast retained.
 
 ## 1. The field
 
