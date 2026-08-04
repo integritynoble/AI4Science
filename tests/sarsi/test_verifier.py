@@ -166,7 +166,11 @@ def test_default_prefers_a_judge_this_machine_can_reach():
 
 
 def test_with_nothing_installed_the_default_is_the_honest_refusal():
-    judge = vf.default_verifier(which=lambda n: None, has_api_key=lambda: False)
+    # `installed` too: engine choice now also looks in the standard bin
+    # directories, so a host with `claude` in ~/.local/bin would otherwise
+    # decide this test's answer.
+    judge = vf.default_verifier(which=lambda n: None, has_api_key=lambda: False,
+                                installed=lambda n: False)
     out = judge(goal="g", criteria=["c"], evidence="e")
     assert out["state"] == "UNVERIFIED"
     assert vf.is_pass(out) is False

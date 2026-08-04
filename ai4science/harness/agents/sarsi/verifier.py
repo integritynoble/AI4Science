@@ -170,7 +170,7 @@ def claude_verifier(*, model: Optional[str] = None, timeout: float = 180.0,
     """
 
     def call(prompt: str) -> str:
-        argv = ["claude", "-p"] + (["--model", model] if model else [])
+        argv = [_resolve("claude"), "-p"] + (["--model", model] if model else [])
         code, out, err = run(argv, prompt, timeout)
         if code != 0:
             raise RuntimeError((err or out or "the verifier exited non-zero").strip()[:200])
@@ -180,7 +180,8 @@ def claude_verifier(*, model: Optional[str] = None, timeout: float = 180.0,
 
 
 def chosen_engine(*, which: Callable[[str], Optional[str]] = None,
-                  has_api_key: Optional[Callable[[], bool]] = None) -> Optional[str]:
+                  has_api_key: Optional[Callable[[], bool]] = None,
+                  installed: Optional[Callable[[str], bool]] = None) -> Optional[str]:
     """Which judge this machine can actually reach.
 
     An unreachable judge fails everything, which is safe and useless. So prefer
@@ -188,13 +189,70 @@ def chosen_engine(*, which: Callable[[str], Optional[str]] = None,
     """
     import shutil
     which = which or shutil.which
-    if which("claude"):
-        return "claude"
-    if which("codex"):
-        return "codex"
+    # Injectable like the other two seams: `_installed` reads the real
+    # filesystem, so a test that does not control it inherits whatever the
+    # host happens to have.
+    installed = installed or _installed
+    for engine in ("claude", "codex"):
+        if which(engine) or installed(engine):
+            return engine
     if has_api_key is None:
         has_api_key = _openai_key_present
     return "openai" if has_api_key() else None
+
+
+#: Where a per-user install actually puts a binary. A login shell adds these to
+#: `PATH`; a script, a timer and a systemd unit do not — and a live run failed
+#: exactly there: `claude` sat in `~/.local/bin`, `PATH` did not list it,
+#: selection fell through to an OpenAI key nobody configured and the call 401'd.
+#: Which judge a machine can reach is a fact about the machine, not about who
+#: typed the command.
+_BIN_DIRS = ("~/.local/bin", "~/bin", "/usr/local/bin", "/opt/homebrew/bin")
+
+
+def _resolve(name: str) -> str:
+    """The path to invoke this judge by.
+
+    `PATH` first, then the standard bin directories — and the ANSWER is used as
+    argv[0]. Finding a judge and then invoking it by bare name hands the lookup
+    straight back to the `PATH` that did not have it: the subprocess raises
+    FileNotFoundError and the verdict comes back UNVERIFIED for a judge sitting
+    right there. Falls back to the bare name, which is correct when `PATH` has
+    it and honest when nothing does.
+    """
+    import os
+    import shutil
+    from pathlib import Path
+    found = shutil.which(name)
+    if found:
+        return found
+    for folder in _BIN_DIRS:
+        candidate = Path(folder).expanduser() / name
+        try:
+            if candidate.is_file() and os.access(candidate, os.X_OK):
+                return str(candidate)
+        except OSError:
+            continue
+    return name
+
+
+def _installed(name: str) -> bool:
+    """Is this judge installed somewhere a `PATH` might simply not mention?
+
+    Executable, not merely present: a stray file named `claude` is not an
+    installation, and choosing it would trade a wrong verdict for an
+    unreachable one.
+    """
+    import os
+    from pathlib import Path
+    for folder in _BIN_DIRS:
+        candidate = Path(folder).expanduser() / name
+        try:
+            if candidate.is_file() and os.access(candidate, os.X_OK):
+                return True
+        except OSError:
+            continue
+    return False
 
 
 def _openai_key_present() -> bool:
@@ -206,9 +264,10 @@ def _openai_key_present() -> bool:
 
 
 def default_verifier(model: Optional[str] = None, *, which=None,
-                     has_api_key=None) -> Callable[..., Verdict]:
+                     has_api_key=None, installed=None) -> Callable[..., Verdict]:
     """The best judge this machine can reach — or an honest refusal."""
-    engine = chosen_engine(which=which, has_api_key=has_api_key)
+    engine = chosen_engine(which=which, has_api_key=has_api_key,
+                           installed=installed)
     if engine == "claude":
         return claude_verifier(model=model)
     if engine == "openai":
@@ -219,7 +278,13 @@ def default_verifier(model: Optional[str] = None, *, which=None,
             return text
 
         return model_verifier(call)
-    return unavailable("no verifier engine is installed or configured here")
+    # Named, because "none is configured" leaves the owner nowhere: the one
+    # thing that resolves this is knowing what was looked for and where.
+    return unavailable(
+        "no verifier engine is installed or configured here — looked for "
+        "`claude` and `codex` on PATH and in " + ", ".join(_BIN_DIRS) +
+        ", and for an OpenAI key. A task can be worked but not judged until "
+        "one of those exists")
 
 
 def _fail(why: str) -> Verdict:
