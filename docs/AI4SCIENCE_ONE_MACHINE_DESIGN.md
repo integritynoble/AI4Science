@@ -736,6 +736,10 @@ market, written where the domain knowledge is:
 | **pill-camera** | capsule endoscopy — reading video no clinician has time to read whole |
 | **drug design** | docking, screening, and the loop from candidate to assay |
 
+Each has its own design — charter, self-model dimensions, the substrates it may
+improve and the three it may never touch, and the budget its autonomous function
+runs under: [`research-agents/`](research-agents/README.md).
+
 > **They are agents, not exceptions.** Governor-authored means reviewed by the
 > same acceptance, installed by the same screen, bounded by the same ceiling, and
 > judged by the same verifier. The one thing being the governor's buys is being
