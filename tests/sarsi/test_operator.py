@@ -537,3 +537,35 @@ def test_a_line_that_merely_starts_with_try_is_not_a_placeholder():
     instructions that happen to begin with the word."""
     assert op._stranded('❯ try the staging host first\n') == \
         "try the staging host first"
+
+
+# ── the placeholder rotates; the filter did not ───────────────────────
+
+def test_a_placeholder_that_is_not_a_question_is_not_submitted(config, agent):
+    """Caught live on `work`. The filter was written against the one sample
+    then observed — `Try "how does <filepath> work?"` — and keyed on the
+    question mark. Claude Code rotates its dimmed hints and most are not
+    questions, so the loop read `Try "fix typecheck errors"` as a stranded
+    prompt and pressed Enter. The session then did 21 steps of somebody else's
+    work and tripped its own step budget: one invented prompt, and the task
+    ended `off` having never been told its actual goal.
+    """
+    for hint in ('Try "fix typecheck errors"',
+                 'Try "how does this work?"',
+                 'Try "refactor utils.py"',
+                 'Try "add tests for the parser"'):
+        assert op._stranded(f"❯ {hint}\n") is None, hint
+
+
+def test_a_real_instruction_beginning_with_try_still_counts(config, agent):
+    """The reason the rule was tight. Loosening it must not swallow a genuine
+    instruction that happens to open with that word."""
+    assert op._stranded('❯ Try running the migration before the import\n') \
+        == "Try running the migration before the import"
+
+
+def test_a_quoted_instruction_that_is_not_the_hint_shape_still_counts(config,
+                                                                       agent):
+    """Only the hint's exact shape is ignored — `Try "…"` and nothing else."""
+    assert op._stranded('❯ Try "the staging host" first\n') \
+        == 'Try "the staging host" first'

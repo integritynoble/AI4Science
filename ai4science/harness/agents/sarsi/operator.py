@@ -362,12 +362,24 @@ def _busy(screen: str) -> bool:
 
 
 #: Claude Code's own dimmed example at an EMPTY prompt — `Try "how does
-#: <filepath> work?"`. A captured pane renders it identically to typed text, so
-#: the loop read it as a stranded prompt and pressed Enter: `decisions` on the
-#: grace fleet showed two real sessions asked "how does <filepath> work?" by
-#: their own supervisor. Matched tightly on purpose — a looser rule would
-#: swallow a real instruction that happens to begin with the word "try".
-_SUGGESTION = re.compile(r'^Try\s+"[^"]*\?"$', re.I)
+#: <filepath> work?"`, `Try "fix typecheck errors"`. A captured pane renders it
+#: identically to typed text, so the loop read it as a stranded prompt and
+#: pressed Enter: `decisions` on the grace fleet showed two real sessions asked
+#: "how does <filepath> work?" by their own supervisor.
+#:
+#: This first required the quote to END IN A QUESTION MARK, because the one
+#: sample available when it was written was a question. The hints ROTATE and
+#: most are not questions, so a later live run submitted `Try "fix typecheck
+#: errors"`, and the session spent 21 steps on that instead of its goal and
+#: tripped its own budget — a task ended `off` having never been told what it
+#: was for. Calibrating a filter on a single observation is how that happens.
+#:
+#: Still matched on SHAPE and not on the word: the whole line must be `Try
+#: "…"` and nothing else, so a real instruction opening with "try", or one that
+#: merely contains a quote, is left alone. The residual cost is an owner who
+#: types exactly `Try "…"` and leaves it stranded — they press Enter themselves,
+#: which is a far smaller harm than the loop inventing a prompt.
+_SUGGESTION = re.compile(r'^Try\s+"[^"]*"$', re.I)
 
 
 def _stranded(screen: str) -> Optional[str]:
