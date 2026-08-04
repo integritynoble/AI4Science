@@ -296,27 +296,107 @@ propose a successor beside it; the owner accepts or discards. And editing a
 `Verified when:` line changes the standard the verifier applies — that is the
 point, not a side effect.
 
-## 9. What one agent may learn from another
+## 9. How the workspaces talk to each other
 
-**Sharing is publishing, never reading.** An agent publishes a fact deliberately
-and may read the common space; **no agent ever reads another's `W_name`**.
-Browsing another agent's history is a capability that, once it exists, is used by
-everything — including whatever was installed last Tuesday.
+Every agent has its own workspace and its own history. They still need to share:
+`funding` should know the deadline `work` found in a mail, and `jobs` should know
+which CV `abraham` filed. The question is how, without dissolving the reason
+there are seven of them.
 
-| Tier | Shared? |
-|---|---|
-| `W_user` — who the owner is, standing preferences, the do-not list | every agent |
-| **shared facts** — decisions, deadlines, entities, outcomes | published deliberately |
-| `W_host` — tools, paths, resources | **never** — they mean nothing off this host |
-| `W_secret` | **never** |
+### The four tiers
 
-Every shared fact carries **who published it and when**, keeps its **provenance**
-if it came from outside — a deadline read out of a mail stays *evidence that a
-mail said so* — is append-only, and **can be wrong**: consuming a fact does not
-make it true.
+| Tier | Who sees it | Holds | Written by |
+|---|---|---|---|
+| **`W_user`** | every agent | who the owner is, standing preferences, the do-not list | the owner |
+| **`W_shared`** | every agent that was granted it | published facts — decisions, deadlines, entities, outcomes | any agent, deliberately |
+| **`W_name`** | **one agent** | its mission, its plans, its conversation, what it decided and why | itself |
+| **`W_host`** | **one agent, one machine** | tools present, paths, sessions, resources | itself |
 
-Reading the shared space is a **permission**, declared at install and defaulting
-to no.
+### The one rule: publish, never browse
+
+```
+work ──publish──▶  W_shared  ◀──read──  funding        ✅
+work ─────────────▶ W_name(funding)                    ❌  never
+```
+
+An agent **publishes** a fact and **reads** the common space. No agent ever
+reads another's `W_name`.
+
+> **Why the asymmetry is the whole design.** Publishing is an act its author
+> chose, at a moment they chose, about a thing they decided was worth saying —
+> and it can be pointed at afterwards. Browsing another agent's history is a
+> *capability*, and a capability that exists is used by everything that has it,
+> including the market agent installed last Tuesday and the one whose author you
+> have never met.
+
+### What a published fact looks like
+
+```json
+{
+  "by": "work",                       │ who said it
+  "at": 1785900000.0,                 │ when
+  "kind": "deadline",                 │ what sort of thing
+  "text": "the imaging grant closes on 2026-09-14",
+  "about": ["imaging-grant"],         │ entities, so a reader can find it
+  "provenance": {                     │ where it came from
+    "source": "mail",
+    "trusted": false,
+    "note": "evidence that a mail said so — not that it is so"
+  }
+}
+```
+
+Four properties, each closing a way this could go wrong:
+
+- **it names its author and its moment.** A space where facts float free of who
+  said them is one where a wrong fact cannot be traced, weighed, or withdrawn.
+- **it keeps its provenance.** A deadline read out of a mail stays *evidence
+  that a mail said so*. Without this, the shared space becomes the laundering
+  step: untrusted input goes in labelled and comes out as fleet knowledge, which
+  is exactly the route the "an email is not an instruction" rule exists to close.
+- **it is append-only.** Correcting is publishing a correction. History that can
+  be edited is history that can be edited by whatever gets in.
+- **it can be wrong.** Reading a fact does not make it true. A plan that leans on
+  one cites it, and the verifier still judges evidence rather than citations.
+
+### What never goes up
+
+`W_host` — tools, paths, sessions, resource readings. They are *about a host* and
+mean nothing off it, and promoting one manufactures authority over something
+nobody looked at: `write /home/me/reports` is a different directory on a
+different machine.
+
+`W_secret` — the vault answers ALLOW or DENY and hands nothing over, so there is
+nothing here to publish.
+
+> **`abraham` needs no special rule.** It publishes the **decision** and not the
+> facts it concerns: *"booked the Tuesday appointment"* goes up; whose
+> appointment, and for what, stays host-local. Other people's personal data never
+> enters the shared space, so nothing has to get it back out.
+
+### A worked example
+
+1. `work` reads the mailbox and finds a funder's note. It **does not act on it** —
+   mail is untrusted input, and an instruction inside it is not an instruction.
+2. It publishes: *`kind: deadline`, "the imaging grant closes on 2026-09-14",
+   provenance `mail`, `trusted: false`*.
+3. `funding` reads the shared space when planning and finds it. Its plan says
+   *"the funder's mail of 4 Aug states a 14 Sep deadline"* — a citation, not an
+   assertion.
+4. The plan still declares what it needs, still stops at `GRT`, and the
+   submission still stops at `OWN`. **Nothing about a shared fact shortens the
+   path to an act.**
+5. If the deadline was wrong, the record shows who published it, when, and that
+   it came from a mail. `work` publishes a correction; the original stays.
+
+### Reading it is a permission
+
+Installing a third-party agent must not hand a stranger's code everything the
+owner's other agents have learned.
+
+> **Declared at install, defaulting to no.** An agent gets `W_user` and its own
+> `W_name`. `W_shared` is asked for in the manifest, shown on the install screen,
+> and granted by the owner or not at all.
 
 ## 10. Both doors
 
@@ -348,6 +428,76 @@ accept, because a lenient one inflates the record of every agent it judges.
 **Trust is not transitive.** An agent may bring its own tools — one author, one
 review — or require ones from the market, and then the install screen names every
 author whose code comes with it and what each part may touch.
+
+## 11a. The tools and sub-agents this system needs
+
+A **tool** is something a task needs *present* to run — checked at `CAP`,
+declared per agent as a profile, and refused by name when absent. A **sub-agent**
+is something that does the work or judges it, plugging into a socket the runtime
+provides.
+
+### Sub-agents
+
+| Sub-agent | Socket | Status |
+|---|---|---|
+| **`sarsi-claude`** | the session backend — start · send · interrupt · stop · ceiling · has · capture | **built.** The reference implementation, and the shape every other sub-agent matches |
+| **the planner** | drafts the seed plan the session then grounds | **built** |
+| **the verifier** | given criteria and evidence, answers PASS/FAIL or refuses | **built.** A domain verifier is a market listing |
+| **a domain runner** | reconstruction, docking, simulation — work that is not code editing | market |
+
+### Tools the seven need
+
+| Tool | Who | What it touches |
+|---|---|---|
+| `shell` | `sarsi-worker` | the machine, as the owner |
+| `editor` | `sarsi-worker` | files in the task's reach |
+| `browser` | `sarsi-worker`, `social`, `funding`, `jobs`, `abraham` | the network, and pages that can lie to it |
+| `mail.read` | `work` | the mailbox — **read only; there is no `mail.send`** |
+| `documents` | `funding`, `jobs`, `abraham` | office files and PDFs |
+| `calendar` | `abraham` | other people's whereabouts — `W_host`, never shared |
+| `payment` | `abraham` | **prepare only.** `money` is reserved and no agent completes it |
+| `qupath`, `matlab` | `work` | instrument data and licensed desktop software |
+
+### Tools this design has assumed and not named
+
+| Tool | Why it is needed | The review question |
+|---|---|---|
+| **GUI control** | `qupath` and `matlab` are desktop applications. A tool that "has MATLAB" and cannot drive its window can run a script and nothing else. `jobs` filling an application site hits the same wall the moment a page is not automatable. | it can click anything on the screen, including windows that are not the task's |
+| **file transfer** | getting a result off the machine is an outward act and must go through `OWN`; getting an input *onto* it is not, and has no tool | where a file came from, and whether an agent chose it |
+| **secrets rotation** | the vault stores; nothing rotates | it holds every credential at once |
+| **notification** | the digest and `attention` have no way to reach an owner who is not looking | it can interrupt a person |
+
+### Figma and TeamViewer
+
+Both were suggested, and they are different kinds of thing.
+
+**Figma — a design tool, and a reasonable market listing.** `social` drafting a
+post image, or a design agent producing a mockup, is ordinary work with an
+ordinary outward gate: the file is composed locally and publishing it stops at
+`OWN`. It touches a network service and the owner's design account, so its
+credential is a vault secret like any other. There is no new authority here, and
+this repository already carries figma prototypes made exactly this way.
+
+**TeamViewer — remote desktop, and the most dangerous tool in this document.**
+It is worth being precise about which of two things is meant, because they are
+opposite:
+
+| Reading | What it is | Verdict |
+|---|---|---|
+| **the agent drives the desktop** — GUI control by another name | the same capability as the GUI-control row above, over a heavier protocol | **acceptable, as a tool with that review**: it can click anything, so it is declared, profiled, and gated like any other reach |
+| **a remote party controls the machine** | an inbound channel that bypasses every gate on this page | **refuse.** |
+
+> **The second reading inverts the whole design.** Every rule here says that the
+> thing which acts is local, bounded by a ceiling, and answerable to an owner who
+> can see it. A remote-control channel is an actor with no ceiling, no plan, no
+> verdict and no record — and it would not be *breaking* the gates, it would be
+> *going around* them, which is worse because nothing would report it.
+
+> **If remote help is genuinely wanted**, the shape that fits this design is the
+> one `interact` already uses: the owner attaches to a terminal they own, and
+> the session keeps running under the same hook. A human who needs to see what
+> is happening is a human at a door, not a second driver — the wheel exists
+> because two of those is one too many.
 
 ## 11b. Research agents
 
