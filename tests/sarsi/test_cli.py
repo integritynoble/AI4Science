@@ -964,3 +964,28 @@ def test_cli_do_refuses_a_dependency_that_does_not_exist(isolated):
                                  "--after", "work/tsk_nothing"])
     assert result.exit_code != 0
     assert "tsk_nothing" in result.output
+
+
+def test_cli_rules_adds_and_lists(isolated):
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    runner.invoke(app, ["sarsi", "rules", "work", "--add",
+                        "use python3 on this host, never python"])
+    result = runner.invoke(app, ["sarsi", "rules", "work"])
+    assert result.exit_code == 0
+    assert "use python3 on this host" in result.output
+
+
+def test_cli_rules_refuses_a_secret_value(isolated):
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    result = runner.invoke(app, ["sarsi", "rules", "work", "--add",
+                                 "the smtp password is hunter2"])
+    assert result.exit_code != 0
+    assert "vault" in result.output.lower()
+
+
+def test_cli_rules_can_remove_one(isolated):
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    runner.invoke(app, ["sarsi", "rules", "work", "--add", "use python3"])
+    runner.invoke(app, ["sarsi", "rules", "work", "--remove", "use python3"])
+    result = runner.invoke(app, ["sarsi", "rules", "work"])
+    assert "no house rules" in result.output.lower()

@@ -70,6 +70,7 @@ Each of these is live, tested, and exercised on the installed binary.
 | `why` / `/why <task>` | **The goal, the criteria a verdict will apply, and what the last verdict said** — in one answer. Reports and never infers: no verdict says *not judged yet*, and it will not name a "current phase" (see below). |
 | `spend` | **What it cost** — tokens in/out, cached apart from fresh, and wall-clock — read from the session transcripts, not estimated. Unknown is reported as *not recorded*, never as 0, and PWM as *not charged here* rather than 0. |
 | `decisions` | **What it decided without you, and at which rung.** Only the agent's own acts — the owner's guidance is not the agent deciding. An act recorded with no ceiling reads `unknown`, never `A2`. Reading does not acknowledge; `--ack` moves the line and `--all` still shows everything under it. |
+| `rules` | **House rules for this machine**, told to every session that agent starts — the host facts it would otherwise rediscover (`use python3 on this host`). They live in `W_host` and never travel; the **owner** writes them, because an agent that can write its own standing instructions can widen them. A rule may *name* a credential, never carry one. |
 | `ask` / `self model` | What the worker observes about itself. |
 | `improve yourself` / `yes` | RSI: it proposes a playbook change and holds it until the owner signs. |
 
@@ -87,16 +88,7 @@ Each of these is live, tested, and exercised on the installed binary.
 
 ## Part 2 — Next, in order
 
-### 1. Per-agent house rules
-
-A file each worker injects into every kickoff.
-
-> **Observed 2026-08-03, grace:** the session ran `python demo.py`, hit
-> `/bin/sh: 1: python: not found`, and retried with `python3`. Cheap once; paid
-> again on every new session. *"Always use python3 on this host"* belongs in the
-> agent's host workspace, not in each session's trial and error.
-
-### 2. `digest`
+### 1. `digest`
 
 §6's `DIG` — one daily read across tasks.
 

@@ -636,6 +636,14 @@ def kickoff(task: tsk.Task, plan: Optional[pl.Plan],
             here = plan.phases[index]
             lines.append(f"Earliest incomplete phase: {here.title}")
             lines.append(f"Verified when: {here.verified_when}")
+    if agent is not None:
+        # The host facts every session would otherwise rediscover. Told, rather
+        # than bumped into.
+        from ai4science.harness.agents.sarsi import rules as _rules
+        house = _rules.render(None, agent)
+        if house:
+            lines.append(house)
+
     # An earlier session's handoff, when there is one. `agent` is needed to
     # find the task folder; without it this simply says nothing rather than
     # guessing at a path.

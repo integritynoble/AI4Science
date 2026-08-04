@@ -409,6 +409,43 @@ def spend(agent_id: Optional[str] = typer.Option(None, "--agent",
         console.print(f"  {row.summary}", markup=False, highlight=False)
 
 
+@app.command("rules", help="House rules for this machine — told to every session.")
+def rules_cmd(agent_id: str = typer.Argument(..., help="Agent id, e.g. work"),
+              add: Optional[str] = typer.Option(None, "--add",
+                                                help="Add a rule."),
+              remove: Optional[str] = typer.Option(None, "--remove",
+                                                   help="Remove one, exactly as written.")) -> None:
+    from ai4science.harness.agents.sarsi import rules as rl
+
+    config = _load()
+    agent = config.agents.get(agent_id)
+    if agent is None:
+        console.print(f"[red]no agent {agent_id!r}[/red] — known: "
+                      f"{', '.join(sorted(config.agents))}")
+        raise typer.Exit(code=2)
+
+    try:
+        if add:
+            rl.add(config, agent, add)
+        if remove:
+            rl.remove(config, agent, remove)
+    except (rl.LooksLikeASecret, rl.TooMany, rl.NoSuchRule, ValueError) as e:
+        console.print(str(e), style="yellow", markup=False, highlight=False)
+        raise typer.Exit(code=2)
+
+    current = rl.read(config, agent)
+    if not current:
+        console.print(f"{agent_id}: no house rules")
+        return
+    console.print(f"{agent_id} — {len(current)} house rule(s) for this machine:",
+                  markup=False, highlight=False)
+    for rule in current:
+        console.print(f"  - {rule}", markup=False, highlight=False)
+    console.print(f"every session this agent starts is told them "
+                  f"({rl.path(agent)})", style="dim", markup=False,
+                  highlight=False)
+
+
 @app.command("handoff", help="Write HANDOFF.md for the next session, and show it.")
 def handoff_cmd(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
                 task_id: str = typer.Argument(..., help="Task id")) -> None:
