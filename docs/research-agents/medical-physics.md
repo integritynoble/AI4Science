@@ -3,125 +3,156 @@
 **Status: design, 2026-08-04. Not built.** The common contract is in
 [`README.md`](README.md).
 
-## 1. Charter — what it is for
+## 1. The field
 
-Radiotherapy physics: treatment planning, dose prediction, plan quality
-assurance, contouring, and the automation around them.
+The physics of radiation used to treat and image people, and the quality systems
+around it.
 
-The reference point the owner named is **Steve Jiang's group at UT Southwestern**
-— the Medical Artificial Intelligence and Automation (MAIA) Lab, where Jiang is
-Professor, Vice Chair for Digital Health and AI, and Chief of the Division of
-Medical Physics and Engineering in Radiation Oncology. Their published problem
-set maps almost one-to-one onto what this agent should be able to hold:
-
-| MAIA line of work | What it becomes here |
+| Subfield | What it covers |
 |---|---|
-| volumetric dose prediction | predict the achievable dose distribution from anatomy |
-| Pareto surface navigation | explore the trade-off surface instead of returning one plan |
-| beam orientation optimisation | a search problem with a physical cost |
-| incorporating human and learned domain knowledge | the plan a physicist would accept, not the plan that scores |
-| anatomical structure nomenclature standardisation | the unglamorous data problem that blocks everything else |
-| uncertainty estimation | the dimension that decides whether any of it is usable |
-| AI-based QA for online adaptive radiotherapy (MR-linac) | the highest-value and highest-risk target |
+| **treatment planning** | IMRT, VMAT, stereotactic; inverse optimisation; the Pareto trade-off surface |
+| **dose calculation** | Monte Carlo, collapsed cone, GPU dose engines; the ground truth everything else approximates |
+| **auto-segmentation** | organs at risk and targets; structure nomenclature standardisation |
+| **adaptive radiotherapy** | online replanning on CBCT and MR-linac, where the whole loop must finish while the patient is on the couch |
+| **image guidance and motion** | 4-D, gating, tracking, intrafraction motion |
+| **particle therapy** | proton and carbon; range uncertainty, LET and RBE modelling |
+| **FLASH** | ultra-high dose rate; dosimetry that existing detectors cannot do |
+| **brachytherapy** | source modelling, applicator reconstruction, direction-modulated devices |
+| **dosimetry and machine QA** | detectors, commissioning, output constancy, log-file analysis |
+| **radiobiology modelling** | TCP/NTCP, fractionation, dose-response from outcome data |
+| **imaging physics** | CBCT quality, MR distortion, synthetic CT, dose-of-imaging |
+| **incident learning and safety** | the field's own error data, systematically under-analysed |
+| **outcome modelling** | linking delivered dose to what happened to the patient |
 
-The lab's own framing — *clinical deployment of AI, from single models to
-compound agentic systems* — is the same shape as this design, which is why it is
-the right anchor rather than a courtesy citation.
+## 2. What this field is short of
 
-## 2. The rule this agent exists to hold
+| Shortage | How bad |
+|---|---|
+| **planning-time bottleneck** | adaptive RT is limited by how fast a plan can be made and checked while a patient waits. This is the field's defining constraint. |
+| **inter-planner and inter-institution variability** | the same case planned at two centres gives materially different plans; almost nothing measures this systematically |
+| **QA that scales** | more plans, more adaptivity, no more physicists. Automated QA is not a convenience, it is the only way adaptive RT works. |
+| **outcome data linked to delivered dose** | dose is recorded, outcome is recorded, the join is rare |
+| **nomenclature and data plumbing** | the unglamorous blocker that stops multi-institution work before it starts |
+| **uncertainty that is actually reported** | most models give a number and no interval |
+| **incident learning under-analysed** | a large safety corpus that nobody has the time to mine |
+| **prospective clinical validation** | **an agent cannot close this.** Trials need patients, ethics approval and years. |
+
+> **The field's shortage is throughput of trustworthy checking, not novelty.**
+> That is an unusually good match for a tireless governed agent, and an unusually
+> dangerous one, because the checking is what stands between a plan and a person.
+
+## 3. How this agent advances it
+
+1. **Automate the retrospective QA sweep** — run every plan in an archive
+   against its protocol constraints and surface the outliers. Cheap for an
+   agent, impossible for a department.
+2. **Measure variability** across planners, institutions and time, on
+   retrospective cohorts. Nobody has the hours; an agent does.
+3. **Benchmark dose-prediction and auto-segmentation models honestly**, per
+   structure and per constraint, on external cohorts.
+4. **Mine incident-learning corpora** for patterns, as a report to physicists.
+5. **Standardise nomenclature** across datasets so multi-institution work
+   becomes possible at all.
+6. **Carry methods across subfields** — uncertainty estimation from imaging,
+   diffusion priors from reconstruction, active learning from segmentation.
+7. **Link delivered dose to outcome** on retrospective data, with the
+   confounding stated rather than hidden.
+
+The reference point the owner named is **Steve Jiang's MAIA Lab at UT
+Southwestern** — dose prediction, Pareto surface navigation, beam orientation
+optimisation, nomenclature standardisation, uncertainty estimation, and AI-based
+QA for online adaptive radiotherapy on MR-linacs. Their framing of *clinical
+deployment from single models to compound agentic systems* is the same shape as
+this design. It is one anchor in the field, not the boundary of it.
+
+## 4. The rule this agent exists to hold
 
 > **It produces plan candidates and QA findings. A qualified medical physicist
 > signs anything that touches a patient.**
 
 This is the one of the six whose output has a direct physical path to a human
-body. Every other agent in the set can be wrong and cost time or money. This one
-can be wrong and cost a person.
-
-So the design is deliberately asymmetric:
+body. Every other agent can be wrong and cost time or money. This one can be
+wrong and cost a person.
 
 | | |
 |---|---|
-| it may **compute** a plan, a dose prediction, a QA verdict, an uncertainty | ✅ |
-| it may **rank** candidates and explain the trade-off | ✅ |
-| it may **write into a treatment planning system**, export a deliverable plan, or mark a plan approved | ❌ **never** |
-| it may operate on **live patient data** in the autonomous function | ❌ **never** — retrospective, de-identified, or phantom only |
+| compute a plan, a dose prediction, a QA verdict, an uncertainty | ✅ |
+| rank candidates and explain the trade-off | ✅ |
+| write into a treatment planning system, export a deliverable plan, mark a plan approved | ❌ **never** |
+| operate on live patient data in the autonomous function | ❌ **never** — retrospective, de-identified or phantom only |
 
 > **The autonomous function is bounded to data where being wrong is free.**
-> Retrospective cohorts, public datasets and phantoms. Nothing the agent does
-> unattended is on a patient who is waiting, because "unattended" and "waiting
-> patient" must never appear in the same sentence in this system.
+> "Unattended" and "waiting patient" must never appear in the same sentence in
+> this system.
 
-## 3. Self-model dimensions
+## 5. Self-model dimensions
 
 | Dimension | Measured by | The trap |
 |---|---|---|
-| **dose prediction error** | mean and max dose difference vs the delivered clinical plan | mean error hides the hot spot, which is the thing that matters |
-| **DVH criterion pass rate** | fraction of clinical constraints met, per protocol | a plan that meets 9 of 10 constraints may be unusable if the tenth is a cord dose |
-| **deliverability** | does it survive the machine's constraints — MU, segment count, leaf motion | a mathematically better plan the linac cannot deliver |
-| **contour agreement** | DSC *and* surface distance vs expert contours, per structure | mean DSC over structures — a small structure with a bad contour disappears in it |
-| **uncertainty calibration** | does the stated confidence match observed error | a well-calibrated model that is confidently wrong 5% of the time is fine; an uncalibrated one is not usable at all |
-| **nomenclature conformance** | fraction of structures resolvable to a standard name | the boring dimension that determines whether anything else can run at all |
+| **dose prediction error** | **max** and mean difference vs the delivered plan | mean hides the hot spot, which is the clinical event |
+| **DVH criterion pass rate** | fraction of clinical constraints met, per protocol, per structure | 9 of 10 can be unusable if the tenth is cord dose |
+| **deliverability** | MU, segment count, leaf motion, machine constraints | a mathematically better plan the linac cannot deliver |
+| **contour agreement** | DSC **and** surface distance, per structure | mean DSC across structures, which hides a small bad one |
+| **uncertainty calibration** | stated confidence vs observed error | accuracy without calibration is unusable clinically |
+| **nomenclature conformance** | fraction of structures resolvable to a standard | the boring dimension that gates everything else |
+| **time to plan** | wall-clock for the adaptive loop | throughput on a warm cache |
 
-> **Max, not mean, is the headline for dose.** In this domain the tail is the
-> clinical event. An agent reporting mean dose error as its score has chosen the
-> statistic that hides exactly the failure the field cares about, and its
-> self-model is required to lead with the max.
-
-## 4. What it may improve, and what it may not
+## 6. What it may improve, and what it may not
 
 | | |
 |---|---|
-| **may** | its prediction model, its optimisation search, its contour model, its uncertainty estimator |
-| **may** | which cohort, which structure, which protocol to work on next |
-| **may not** | the clinical constraint set, the protocol, or the acceptance criteria |
+| **may** | its prediction models, optimisation search, contour models, uncertainty estimators |
+| **may** | which cohort, structure, protocol or subfield to work on next |
+| **may not** | clinical constraint sets, protocols, or acceptance criteria |
 | **may not** | anything about a plan's approval state |
 
-> **Constraints are the clinic's, not the agent's.** A DVH constraint is a
-> clinical decision made by people accountable for it. An agent that could relax
-> a constraint could make any plan pass, and the passing plan would be the one
-> delivered.
+> **Constraints are the clinic's.** An agent that could relax a constraint could
+> make any plan pass, and the passing plan is the one delivered.
 
-## 5. What an improvement must survive
+## 7. What an improvement must survive
 
 1. **A retrospective cohort with the delivered plan as ground truth**, split by
-   patient, never by slice.
+   patient.
 2. **Per-structure and per-constraint reporting** — no aggregate alone.
 3. **Deliverability checked**, not assumed.
-4. **A physicist's review of the failure cases**, not just the summary. The
-   agent's job here is to surface the worst cases and make them easy to look at.
-5. **Calibration reported** with the accuracy.
+4. **An external institution's data** where a claim is about generality.
+5. **A physicist's review of the failure cases** — the agent's job is to surface
+   the worst cases and make them easy to look at.
+6. **Calibration reported with accuracy.**
 
-## 6. Autonomous work it may propose unasked
+## 8. Autonomous work it may propose unasked
 
-- benchmark a dose-prediction model on a retrospective cohort
+- QA sweeps over retrospective archives, flagging outliers and patterns
+- benchmark dose prediction or segmentation on a retrospective cohort
+- measure inter-planner or inter-institution variability
+- standardise structure nomenclature across a dataset
+- mine an incident-learning corpus for recurring failure modes
 - ablate inputs and report what actually carries the signal
-- run QA checks over an archive and flag patterns
-- standardise structure nomenclature across a dataset and report the mapping
 - estimate and calibrate uncertainty on held-out cases
 
 **Not unasked, and not at any ceiling:** anything touching a live plan, a
 treatment system, a patient record, or a clinical claim.
 
-## 7. Tools and sub-agents
+## 9. Tools and sub-agents
 
 | Needs | For |
 |---|---|
-| GPU compute | model training and dose computation |
-| dataset access, de-identified | retrospective cohorts |
-| a dose engine | recomputation — physics that must not be approximated by the model being tested |
-| a **domain verifier** | the criteria are DVH lines; judging them is mechanical and should be |
-| **GUI control** | planning systems are desktop applications, and this is the second place the unnamed tool bites |
+| GPU compute | model training, dose computation |
+| a Monte Carlo dose engine | recomputation — physics that must not be approximated by the model under test |
+| de-identified dataset access | retrospective cohorts |
+| **GUI control** | planning systems are desktop applications; this is the second place the unnamed tool bites |
+| a **domain verifier** | criteria are DVH lines, and judging them should be mechanical |
 
-## 8. Budget shape
+## 10. Budget shape
 
-Model training is the expensive unit; evaluation and QA sweeps are cheap. A
-night's grant should cover **QA sweeps and retrospective evaluation**.
+Model training is the expensive unit; QA sweeps and evaluation are cheap. A
+night's grant covers **QA sweeps and retrospective evaluation** — which is also
+the work whose value is highest and whose risk unattended is lowest.
 
-## 9. The regulatory line
+## 11. The regulatory line
 
 **Clinical deployment is not a permission the owner can grant alone.** An
 outward gate covers acts that leave the machine; it does not confer regulatory
-clearance, institutional review, or clinical validation. The agent's limits line
-says this in every report, and the agent refuses to describe any output as
-clinically validated, cleared, or ready for use on patients — including when the
-owner asks it to.
+clearance, institutional review, or clinical validation. The agent refuses to
+describe any output as clinically validated, cleared, or ready for use on
+patients — including when the owner asks it to.

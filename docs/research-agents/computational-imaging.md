@@ -3,118 +3,164 @@
 **Status: design, 2026-08-04. The `AgentSpec` package exists; nothing below
 does.** The common contract is in [`README.md`](README.md).
 
-## 1. Charter — what it is for
+## 1. The field
 
-Inverse problems in imaging where the measurement is coded and the image is
-recovered rather than captured: snapshot compressive imaging (SCI), coded
-aperture spectral imaging (CASSI), compressed ultrafast photography, and the
-optics that make them possible.
+Everywhere the image is **computed** rather than captured — the sensor measures
+something that is not the picture, and an algorithm recovers the picture using a
+model of the instrument.
 
-**It is the one of the six that already ships.** `pwm-agent-imaging` exists as an
-`AgentSpec` — name `computational-imaging`, capabilities `ci-algorithms`,
-`optics-design`, `forward-model`, `compute-providers` — discovered by ai4science
-through the `pwm_agent.specs` entry point. What is missing is everything in this
-file: a charter, a self-model, a fixed benchmark, and a budget.
+| Subfield | The measurement | The inverse problem |
+|---|---|---|
+| **optics / computational optics design** | a lens, DOE, metasurface or coded aperture you get to *choose* | design the encoder jointly with the decoder |
+| **CT** | line integrals at angles | sparse-view, limited-angle, low-dose, photon-counting, dual-energy |
+| **MRI** | samples of k-space | parallel imaging, compressed sensing, non-Cartesian, low-field, quantitative mapping |
+| **single-pixel imaging** | one detector, many patterns | recover an image from a sequence of scalars |
+| **SCI / CASSI** | one 2-D snapshot of a 3-D or 4-D scene | spectral and video reconstruction |
+| **lensless imaging** | a mask against a sensor | deconvolution with a learned or measured PSF |
+| **ptychography and phase retrieval** | intensity only, phase lost | recover phase from magnitude, with overlap |
+| **holography** | interference | numerical propagation and refocusing |
+| **light-field / plenoptic** | angular samples | view synthesis, depth, refocus |
+| **time-of-flight, LiDAR, NLOS** | photon arrival times | transient and non-line-of-sight reconstruction |
+| **event cameras** | brightness changes | reconstruction and motion from an asynchronous stream |
+| **astronomical / interferometric** | sparse visibilities | aperture synthesis |
+| **photoacoustic and ultrasound** | pressure over time | tomographic reconstruction |
 
-Seed corpus, on this machine and in the owner's own published work:
+Related but **not** this agent's: low-dose CT specifically, which is its own
+agent because it carries a benchmark, a leaderboard and a clinical boundary —
+see [`low-dose-ct.md`](low-dose-ct.md). The two share the transfer table below,
+and that sharing is the point.
 
-| Source | What it contributes |
+## 2. What this field is short of
+
+**Not methods.** The field produces reconstruction architectures faster than
+anyone can evaluate them. What it lacks:
+
+| Shortage | How bad |
 |---|---|
-| `EfficientSCI`, `STFormer`, `HiSViT`, `ELP-Unfolding`, `PnP-SCI`, `gaptv_cassi` | reconstruction architectures across the deep-unrolling and plug-and-play families |
-| `Physics_World_Model/packages/pwm_core/recon/cassi_arch/` | the CASSI architectures in the live codebase |
-| `optics_design` | the forward side — the coded aperture is designable, not given |
-| the owner's SCI / CUP publications | the adaptive deep PnP line, and the augmented-Lagrangian + deep-learning hybrid |
+| **real data** | most published gains are simulation-only. The sim→real gap is rarely reported and frequently larger than the gain. |
+| **comparable numbers** | different scenes, splits, masks, PSNR conventions and hardware. Two papers claiming SOTA on "KAIST" often cannot be compared at all. |
+| **honest cost accounting** | a 0.3 dB gain at 4× inference time is presented as an improvement. |
+| **cross-subfield transfer** | see §3. The largest structural waste in the field. |
+| **forward-model discipline** | reconstructions evaluated without ever checking consistency with the measurement that produced them. |
+| **hardware in the loop** | joint optics-algorithm design is published in simulation; fabricating and measuring the element is slow and rare. **An agent cannot close this one** — it can design and simulate; it cannot fabricate. |
 
-## 2. The rule this agent exists to hold
+## 3. The transfer surface — where the real gains are
+
+Every subfield above is `y = A x + n` with a different `A`. That is not an
+analogy, it is the same mathematics, and it means a method developed for one is
+usually applicable to the others with a changed operator. The field
+re-derives instead, years apart, because people read their own subfield.
+
+| Method | Where it started | Where it has crossed | Where it has not |
+|---|---|---|---|
+| unrolled optimisation | CS-MRI | CT, SCI, lensless | ToF/NLOS, event, interferometric |
+| plug-and-play priors | general inverse problems | CT, MRI, SCI | ptychography, holography, photoacoustic |
+| diffusion / score-based priors | MRI, CT | some SCI | most of the rest |
+| implicit neural representations | novel view synthesis | sparse-view CT, some MRI | single-pixel, light-field, ToF |
+| self-supervised denoising (no clean target) | microscopy | some CT | most subfields with no ground truth at all |
+| equivariance / physics-consistency losses | MRI | little else | most subfields |
+| joint encoder-decoder design | lensless, SCI | some optics design | CT geometry, MRI trajectories, single-pixel pattern design |
+
+**Filling one cell of that table is a paper, and there are many empty cells.**
+Proposing a crossing, implementing it against the receiving subfield's operator,
+and evaluating it under that subfield's protocol is this agent's highest-value
+autonomous work — and it is work whose absence is caused purely by how people
+are organised, which is exactly the kind an agent should take.
+
+## 4. The rule this agent exists to hold
 
 > **Physics is not a hyperparameter.**
 
-A reconstruction is a claim about what the scene was, given a measurement and a
-forward model `y = Φx + n`. An agent optimising PSNR has one shortcut always
-available: quietly change Φ — relax the mask, drop the shift, use a forward
-model at reconstruction time that does not match the one that produced the data.
-The number improves and the result means nothing.
+An agent optimising fidelity has one shortcut always available: quietly change
+`A` — relax the mask, drop the shift, ignore the noise model, use a forward
+operator at reconstruction time that did not produce the data. The number
+improves and the result means nothing.
 
-So the forward operator is **fixed input, not a tunable**, and every evaluation
-carries a **forward-model residual** — `‖y − Φx̂‖` on the real measurement —
-beside the fidelity number. A reconstruction that beats the state of the art
-while drifting from the measurement it was reconstructed from is reported as a
-**bug in the pipeline**, not as a result.
+So the forward operator is **fixed input**, and every evaluation carries a
+**forward-model residual** `‖y − A x̂‖` on the real measurement beside the
+fidelity number. A reconstruction that beats the state of the art while drifting
+from its own measurement is reported as a **pipeline bug**, not a result.
 
-## 3. Self-model dimensions
+> **The mask is two different objects.** Designing a *new* aperture for a *new*
+> capture is optics research and is encouraged. Changing the aperture used to
+> reconstruct an *existing* measurement is falsifying physics. Same array,
+> opposite acts — so the design path and the evaluation path load it from
+> different places, and evaluation's copy is read-only.
+
+## 5. Self-model dimensions
 
 | Dimension | Measured by |
 |---|---|
-| **simulation fidelity** | PSNR / SSIM on the standard simulation sets, per scene, never averaged alone |
+| **simulation fidelity** | PSNR / SSIM per scene, never a bare average |
 | **real-data fidelity** | the same on real captures — the number that actually moves |
-| **forward-model residual** | `‖y − Φx̂‖` on real measurement, reported always |
-| **sim→real gap** | simulation fidelity minus real fidelity — the honest measure of a method's usefulness |
-| **cost** | inference time, peak memory, and parameter count on a stated GPU |
-| **mask sensitivity** | fidelity under a mask the model was not trained on |
+| **sim→real gap** | the difference, as a first-class dimension |
+| **forward-model residual** | on the real measurement, always reported |
+| **operator generalisation** | fidelity under a mask, trajectory, or angle set not trained on |
+| **cost** | inference time, peak memory, parameters, on a stated device |
+| **cross-subfield coverage** | how many cells of §3 this agent has actually filled |
 
-> **The sim→real gap is the dimension worth building the agent for.** The
-> literature's numbers are mostly simulation, an agent can generate simulation
-> results endlessly and cheaply, and simulation is precisely where an autonomous
-> loop will happily spend a month improving nothing. Making the gap a first-class
-> dimension means a method that gains 0.8 dB in simulation and nothing on real
-> data scores as what it is.
+> **The sim→real gap deserves the emphasis.** Simulation results are cheap and
+> infinite, which makes them precisely where an autonomous loop will happily
+> spend a month improving nothing. Making the gap a scored dimension means a
+> method that gains 0.8 dB in simulation and nothing on real data scores as
+> exactly what it is.
 
-## 4. What it may improve, and what it may not
+## 6. What it may improve, and what it may not
 
 | | |
 |---|---|
-| **may** | the network architecture, the number of unrolling stages, the prior/denoiser, the training schedule, the initialisation |
-| **may** | the *designed* coded aperture — in `optics_design`, a mask is a decision variable, and improving it is legitimate research |
-| **may** | which scene, which ablation, which comparison to run next |
-| **may not** | the forward model used to evaluate against a captured measurement |
-| **may not** | the test scenes, the split, or the metric implementation |
+| **may** | architectures, unrolling depth, priors, training schedules, initialisation |
+| **may** | *designed* encoders — masks, trajectories, patterns, DOE profiles — in the design path |
+| **may** | which subfield, which crossing, which comparison to run next |
+| **may not** | the forward model used to evaluate an existing measurement |
+| **may not** | test scenes, splits, or metric implementations |
 
-> **The mask is two different objects and the agent must not confuse them.**
-> Designing a *new* mask for a *new* capture is optics research. Changing the
-> mask used to reconstruct an *existing* measurement is falsifying the physics.
-> Same array, opposite acts — so the design path and the evaluation path load it
-> from different places, and the evaluation path's copy is read-only.
+## 7. What an improvement must survive
 
-## 5. What an improvement must survive
-
-1. **Real data, or it is a simulation result** and is labelled as one in the
-   headline, not in a footnote.
+1. **Real data, or it is labelled a simulation result in the headline.**
 2. **The forward-model residual did not get worse.**
-3. **The fixed scene set, every scene reported** — a mean over scenes hides that
-   the gain came from one easy one.
-4. **Cost stated.** A 0.3 dB gain for 4× the inference time is a trade, not an
-   improvement, and the agent may not present it as one.
-5. **A mechanism** tied to the physics: what structure in the measurement is the
-   new prior exploiting that the old one did not?
+3. **Every scene in the fixed set reported** — a mean hides a gain that came
+   from one easy scene.
+4. **Cost stated.** A trade is presented as a trade.
+5. **A mechanism tied to the physics**: what structure in the measurement does
+   the new prior exploit that the old one did not?
+6. **For a transfer claim**: the receiving subfield's own protocol and its own
+   baselines, not the source subfield's.
 
-## 6. Autonomous work it may propose unasked
+## 8. Autonomous work it may propose unasked
 
-- reproduce a published architecture and place it in the comparison table
-- ablate stages, priors, or attention blocks
+- reproduce a published architecture and place it in a common comparison table
+- **fill a cell of the transfer table** and evaluate under the receiving protocol
+- run a method across subfields with only the operator changed — the cheapest
+  informative experiment this field has
 - evaluate an existing checkpoint on a real capture it has not seen
-- propose and simulate a coded-aperture design in `optics_design`
-- check a claimed result against the forward model and report the residual
+- propose and simulate an encoder design
+- check a published claim against the forward model and report the residual
+- publish the negative result when a crossing does not work
 
-**Not unasked:** publishing, submitting, emailing, or requisitioning hardware
-time beyond the standing grant.
+**Not unasked:** publishing, submitting, emailing, ordering fabrication, or
+booking instrument time.
 
-## 7. Tools and sub-agents
+## 9. Tools and sub-agents
 
 | Needs | For |
 |---|---|
 | GPU compute | training and reconstruction |
-| `matlab` | parts of the optics and older reconstruction code — and this is one of the two places the **GUI-control tool the design has assumed and not named** actually bites, because a MATLAB tool that cannot drive the application can run a script and nothing more |
-| dataset access | the simulation sets and the real captures |
+| `matlab` | optics and legacy reconstruction code — one of the two places the unnamed **GUI-control** tool bites, since a MATLAB tool that cannot drive the application can run a script and nothing more |
+| optical simulation | propagation, ray and wave models for the design path |
+| dataset access | simulation sets and real captures across subfields |
 | a **domain verifier** | fidelity + residual + cost, judged together |
 
-## 8. Budget shape
+## 10. Budget shape
 
 Cheap by the standards of the six: reconstruction and ablation are minutes to
-hours, not days. A standing night grant can reasonably cover **a sweep plus a
-real-data evaluation**. Full architecture training is the owner's to start.
+hours. A night's standing grant covers **a sweep plus a real-data evaluation, or
+one transfer experiment**. Full architecture training is the owner's to start.
 
-## 9. What it does not claim
+## 11. What it does not claim
 
 It reconstructs; it does not interpret. Any statement about what is *in* a
 reconstructed scene — a diagnosis, a material identification, a count — belongs
-to whoever owns that question, and the limits line says so.
+to whoever owns that question. Where a subfield is clinical (MRI, CT,
+photoacoustic), the clinical boundary of [`low-dose-ct.md`](low-dose-ct.md) §8
+applies unchanged: image quality is not diagnostic performance.
