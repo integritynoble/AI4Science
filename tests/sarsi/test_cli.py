@@ -1030,3 +1030,24 @@ def test_cli_digest_deliver_moves_the_line(isolated):
     runner.invoke(app, ["sarsi", "digest", "--agent", "social", "--deliver"])
     result = runner.invoke(app, ["sarsi", "digest", "--agent", "social"])
     assert "nothing happened" in result.output.lower()
+
+
+def test_cli_who_suggests_a_worker(isolated):
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    result = runner.invoke(app, ["sarsi", "who", "run the qupath segmentation"])
+    assert result.exit_code == 0
+    assert "work" in result.output and "qupath" in result.output
+
+
+def test_cli_who_creates_nothing(isolated):
+    from ai4science.harness.agents.sarsi import task as tsk
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    runner.invoke(app, ["sarsi", "who", "post the thread"])
+    config = reg.load()
+    assert all(not tsk.all_of(config, a) for a in config.agents.values())
+
+
+def test_cli_who_declines_to_guess(isolated):
+    runner.invoke(app, ["sarsi", "init", "--owner-id", "7007143162"])
+    result = runner.invoke(app, ["sarsi", "who", "handle the thing"])
+    assert "cannot tell" in result.output.lower()

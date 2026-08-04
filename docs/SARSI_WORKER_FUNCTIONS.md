@@ -72,6 +72,7 @@ Each of these is live, tested, and exercised on the installed binary.
 | `digest` | **One read across what an agent did**, instead of many — **delivered unprompted** by the gateway poll to the agents whose roster asked for it, once a period, and never for a quiet one — `social` and `abraham` asked for it in the roster. It reports what *happened* and **points at** what is still waiting rather than restating it, so one obligation keeps one home. The span is stated, not implied; a quiet period and an unreadable ledger are different answers. |
 | `decisions` | **What it decided without you, and at which rung.** Only the agent's own acts — the owner's guidance is not the agent deciding. An act recorded with no ceiling reads `unknown`, never `A2`. Reading does not acknowledge; `--ack` moves the line and `--all` still shows everything under it. |
 | `rules` | **House rules for this machine**, told to every session that agent starts — the host facts it would otherwise rediscover (`use python3 on this host`). They live in `W_host` and never travel; the **owner** writes them, because an agent that can write its own standing instructions can widen them — an agent may **propose** one with its reason, and only the owner's `--sign` adopts it. A rule may *name* a credential, never carry one. |
+| `who` / `/who <demand>` | **"Who should do this?"** — `sarsi-machine`'s one power. It ranks on **precedent** (a worker that has *verified* similar work, cited by task id), then on what the roster says each agent is *for*, then tools, then name. It **creates nothing**, and it **declines to pick** when nothing distinguishes two workers: routing personal work to `work` is a scope mistake, not a coin toss. |
 | `ask` / `self model` | What the worker observes about itself. |
 | `improve yourself` / `yes` | RSI: it proposes a playbook change and holds it until the owner signs. |
 
@@ -99,7 +100,6 @@ Tier 3 below is still deliberately later.
 ## Part 3 — Deliberately later
 
 - **Handoff between workers** (`work` → `funding`).
-- **`sarsi-machine` routing** — "who should do this?"
 - **Per-agent web pages** at `physicsworldmodel.org/<agent>/`.
 
 All three are more valuable now that tasks close and retry, but they are still

@@ -409,6 +409,24 @@ def spend(agent_id: Optional[str] = typer.Option(None, "--agent",
         console.print(f"  {row.summary}", markup=False, highlight=False)
 
 
+@app.command("who", help="Who should do this? The manager suggests; it creates nothing.")
+def who_cmd(demand: str = typer.Argument(..., help="What you want done")) -> None:
+    from ai4science.harness.agents.sarsi import triage
+
+    config = _load()
+    try:
+        got = triage.suggest(config, demand)
+    except ValueError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(code=2)
+    console.print(got.summary, markup=False, highlight=False)
+    if len(got.candidates) > 1:
+        console.print("\nothers considered:", style="dim")
+        for c in got.candidates[1:4]:
+            console.print(f"  {c.agent_id} — {c.why}", style="dim",
+                          markup=False, highlight=False)
+
+
 @app.command("digest", help="One read across what an agent did — instead of many.")
 def digest_cmd(agent_id: Optional[str] = typer.Option(None, "--agent",
                                                       help="Only this worker."),

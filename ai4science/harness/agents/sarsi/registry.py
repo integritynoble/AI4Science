@@ -44,6 +44,10 @@ class Agent:
     digest: bool = False
     standing_grants: bool = True
     max_concurrent_tasks: int = 3
+    #: What this agent is FOR, in the words a demand would use. The guide
+    #: documented this and the registry did not, so routing had only tool
+    #: names to go on — and `social` scored zero on "post the thread".
+    about: List[str] = field(default_factory=list)
     #: The ai4science agent spec this one is BUILT ON. The registry already
     #: holds `manager`, `machine`, `social`, `pocket`, `research` and the domain
     #: agents; the seven are an orchestration layer over those, not a second
@@ -207,6 +211,7 @@ def _agent_from(entry: Dict[str, Any], defaults: Dict[str, Any], root: Path) -> 
         # A registry written before `spec` existed carries none. Falling back
         # to a flat default would silently unbind every agent — and the table
         # would print `claude-code` seven times and look like it was working.
+        about=list(pick("about", []) or []),
         spec=str(pick("spec", _ROSTER_SPECS.get(agent_id, "claude-code"))),
         root=root,
     )
@@ -241,18 +246,27 @@ _ROSTER = [
     {"id": "sarsi-worker", "role": WORKER_ROLE, "spec": "claude-code",
      "tools": ["shell", "editor", "browser"]},
     {"id": "work", "role": WORKER_ROLE, "spec": "claude-code",
-     "tools": ["qupath", "matlab", "mail"]},
+     "tools": ["qupath", "matlab", "mail"],
+     "about": ["code", "data", "analysis", "script", "repo", "email",
+               "mailbox", "benchmark", "experiment"]},
     {"id": "social", "role": WORKER_ROLE, "spec": "social",
-     "tools": ["browser"], "digest": True},
+     "tools": ["browser"], "digest": True,
+     "about": ["post", "thread", "timeline", "tweet", "linkedin", "substack",
+               "mastodon", "followers"]},
     {"id": "funding", "role": WORKER_ROLE, "spec": "research",
-     "tools": ["browser", "documents"]},
+     "tools": ["browser", "documents"],
+     "about": ["grant", "fellowship", "funding", "programme", "proposal",
+               "award"]},
     {"id": "jobs", "role": WORKER_ROLE, "spec": "unified-LLM",
-     "tools": ["browser", "documents"]},
+     "tools": ["browser", "documents"],
+     "about": ["cv", "resume", "job", "vacancy", "interview", "recruiter"]},
     # abraham: broadest scope, narrowest authority — no standing grants at all,
     # and built on `pocket`, the closed permission-tight spec.
     {"id": "abraham", "role": WORKER_ROLE, "spec": "pocket", "digest": True,
      "standingGrants": False,
-     "tools": ["browser", "calendar", "documents", "payment"]},
+     "tools": ["browser", "calendar", "documents", "payment"],
+     "about": ["personal", "appointment", "booking", "bill", "invoice",
+               "family", "household", "birthday"]},
 ]
 
 

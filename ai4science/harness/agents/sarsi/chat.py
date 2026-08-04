@@ -65,6 +65,8 @@ def handle(config: Config, agent: Agent, text: str, *, surface: str,
         return _tasks(config, agent)
     if verb == "archived":
         return _archived(config, agent)
+    if verb == "who":
+        return _who(config, rest)
     if verb == "questions":
         return _questions(config, agent)
     if verb == "answer":
@@ -179,6 +181,15 @@ def _archived(config: Config, agent: Agent) -> str:
         lines.append(f"  /{t.id}  {t.goal}  [{verdict}]")
     lines.append("re-open one with /reopen <task>")
     return "\n".join(lines)
+
+
+def _who(config: Config, demand: str) -> str:
+    """"Who should do this?" — the fleet question, answerable from any door."""
+    from ai4science.harness.agents.sarsi import triage
+    try:
+        return triage.suggest(config, demand).summary
+    except ValueError as e:
+        return str(e)
 
 
 def _questions(config: Config, agent: Agent) -> str:
