@@ -183,14 +183,7 @@ def tick(config: Config, agent: Agent, task: tsk.Task, *, pane: Any,
     # The ceiling has not lifted until `release` runs, so what A0 permits and
     # what the plan step is allowed to write both hold until then.
     released = task.released_at is not None
-    # What the plan declared this task may change, and where the session
-    # stands — the same list `blast` judges the radius against and the sandbox
-    # was launched with, so one boundary rather than three that can disagree.
-    writable = ([str(p) for p in tsk.evidence_roots(agent, task)]
-                + [str(p) for p in (task.may_touch or [])],
-                (task.session or {}).get("cwd") or str(tsk.dir_of(agent, task.id)))
-    gate = _gate(screen, planning=planning, deletes=deletes, released=released,
-                 writable=writable)
+    gate = _gate(screen, planning=planning, deletes=deletes, released=released)
     if gate is not None:
         answer, why = gate
         if answer is None:
@@ -361,7 +354,7 @@ _PLAN_WRITE = re.compile(r"\b(create|write|overwrite|edit|update)\b[^\n]*"
 
 
 def _gate(screen: str, *, planning: bool = False, deletes=None,
-          released: bool = False, writable=None):
+          released: bool = False):
     """(answer, why) when a gate is on screen; (None, why) when unrecognised.
 
     `deletes` is `(root, granted)` when this task has a declared working
@@ -384,22 +377,6 @@ def _gate(screen: str, *, planning: bool = False, deletes=None,
             # told the owner nothing about what was being asked.
             return (("1", f"a delete this task is allowed: {why}") if allowed
                     else (None, f"a delete this loop will not answer: {why}"))
-    if writable is not None and released:
-        # A write inside the paths this task DECLARED, on a task the owner
-        # released. `blast` already treats those paths as ones the task may
-        # write and the sandbox already permits them; the hook asking again is
-        # asking for a decision the owner has made. Every refusal it can give
-        # names its reason, which beats "an option menu this loop has no rule
-        # for" — that told the owner nothing about what was being asked.
-        from ai4science.harness.agents.sarsi import writes as _wr
-        roots, cwd = writable
-        allowed, why = _wr.permitted(screen, roots=roots, cwd=cwd,
-                                     released=released)
-        if allowed:
-            return (_wr.ANSWER, why)
-        if _wr._HEADER.search(screen):
-            return (None, why)      # it IS a write gate, and not one to answer
-
     # BEFORE RELEASE, not `state == PLANNING`. `collect_plan` moves the record
     # to `awaiting-grant` the moment it reads a plan back, and the session is
     # still finishing the edits that produced it — live, the loop answered
