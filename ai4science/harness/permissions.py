@@ -99,17 +99,86 @@ def _shell_segments(cmd: str):
     return segments
 
 
+#: `NAME=value` — an assignment, which runs nothing. Live, a session was
+#: refused at `c=$(grep -c -- "$t" d.csv)`, where the only thing that executes
+#: is the `grep` inside.
+_ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+
+
+def _substitutions(cmd: str):
+    """Split *cmd* into (outer, [inner…]) — or None when it will not parse.
+
+    `$(…)` and `` `…` `` are opened rather than rejected. The syntax is not the
+    hazard; what it runs is, and what it runs is a command this same function
+    can judge. Each span is replaced by a placeholder WORD so the outer command
+    still tokenises — `c=$(grep …)` becomes `c=X`, which is an assignment, not
+    a mangled program name.
+
+    `$((…))` is arithmetic, not a command, and is left to be refused as before:
+    it executes nothing, so allowing it would be a convenience rather than a
+    correctness, and this is not the place to trade for convenience.
+    """
+    out, inner, i = [], [], 0
+    while i < len(cmd):
+        two = cmd[i:i + 2]
+        if two == "$(":
+            if cmd[i:i + 3] == "$((":
+                return None                 # arithmetic: refused, as before
+            depth, j = 1, i + 2
+            while j < len(cmd) and depth:
+                if cmd[j] == "(":
+                    depth += 1
+                elif cmd[j] == ")":
+                    depth -= 1
+                j += 1
+            if depth:
+                return None                 # unbalanced: not provably anything
+            inner.append(cmd[i + 2:j - 1])
+            out.append("X")
+            i = j
+            continue
+        if cmd[i] == "`":
+            j = cmd.find("`", i + 1)
+            if j < 0:
+                return None
+            inner.append(cmd[i + 1:j])
+            out.append("X")
+            i = j + 1
+            continue
+        out.append(cmd[i])
+        i += 1
+    return "".join(out), inner
+
+
 def is_read_only_bash(cmd: str) -> bool:
     """True iff every part of *cmd* is provably a read-only inspection."""
     cmd = (cmd or "").strip()
-    # Command substitution / backticks can execute anything — reject globally
-    # (even quoted: a literal `$(` in a grep pattern is rare; conservative).
-    if not cmd or "`" in cmd or "$(" in cmd:
+    if not cmd:
         return False
+
+    # A substitution is judged by what is INSIDE it, recursively, so nothing is
+    # allowed in one that would not be allowed on its own. Rejecting the syntax
+    # outright stopped every unattended run the first time a session counted
+    # something into a variable — and `_shell_segments` has always judged
+    # `<(…)` this way, so the global reject was the outlier, not the principle.
+    split = _substitutions(cmd)
+    if split is None:
+        return False
+    cmd, inner = split
+    for part in inner:
+        if part.strip() and not is_read_only_bash(part):
+            return False
+
     segments = _shell_segments(cmd)
     if not segments:
         return False
     for words in segments:
+        # Leading `NAME=value` runs nothing; what matters is the command after
+        # them, and a segment that is ONLY assignments has no command at all.
+        while words and _ASSIGNMENT.match(words[0]):
+            words = words[1:]
+        if not words:
+            continue
         prog = words[0]
         if prog not in _READ_ONLY_CMDS:
             return False
