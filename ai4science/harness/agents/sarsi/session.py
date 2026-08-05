@@ -274,6 +274,29 @@ def assign(config: Config, agent: Agent, task: tsk.Task, *,
     return task
 
 
+def _note_drift(agent: Agent, task: tsk.Task, verdict: Dict[str, Any],
+                drifted: List[int]) -> Dict[str, Any]:
+    """Say on the verdict that the file has moved since it was released.
+
+    Judged is not the same as unnoticed. A PASS carrying nothing would leave
+    the owner reading a verdict against a criterion the file no longer shows,
+    and `sarsi plan` renders the file — so the two would disagree in front of
+    them with no explanation. The note travels ON the verdict rather than only
+    in `why`, because a verdict is the thing that gets read.
+    """
+    if not drifted:
+        return verdict
+    which = ", ".join(str(i + 1) for i in drifted)
+    verdict["why"] = (
+        f"{verdict.get('why', '')}\n\n"
+        f"(Judged against what you released. {task.plan_version}.md has since "
+        f"changed at phase {which} — the session edited its own copy. To make "
+        f"the file the standard instead: sarsi adopt {agent.id} {task.id}, "
+        f"which clears the verdicts of the phases that changed.)").strip()
+    verdict["plan_drifted"] = list(drifted)
+    return verdict
+
+
 def _effective_ceiling(requested: str) -> str:
     """What the trust ledger actually allows. Fail-safe: if it cannot be read,
     the answer is the requested ceiling capped at A2, never above it."""
@@ -754,6 +777,8 @@ def _verify_phase(config: Config, agent: Agent, task: tsk.Task, *,
     verdict["engine"] = engine or "unknown"
     ran_it = (task.session or {}).get("engine") or agent.model or ""
     verdict["independent"] = bool(engine and engine != ran_it)
+    verdict = _note_drift(agent, task, verdict,
+                          tsk.criteria_drift(agent, task))
     verdict["criteria"] = [criteria[index]]
     verdict["phase"] = index + 1
 
@@ -919,10 +944,24 @@ def verify(config: Config, agent: Agent, task: tsk.Task, *,
     logged — a reason that only reaches a log steers nothing.
     """
     drifted = tsk.criteria_drift(agent, task)
-    # Refused only when nobody has said which of the two is meant. When the
-    # OWNER authored the criteria, somebody has: the session may rewrite its
-    # plan, and the standard stays theirs until they change it.
-    if drifted and not task.plan_owner_edited:
+    # Refused only when nobody has said which of the two is meant. Two owner
+    # acts say it, and both are exemptions:
+    #
+    #   * the owner AUTHORED the criteria (`plan_owner_edited`), or
+    #   * the owner RELEASED the task — they read the plan, granted each
+    #     permission it declared, and raised the ceiling, all against the
+    #     standard in the record. A file edited afterwards is not a competing
+    #     reading of an open question, it is the session's working copy moving
+    #     after the question was answered.
+    #
+    # Sessions revise their plan mid-work as a matter of course, so without the
+    # second exemption the refusal fires on most tasks — and what it asks the
+    # owner to do to unblock is ADOPT WHATEVER THE SESSION JUST WROTE. A gate
+    # that is habitually rubber-stamped is worse than no gate: it launders the
+    # session's rewrite as the owner's decision. Judging against the record
+    # denies the session its own bar without stopping to ask.
+    released = task.work_started_at is not None
+    if drifted and not task.plan_owner_edited and not released:
         # `sarsi plan` renders the file while this judges the copy taken at
         # attach time, so an owner sharpening a criterion in the file was
         # judged against the one they replaced — live, that produced two FAILs
@@ -969,6 +1008,7 @@ def verify(config: Config, agent: Agent, task: tsk.Task, *,
 
     criteria = list(task.criteria or [])
     verdict = dict(verifier(goal=task.goal, criteria=criteria, evidence=evidence) or {})
+    verdict = _note_drift(agent, task, verdict, drifted)
     verdict["engine"] = engine or "unknown"
     # A different engine is the cheapest independence there is; when it is the
     # same one, say so rather than claiming an independence we do not have.

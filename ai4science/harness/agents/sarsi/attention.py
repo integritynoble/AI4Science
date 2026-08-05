@@ -221,14 +221,24 @@ def _for_task(config: Config, agent: Agent, task: tsk.Task, *,
 
     drifted = tsk.criteria_drift(agent, task)
     if drifted:
-        # `check` refuses a drifted plan, so the owner would otherwise learn
-        # about it only by running `check` and reading a refusal.
+        # The owner would otherwise learn about it only from a verdict's note,
+        # and `sarsi plan` renders the FILE — so the board and the plan would
+        # disagree in front of them with nothing to explain it.
         which = ", ".join(str(i + 1) for i in drifted)
-        out.append(Item("drift", task.id,
-                        f"{task.plan_version}.md was edited after this task "
-                        f"was attached — phase {which} reads differently "
-                        f"there, and judging is refused until you settle "
-                        f"which one is the standard",
+        if task.work_started_at is not None or task.plan_owner_edited:
+            # Not blocked: judging goes on against what the owner released.
+            # Saying "refused" here would send them to `adopt` to unblock a run
+            # that is not blocked, which is how adopting became a habit.
+            detail = (f"{task.plan_version}.md was edited after you released "
+                      f"this — phase {which} reads differently there. Verdicts "
+                      f"still apply what you released; adopt only if you want "
+                      f"the file to become the standard")
+        else:
+            detail = (f"{task.plan_version}.md was edited after this task "
+                      f"was attached — phase {which} reads differently "
+                      f"there, and judging is refused until you settle "
+                      f"which one is the standard")
+        out.append(Item("drift", task.id, detail,
                         action=f"sarsi adopt {agent.id} {task.id}"))
 
     if task.plan_stale:
