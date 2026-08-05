@@ -120,7 +120,17 @@ class Task:
     #: made, and counting from zero would charge the work for the planning.
     steps_before_work: Optional[int] = None
     #: When the work began, for the work clock. Planning's minutes are its own.
+    #: Set where PLANNING ENDS, which on the automatic path is `adopt_plan` —
+    #: `release` is an owner command the loop never calls, so anchoring it there
+    #: would leave most tasks' work budget still paying for their planning.
+    #: **It is therefore not an owner act**, and must not be read as one.
     work_started_at: Optional[float] = None
+    #: When the OWNER released it. Set by `release` and nowhere else, so it is
+    #: the honest answer to "has somebody with authority acted on this task?" —
+    #: which is a different question from "has planning finished", and was
+    #: briefly answered with `work_started_at` by mistake. It is also the moment
+    #: the session's ceiling is raised: A0's allowances hold until here.
+    released_at: Optional[float] = None
     #: Paths besides the working directory this plan declared it may change.
     may_touch: List[str] = field(default_factory=list)
     #: Where the work happens, from the plan's `Working directory:` line.

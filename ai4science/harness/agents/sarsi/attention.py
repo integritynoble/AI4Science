@@ -225,7 +225,7 @@ def _for_task(config: Config, agent: Agent, task: tsk.Task, *,
         # and `sarsi plan` renders the FILE — so the board and the plan would
         # disagree in front of them with nothing to explain it.
         which = ", ".join(str(i + 1) for i in drifted)
-        if task.work_started_at is not None or task.plan_owner_edited:
+        if task.released_at is not None or task.plan_owner_edited:
             # Not blocked: judging goes on against what the owner released.
             # Saying "refused" here would send them to `adopt` to unblock a run
             # that is not blocked, which is how adopting became a habit.

@@ -110,6 +110,11 @@ def _task(config, agent, *, released):
     t.plan_agreed = True
     t = ses.assign(config, agent, t, runtime=Runtime(), installed=lambda: set())
     if released:
+        # `released_at`, not `work_started_at`. The latter is set where PLANNING
+        # ENDS — by `adopt_plan`, on the automatic path, with no owner involved
+        # — so a fixture using it to mean "the owner released this" simulates
+        # the wrong thing. That confusion was in the code too.
+        t.released_at = time.time()
         t.work_started_at = time.time()
     tsk._touch(agent, t, time.time)
     return t

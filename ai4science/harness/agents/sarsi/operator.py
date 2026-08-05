@@ -182,7 +182,7 @@ def tick(config: Config, agent: Agent, task: tsk.Task, *, pane: Any,
         deletes = (tsk.evidence_root(agent, task), list(task.grants or []))
     # The ceiling has not lifted until `release` runs, so what A0 permits and
     # what the plan step is allowed to write both hold until then.
-    released = task.work_started_at is not None
+    released = task.released_at is not None
     gate = _gate(screen, planning=planning, deletes=deletes, released=released)
     if gate is not None:
         answer, why = gate

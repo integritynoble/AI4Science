@@ -683,6 +683,9 @@ def release(config: Config, agent: Agent, task: tsk.Task, *,
     # arrives at its goal with nothing left, which is what happened live.
     task.steps_before_work = _steps_so_far(task, acts)
     task.work_started_at = float(now())
+    # The owner's own mark. `work_started_at` is also set where planning ends,
+    # so it cannot answer "did somebody with authority act on this?".
+    task.released_at = float(now())
     task = tsk._touch(agent, task, now)
 
     if drivable(agent.spec):
@@ -998,7 +1001,8 @@ def verify(config: Config, agent: Agent, task: tsk.Task, *,
     # acts say it, and both are exemptions:
     #
     #   * the owner AUTHORED the criteria (`plan_owner_edited`), or
-    #   * the owner RELEASED the task — they read the plan, granted each
+    #   * the owner RELEASED the task (`released_at`, set by `release` and nowhere
+    #     else) — they read the plan, granted each
     #     permission it declared, and raised the ceiling, all against the
     #     standard in the record. A file edited afterwards is not a competing
     #     reading of an open question, it is the session's working copy moving
@@ -1010,7 +1014,7 @@ def verify(config: Config, agent: Agent, task: tsk.Task, *,
     # that is habitually rubber-stamped is worse than no gate: it launders the
     # session's rewrite as the owner's decision. Judging against the record
     # denies the session its own bar without stopping to ask.
-    released = task.work_started_at is not None
+    released = task.released_at is not None
     if drifted and not task.plan_owner_edited and not released:
         # `sarsi plan` renders the file while this judges the copy taken at
         # attach time, so an owner sharpening a criterion in the file was

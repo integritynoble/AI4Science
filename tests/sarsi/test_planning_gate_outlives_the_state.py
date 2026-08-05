@@ -196,3 +196,56 @@ def test_a_released_task_is_supervised_as_before(config, agent):
     seen = op.run(config, agent, t, pane=Pane("❯ \n"), passes=3,
                   interval=0, sleep=lambda s: None)
     assert len(seen) == 3
+
+
+# ── "released" has to mean the owner released ─────────────────────────
+#
+# The live fix did not take, and the record said why:
+#
+#     state: awaiting-grant   work_started_at: 1785957183.28
+#
+# on a task nobody had released. `attach_plan` sets `work_started_at` — the
+# comment beside it is explicit that it must, because *"release is an owner
+# command the loop never calls, so anchoring the boundary only there would
+# leave most tasks with the work budget still paying for planning"*. It marks
+# where PLANNING ENDED, which is what the budget needs and is not an owner act
+# at all.
+#
+# So a marker set only by `release` is needed for the questions that are about
+# the OWNER having acted. The budget keeps the one it has.
+
+
+def test_planning_ending_is_not_the_owner_releasing(config, agent):
+    """The confusion that made the live fix a no-op."""
+    t = _awaiting(config, agent)
+    t.work_started_at = time.time()           # what `adopt_plan` does
+    assert t.released_at is None              # and nobody released it
+
+
+def test_release_is_what_sets_it(config, agent):
+    t = _awaiting(config, agent)
+    t.awaiting = []                           # granted
+    t.state = tsk.READY
+    tsk._touch(agent, t, time.time)
+    t = ses.release(config, agent, t, runtime=Runtime())
+    assert t.released_at is not None
+
+
+def test_the_gate_reads_the_owner_s_marker(config, agent):
+    """A task the loop moved out of planning still runs at A0 — its ceiling is
+    fixed at `assign` and only `release` raises it — so the A0 allowances still
+    apply."""
+    t = _awaiting(config, agent)
+    pane = Pane(PLAN_EDIT_GATE)
+    act = op.tick(config, agent, t, pane=pane, now=time.time)
+    assert act.kind == "answered", act
+    assert pane.sent == ["1"]
+
+
+def test_and_stops_reading_it_once_the_owner_has(config, agent):
+    t = _awaiting(config, agent)
+    t.released_at = time.time()
+    tsk._touch(agent, t, time.time)
+    pane = Pane(PLAN_EDIT_GATE)
+    act = op.tick(config, agent, t, pane=pane, now=time.time)
+    assert act.kind == "abstained", act
