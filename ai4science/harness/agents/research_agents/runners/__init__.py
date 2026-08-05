@@ -8,8 +8,9 @@ sandbox never saw.
 from __future__ import annotations
 
 from .common import DomainBenchmark, Verdict, run_domain_task, seed_workspace, seeds_run
-from .domains import BENCHMARKS, CAPSULE, LDCT, MEDPHYS, ONCO, SCREENING, benchmark_for
+from .domains import (BENCHMARKS, CAPSULE, LDCT, MEDPHYS, METHYLAGE, ONCO,
+                      SCREENING, benchmark_for)
 
 __all__ = ["DomainBenchmark", "Verdict", "run_domain_task", "seed_workspace",
-           "seeds_run", "BENCHMARKS", "benchmark_for",
+           "seeds_run", "BENCHMARKS", "benchmark_for", "METHYLAGE",
            "LDCT", "MEDPHYS", "CAPSULE", "SCREENING", "ONCO"]

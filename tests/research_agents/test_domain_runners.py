@@ -15,7 +15,8 @@ from pathlib import Path
 import pytest
 
 from ai4science.harness.agents.research_agents.runners import (
-    BENCHMARKS, CAPSULE, LDCT, MEDPHYS, ONCO, SCREENING, benchmark_for,
+    BENCHMARKS, CAPSULE, LDCT, MEDPHYS, METHYLAGE, ONCO, SCREENING,
+    benchmark_for,
     run_domain_task, seed_workspace,
 )
 
@@ -268,3 +269,85 @@ def test_every_declared_guardrail_has_a_stated_direction():
     for name, b in BENCHMARKS.items():
         d = b.guardrail_directions()
         assert set(d) == set(b.guardrails), name
+
+# ------------------------------------------------------------ reverse aging
+
+def test_the_clock_beats_predicting_the_mean_age(tmp_path):
+    """A clock has to know something about the individual.
+
+    Predicting the training cohort's mean age for everybody is the bar. It is a
+    low bar on purpose — what this benchmark is actually for is the check
+    below — but a method that cannot clear it has learnt an intercept."""
+    out = _run(METHYLAGE, tmp_path)
+    m = out["metrics"]
+    assert m["mae_years"] < 0.75 * m["mae_years_constant_baseline"], \
+        out["verdict"].report()
+    assert m["n_external"] >= 50
+
+
+def test_the_clock_is_not_only_reading_what_the_blood_is_made_of(tmp_path):
+    """The field's characteristic failure, made measurable.
+
+    Whole-blood methylation's leading components are dominated by cell-type
+    proportions, and those shift with age by themselves. A clock riding on them
+    is a blood-count detector with a birthday attached: it will report an
+    impressive error and will not transfer to a tissue whose composition
+    differs. So the benchmark refits with those components projected out and
+    reports how much of the advantage survives.
+
+    This asserts the number is COMPUTED and BOUNDED, not that it takes a
+    particular value — the measured share is about 0.55, and pinning that would
+    make the test a record of one run rather than a property."""
+    out = _run(METHYLAGE, tmp_path)
+    m = out["metrics"]
+    assert 0.0 <= m["bulk_structure_share"] <= 1.5
+    # Removing structure cannot make the clock better; if it did, the projection
+    # is not doing what it claims.
+    assert m["mae_years_pcs_removed"] >= m["mae_years"] - 1e-6
+    assert m["bulk_structure_share"] <= 0.75, out["verdict"].report()
+    assert any("cell composition" in r for r in out["verdict"].reasons)
+
+
+def test_the_clock_never_claims_to_measure_ageing(tmp_path):
+    """The rule this agent exists to hold, asserted on every verdict.
+
+    It predicts chronological age, which is already known. Nothing in this
+    corpus is an outcome, and the judge says so pass or fail rather than
+    letting a good error be read as evidence about ageing."""
+    out = _run(METHYLAGE, tmp_path)
+    joined = " ".join(out["verdict"].reasons)
+    assert "a clock is not a lifespan" in joined
+    assert "outcome_link" in joined and "unmeasured" in joined
+    assert "outcome_link" not in out["metrics"], \
+        "an unmeasured dimension must stay absent, not be filled with a proxy"
+
+
+def test_the_held_out_ages_never_reach_the_sandbox(tmp_path):
+    """The answer key is the ages. A solver that could read them scores zero
+    error and means nothing."""
+    _run(METHYLAGE, tmp_path)
+    assert "data/ext_age.npy" in METHYLAGE.answer_key
+    staged = tmp_path / "run" / "data" / "ext_age.npy"
+    assert not staged.exists(), "the held-out ages were staged into the sandbox"
+    # and the solver's own workspace has the inputs it is supposed to have
+    assert (tmp_path / "run" / "data" / "ext_betas.npy").exists()
+
+
+def test_validation_sites_contributed_nothing_to_the_fit(tmp_path):
+    """Site-disjoint, checked in the data rather than trusted from a docstring.
+
+    `cancer` had to have exactly this corrected after the fact, and the reason
+    it went unnoticed was that nothing asserted it."""
+    _run(METHYLAGE, tmp_path)
+    import json
+    import numpy as np
+    meta = json.loads((tmp_path / "seed" / "meta.json").read_text()) \
+        if (tmp_path / "seed" / "meta.json").exists() else None
+    dev = np.load(tmp_path / "seed" / "data" / "dev_betas.npy")
+    ext = np.load(tmp_path / "seed" / "data" / "ext_betas.npy")
+    assert len(dev) > 50 and len(ext) > 50
+    # No sample appears on both sides: identical rows would mean a leaked patient.
+    dev_rows = {r.tobytes() for r in dev[:, :50]}
+    assert not any(r.tobytes() in dev_rows for r in ext[:, :50]), \
+        "a sample appears in both the development and validation cohorts"
+

@@ -1,17 +1,26 @@
 # The reverse-aging agent — how to design it
 
-**Status: charter built 2026-08-05; benchmark NOT built.** The charter,
-self-model, field map and both functions are implemented in
-`ai4science/harness/agents/research_agents/registry.py`, and the agent refuses
-to self-start like the others. What it does not have is a **measured corpus**,
-and every other agent in this set has one. Until it does, it can hold owner-set
-work and it cannot run a benchmark night — which the self-model says in its own
-limits line rather than leaving anyone to discover.
+**Status: built and running on real data, 2026-08-05.** Charter, self-model,
+field map, corpus and benchmark are implemented. The benchmark reads **GEO
+GSE40279** — 656 whole-blood Illumina 450k samples, ages 19–101, from four
+institutions — and validates on **held-out sites**.
 
-That gap is stated first on purpose. Six agents here earn their status by
-failing on real data in ways that changed what was believed; this one has not
-been tested yet, and a design document that opened with its ambitions would be
-the wrong shape for this set.
+**Its reference method passes, and the number that matters is the second one.**
+A ridge clock reaches a median error of **5.78 years** on institutions that
+contributed nothing to the fit, against **10.14** for predicting the training
+cohort's mean age. Then: project the methylome's leading components out and
+error goes to **8.20 years** — **55% of the clock's advantage disappears**. In
+whole blood those components are dominated by cell-type proportions, which
+themselves shift with age. So more than half of this clock is reading what the
+blood is made of.
+
+It passes because the bar is 75%, not because 55% is comfortable. A clock that
+was 90% bulk structure would fail, and that is the point of measuring it.
+
+**`outcome_link` remains unmeasured.** GSE40279 carries no survival or function
+endpoint, and public methylation-with-outcome sits behind an agreement only a
+person can accept. The self-model leaves that dimension empty rather than
+approximating it, and the judge says so on every run.
 
 ## 1. The field
 
@@ -113,7 +122,7 @@ be improved by narrowing the age range it is asked about, and an agent allowed
 to touch the training ages could improve its own number without improving
 anything. The ages are the benchmark's, not the method's.
 
-## 7. The benchmark this agent needs, and does not have
+## 7. The benchmark, and the one number it cannot give
 
 The natural first benchmark is an **epigenetic clock on public methylation
 data**: fit on one cohort, predict chronological age on a cohort held out
@@ -127,13 +136,20 @@ A method that gets (1) by way of (2) has built a blood-count detector. That is
 this field's version of the property-baseline check `drug-design` uses, and it
 is the reason the benchmark cannot report error alone.
 
-**What it needs to exist:** a corpus with methylation, chronological age, and at
-least one cohort boundary that is not a re-split — and, for (3), an outcome.
-Public GEO methylation series can supply the first; the third is the hard part
-and may not be available without a cohort that followed people.
+**(1) and (2) are built and measured. (3) is not**, and that is a property of
+the available data rather than an omission: GSE40279 followed nobody. Public
+methylation with an outcome is generally behind an agreement a person must sign,
+which `Corpus.needs_agreement` exists for and which no agent may accept.
 
-Until that corpus is chosen and fetched, this agent has a charter and no
-evidence, and the status line at the top of this page says so.
+So this agent reports a clock that works and no evidence that it means anything
+— which is exactly the rule it exists to hold, turned on itself.
+
+**Probes are chosen without looking at age.** The corpus keeps 20,000 of the
+470,043 probes by seeded reservoir sampling. Choosing them by correlation with
+age would be selection on the target: the held-out sites would have voted on
+which probes exist, and the error would be optimistic in a way no amount of
+held-out validation could detect. The method may still select among the 20,000
+— inside its training fold, which is where selection belongs.
 
 ## 8. Autonomous work it may propose unasked
 

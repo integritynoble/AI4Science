@@ -28,7 +28,7 @@ Each covers a **field**, not a project. This page is what they share.
 
 ## 0. What is built, and what each benchmark reads
 
-Six of the seven read a **measured corpus** — reverse aging has none yet, and holds a charter rather than a result — computational imaging was the last to, on 2026-08-05. A benchmark whose corpus is absent
+All seven read a **measured corpus** — computational imaging was the last to, on 2026-08-05. A benchmark whose corpus is absent
 refuses and names the command that fetches it; it never falls back to generated
 data, because a synthetic substitute produces numbers that look like results and
 are not.
@@ -41,7 +41,7 @@ are not.
 | [medical physics](medical-physics.md) | OpenKBP — 8 real head-and-neck plans | **5 of 8 patients** on one global weight set; weights are per-patient |
 | [pill camera](pill-camera.md) | Kvasir-Capsule — 4,443 frames, 46 videos | **passes**, after its own night loop found the fix — 0.624 against 0.614 |
 | [computational imaging](computational-imaging.md) | CAVE — real hyperspectral scenes, CASSI measurement simulated | **passes** — after a sign error in the reference solver was found and fixed |
-| [reverse aging](reverse-aging.md) | **none yet** — charter and field map only | no benchmark, and the self-model says so in its limits |
+| [reverse aging](reverse-aging.md) | GEO GSE40279 — 656 whole-blood methylation samples, ages 19–101 | **passes** — 5.78y median error on held-out institutions vs 10.14 for the mean; 55% of the gain is bulk structure |
 
 > **One of those failures has since been repaired by the agent itself.** The
 > night loop found that pill-camera's frame summary was taking the wrong

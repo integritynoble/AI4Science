@@ -641,7 +641,125 @@ ONCO = DomainBenchmark(
 )
 
 
-BENCHMARKS = {b.agent: b for b in (LDCT, MEDPHYS, CAPSULE, SCREENING, ONCO)}
+
+# ------------------------------------------------------------ reverse aging
+
+def _score_methylage(seed_ws: Path, run_ws: Path) -> Dict[str, float]:
+    """Age error, and how much of it survives removing the methylome's bulk
+    structure. Reported together or the first number cannot be read."""
+    truth = np.load(seed_ws / "data" / "ext_age.npy").astype(float)
+    dev_age = np.load(run_ws / "data" / "dev_age.npy").astype(float)
+    pred = np.load(run_ws / "results" / "age_pred.npy").astype(float)
+    pred_dev = np.load(run_ws / "results" / "age_pred_dev.npy").astype(float)
+    pred_np = np.load(run_ws / "results" / "age_pred_no_pcs.npy").astype(float)
+
+    mae = float(np.median(np.abs(pred - truth)))
+    mae_dev = float(np.median(np.abs(pred_dev - dev_age)))
+    mae_np = float(np.median(np.abs(pred_np - truth)))
+    # The bar that makes it a clock rather than a number: predicting the
+    # training cohort's mean age for everybody. Any method that cannot beat
+    # this has learnt nothing about the individual.
+    mae_const = float(np.median(np.abs(dev_age.mean() - truth)))
+
+    r = float(np.corrcoef(pred, truth)[0, 1]) if len(truth) > 2 else float("nan")
+    return {"mae_years": mae,
+            "mae_years_internal": mae_dev,
+            "mae_years_pcs_removed": mae_np,
+            "mae_years_constant_baseline": mae_const,
+            # How much of the accuracy rode on the leading components of the
+            # methylome. NOT called cell composition: those components are
+            # dominated by it in whole blood, but this measures the components,
+            # and naming it for what it is presumed to contain would be a claim
+            # this benchmark cannot check.
+            "bulk_structure_share": float(
+                (mae_np - mae) / max(mae_const - mae, 1e-9)),
+            "age_correlation": r,
+            "n_external": float(len(truth)),
+            "external_age_span": float(truth.max() - truth.min())}
+
+
+def _judge_methylage(m: Dict[str, float]) -> Verdict:
+    reasons, ok = [], True
+    if m["n_external"] < 50:
+        return Verdict(False, ("only %d held-out samples — too few to read"
+                               % m["n_external"],), m)
+    # A clock has to beat predicting the mean. This is the whole bar for
+    # "is it a clock", and it is low on purpose: what this benchmark is for is
+    # the two checks after it.
+    if m["mae_years"] >= 0.75 * m["mae_years_constant_baseline"]:
+        ok = False
+        reasons.append("median error %.2f years against %.2f for predicting the "
+                       "training cohort's mean age — that is not a clock, it is "
+                       "an intercept"
+                       % (m["mae_years"], m["mae_years_constant_baseline"]))
+    # The field's characteristic failure. Whole-blood methylation's leading
+    # components are dominated by cell-type proportions, which themselves shift
+    # with age; a clock riding on them is a blood-count detector with a birthday
+    # attached, and it will not transfer to a tissue whose composition differs.
+    if m["bulk_structure_share"] > 0.75:
+        ok = False
+        reasons.append("%.0f%% of this clock's accuracy disappears when the "
+                       "leading components of the methylome are projected out "
+                       "(%.2f years -> %.2f). Those components are dominated by "
+                       "cell composition in whole blood, so most of what this is "
+                       "measuring is what the blood is made of, not how old the "
+                       "person is"
+                       % (100 * m["bulk_structure_share"], m["mae_years"],
+                          m["mae_years_pcs_removed"]))
+    else:
+        reasons.append("with the methylome's leading components projected out, "
+                       "error goes %.2f -> %.2f years (%.0f%% of the gain lost), "
+                       "so the clock is not merely reading cell composition"
+                       % (m["mae_years"], m["mae_years_pcs_removed"],
+                          100 * m["bulk_structure_share"]))
+    reasons.append("median absolute error %.2f years on %d samples from "
+                   "institutions that contributed nothing to the fit; internal "
+                   "%.2f" % (m["mae_years"], m["n_external"],
+                             m["mae_years_internal"]))
+    # Said on every run, pass or fail. It is the rule this agent exists to hold.
+    reasons.append("a clock is not a lifespan. This predicts CHRONOLOGICAL age, "
+                   "which is known anyway; nothing here measures how fast anyone "
+                   "is ageing, and no outcome has been looked at. GSE40279 "
+                   "carries no survival or function endpoint, so `outcome_link` "
+                   "stays unmeasured rather than being approximated")
+    return Verdict(ok, tuple(reasons), m)
+
+
+METHYLAGE = DomainBenchmark(
+    agent="reverse-aging",
+    goal="fit an epigenetic clock and validate it on institutions it never saw",
+    package="methylage",
+    deliverables=("results/age_pred.npy", "results/age_pred_no_pcs.npy"),
+    answer_key=("data/ext_age.npy",),
+    score=_score_methylage, judge=_judge_methylage, corpus="methylation-age",
+    objective="mae_years", objective_higher_is_better=False,
+    # Not the error alone. A clock can be improved by leaning harder on bulk
+    # structure, which is the failure this benchmark exists to see, so the share
+    # is a guardrail and lower is better for it too.
+    guardrails=("bulk_structure_share", "mae_years_internal"),
+    guardrail_lower_is_better=("bulk_structure_share", "mae_years_internal"),
+    parameters=(
+        Parameter("ridge", 1.0, 5000.0, 100.0,
+                  means="shrinkage; with 20k probes and a few hundred samples "
+                        "this is what stops the clock memorising the fit"),
+        Parameter("n_pcs_removed", 1, 20, 5, integer=True,
+                  means="how many leading components are projected out for the "
+                        "second fit — the depth at which bulk structure is "
+                        "considered removed"),
+    ),
+    criteria=("median error below 75% of predicting the training mean age",
+              "no more than 75% of the accuracy lost when the methylome's "
+              "leading components are projected out",
+              "validated on institutions that contributed nothing to the fit",
+              "chronological age only — no claim about rate of ageing, and no "
+              "outcome examined"),
+)
+
+# The registry lives at the end of the file so that adding a benchmark below an
+# existing one cannot silently leave it unregistered — which is exactly what
+# happened when METHYLAGE was appended after this line sat in the middle.
+BENCHMARKS = {b.agent: b for b in
+              (LDCT, MEDPHYS, CAPSULE, SCREENING, ONCO, METHYLAGE)}
 
 
 def benchmark_for(agent: str) -> DomainBenchmark:

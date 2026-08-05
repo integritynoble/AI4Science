@@ -645,9 +645,12 @@ def _reverse_aging() -> ResearchAgent:
         "has run no trial, no animal study and no experiment on tissue",
         "cross-sectional cohorts cannot separate the rate of ageing from cohort "
         "effects, and most public methylation data is cross-sectional",
-        "a benchmark for this field is NOT yet built: the other agents each "
-        "read a measured corpus, and this one so far has a charter and a field "
-        "map. It can hold owner-set work; it cannot yet run a benchmark night",
+        "`outcome_link` is UNMEASURED and stays that way: the corpus behind the "
+        "benchmark carries no survival or function endpoint, so this agent can "
+        "report a clock that works and no evidence that it means anything",
+        "the clock predicts CHRONOLOGICAL age, which is already known. It is a "
+        "test of whether the methylome carries the signal, not a measurement of "
+        "how fast anyone is ageing",
     )
     return _agent(ch, dims, limits, (12.0, "benchmark runs"), claims)
 
