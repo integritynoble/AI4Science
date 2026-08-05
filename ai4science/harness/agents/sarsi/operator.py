@@ -296,7 +296,13 @@ def run(config: Config, agent: Agent, task: tsk.Task, *, pane: Any,
 _ONBOARDING = re.compile(r"Choose the option that looks best|Syntax theme:|"
                          r"colorblind-friendly", re.I)
 
-_PLAN_WRITE = re.compile(r"\b(create|write|edit|update)\b[^\n]*\bplan0(_\d+)?\.md\b",
+#: `overwrite` is not `\bwrite\b` — there is no word boundary inside it, so the
+#: rule missed the wording Claude Code actually uses ("Do you want to overwrite
+#: plan0.md?") and the loop abstained at the session writing the very file it
+#: had been told to write. Observed live, and the same shape as the `Try "…"`
+#: filter: a pattern written against assumed wording meeting the real one.
+_PLAN_WRITE = re.compile(r"\b(create|write|overwrite|edit|update)\b[^\n]*"
+                         r"\bplan0(_\d+)?\.md\b",
                          re.I)
 
 

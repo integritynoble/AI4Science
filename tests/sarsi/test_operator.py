@@ -641,3 +641,35 @@ def test_an_unrecognised_gate_is_still_abstained(config, agent):
     answer, why = op._gate(
         " Do you want to proceed?\n ❯ 1. Yes\n   2. No\n", planning=True)
     assert answer is None and "no rule" in why.lower()
+
+
+def test_the_plan_write_gate_is_recognised_as_claude_code_words_it(config,
+                                                                    agent):
+    """Captured from a live planning session. The rule matched
+    `write|create|edit|update … plan0.md`, and Claude Code asks
+
+        Do you want to overwrite plan0.md?
+
+    `\\bwrite\\b` does not match inside "overwrite", so the loop abstained at
+    the session writing the very file it had been told to write. Same shape as
+    the `Try "…"` filter: a pattern written against assumed wording, meeting
+    the wording the tool actually uses."""
+    screen = (" Do you want to overwrite plan0.md?\n"
+              " ❯ 1. Yes\n"
+              "   2. Yes, allow all edits during this session (shift+tab)\n"
+              "   3. No\n")
+    answer, why = op._gate(screen, planning=True)
+    assert answer == "1"
+    assert "plan" in why.lower()
+
+
+def test_the_other_wordings_still_match(config, agent):
+    for verb in ("create", "write", "edit", "update", "overwrite"):
+        screen = (f" Do you want to {verb} plan0.md?\n ❯ 1. Yes\n   2. No\n")
+        assert op._gate(screen, planning=True)[0] == "1", verb
+
+
+def test_a_write_to_another_file_is_not_this_rule(config, agent):
+    """It answers for the task's OWN plan file and nothing else."""
+    screen = " Do you want to overwrite ~/.bashrc?\n ❯ 1. Yes\n   2. No\n"
+    assert op._gate(screen, planning=True)[0] is None
