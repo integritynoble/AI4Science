@@ -11,10 +11,17 @@ Where a row below says **built**, it means built in
 implementation. `singularity/sarsi/` is a second, superseded build of the same
 spec and is not evidence for anything here.
 
-> **Copied to `AI4Science/docs/AI4SCIENCE_ONE_MACHINE_DESIGN.md`**, which is the
-> design of record for ai4science — it sits beside the code it describes. This
-> copy is kept because the sibling specs here reference it; if the two diverge,
-> that one is right.
+> **This file is the design of record**, and it sits beside the code it
+> describes. `singularity/docs/specs/2026-08-04-ai4science-one-machine-design.md`
+> is a mirror kept because the sibling specs there reference it; where the two
+> differ, this one is right.
+>
+> Both were edited independently for a day, by two sessions that each wrote
+> real findings into a different copy — neither was a superset. They are
+> merged here: the backend contract's `delivers_plan_at_start` and the `CAP`
+> tool-presence note came from the mirror, the attended-session paragraphs
+> from this one. Two copies of one document is how a defect report gets lost
+> by being written down.
 
 This page is about **ai4science alone**, on **one machine**. No manager, no
 server, no app. Everything here works with nothing else installed, which is the
@@ -650,12 +657,26 @@ provides.
 
 | Sub-agent | Socket | Status |
 |---|---|---|
-| **`sarsi-claude`** | the session backend — start · send · interrupt · stop · ceiling · has · capture | **built.** The reference implementation, and the shape every other sub-agent matches |
+| **`sarsi-claude`** | the session backend — start · send · interrupt · stop · ceiling · has · capture · await_ready, plus `delivers_plan_at_start` | **built.** The reference implementation, and the shape every other sub-agent matches. The last flag is not decoration: a backend whose `start` quietly ignores the plan reports success having delivered nothing, and a work session once sat at an empty prompt acting on placeholder hint text while the record wrote `plan_bytes` for something never sent |
 | **the planner** | drafts the seed plan the session then grounds | **built** |
 | **the verifier** | given criteria and evidence, answers PASS/FAIL or refuses | **built.** A domain verifier is a market listing |
 | **a domain runner** | reconstruction, docking, simulation — work that is not code editing | market |
 
 ### Tools the seven need
+
+> **How presence is decided, and why it needs declaring.** `CAP` asks
+> `tool_present`, which reads `<agent>/host/tools.json` and, for anything not
+> named there, falls back to `shutil.which`. That settles `matlab` and
+> `qupath`, which are real commands. It cannot settle `shell`, `editor`,
+> `browser`, `documents`, `calendar`, `payment` or `mail.read`, none of which
+> is a command — and the fallback does not return "unknown", it returns
+> whatever `which` finds. On a fresh install that reads
+> `{'shell': False, 'editor': True, 'browser': False}` on a machine with bash
+> and no browser: `which` matched an unrelated `editor` symlink. Nothing writes
+> `tools.json` today, so **the seven arrive with their tool presence decided by
+> which unrelated packages happen to be installed.** An owner who has never
+> heard of the file should still get a legible refusal. Until that is fixed,
+> declaring the file by hand is what makes `CAP` mean anything.
 
 | Tool | Who | What it touches |
 |---|---|---|
