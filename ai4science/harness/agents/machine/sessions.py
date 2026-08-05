@@ -531,6 +531,18 @@ def start_session(name, cwd=".", *, claude_bin: str = "claude", govern: bool = F
             pid = int(out2.split()[0])
         except Exception:
             pid = None
+    if pid is None:
+        # `tmux new-session -d … <cmd>` returning 0 means tmux ACCEPTED the
+        # command, not that the command is running. A binary missing from PATH,
+        # or one that exits on its first line, leaves rc 0 and no session — and
+        # this used to return ok anyway, so `sarsi run` printed "planning in
+        # session …" about a session that was never there. Confirmed by the
+        # pane, not by the launcher's exit code.
+        return {"ok": False,
+                "reason": f"tmux took '{claude_bin}' and it did not stay up — "
+                          f"no pane in session '{tname}'. Usually {claude_bin!r} "
+                          f"is not on this PATH (a non-login shell does not get "
+                          f"~/.local/bin), or it exited immediately"}
     rec = None
     if pid is not None:
         try:

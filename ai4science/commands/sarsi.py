@@ -91,7 +91,7 @@ def agents(bindings: bool = typer.Option(False, "--bindings",
 
 
 @app.command("ask", help="Say something to one agent from the CLI — the same door as its bot.")
-def ask(agent_id: str = typer.Argument(..., help="Agent id, e.g. work"),
+def ask(agent_id: str = typer.Argument(..., help="Agent id, e.g. sarsi-worker"),
         text: str = typer.Argument(..., help="What to say")) -> None:
     from ai4science.harness.agents.sarsi import gateway, ownerlog, router
 
@@ -114,7 +114,7 @@ def ask(agent_id: str = typer.Argument(..., help="Agent id, e.g. work"),
 
 
 @app.command("do", help="Hand one worker a directive: a goal, and what it will need.")
-def do(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
+def do(agent_id: str = typer.Argument(..., help="Worker id, e.g. sarsi-worker"),
        goal: str = typer.Argument(..., help="The goal — one sentence, not the conversation"),
        tool: List[str] = typer.Option(None, "--tool",
                                       help="A tool the work needs (repeatable)."),
@@ -245,7 +245,7 @@ def do(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
 
 
 @app.command("tasks", help="Every task this worker holds, and what each is waiting for.")
-def tasks(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
+def tasks(agent_id: str = typer.Argument(..., help="Worker id, e.g. sarsi-worker"),
           archived: bool = typer.Option(False, "--archived",
                                         help="Show the closed ones instead.")) -> None:
     from ai4science.harness.agents.sarsi import task as tsk
@@ -278,7 +278,7 @@ def tasks(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
 
 
 @app.command("undo", help="Take back the last outward act — when that is possible at all.")
-def undo_cmd(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
+def undo_cmd(agent_id: str = typer.Argument(..., help="Worker id, e.g. sarsi-worker"),
              show: bool = typer.Option(False, "--show",
                                        help="Say what the last act was, and attempt nothing.")) -> None:
     from ai4science.harness.agents.sarsi import undo as ud
@@ -346,7 +346,7 @@ def questions_cmd(agent_id: Optional[str] = typer.Option(None, "--agent",
 
 
 @app.command("answer", help="Answer an escalated question — it goes into the session.")
-def answer_cmd(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
+def answer_cmd(agent_id: str = typer.Argument(..., help="Worker id, e.g. sarsi-worker"),
                task_id: str = typer.Argument(..., help="Task id"),
                question: str = typer.Argument(..., help="The question, as listed"),
                reply: str = typer.Argument(..., help="Your answer")) -> None:
@@ -368,7 +368,7 @@ def answer_cmd(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
 
 
 @app.command("blast", help="What it wrote, against the paths its plan declared.")
-def blast_cmd(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
+def blast_cmd(agent_id: str = typer.Argument(..., help="Worker id, e.g. sarsi-worker"),
               task_id: str = typer.Argument(..., help="Task id")) -> None:
     from ai4science.harness.agents.sarsi import blast
 
@@ -604,7 +604,7 @@ def digest_cmd(agent_id: Optional[str] = typer.Option(None, "--agent",
 
 
 @app.command("rules", help="House rules for this machine — told to every session.")
-def rules_cmd(agent_id: str = typer.Argument(..., help="Agent id, e.g. work"),
+def rules_cmd(agent_id: str = typer.Argument(..., help="Agent id, e.g. sarsi-worker"),
               add: Optional[str] = typer.Option(None, "--add",
                                                 help="Add a rule."),
               remove: Optional[str] = typer.Option(None, "--remove",
@@ -661,7 +661,7 @@ def rules_cmd(agent_id: str = typer.Argument(..., help="Agent id, e.g. work"),
 
 
 @app.command("handoff", help="HANDOFF.md for a task, or hand finished work to another worker.")
-def handoff_cmd(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
+def handoff_cmd(agent_id: str = typer.Argument(..., help="Worker id, e.g. sarsi-worker"),
                 task_id: Optional[str] = typer.Argument(None, help="Task id"),
                 to: Optional[str] = typer.Option(None, "--to",
                                                  help="Hand it to this worker."),
@@ -742,7 +742,7 @@ def handoff_cmd(agent_id: str = typer.Argument(..., help="Worker id, e.g. work")
 
 
 @app.command("why", help="Why is it doing this: the goal, the criteria, and the last verdict.")
-def why(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
+def why(agent_id: str = typer.Argument(..., help="Worker id, e.g. sarsi-worker"),
         task_id: str = typer.Argument(..., help="Task id")) -> None:
     from ai4science.harness.agents.sarsi import why as wy
     config, agent, t = _load_task(agent_id, task_id)
@@ -780,7 +780,7 @@ def attention(agent_id: Optional[str] = typer.Option(None, "--agent",
 
 
 @app.command("enter", help="Step into a worker: its current task, or the question it wants answered.")
-def enter(agent_id: str = typer.Argument(..., help="Worker id, e.g. work")) -> None:
+def enter(agent_id: str = typer.Argument(..., help="Worker id, e.g. sarsi-worker")) -> None:
     from ai4science.harness.agents.sarsi import entry
 
     config = _load()
@@ -794,7 +794,7 @@ def enter(agent_id: str = typer.Argument(..., help="Worker id, e.g. work")) -> N
 
 
 @app.command("stop", help="Stop a task and close its session. Resumable — the plan survives.")
-def stop(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
+def stop(agent_id: str = typer.Argument(..., help="Worker id, e.g. sarsi-worker"),
          task_id: str = typer.Argument(..., help="Task id")) -> None:
     from ai4science.harness.agents.sarsi import session as ses
     config, agent, t = _load_task(agent_id, task_id)
@@ -804,7 +804,7 @@ def stop(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
 
 
 @app.command("archive", help="Close a task for good: the record is kept, the slot is freed.")
-def archive(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
+def archive(agent_id: str = typer.Argument(..., help="Worker id, e.g. sarsi-worker"),
             task_id: str = typer.Argument(..., help="Task id")) -> None:
     from ai4science.harness.agents.sarsi import session as ses
     config, agent, t = _load_task(agent_id, task_id)
@@ -815,7 +815,7 @@ def archive(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
 
 
 @app.command("reopen", help="Put an archived task back on the board, stopped.")
-def reopen(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
+def reopen(agent_id: str = typer.Argument(..., help="Worker id, e.g. sarsi-worker"),
            task_id: str = typer.Argument(..., help="Task id")) -> None:
     from ai4science.harness.agents.sarsi import task as tsk
     config, agent, t = _load_task(agent_id, task_id)
@@ -828,7 +828,7 @@ def reopen(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
 
 
 @app.command("goal", help="Change a task's goal — the plan is re-drafted to follow it.")
-def goal(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
+def goal(agent_id: str = typer.Argument(..., help="Worker id, e.g. sarsi-worker"),
          task_id: str = typer.Argument(..., help="Task id"),
          text: str = typer.Argument(..., help="The new goal — one sentence")) -> None:
     from ai4science.harness.agents.sarsi import chat as sarsi_chat
@@ -838,7 +838,7 @@ def goal(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
 
 
 @app.command("retry", help="Hand a FAILed task back to its session with the verifier's reason.")
-def retry(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
+def retry(agent_id: str = typer.Argument(..., help="Worker id, e.g. sarsi-worker"),
           task_id: str = typer.Argument(..., help="Task id")) -> None:
     from ai4science.harness.agents.sarsi import retry as rty, session as ses
     config, agent, t = _load_task(agent_id, task_id)
@@ -1308,7 +1308,7 @@ def guide_cmd(agent_id: str = typer.Argument(..., help="Worker id"),
 
 
 @app.command("tools", help="What this machine has, as this agent sees it — and declare what it cannot check.")
-def tools_cmd(agent_id: str = typer.Argument(..., help="Agent id, e.g. work"),
+def tools_cmd(agent_id: str = typer.Argument(..., help="Agent id, e.g. sarsi-worker"),
               declare: Optional[str] = typer.Option(None, "--declare",
                                     help="Tell CAP a tool it cannot check IS here."),
               note: str = typer.Option("", "--note",
@@ -1460,7 +1460,7 @@ def gateway_cmd(passes: Optional[int] = typer.Option(None, "--passes",
 
 
 @app.command("ceiling", help="Set the auto level an agent runs at: sarsi ceiling all A2.")
-def ceiling(target: str = typer.Argument(..., help="Agent id, e.g. work — or 'all'"),
+def ceiling(target: str = typer.Argument(..., help="Agent id, e.g. sarsi-worker — or 'all'"),
             level: str = typer.Argument(..., help="A0, A1, A2 or A3")) -> None:
     _load()
     agent_id = None if target.lower() == "all" else target
@@ -1482,7 +1482,7 @@ def ceiling(target: str = typer.Argument(..., help="Agent id, e.g. work — or '
 
 
 @app.command("set-token", help="Set one agent's Telegram bot token.")
-def set_token(agent_id: str = typer.Argument(..., help="Agent id, e.g. work"),
+def set_token(agent_id: str = typer.Argument(..., help="Agent id, e.g. sarsi-worker"),
               token: str = typer.Argument(..., help="Bot token from @BotFather")) -> None:
     _load()
     try:
