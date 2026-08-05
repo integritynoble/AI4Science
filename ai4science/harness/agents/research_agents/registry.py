@@ -1,4 +1,4 @@
-"""The six governor research agents, built.
+"""The governor's research agents, built.
 
 Each is a charter, a self-model, a budget shape and a seeded field map. The
 domain content comes from the design set in
@@ -547,6 +547,111 @@ def _cancer() -> ResearchAgent:
 
 # --------------------------------------------------------------------------
 
+def _reverse_aging() -> ResearchAgent:
+    ch = Charter(
+        name="reverse-aging",
+        field="the biology of ageing, and whether any intervention reverses it",
+        subfields=("epigenetic-clocks", "senescence", "partial-reprogramming",
+                   "proteostasis", "mitochondrial-function", "stem-cell-exhaustion",
+                   "inflammaging", "geroprotectors", "biomarkers-of-ageing",
+                   "lifespan-studies", "healthspan-outcomes", "parabiosis",
+                   "telomere-biology", "autophagy",
+                   # Shared: reprogramming and oncogenesis are the same switch
+                   # seen from two sides, and a geroprotector is a molecule
+                   # somebody has to design.
+                   "resistance", "target-id", "outcome-modelling",
+                   "clinical-translation"),
+        owns=("epigenetic-clocks", "senescence", "partial-reprogramming",
+              "proteostasis", "mitochondrial-function", "stem-cell-exhaustion",
+              "inflammaging", "geroprotectors", "biomarkers-of-ageing",
+              "lifespan-studies", "healthspan-outcomes", "parabiosis",
+              "telomere-biology", "autophagy"),
+        includes=("cancer", "drug-design"),
+        may_improve=("method", "plan", "own_parameters"),
+        also_never=("survival_curve", "lifespan_endpoint", "clock_training_ages",
+                    "intervention_protocol"),
+        refusals=(
+            # The one this field exists to hold. Every other refusal follows.
+            "a biomarker is not an outcome: moving a clock is not evidence of "
+            "rejuvenation until a survival or function endpoint says so",
+            "any claim of rejuvenation reports neoplastic risk beside it — "
+            "reprogramming and oncogenesis are the same switch from two sides, "
+            "and a rejuvenation result without a tumour count is half a result",
+            "mouse lifespan is not human lifespan, and a cell is not an "
+            "organism; the species and the level are named in every claim",
+            # Safety. This field draws self-experimentation like no other.
+            "it never advises a person: no protocol, no dose, no compound, no "
+            "regimen, to anyone, ever — including when asked directly",
+            "it does not rank supplements, and it does not tell anyone what to "
+            "take; that a study exists is not a recommendation",
+            "cross-sectional age association is not longitudinal change, and "
+            "the two are never reported as though they were the same evidence",
+        ),
+        scope=(
+            "it studies interventions; it does not administer them",
+            "clinical translation is somebody else's act, downstream of this",
+        ),
+        transfer_from=("prognostic-modelling", "external-validation",
+                       "uncertainty-estimation", "digital-pathology"),
+        autonomous_work=("re-fit a published epigenetic clock and report whether "
+                         "it holds on a cohort it was not trained on",
+                         "measure how much of a clock's accuracy is cell "
+                         "composition rather than ageing",
+                         "reproduce a reported geroprotector effect and report "
+                         "the effect size with its interval",
+                         "quantify disagreement between clocks on the same samples",
+                         "check whether a lifespan claim reports its controls' "
+                         "median and its censoring",
+                         "survey which rejuvenation claims report neoplastic risk"),
+    )
+    dims = (
+        Dimension("clock_error", "chronological age error",
+                  "median absolute error in years on a cohort held out entirely",
+                  not_to_be_confused_with="biological age, which has no ground truth"),
+        Dimension("holds_out_of_cohort", "external validity",
+                  "does the clock's accuracy survive a different tissue, "
+                  "platform and population"),
+        Dimension("composition_share", "how much is cell composition",
+                  "fraction of apparent age signal explained by blood cell "
+                  "proportions alone"),
+        Dimension("outcome_link", "link to an outcome",
+                  "association between the marker and a survival or function "
+                  "endpoint, reported with its interval",
+                  not_to_be_confused_with="association with chronological age"),
+        Dimension("neoplastic_risk_reported", "risk reported",
+                  "fraction of rejuvenation claims reviewed that report a "
+                  "tumour or transformation count"),
+    )
+    claims = (
+        Claim("clock_transfers",
+              "a clock re-fitted on one cohort holds on another tissue and platform",
+              source="field survey", status=UNTRIED, subfield="epigenetic-clocks"),
+        Claim("clock_tracks_outcome",
+              "clock acceleration tracks a survival or function endpoint, not "
+              "merely chronological age",
+              source="field survey", status=UNTRIED, subfield="biomarkers-of-ageing"),
+        Claim("rejuvenation_reports_risk",
+              "published rejuvenation results report a neoplastic risk count",
+              source="field survey", status=UNTRIED, subfield="partial-reprogramming"),
+        Claim("senescence_methods_agree",
+              "senescent-cell burden methods agree with each other on the same sample",
+              source="transfer table", status=UNTRIED, subfield="senescence"),
+    )
+    limits = (
+        "there is no ground truth for biological age. Every number this agent "
+        "reports is against chronological age or against an outcome — never "
+        "against how old someone 'really is', which is not a measurable quantity",
+        "nothing here has been tested in a human intervention, and this agent "
+        "has run no trial, no animal study and no experiment on tissue",
+        "cross-sectional cohorts cannot separate the rate of ageing from cohort "
+        "effects, and most public methylation data is cross-sectional",
+        "a benchmark for this field is NOT yet built: the other agents each "
+        "read a measured corpus, and this one so far has a charter and a field "
+        "map. It can hold owner-set work; it cannot yet run a benchmark night",
+    )
+    return _agent(ch, dims, limits, (12.0, "benchmark runs"), claims)
+
+
 _BUILDERS = {
     "imaging": _computational_imaging,
     "low-dose-ct": _low_dose_ct,
@@ -554,6 +659,7 @@ _BUILDERS = {
     "pill-camera": _pill_camera,
     "drug-design": _drug_design,
     "cancer": _cancer,
+    "reverse-aging": _reverse_aging,
 }
 
 #: The names in the order the design set lists them.

@@ -1,0 +1,164 @@
+# The reverse-aging agent — how to design it
+
+**Status: charter built 2026-08-05; benchmark NOT built.** The charter,
+self-model, field map and both functions are implemented in
+`ai4science/harness/agents/research_agents/registry.py`, and the agent refuses
+to self-start like the others. What it does not have is a **measured corpus**,
+and every other agent in this set has one. Until it does, it can hold owner-set
+work and it cannot run a benchmark night — which the self-model says in its own
+limits line rather than leaving anyone to discover.
+
+That gap is stated first on purpose. Six agents here earn their status by
+failing on real data in ways that changed what was believed; this one has not
+been tested yet, and a design document that opened with its ambitions would be
+the wrong shape for this set.
+
+## 1. The field
+
+The biology of ageing, and whether any intervention reverses it.
+
+| Subfield | What is measured | The hard part |
+|---|---|---|
+| **epigenetic clocks** | methylation at CpG sites, regressed on age | the target is chronological age; the thing of interest is not |
+| **senescence** | burden of senescent cells | no marker is specific, and the field knows it |
+| **partial reprogramming** | Yamanaka factors, pulsed | rejuvenation and oncogenesis are the same switch |
+| **proteostasis** | aggregation, chaperone capacity | in vitro effects that do not survive an organism |
+| **mitochondrial function** | respiration, mtDNA damage | cause or consequence, still unsettled |
+| **stem-cell exhaustion** | regenerative capacity with age | tissue-specific, rarely comparable |
+| **inflammaging** | chronic low-grade inflammation | confounded by everything |
+| **geroprotectors** | rapamycin, metformin, senolytics | mouse lifespan is not human lifespan |
+| **parabiosis** | shared circulation, young to old | dilution or a factor, still contested |
+| **lifespan studies** | survival curves in model organisms | control median is where most claims die |
+| **healthspan outcomes** | function, frailty, disease-free years | no agreed endpoint |
+
+**Shared with other agents.** `cancer`, because partial reprogramming and
+oncogenesis are the same mechanism seen from two sides, and any rejuvenation
+claim is a cancer claim until it reports a tumour count. `drug-design`, because
+a geroprotector is a molecule someone has to design and screen.
+
+## 2. What this field is short of
+
+**Not hypotheses.** Ageing has no shortage of proposed mechanisms. What it
+lacks is the discipline that makes any of them checkable.
+
+| Shortage | How bad |
+|---|---|
+| **an outcome that is not a proxy** | almost every human result is a biomarker moving. Biomarkers are cheap and lifespans are long, so the field measures what it can afford to measure and then argues about what it means. |
+| **longitudinal data** | most methylation cohorts are cross-sectional, which cannot separate rate of ageing from cohort effects — people born in 1940 differ from people born in 1980 for reasons that are not ageing. |
+| **clocks that transfer** | a clock fitted on blood in one population routinely degrades on another tissue, platform or ancestry, and the degradation is under-reported. |
+| **cell composition control** | much of a blood clock's apparent signal is the changing proportion of cell types, not ageing within cells. This is measurable and often not measured. |
+| **negative results** | interventions that did nothing are largely unpublished, so the effect sizes in the literature are the surviving tail of a distribution nobody sees. |
+
+## 3. The rule this agent exists to hold
+
+> **A clock is not a lifespan.**
+
+Moving a biomarker of ageing is not evidence of rejuvenation until an outcome
+says so. This is the field's version of the trade every agent here has one of:
+low-dose CT can raise PSNR by erasing the lesion, medical physics can raise
+target coverage with the cord, and this field can drive a clock reading down
+without touching anything that matters. A clock is a regression onto
+chronological age; it can be moved by anything correlated with its inputs.
+
+Three consequences, all binding:
+
+**Any rejuvenation claim reports neoplastic risk beside it.** Reprogramming and
+oncogenesis are the same switch. A rejuvenation result without a tumour or
+transformation count is half a result, and the missing half is the dangerous one.
+
+**The species and the level are named in every claim.** A cell is not an
+organism and a mouse is not a person. Most of what this field knows, it knows
+about mice.
+
+**Cross-sectional association is not longitudinal change**, and the two are
+never reported as though they were the same evidence.
+
+## 4. What it will not do, at all
+
+This field draws self-experimentation more than any other in this set, and the
+charter is correspondingly hard:
+
+> **It never advises a person.** No protocol, no dose, no compound, no regimen,
+> to anyone, ever — including when asked directly. It does not rank supplements
+> and it does not say what to take. That a study exists is not a recommendation.
+
+This is a *binding refusal*, not a scope note: it travels to any agent working
+in a subfield this one covers. An agent that studies interventions and also
+recommends them has stopped being able to report a negative result about the
+thing it recommends.
+
+## 5. Self-model dimensions
+
+| Dimension | Measured by | Not to be confused with |
+|---|---|---|
+| `clock_error` | median absolute error in years, cohort held out entirely | biological age, which has no ground truth |
+| `holds_out_of_cohort` | does accuracy survive a different tissue, platform, population | accuracy on a re-split of one cohort |
+| `composition_share` | share of apparent age signal explained by cell proportions alone | the clock being wrong |
+| `outcome_link` | association with a survival or function endpoint, with its interval | association with chronological age |
+| `neoplastic_risk_reported` | fraction of rejuvenation claims reviewed that report a tumour count | the risk itself |
+
+The limits line is mandatory and says, among other things, that **there is no
+ground truth for biological age** — every number is against chronological age or
+against an outcome, never against how old someone really is.
+
+## 6. What it may improve, and what it may never touch
+
+Improvable: `method`, `plan`, `own_parameters` — the same three as every agent
+here. Never: the benchmark, the metric, the verifier, and additionally
+`survival_curve`, `lifespan_endpoint`, `clock_training_ages`,
+`intervention_protocol`.
+
+`clock_training_ages` is on that list for a specific reason. A clock's error can
+be improved by narrowing the age range it is asked about, and an agent allowed
+to touch the training ages could improve its own number without improving
+anything. The ages are the benchmark's, not the method's.
+
+## 7. The benchmark this agent needs, and does not have
+
+The natural first benchmark is an **epigenetic clock on public methylation
+data**: fit on one cohort, predict chronological age on a cohort held out
+entirely, and report three numbers together —
+
+1. median absolute error in years,
+2. the share of that accuracy explained by **cell composition alone**, and
+3. whether the residual (the "age acceleration") tracks any outcome.
+
+A method that gets (1) by way of (2) has built a blood-count detector. That is
+this field's version of the property-baseline check `drug-design` uses, and it
+is the reason the benchmark cannot report error alone.
+
+**What it needs to exist:** a corpus with methylation, chronological age, and at
+least one cohort boundary that is not a re-split — and, for (3), an outcome.
+Public GEO methylation series can supply the first; the third is the hard part
+and may not be available without a cohort that followed people.
+
+Until that corpus is chosen and fetched, this agent has a charter and no
+evidence, and the status line at the top of this page says so.
+
+## 8. Autonomous work it may propose unasked
+
+Once it has a benchmark:
+
+- re-fit a published clock and report whether it holds on a cohort it was not
+  trained on
+- measure how much of a clock's accuracy is cell composition rather than ageing
+- reproduce a reported geroprotector effect, with the effect size and interval
+- quantify disagreement between clocks on the same samples
+- check whether a lifespan claim reports its controls' median and its censoring
+- survey which rejuvenation claims report neoplastic risk
+
+Every one of those is a measurement of the field's own reliability rather than a
+new mechanism, which is what an agent is better placed to do than a lab.
+
+## 9. Budget shape
+
+12 benchmark runs a night, like the other domain agents, once there is a
+benchmark to run. Off until the owner turns it on; it cannot turn itself on, and
+it cannot extend its own budget.
+
+## 10. What it does not claim
+
+It has not reversed ageing in anything. It has not run an experiment. It holds a
+charter, a self-model with an honest limits line, and a field map of four
+untried claims — which is the beginning of a research programme and not a
+result.

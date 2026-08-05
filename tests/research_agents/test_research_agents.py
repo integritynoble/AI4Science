@@ -1,4 +1,4 @@
-"""The six research agents, and the refusals that make them safe to leave running.
+"""The governor's research agents, and the refusals that make them safe to leave running.
 
 Most of these tests are about what the agents will NOT do. That is not defensive
 padding: an autonomous research agent's failure mode is not a crash, it is a
@@ -19,9 +19,16 @@ from ai4science.harness.agents.research_agents.fieldmap import UNREPLICATED, UNT
 
 # ------------------------------------------------------------------ the charter
 
-def test_all_six_build_and_forbid_the_same_three():
+def test_every_agent_builds_and_forbids_the_same_three():
+    """Counted against the registry, not against a number written here.
+
+    This asserted `len(agents) == 6`. It is a test about forbidden substrates,
+    and adding a seventh agent broke it — which tells you nothing about whether
+    the seventh forbids the right things. The registry is the source of how many
+    there are."""
     agents = build_all()
-    assert set(agents) == set(NAMES) and len(agents) == 6
+    assert set(agents) == set(NAMES)
+    assert len(agents) == len(NAMES)
     for name, a in agents.items():
         for substrate in FORBIDDEN:
             assert substrate in a.charter.never_touch, name
@@ -190,7 +197,7 @@ def test_next_work_prefers_reproduction_over_novelty():
     assert m.next_work().key == "old"
 
 
-def test_the_six_ship_with_transfer_candidates():
+def test_they_ship_with_transfer_candidates():
     """Each agent should already know somewhere its field has not looked."""
     have = {n: build(n).field_map for n in NAMES}
     assert sum(len(m.transfer_candidates()) for m in have.values()) >= 4

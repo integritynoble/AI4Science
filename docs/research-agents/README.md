@@ -6,14 +6,15 @@ domain benchmarks are implemented in
 `ai4science/harness/agents/research_agents/` — 113 tests, verified on two
 machines and from a published wheel.
 
-Six agents are **authored by the governor and listed in the market** like any
+Seven agents are **authored by the governor and listed in the market** like any
 other: accepted the same way, found in agents-search the same way, installed by
 anyone who wants them. Governor-authored means the governor wrote them, not that
 anyone is kept out — there is no visibility gate on these.
 
 [computational imaging](computational-imaging.md), [low-dose CT](low-dose-ct.md),
 [medical physics](medical-physics.md), [pill camera](pill-camera.md),
-[drug design](drug-design.md), [cancer](cancer.md).
+[drug design](drug-design.md), [cancer](cancer.md),
+[reverse aging](reverse-aging.md).
 
 Each covers a **field**, not a project. This page is what they share.
 
@@ -27,7 +28,7 @@ Each covers a **field**, not a project. This page is what they share.
 
 ## 0. What is built, and what each benchmark reads
 
-All six read a **measured corpus** — computational imaging was the last to, on 2026-08-05. A benchmark whose corpus is absent
+Six of the seven read a **measured corpus** — reverse aging has none yet, and holds a charter rather than a result — computational imaging was the last to, on 2026-08-05. A benchmark whose corpus is absent
 refuses and names the command that fetches it; it never falls back to generated
 data, because a synthetic substitute produces numbers that look like results and
 are not.
@@ -40,6 +41,7 @@ are not.
 | [medical physics](medical-physics.md) | OpenKBP — 8 real head-and-neck plans | **5 of 8 patients** on one global weight set; weights are per-patient |
 | [pill camera](pill-camera.md) | Kvasir-Capsule — 4,443 frames, 46 videos | **passes**, after its own night loop found the fix — 0.624 against 0.614 |
 | [computational imaging](computational-imaging.md) | CAVE — real hyperspectral scenes, CASSI measurement simulated | **passes** — after a sign error in the reference solver was found and fixed |
+| [reverse aging](reverse-aging.md) | **none yet** — charter and field map only | no benchmark, and the self-model says so in its limits |
 
 > **One of those failures has since been repaired by the agent itself.** The
 > night loop found that pill-camera's frame summary was taking the wrong
