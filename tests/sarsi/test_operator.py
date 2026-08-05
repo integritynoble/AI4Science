@@ -673,3 +673,63 @@ def test_a_write_to_another_file_is_not_this_rule(config, agent):
     """It answers for the task's OWN plan file and nothing else."""
     screen = " Do you want to overwrite ~/.bashrc?\n ❯ 1. Yes\n   2. No\n"
     assert op._gate(screen, planning=True)[0] is None
+
+
+# ── the command, not the conversation above it ────────────────────────
+
+REAL_HOOK_GATE = """\
+  Then STOP and say the plan is ready. The owner reviews it and grants what it
+  declares before any of it runs.
+● I'll start by reading the plan sketch and looking around the folder.
+● Searching for 1 pattern, reading 1 file, running 1 shell command…
+  ⎿  plan0.md
+────────────────────────────────────────────────────────────────────────────────
+ Bash command
+   find /home/grace/.sarsi/agents/work/tasks/tsk_359dad41f7 -maxdepth 2 -type
+   f | head -50
+   List files in task folder
+ Hook PreToolUse:Bash requires confirmation for this command:
+ A0 is advisory; commands require approval [settings]
+ settings.json to update hooks
+ Do you want to proceed?
+ ❯ 1. Yes
+   2. No
+"""
+
+
+def test_the_gated_command_is_read_off_a_real_pane(config, agent):
+    """Captured live. `_GATE_CMD` matched every line indented two spaces ABOVE
+    the prompt, which on a real screen is the whole conversation — the kickoff
+    text, the tool output, the command and its description, joined into one
+    string. So the A0 read-only rule could never fire, and the loop abstained
+    four times at a `find … | head` it was written to answer.
+
+    My unit fixture passed anyway, for the wrong reason: it had only the command
+    and its description, and `is_read_only_bash` reads the FIRST word of a
+    segment — so `ls -la List task folder contents` parsed as `ls` with odd
+    arguments. A fixture that omits the noise tests the noise-free case only."""
+    assert op._gate_command(REAL_HOOK_GATE) == (
+        "find /home/grace/.sarsi/agents/work/tasks/tsk_359dad41f7 "
+        "-maxdepth 2 -type f | head -50")
+
+
+def test_and_that_gate_is_then_answered(config, agent):
+    answer, why = op._gate(REAL_HOOK_GATE, planning=True)
+    assert answer == "1" and "read-only" in why.lower()
+
+
+def test_a_writing_command_on_a_real_pane_is_still_the_owners(config, agent):
+    screen = REAL_HOOK_GATE.replace(
+        "find /home/grace/.sarsi/agents/work/tasks/tsk_359dad41f7 -maxdepth 2 -type\n"
+        "   f | head -50\n   List files in task folder",
+        "rm -rf /home/grace/live-w2\n   Remove the working directory")
+    assert op._gate(screen, planning=True)[0] is None
+
+
+def test_a_wrapped_command_keeps_the_part_that_matters(config, agent):
+    """The command wraps mid-token across pane lines; dropping the wrong line
+    would leave a command that reads safer than it is."""
+    screen = REAL_HOOK_GATE.replace(
+        "   f | head -50\n   List files in task folder",
+        "   f > /tmp/out.txt\n   Save the listing")
+    assert op._gate(screen, planning=True)[0] is None

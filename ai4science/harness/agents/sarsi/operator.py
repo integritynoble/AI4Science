@@ -358,16 +358,51 @@ def _gate(screen: str, *, planning: bool = False, deletes=None):
     return (None, "an option menu this loop has no rule for")
 
 
-#: The command a Bash gate is asking about: the indented block above the
-#: "Do you want to proceed?" line, exactly as `attention` reads it.
-_GATE_CMD = re.compile(r"^\s{2,}(?P<cmd>\S.*)$", re.M)
+#: The header a Bash gate puts above the command it is asking about — Claude
+#: Code writes `Bash command`, the ai4science TUI writes `$ <cmd>`.
+_GATE_HEADER = re.compile(r"^(?P<indent>\s*)(Bash command|\$\s+\S.*)\s*$", re.M)
+
+#: Prose, not shell: the one-line description a gate prints under the command.
+#: Recognised by what it LACKS — no metacharacter, no path, no flag — so a
+#: wrapped fragment of the real command (`f | head -50`, `f > out.txt`) is
+#: never mistaken for it. Getting this wrong in the safe direction leaves the
+#: description in and the gate unanswered; getting it wrong the other way would
+#: judge a truncated command, so the test is deliberately strict.
+_GATE_PROSE = re.compile(r"^[A-Za-z][A-Za-z0-9 ,.'\u2019]*$")
 
 
 def _gate_command(screen: str) -> str:
+    """The command this gate is about — and nothing else on the screen.
+
+    This used to take every line indented two spaces above `Do you want to
+    proceed`, which on a real pane is the whole conversation: the kickoff text,
+    the tool output, the command, and its description, joined into one string.
+    The A0 read-only rule could therefore never fire, and a live run abstained
+    four times at a `find … | head` written to be answered.
+
+    The block is found structurally instead: the gate's header, then the lines
+    indented DEEPER than it, stopping where the indent returns.
+    """
     head = screen.split("Do you want to proceed", 1)[0]
-    lines = [m.group("cmd").strip() for m in _GATE_CMD.finditer(head)]
-    lines = [ln for ln in lines
-             if not ln.lower().startswith(("bash command", "hook "))]
+    matches = list(_GATE_HEADER.finditer(head))
+    if not matches:
+        return ""
+    last = matches[-1]
+    header_indent = len(last.group("indent"))
+    inline = last.group(0).strip()
+    lines = []
+    if inline.startswith("$"):
+        # the ai4science TUI puts the command on the header line itself
+        lines.append(inline[1:].strip())
+    for raw in head[last.end():].splitlines():
+        if not raw.strip():
+            continue
+        indent = len(raw) - len(raw.lstrip())
+        if indent <= header_indent:
+            break                      # the block ended — `Hook …`, `A0 …`
+        lines.append(raw.strip())
+    if len(lines) > 1 and _GATE_PROSE.match(lines[-1]):
+        lines.pop()                    # the human-readable description
     return " ".join(lines).strip()
 
 
