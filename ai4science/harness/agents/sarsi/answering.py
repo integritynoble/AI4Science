@@ -33,6 +33,18 @@ from ai4science.harness.agents.sarsi.registry import Agent, Config
 REFUSAL = "ASK-THE-OWNER"
 
 _QUESTION = re.compile(r"([^\n?]{8,200}\?)")
+
+#: Claude Code's own status bar. It ends every pane and it contains a `?`:
+#:
+#:     ⏸ manual mode on · ? for shortcuts · ← for agents
+#:
+#: Live, `_QUESTION` matched `⏸ manual mode on · ?` and the loop escalated to
+#: the owner — *"the session asked: ⏸ manual mode on · ?"* — at a session that
+#: had just said what it was about to do. Matched on the SHORTCUT HINT rather
+#: than on a mode name: the modes rotate (`manual mode on`, `accept edits on`,
+#: `plan mode on`) and this part does not, and a filter calibrated on the one
+#: sample in front of me is how the last three of these got through.
+_STATUS_BAR = re.compile(r"^\s*[⏸⏵▶].*\?\s*for\s+shortcuts\b.*$", re.M)
 #: An option menu is the gate's business, not this node's.
 _MENU = re.compile(r"^\s*❯?\s*\d\.\s+\S", re.M)
 
@@ -69,6 +81,10 @@ def question_on(screen: str) -> Optional[str]:
     text = screen or ""
     if _MENU.search(text):
         return None
+    # The tool's furniture out before the session's words are read. Removed
+    # rather than used as a terminator: a real question can sit either side of
+    # it, and order must not decide whether the owner hears about it.
+    text = _STATUS_BAR.sub("", text)
     hits = _QUESTION.findall(text)
     return hits[-1].strip() if hits else None
 
