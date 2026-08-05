@@ -401,8 +401,16 @@ def planning_kickoff(config: Config, agent: Agent, task: tsk.Task) -> str:
         f"Read it, then improve it in place. Sharpen it with what you can see "
         f"and I cannot:",
         "  - split or reorder the phases so they match the real work;",
-        "  - rewrite each `Verified when:` line to name what an independent "
-        "verifier must SEE — a file, a count, an exit code — never an intention;",
+        "  - rewrite each `Verified when:` line so it can be checked from the "
+        "FILES ALONE. The verifier is given the files under the working "
+        "directory and this task's folder, and nothing else: it has no "
+        "transcript, sees none of your tool calls, and your narration reaches "
+        "it marked `not evidence`. So `the transcript contains a Read of "
+        "x.csv` is not a hard criterion, it is an impossible one — no verdict "
+        "can ever be reached on it. Write what a stranger opening the folder "
+        "could confirm: a named file exists, its text contains a literal "
+        "string, a count matches, an exit code is 0. Never an intention, and "
+        "never anything only you can see;",
         "  - add to `## Permissions needed` anything beyond where you are "
         "standing that you will actually need: paths, accounts, network, "
         "credentials by name.",
@@ -584,8 +592,12 @@ def collect_plan(config: Config, agent: Agent, task: tsk.Task, *,
         (runtime or MachineRuntime()).send(
             (task.session or {}).get("name", ""),
             f"That plan cannot be used: {e}\n"
-            f"Every phase must end in a `Verified when:` line naming what an "
-            f"independent verifier must see. Fix {PLAN_FILE} and stop again.")
+            f"Every phase must end in a `Verified when:` line that can be "
+            f"checked FROM THE FILES ALONE. The verifier is given the files "
+            f"under the working directory and this task's folder and nothing "
+            f"else — no transcript, none of your tool calls, and your "
+            f"narration reaches it marked `not evidence`. Fix {PLAN_FILE} and "
+            f"stop again.")
         ledger.append(config, "reports",
                       {"agent": agent.id, "task": task.id, "state": "plan-rejected",
                        "evidence": [str(e)]}, now=now)
