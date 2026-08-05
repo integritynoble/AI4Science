@@ -29,6 +29,42 @@ Sparing that cord takes full 3D modulation. Raising the penalties traded cord
 against hot spot and cleared neither, so the tuning stopped rather than
 continuing until something passed.
 
+## 0b. What the benchmark can and cannot ask of these beams
+
+**Measured before being argued about, which is the correction this section
+exists to record.** For each patient, the declared parameter space was driven to
+its most coverage-favouring corner — target penalties at maximum, organ-at-risk
+and hot-spot penalties at minimum — and the resulting D99 is the best these nine
+coplanar beams can deliver at this beamlet resolution, whatever objective is
+written.
+
+| patient | D99 floor | best D99 reachable | verdict on the floor |
+|---|---|---|---|
+| 1 | 66.5 | 68.13 | reachable |
+| 2 | 66.5 | 68.79 | reachable |
+| 3 | 66.5 | **67.85** | reachable — and the planner gets 64.49 |
+| 4 | 66.5 | **62.62** | **NOT reachable** |
+
+**Patient 4 is an impossible case and the judge is right to fail it.** At that
+corner the hot spot also reaches 94.6 Gy against an 80.5 limit, so the coverage
+is not merely unreached but unreachable without a violation elsewhere. Nine
+coplanar beams cannot conform to that target on that slice. No objective
+function fixes it, and tuning toward it would only be fitting the benchmark.
+
+**Patient 3 is the opposite, and is the real open problem.** A passing plan
+exists inside the declared space — D99 67.85 with the cord at 38.9 against a 45
+limit and the hot spot at 75.9 against 80.5 — and the planner converges 3.4 Gy
+short of it. That is a planner shortfall, not a geometry limit, and it is left
+failing rather than hand-tuned: the search space demonstrably contains the
+answer, so finding it is the search's job.
+
+> **Three wrong diagnoses preceded this table**, and each was a guess at a cause
+> rather than a measurement of what was possible: an impossible constraint set
+> (for the wrong reason — the overlap was read off the wrong axis), a step-size
+> collapse, and nested targets fighting each other. One achievability run
+> separates the two failures in a way none of them did. **Measure the ceiling
+> before theorising about the gap.**
+
 ## 1. The field
 
 The physics of radiation used to treat and image people, and the quality systems

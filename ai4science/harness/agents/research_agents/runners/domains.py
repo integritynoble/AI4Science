@@ -289,6 +289,15 @@ MEDPHYS = DomainBenchmark(
         Parameter("hot_weight", 0.5, 12.0, 3.0, means="hot-spot penalty"),
         Parameter("step", 0.1, 1.5, 0.6, means="projected-gradient step"),
         Parameter("iters", 200, 1500, 900, integer=True, means="iterations"),
+        Parameter("cold_weight", 1.0, 200.0, 25.0,
+                  means="penalty on target voxels BELOW the D99 floor. The "
+                        "criterion is a dose-volume one, and a mean of squared "
+                        "residuals barely sees the coldest percent — which is "
+                        "the percent the verdict turns on"),
+        Parameter("tuning_rounds", 1, 12, 8, integer=True,
+                  means="how many times the planner may read its own DVH "
+                        "against the protocol and re-balance. 1 is the old "
+                        "behaviour: one global weight set for every patient"),
     ),
     criteria=("each PTV reaches D99 ≥ 95% of its prescription",
               "brainstem ≤ 54 Gy, cord ≤ 45 Gy, parotid mean ≤ 26 Gy, mandible ≤ 70 Gy",

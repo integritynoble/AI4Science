@@ -108,6 +108,25 @@ def main():
             wgt = np.where(resid < 0, wt["under"], 1.0)
             g += 2.0 * (Am @ (wgt * resid)) / max(Am.shape[1], 1)
             cost += float((wgt * resid ** 2).mean())
+            # A COLD-TAIL term, on the constraint as it is actually written.
+            #
+            # The criterion is D99 >= floor: the coldest one percent of the
+            # target. The residual term above is a mean of squares, so a handful
+            # of cold voxels at the target edge contribute almost nothing to it,
+            # and raising `under` lifts the whole distribution — mean dose and
+            # hot spot with it — without touching the tail that decides the
+            # verdict. One patient sat at mean 71.1 Gy inside the target with
+            # D99 at 63.0 against a 66.5 floor: over-dosed on average and
+            # failing on its coldest edge.
+            #
+            # So penalise exactly the voxels below the floor. This is a
+            # dose-volume objective, which is what a planning system optimises
+            # and what the protocol states.
+            floor = proto[n].get("D99_min")
+            if floor:
+                cold = np.clip(floor - (w @ Am), 0.0, None)
+                g += -wt["cold"] * 2.0 * (Am @ cold) / max(Am.shape[1], 1)
+                cost += wt["cold"] * float((cold ** 2).mean())
         for n, Am in Ao.items():
             lim = proto[n].get("Dmax") or proto[n].get("Dmean")
             over = np.clip((w @ Am) - lim * 0.85, 0, None)
@@ -186,8 +205,9 @@ def main():
             if "D99_min" in rule:
                 got = float(np.percentile(d[m], 1))
                 if got < rule["D99_min"]:
-                    viol["under"] = max(viol.get("under", 0.0),
-                                        (rule["D99_min"] - got) / max(rule["D99_min"], 1e-9))
+                    short = (rule["D99_min"] - got) / max(rule["D99_min"], 1e-9)
+                    viol["under"] = max(viol.get("under", 0.0), short)
+                    viol["cold"] = max(viol.get("cold", 0.0), short)
         ptv_m = tgt.get("PTV70")
         for n, m in oars.items():
             if not np.any(m):
@@ -232,10 +252,11 @@ def main():
     # least, ties broken on target coverage — not the last one tried.
     weights = {"under": float(pr["under_weight"]),
                "oar": float(pr["oar_weight"]),
-               "hot": float(pr["hot_weight"])}
+               "hot": float(pr["hot_weight"]),
+               "cold": float(pr.get("cold_weight", 25.0))}
     best_w = best_dose = None
     best_score = None
-    for round_no in range(int(round(float(pr.get("tuning_rounds", 4))))):
+    for round_no in range(int(round(float(pr.get("tuning_rounds", 8))))):
         w = optimise(weights)
         d, viol = evaluate(w)
         # Rank on total relative violation first, coverage second.
@@ -253,7 +274,7 @@ def main():
         # `key`, not `k`: `k` is the slice index in the enclosing scope, and
         # shadowing it left `int(k)` reading the string "hot".
         for key, (_lo, hi) in (("under", (1.0, 60.0)), ("oar", (1.0, 20.0)),
-                               ("hot", (0.5, 12.0))):
+                               ("hot", (0.5, 12.0)), ("cold", (1.0, 200.0))):
             if key in viol:
                 weights[key] = min(hi, weights[key] * (1.0 + 3.0 * viol[key]))
         print("  round %d: violations %s -> weights %s"
