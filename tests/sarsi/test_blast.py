@@ -145,13 +145,21 @@ def test_reading_a_file_is_not_touching_it(config, agent, tmp_path):
 
 def test_shell_commands_are_counted_as_unchecked(config, agent, tmp_path):
     """A transcript showing 40 shell commands and 2 writes tells us about the
-    2. Reporting 'nothing escaped' would be a false assurance about the 40."""
+    2. Reporting 'nothing escaped' would be a false assurance about the 40.
+
+    `ls` is no longer among them: a command PROVEN read-only cannot have
+    changed anything, so counting it as unobserved claimed the report might be
+    missing a write that could not have happened. `cp` and the redirect can
+    both write and are still unchecked — which is the assurance this test is
+    actually about."""
     root = tmp_path / "work"
     t = _task(config, agent, root)
     got = blast.check(config, agent, t,
                       acts=_acts(_bash("cp x /tmp/y"), _bash("ls"),
+                                 _bash("echo hi > /tmp/z"),
                                  _write(str(root / "a.txt"))))
     assert got.unchecked == 2
+    assert got.read_only == 1
     assert "could not" in got.summary.lower() or "unchecked" in got.summary.lower()
 
 
@@ -200,3 +208,80 @@ def test_why_reports_an_escape(config, agent, tmp_path):
     out = wy.explain(config, agent, t,
                      acts=_acts(_write(str(tmp_path / "escaped.txt"))))
     assert "escaped.txt" in out
+
+
+# ── a command that cannot have written anything ───────────────────────
+
+def _bash(cmd, key="command"):
+    return {"name": "Bash", "input": {key: cmd}}
+
+
+def test_a_read_only_command_is_not_counted_as_unchecked(config, agent, tmp_path):
+    """Every run today closed on the same line — `2 shell command(s) could not
+    be checked` — and every one of those commands was the session verifying its
+    own work: `wc -w checklist.md`, `ls -la`, `grep -c`. A command that cannot
+    change anything has nothing to vouch for. Counting it as unobserved says
+    the report might be missing a write that could not have happened.
+
+    Judged by `permissions.is_read_only_bash` — the same conservative
+    classifier that decides what may run without asking. What it cannot PROVE
+    read-only still counts as unchecked, so this can only ever shrink the
+    number by things it is certain about."""
+    t = _task(config, agent, tmp_path)
+    got = blast.check(config, agent, t,
+                      acts=lambda cwd: [_bash("wc -w checklist.md"),
+                                        _bash("ls -la"),
+                                        _bash("grep -c '^' notes.md")])
+    assert got.unchecked == 0
+
+
+def test_and_that_is_a_clean_bill(config, agent, tmp_path):
+    """The point of the change: a session that wrote through the tool and only
+    LOOKED with the shell can now be vouched for."""
+    t = _task(config, agent, tmp_path)
+    root = str(tmp_path)
+    got = blast.check(config, agent, t,
+                      acts=lambda cwd: [{"name": "Write",
+                                         "input": {"file_path": root + "/a.md"}},
+                                        _bash("wc -w a.md")])
+    assert got.confident is True
+    assert "not a clean bill" not in got.summary
+
+
+def test_anything_that_might_write_is_still_unchecked(config, agent, tmp_path):
+    """The conservatism is the whole guarantee."""
+    for cmd in ("cat > out.md <<'EOF'", "mkdir -p /tmp/x", "python3 run.py",
+                "rm -rf /tmp/x", "curl -o f https://example.com",
+                "echo hi > note.md"):
+        t = _task(config, agent, tmp_path)
+        got = blast.check(config, agent, t, acts=lambda cwd: [_bash(cmd)])
+        assert got.unchecked == 1, cmd
+
+
+def test_the_harness_spells_the_argument_differently(config, agent, tmp_path):
+    """Claude Code records `command`, the ai4science harness records `cmd`.
+    Reading one key would leave every attended agent's shell calls unchecked —
+    the kind of detail that has been wrong three times today."""
+    t = _task(config, agent, tmp_path)
+    got = blast.check(config, agent, t,
+                      acts=lambda cwd: [_bash("ls -la", key="cmd")])
+    assert got.unchecked == 0
+
+
+def test_a_bash_call_with_no_command_at_all_is_unchecked(config, agent, tmp_path):
+    """Nothing to classify is not the same as nothing to worry about."""
+    t = _task(config, agent, tmp_path)
+    got = blast.check(config, agent, t,
+                      acts=lambda cwd: [{"name": "Bash", "input": {}}])
+    assert got.unchecked == 1
+
+
+def test_the_read_only_ones_are_still_reported(config, agent, tmp_path):
+    """Dropping them silently would leave a reader unable to tell a session
+    that ran fifty commands from one that ran none."""
+    t = _task(config, agent, tmp_path)
+    got = blast.check(config, agent, t,
+                      acts=lambda cwd: [_bash("ls"), _bash("wc -l a"),
+                                        _bash("cat b")])
+    assert got.read_only == 3
+    assert "3" in got.summary and "read-only" in got.summary

@@ -41,6 +41,11 @@ _WRITERS = ("Write", "Edit", "NotebookEdit", "MultiEdit")
 #: Tools that can change anything and say nothing about what.
 _OPAQUE = ("Bash", "BashOutput", "KillShell")
 
+#: Where each surface records the shell command. Claude Code writes
+#: `command`, the ai4science harness writes `cmd`; reading one would leave
+#: every attended agent's shell calls unclassified.
+_CMD_KEYS = ("command", "cmd")
+
 
 @dataclass
 class Radius:
@@ -48,6 +53,10 @@ class Radius:
     outside: List[str] = field(default_factory=list)
     #: acts that could change a file without naming one
     unchecked: int = 0
+    #: shell calls PROVEN read-only. Reported rather than dropped: silence
+    #: would leave a reader unable to tell a session that ran fifty commands
+    #: from one that ran none.
+    read_only: int = 0
     #: could the transcript be read at all?
     read: bool = True
     declared: List[str] = field(default_factory=list)
@@ -78,6 +87,9 @@ class Radius:
             parts.append(f"{self.unchecked} shell command(s) could not be "
                          f"checked — they name no file, so this is not a "
                          f"clean bill")
+        if self.read_only:
+            parts.append(f"{self.read_only} read-only shell command(s), which "
+                         f"cannot have changed anything")
         return " · ".join(parts)
 
 
@@ -163,7 +175,30 @@ def check(config: Config, agent: Agent, task: tsk.Task, *,
     for entry in entries:
         name = str(entry.get("name") or "")
         if name in _OPAQUE:
-            # It can change anything and names nothing. Counted, never ignored.
+            # A command that cannot change anything has nothing to vouch for.
+            # Every run this week closed on "N shell command(s) could not be
+            # checked", and every one of those was the session verifying its
+            # own work — `wc -w`, `ls -la`, `grep -c`. Counting those as
+            # unobserved says the report might be missing a write that could
+            # not have happened.
+            #
+            # Judged by the same conservative classifier that decides what may
+            # run without asking: what it cannot PROVE read-only stays
+            # unchecked, so this only ever shrinks the count by things it is
+            # certain about. A call with no command at all is not classifiable
+            # and stays unchecked — nothing to judge is not nothing to worry
+            # about.
+            command = ""
+            for key in _CMD_KEYS:
+                value = (entry.get("input") or {}).get(key)
+                if value:
+                    command = str(value)
+                    break
+            if command and name == "Bash":
+                from ai4science.harness.permissions import is_read_only_bash
+                if is_read_only_bash(command):
+                    out.read_only += 1
+                    continue
             out.unchecked += 1
             continue
         if name not in _WRITERS:
