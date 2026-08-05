@@ -324,7 +324,29 @@ CAPSULE = DomainBenchmark(
     objective="auc", objective_higher_is_better=True,
     guardrails=("baseline_auc",),
     parameters=(
-        Parameter("percentile", 50.0, 99.5, 95.0,
+        # ADOPTED 2026-08-05, owner-signed, from 95.0.
+        #
+        # Measurement: +0.029 AUC across six held-out seeds, paired, corrected
+        # p 0.044 — found by the night loop, which then refused it for having
+        # no mechanism.
+        #
+        # Mechanism, supplied afterwards and tested rather than asserted: a
+        # lesion covers a small share of a capsule frame and the prior map is
+        # elevated only over it, so a quantile summary works better the more it
+        # isolates the lesion's own pixels instead of diluting them with normal
+        # mucosa. On a 32x32 thumbnail, q=99.5 is the ~5th brightest pixel.
+        #
+        # The account predicts its own limit — isolation must stop helping once
+        # the summary is a single noisy pixel — and the prediction holds:
+        # effect size d runs 0.833 (q=99) -> 0.863 (99.5) -> 0.219 (99.8) ->
+        # 0.058 (99.9), and the pure maximum is no better than noise. That
+        # collapse is why this is a mechanism and not a story fitted to a win.
+        #
+        # Note the search found the optimum AT its upper bound, which normally
+        # means the bound is wrong. Here the sweep above shows the bound is
+        # right by coincidence; the space is left as it is because widening it
+        # would admit values the data says are worse.
+        Parameter("percentile", 50.0, 99.5, 99.5,
                   means="quantile of the per-pixel prior map that summarises a frame"),
     ),
     criteria=("the split is patient-disjoint, checked programmatically",

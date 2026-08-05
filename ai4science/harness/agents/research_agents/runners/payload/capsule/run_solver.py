@@ -29,11 +29,13 @@ def main():
     # out exactly the signal the prior exists to find.
     pix = (np.log(np.clip(T[..., 0], eps, None))
            - np.log(np.clip(T[..., 1], eps, None)))
-    # 95 was chosen by hand and never questioned. It is a knob now, so the
-    # search can ask whether a lesion is better summarised by a higher or lower
-    # quantile of the prior map.
+    # 99.5, adopted after the night loop found it and the mechanism was tested:
+    # a lesion is a small bright region in the prior map, so the summary should
+    # isolate it (~5 of 1024 thumbnail pixels) without collapsing to a single
+    # noisy pixel — beyond 99.5 the effect size falls off a cliff. 95 was the
+    # original hand-picked value and was simply worse.
     f = os.path.join(ws, "params.json")
-    q = json.load(open(f))["percentile"] if os.path.exists(f) else 95.0
+    q = json.load(open(f))["percentile"] if os.path.exists(f) else 99.5
     p_blood = np.percentile(pix.reshape(len(pix), -1), q, axis=1)
     baseline = -X[:, 1]
     os.makedirs(os.path.join(ws, "results"), exist_ok=True)

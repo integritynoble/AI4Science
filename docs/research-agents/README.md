@@ -38,15 +38,20 @@ are not.
 | [drug design](drug-design.md) | DUD-E — 15,288 molecules, 6 targets | **passes** — EF@1% 66.8 vs a 20.2 property baseline |
 | [cancer](cancer.md) | TCGA via the GDC API — 978 cases, two cohorts | **fails** — C-index 0.668 internal, 0.577 external |
 | [medical physics](medical-physics.md) | OpenKBP — 8 real head-and-neck plans | **fails** — cord 51.8 Gy against a 45 Gy limit |
-| [pill camera](pill-camera.md) | Kvasir-Capsule — 4,443 frames, 46 videos | **fails** — prior 0.598 against 0.614 for intensity |
+| [pill camera](pill-camera.md) | Kvasir-Capsule — 4,443 frames, 46 videos | **passes**, after its own night loop found the fix — 0.624 against 0.614 |
 | [computational imaging](computational-imaging.md) | generated CASSI scenes | passes its physics judge |
 
-> **Three of the five reference methods fail, and that is the point.** Each
+> **One of those failures has since been repaired by the agent itself.** The
+> night loop found that pill-camera's frame summary was taking the wrong
+> quantile, the mechanism was tested rather than asserted, and the owner signed
+> the adoption — which is the RSI path working end to end: propose, cite the
+> measurement, explain it, sign, adopt.
+>
+> **Two of the five reference methods still fail, and that is the point.** Each
 > failure is a statement about the method, not a defect in the benchmark: a
-> clinical-only model does not transport across histologies, a 2D planner cannot
-> spare a cord that abuts the target, and an analytic prior does not beat plain
-> intensity. Each was a *pass* on synthetic data, and each was overturned by
-> real data. Every one of those synthetic passes had been arranged — by me,
+> clinical-only model does not transport across histologies, and a 2D planner
+> cannot spare a cord that abuts the target. Each was a *pass* on synthetic
+> data, and each was overturned by real data. Every one of those synthetic passes had been arranged — by me,
 > writing the generator — to agree with the story the design already told.
 
 ```bash
