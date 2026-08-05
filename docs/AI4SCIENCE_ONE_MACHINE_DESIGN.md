@@ -724,21 +724,27 @@ first is only readable if the second is false. The workspace is not empty for
 them: it is where the manager's own record lives, so the agent you talk to has a
 history you can read even though it has no work you can point at.
 
-### 11z. Installing an agent creates a workspace and a task list
+What a manifest *does* declare in their place is **reach** — which workspaces the
+agent reads and publishes to — and §11z below carries that form.
+
+### 11z. Installing an agent: the workspace exists, the *reach* is declared
 
 A package is what the author ships. **The workspace is what this machine
-creates**, and it never travels: it belongs to one owner, on one machine, under
-that agent's `W_<name>`, and it is most of what a research agent actually is —
+creates** — it belongs to one owner, on one machine, under that agent's
+`W_<name>`, and for a research agent it is most of what the agent actually is:
 charter, self-model, field map, budget, three ledgers, a corpus cache and the
 benchmark seeds.
 
-So the package declares the workspace's *shape*, and the install builds it.
-Two files, described in full in [the market design](2026-08-04-sarsi-agent-market-and-pwm-design.md) §3a:
-`workspace.json` — what is kept, what is append-only, what must never be staged
-into a sandbox, and what must never be packaged — and `tasks.json` — the task
-classes it accepts, and which transitions need the owner's signature.
+**It is not declared, because every agent has one.** `Agent.workspace`,
+`Agent.host` and `Agent.tasks` exist unconditionally in the registry, for the
+machine agent as much as for a worker; a path in a manifest would be describing
+one installation from inside the package. What a manifest declares is **reach** —
+which workspaces it reads and publishes to, and the two boundary rules below.
+The market spec §3a
+([`2026-08-04-sarsi-agent-market-and-pwm-design.md`](2026-08-04-sarsi-agent-market-and-pwm-design.md))
+carries the full form.
 
-Three of those fields matter on *this* machine specifically:
+Three declarations matter on *this* machine specifically:
 
 | Field | What it prevents here |
 |---|---|
