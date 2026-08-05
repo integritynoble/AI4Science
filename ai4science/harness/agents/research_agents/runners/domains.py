@@ -171,10 +171,16 @@ LDCT = DomainBenchmark(
     guardrails=("psnr", "lesion_contrast_retained"),
     parameters=(
         Parameter("sigma_s", 1.0, 6.0, 3.0, means="spatial extent of the filter"),
-        Parameter("sigma_r_scale", 0.3, 2.0, 0.9,
+        Parameter("sigma_r_scale", 0.3, 2.0, 0.3,
                   means="range width as a multiple of the measured noise"),
         Parameter("iters", 1, 6, 3, integer=True, means="filter passes"),
-        Parameter("radius", 2, 5, 3, integer=True, means="neighbourhood radius"),
+        # ADOPTED 2026-08-05, owner-signed. The agent's night loop proposed
+        # radius 4 with sigma_r_scale 0.3 and it survived held-out validation:
+        # +3.91 lesion CNR over four distinct patients, p = 0.0088, with no
+        # guardrail breach — PSNR and retained contrast both held. Proposed by
+        # the agent, measured on seeds it was not selected on, signed by the
+        # owner. The agent did not adopt it.
+        Parameter("radius", 2, 5, 4, integer=True, means="neighbourhood radius"),
     ),
     criteria=("PSNR above the untouched low-dose scan, against the paired full-dose scan",
               "lesion CNR ≥ 3 — the Rose criterion, reported beside fidelity, always",
