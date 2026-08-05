@@ -53,6 +53,36 @@ class Verdict:
 
 
 @dataclass(frozen=True)
+class Parameter:
+    """One knob a method exposes, and the range it may be turned through.
+
+    **The benchmark declares these, never the agent.** An agent that could add a
+    parameter could add one that reads the answer key, or one that widens the
+    split — so the space is fixed by whoever wrote the benchmark, and a proposal
+    naming anything outside it is refused rather than clamped. Clamping would
+    silently accept an illegal move and score it.
+    """
+    name: str
+    low: float
+    high: float
+    default: float
+    integer: bool = False
+    #: What turning it up actually does, in the field's terms. Written for the
+    #: person reading the search log, who has to judge whether the winner is
+    #: sensible or merely lucky.
+    means: str = ""
+
+    def clamp(self, v: float) -> float:
+        v = max(self.low, min(self.high, float(v)))
+        return float(int(round(v))) if self.integer else v
+
+    def check(self, v: float) -> None:
+        if not (self.low <= float(v) <= self.high):
+            raise ValueError("%s=%r is outside [%g, %g]"
+                             % (self.name, v, self.low, self.high))
+
+
+@dataclass(frozen=True)
 class DomainBenchmark:
     """One field's runnable problem."""
 
@@ -74,6 +104,40 @@ class DomainBenchmark:
     #: generated rather than measured — and a result from generated data is
     #: evidence about a method, never about the world.
     corpus: Optional[str] = None
+    #: The method's tunable knobs. Empty means the method is fixed and the
+    #: agent has nothing to search — which is honest for some domains.
+    parameters: Tuple[Parameter, ...] = ()
+    #: The metric a search is allowed to optimise, named by the benchmark.
+    #:
+    #: Declared because the first autonomous run picked it alphabetically and
+    #: spent a night optimising `active_fraction` — a property of the library,
+    #: not of the method. A search needs to be told what better means; letting
+    #: it infer that from a dict ordering is how an agent ends up improving
+    #: something nobody wanted improved.
+    objective: str = ""
+    objective_higher_is_better: bool = True
+    #: Metrics that must not get worse while the objective improves. The
+    #: trade the field refuses to make: fidelity at the cost of detectability,
+    #: enrichment at the cost of the property baseline.
+    guardrails: Tuple[str, ...] = ()
+
+    def defaults(self) -> Dict[str, float]:
+        return {p.name: p.default for p in self.parameters}
+
+    def check_params(self, params: Dict[str, float]) -> Dict[str, float]:
+        """Refuse anything the benchmark did not declare, or out of range."""
+        known = {p.name: p for p in self.parameters}
+        unknown = set(params) - set(known)
+        if unknown:
+            raise ValueError(
+                "%s: %s is not a declared parameter of this benchmark. The "
+                "space is the benchmark's, not the agent's."
+                % (self.agent, sorted(unknown)))
+        for k, v in params.items():
+            known[k].check(v)
+        out = self.defaults()
+        out.update({k: float(v) for k, v in params.items()})
+        return out
 
     @property
     def real(self) -> bool:
@@ -93,10 +157,19 @@ class DomainBenchmark:
         return sorted(p for p in d.iterdir() if p.is_file() and p.suffix == ".py")
 
 
-def seed_workspace(bench: DomainBenchmark, ws: Path, *, seed: int) -> Dict[str, Any]:
-    """Generate the problem, deterministically, including the answer key."""
+def seed_workspace(bench: DomainBenchmark, ws: Path, *, seed: int,
+                   params: Optional[Dict[str, float]] = None) -> Dict[str, Any]:
+    """Generate the problem, deterministically, including the answer key.
+
+    `params` are the method's knobs, validated against the benchmark's declared
+    space and written where the solver reads them. A solver with no params.json
+    uses its own defaults, so an unparameterised domain keeps working."""
     ws = Path(ws)
     (ws / "code").mkdir(parents=True, exist_ok=True)
+    if bench.parameters:
+        chosen = bench.check_params(params or {})
+        (ws / "code").mkdir(parents=True, exist_ok=True)
+        (ws / "params.json").write_text(json.dumps(chosen, indent=1))
     for p in bench.files():
         (ws / "code" / p.name).write_bytes(p.read_bytes())
     out = subprocess.run([sys.executable, "code/generate.py", "--workspace", ".",
@@ -111,13 +184,14 @@ def seed_workspace(bench: DomainBenchmark, ws: Path, *, seed: int) -> Dict[str, 
 def run_domain_task(bench: DomainBenchmark, *, client, workspace: Path,
                     seed: int = 42, capability_profile: str = "A1",
                     interaction_mode: str = "I2",
+                    params: Optional[Dict[str, float]] = None,
                     agent_id: Optional[str] = None) -> Dict[str, Any]:
     """Seed, stage (minus the key), execute, then score from outside.
 
     Deliberately the same sequence as `run_imaging_task`. A second shape here
     would mean two things to audit."""
     workspace = Path(workspace)
-    meta = seed_workspace(bench, workspace, seed=seed)
+    meta = seed_workspace(bench, workspace, seed=seed, params=params)
 
     run = client.open_run(bench.goal, capability_profile,
                           {"actions": 4}, interaction_profile=interaction_mode,
@@ -155,6 +229,7 @@ def run_domain_task(bench: DomainBenchmark, *, client, workspace: Path,
     return {"status": "delivered" if verdict.passed else "rejected",
             "agent": bench.agent, "seed": seed, "benchmark": meta,
             "real": bench.real, "provenance": bench.provenance(),
+            "params": bench.check_params(params or {}) if bench.parameters else {},
             "withheld": withheld, "metrics": metrics, "verdict": verdict,
             "run_workspace": str(run_ws), "criteria": list(bench.criteria)}
 

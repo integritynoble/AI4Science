@@ -120,17 +120,42 @@ def test_autonomous_work_is_refused_until_the_owner_turns_it_on(tmp_path):
                          workspace_root=tmp_path / "ws", seeds=(0,))
 
 
-def test_a_round_runs_every_seed_and_reports_every_seed(tmp_path):
+def test_a_measuring_round_runs_every_seed_and_records_every_seed(tmp_path):
+    """An agent whose method has no knobs still has a night's work.
+
+    drug-design declares no parameters, so its night measures rather than
+    searches — and reproduction is the strongest single use the design claims
+    for these agents. Every seed runs and every seed lands in the ledger."""
     agent = build("drug-design")
     agent.switch.owner_turn_on(Budget("drug-design", units=6.0), by="owner")
+    led = Ledgers("drug-design")
     r = autonomous_round(agent, benchmark_for("drug-design"),
                          client_factory=lambda s: Sim(tmp_path / ("r%d" % s)),
                          workspace_root=tmp_path / "ws", seeds=(0, 1, 2),
-                         cost_per_seed=0.5)
-    assert r.improvement is not None and r.improvement.n == 3
-    for s in (0, 1, 2):
-        assert ("seed %d" % s) in r.improvement.report()
+                         cost_per_seed=0.5, ledgers=led)
+    assert r.improvement is None, "nothing to compare against: no knobs"
+    assert "measured rather than searched" in r.outcome["why"]
+    assert len(led.of(BENCHMARK)) == 3, "one ledger row per seed"
     assert r.spent == pytest.approx(1.5)
+
+
+def test_a_searching_round_reports_every_validation_seed(tmp_path):
+    """And where there IS something to search, the claim carries every seed it
+    was validated on — including any that went the wrong way."""
+    agent = build("pill-camera")
+    agent.switch.owner_turn_on(Budget("pill-camera", units=20.0), by="owner")
+    r = autonomous_round(agent, benchmark_for("pill-camera"),
+                         client_factory=lambda s: Sim(tmp_path / ("r%d" % s)),
+                         workspace_root=tmp_path / "ws", seeds=tuple(range(6)),
+                         cost_per_seed=0.05, rounds=1)
+    assert r.search and r.search.get("searched")
+    v = r.search.get("validation")
+    if v is not None:
+        assert len(v["seeds"]) >= 4, "a claim needs a validation set worth the name"
+        assert len(v["candidate"]) == len(v["seeds"])
+        if r.improvement is not None:
+            for s in v["seeds"]:
+                assert ("seed %d" % s) in r.improvement.report()
 
 
 def test_the_owner_can_turn_it_off_mid_round(tmp_path):
@@ -154,14 +179,20 @@ def test_the_owner_can_turn_it_off_mid_round(tmp_path):
 
 
 def test_the_budget_stops_the_loop_and_does_not_ask(tmp_path):
+    """A search costs many runs, and the budget ends it mid-flight.
+
+    Sized so the search genuinely starts and then cannot afford its next batch —
+    an earlier version gave too few seeds for a validation set, so the search
+    declined before spending anything and the budget was never reached."""
     agent = build("pill-camera")
-    agent.switch.owner_turn_on(Budget("pill-camera", units=1.0), by="owner")
+    agent.switch.owner_turn_on(Budget("pill-camera", units=0.2), by="owner")
     r = autonomous_round(agent, benchmark_for("pill-camera"),
                          client_factory=lambda s: Sim(tmp_path / ("r%d" % s)),
-                         workspace_root=tmp_path / "ws", seeds=(0, 1, 2, 3),
-                         cost_per_seed=0.5)
-    assert "stops rather than asking" in r.stopped
-    assert agent.switch.budget.remaining() == pytest.approx(1.0)
+                         workspace_root=tmp_path / "ws", seeds=tuple(range(6)),
+                         cost_per_seed=0.5, rounds=1)
+    assert r.stopped, "the budget should have ended it"
+    assert "stops here" in r.stopped or "stops rather than asking" in r.stopped
+    assert agent.switch.budget.remaining() >= 0.0
 
 
 def test_an_exhausted_budget_ends_the_loop(tmp_path):

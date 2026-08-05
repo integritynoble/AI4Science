@@ -23,7 +23,7 @@ from typing import Dict, Tuple
 
 import numpy as np
 
-from .common import DomainBenchmark, Verdict
+from .common import DomainBenchmark, Parameter, Verdict
 
 
 # ------------------------------------------------------------------ helpers
@@ -150,6 +150,17 @@ LDCT = DomainBenchmark(
     answer_key=("data/full_dose.npy", "data/lesion_mask.npy",
                 "data/lesion_amplitude.npy"),
     score=_score_ldct, judge=_judge_ldct, corpus="ldct",
+    objective="lesion_cnr", objective_higher_is_better=True,
+    # PSNR is the guardrail, not the target. Optimising PSNR is precisely how
+    # the lesion gets smoothed away, and this benchmark exists to catch that.
+    guardrails=("psnr", "lesion_contrast_retained"),
+    parameters=(
+        Parameter("sigma_s", 1.0, 6.0, 3.0, means="spatial extent of the filter"),
+        Parameter("sigma_r_scale", 0.3, 2.0, 0.9,
+                  means="range width as a multiple of the measured noise"),
+        Parameter("iters", 1, 6, 3, integer=True, means="filter passes"),
+        Parameter("radius", 2, 5, 3, integer=True, means="neighbourhood radius"),
+    ),
     criteria=("PSNR above the untouched low-dose scan, against the paired full-dose scan",
               "lesion CNR ≥ 3 — the Rose criterion, reported beside fidelity, always",
               "at least half the inserted contrast survives restoration",
@@ -310,6 +321,12 @@ CAPSULE = DomainBenchmark(
     deliverables=("results/scores.npy", "results/baseline_scores.npy"),
     answer_key=("data/labels.npy",),
     score=_score_capsule, judge=_judge_capsule, corpus="kvasir-capsule",
+    objective="auc", objective_higher_is_better=True,
+    guardrails=("baseline_auc",),
+    parameters=(
+        Parameter("percentile", 50.0, 99.5, 95.0,
+                  means="quantile of the per-pixel prior map that summarises a frame"),
+    ),
     criteria=("the split is patient-disjoint, checked programmatically",
               "at least three patients on the test side",
               "the prior beats the naive baseline on held-out patients",

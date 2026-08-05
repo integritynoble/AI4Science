@@ -11,7 +11,7 @@ point of the exercise, so both are emitted.
 
 Reads frames and video ids. Labels are not in this workspace.
 """
-import argparse, os
+import argparse, json, os
 import numpy as np
 
 
@@ -29,7 +29,12 @@ def main():
     # out exactly the signal the prior exists to find.
     pix = (np.log(np.clip(T[..., 0], eps, None))
            - np.log(np.clip(T[..., 1], eps, None)))
-    p_blood = np.percentile(pix.reshape(len(pix), -1), 95, axis=1)
+    # 95 was chosen by hand and never questioned. It is a knob now, so the
+    # search can ask whether a lesion is better summarised by a higher or lower
+    # quantile of the prior map.
+    f = os.path.join(ws, "params.json")
+    q = json.load(open(f))["percentile"] if os.path.exists(f) else 95.0
+    p_blood = np.percentile(pix.reshape(len(pix), -1), q, axis=1)
     baseline = -X[:, 1]
     os.makedirs(os.path.join(ws, "results"), exist_ok=True)
     np.save(os.path.join(ws, "results", "scores.npy"), p_blood)

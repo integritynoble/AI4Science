@@ -184,6 +184,8 @@ class Round:
     spent: float
     improvement: Optional[Improvement] = None
     outcome: Dict[str, Any] = field(default_factory=dict)
+    #: The raw search result: every candidate tried, and the validation numbers.
+    search: Dict[str, Any] = field(default_factory=dict)
     stopped: str = ""
 
     def report(self) -> str:
@@ -197,63 +199,161 @@ class Round:
         return "\n".join(L)
 
 
+def _measure_only(agent, bench: DomainBenchmark, *, client_factory,
+                  workspace_root: Path, seeds, cost_per_seed: float,
+                  ledgers, claim, budget) -> "Round":
+    """Run the benchmark across the seed set and record it. No search.
+
+    Every seed is run and every seed is recorded — the loop stops if the owner
+    turns the switch off part-way or the budget will not cover the next one, and
+    neither asks for more."""
+    spent = 0.0
+    metrics = []
+    for s in seeds:
+        if not agent.switch.on:
+            return Round(agent.name, claim.statement if claim else None,
+                         bench.objective or "measurement", spent,
+                         stopped="the owner turned it off mid-round")
+        if not budget.would_fit(cost_per_seed):
+            return Round(agent.name, claim.statement if claim else None,
+                         bench.objective or "measurement", spent,
+                         stopped="the budget would not cover the next seed "
+                                 "(%.3g needed, %.3g left) — it stops rather "
+                                 "than asking" % (cost_per_seed, budget.remaining()))
+        budget.spend(cost_per_seed, what="seed %d of %s" % (s, bench.agent))
+        spent += cost_per_seed
+        out = run_domain_task(bench, client=client_factory(s),
+                              workspace=Path(workspace_root) / ("m%d" % s), seed=s)
+        metrics.append(out.get("metrics") or {})
+        if ledgers is not None:
+            ledgers.record(BENCHMARK, {"seed": s, "params": {},
+                                       "passed": out.get("status") == "delivered",
+                                       "metrics": out.get("metrics")})
+    r = Round(agent.name, claim.statement if claim else None,
+              bench.objective or "measurement", spent)
+    r.outcome = no_change(
+        agent.name,
+        because="%s declares no tunable parameters, so this night measured "
+                "rather than searched: %d seeds run and recorded"
+                % (bench.agent, len(metrics)))
+    if ledgers is not None:
+        ledgers.record(SELF_DIRECTED,
+                       {"claim": r.claim, "metric": r.metric, "spent": spent,
+                        "params": {}, "passed": False})
+    return r
+
+
 def autonomous_round(agent, bench: DomainBenchmark, *, client_factory,
                      workspace_root: Path, seeds: Sequence[int] = (0, 1, 2, 3, 4),
                      metric: str = "", cost_per_seed: float = 0.5,
                      ledgers: Optional[Ledgers] = None,
-                     candidate: str = "current-method") -> Round:
-    """Function 2, one round. Refuses unless the owner turned it on.
+                     candidate: str = "search",
+                     validation_seeds: Optional[Sequence[int]] = None,
+                     rounds: int = 2) -> Round:
+    """One round: propose variants, score them paired against the incumbent,
+    and validate the winner on seeds it was never selected on.
 
-    Every seed in the set is run and every seed is reported. Keeping the run
-    that looked good is the easiest mistake for an unattended agent to make and
-    the commonest way a real-looking result turns out to be nothing."""
+    The first version of this scored the incumbent against itself and reported a
+    delta of zero every time — it ran a night correctly and could not have found
+    anything. `search.run_search` is the missing half."""
+    from .search import run_search
+
     budget = agent.switch.require_on()          # raises PermissionError when off
     claim = agent.field_map.next_work()
-    metric = metric or next(iter(bench.criteria), "the field's metric")
+    seeds = tuple(seeds)
+    if validation_seeds is None:
+        # Validation gets the LARGER share. The search only has to rank
+        # candidates; the validation set has to carry a claim, and the first
+        # searching night validated on two seeds and produced a spread wider
+        # than the effect it was measuring.
+        cut = max(1, len(seeds) // 3)
+        search_seeds, validation_seeds = seeds[:cut], seeds[cut:]
+    else:
+        validation_seeds = tuple(validation_seeds)
+        search_seeds = tuple(s for s in seeds if s not in validation_seeds) or seeds
+    spent = {"n": 0.0}
 
-    cost = cost_per_seed * len(seeds)
-    if not budget.would_fit(cost):
-        return Round(agent.name, claim.statement if claim else None, metric, 0.0,
-                     stopped="the budget would not cover %d seeds (%.3g needed, "
-                             "%.3g left) — it stops rather than asking"
-                             % (len(seeds), cost, budget.remaining()))
+    def spend(n_runs: int) -> None:
+        cost = cost_per_seed * n_runs
+        budget.spend(cost, what="%d runs of %s" % (n_runs, bench.agent))
+        spent["n"] += cost
 
-    results, spent = [], 0.0
-    for s in seeds:
-        if not agent.switch.on:                 # the owner may pull it mid-round
-            return Round(agent.name, claim.statement if claim else None, metric,
-                         spent, stopped="the owner turned it off mid-round")
-        budget.spend(cost_per_seed, what="seed %d of %s" % (s, candidate))
-        spent += cost_per_seed
-        out = run_domain_task(bench, client=client_factory(s),
-                              workspace=Path(workspace_root) / ("s%d" % s), seed=s)
-        results.append(out)
+    def score(params, seed):
+        out = run_domain_task(bench, client=client_factory(seed),
+                              workspace=Path(workspace_root) / ("p%d" % abs(hash(
+                                  tuple(sorted(params.items())) + (seed,)))),
+                              seed=seed, params=params)
         if ledgers is not None:
-            ledgers.record(BENCHMARK, {"seed": s, "candidate": candidate,
+            ledgers.record(BENCHMARK, {"seed": seed, "params": params,
                                        "passed": out.get("status") == "delivered",
                                        "metrics": out.get("metrics")})
+        return out.get("metrics") or {}
 
-    key = _headline_metric(bench, results)
-    if key is None:
-        r = Round(agent.name, claim.statement if claim else None, metric, spent,
-                  outcome=no_change(agent.name,
-                                    because="no run produced a comparable number"))
+    # Continue from the best point this night has found, not from the defaults.
+    #
+    # Round 2 of the first corrected night repeated round 1 exactly — same
+    # candidates, same winner, same numbers — because the search always
+    # restarted from the defaults and never consulted the claim. It then
+    # penalised itself: as the night's second validation test the corrected p
+    # went from 0.044 to 0.089, so looking twice at the same result destroyed
+    # it. Continuing from the winner makes the second round explore somewhere
+    # new; adoption still needs the owner, so this is search, not adoption.
+    # A benchmark with no declared knobs cannot be searched — but a night with
+    # nothing to search is still a night of measurement, and the first version
+    # of this regressed that to nothing at all: no runs, no spend, no ledger
+    # entries, not even a stop. Reproducing and recording IS the work for an
+    # agent whose method is fixed, and it is the strongest single use the
+    # design claims for these agents.
+    if not bench.parameters or not bench.objective:
+        return _measure_only(agent, bench, client_factory=client_factory,
+                             workspace_root=workspace_root, seeds=seeds,
+                             cost_per_seed=cost_per_seed, ledgers=ledgers,
+                             claim=claim, budget=budget)
+
+    incumbent = dict(getattr(agent, "_incumbent", None) or bench.defaults())
+    try:
+        res = run_search(bench, score=score, incumbent=incumbent,
+                         search_seeds=search_seeds,
+                         validation_seeds=validation_seeds,
+                         rounds=rounds, spend=spend,
+                         prior_validations=getattr(agent, "_validations", 0))
+    except BudgetExhausted as e:
+        return Round(agent.name, claim.statement if claim else None,
+                     bench.objective, spent["n"], stopped=str(e))
+
+    r = Round(agent.name, claim.statement if claim else None,
+              bench.objective or "unnamed", spent["n"])
+    if not res.get("searched"):
+        r.outcome = no_change(agent.name, because=res.get("why", ""))
+    elif not res.get("improved"):
+        r.outcome = no_change(agent.name,
+                              because=res.get("why")
+                              or "the winner did not hold on the validation seeds")
+        r.search = res
     else:
-        base = [r["metrics"][key] for r in results if r.get("metrics")]
-        imp = Improvement(
-            agent=agent.name, candidate=candidate, metric=key,
-            baseline_reproduced=True, held_out=True, comparisons=1,
-            mechanism="", verifier_passed=all(r.get("status") == "delivered"
-                                              for r in results),
-            seeds=[SeedResult(s, b, b) for s, b in zip(seeds, base)])
-        r = Round(agent.name, claim.statement if claim else None, key, spent,
-                  improvement=imp)
-        if not imp.survives():
+        v = res["validation"]
+        r.search = res
+        # `comparisons` is the number of times this night has reached for the
+        # validation set, not the number of candidates ranked on the search
+        # seeds. Selection happened on different data; correcting the held-out
+        # test for the size of the search would be double-counting.
+        agent._validations = v["validation_tests_this_night"]
+        agent._incumbent = dict(res["params"])
+        r.improvement = Improvement(
+            agent=agent.name, candidate=res["origin"], metric=res["objective"],
+            baseline_reproduced=True, held_out=True,
+            comparisons=v["validation_tests_this_night"],
+            corrected_p=v.get("corrected_p"),
+            mechanism="", verifier_passed=True,
+            seeds=[SeedResult(s, i, c) for s, i, c
+                   in zip(v["seeds"], v["incumbent"], v["candidate"])])
+        if not r.improvement.survives():
             r.outcome = no_change(agent.name,
-                                  because="; ".join(imp.failures())[:200])
+                                  because="; ".join(r.improvement.failures())[:200])
     if ledgers is not None:
         ledgers.record(SELF_DIRECTED,
-                       {"claim": r.claim, "metric": r.metric, "spent": spent,
+                       {"claim": r.claim, "metric": r.metric, "spent": spent["n"],
+                        "params": res.get("params"),
                         "passed": bool(r.improvement and r.improvement.survives())})
     return r
 
@@ -295,6 +395,15 @@ def autonomous_loop(agent, bench: DomainBenchmark, *, client_factory,
             break
         out.append(r)
         if r.stopped:
+            break
+        if r.search and r.search.get("searched") and not r.search.get("params"):
+            # The search is exhausted at this incumbent. Running it again would
+            # re-derive the same answer and spend another validation test doing
+            # it, which makes the result worse rather than better.
+            out.append(Round(agent.name, None, bench.objective or "", 0.0,
+                             stopped="the search found nothing new at this "
+                                     "incumbent; another round would re-test "
+                                     "the same candidates and cost a correction"))
             break
         # A claim that has been checked is not checked again: the map is how the
         # second night differs from the first.

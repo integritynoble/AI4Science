@@ -8,8 +8,17 @@ the judge, which measures both.
 Reads the low-dose image only. The full-dose reference is not in this workspace
 and there is no way to ask for it.
 """
-import argparse, os
+import argparse, json, os
 import numpy as np
+
+
+def load_params(ws, **defaults):
+    """Knobs the search may turn. Absent file means run the defaults, so an
+    unparameterised call still works."""
+    f = os.path.join(ws, "params.json")
+    if os.path.exists(f):
+        defaults.update(json.load(open(f)))
+    return defaults
 from scipy.ndimage import uniform_filter
 
 
@@ -23,7 +32,8 @@ def estimate_noise(img):
     return float(hi[soft].std()) if soft.any() else float(hi.std())
 
 
-def bilateral(img, sigma_s=3.0, sigma_r=None, iters=3, radius=3):
+def bilateral(img, sigma_s=3.0, sigma_r=None, iters=3, radius=3,
+              guide_scale=0.9):
     """Guided bilateral: range weights computed on a pre-smoothed guide.
 
     A plain bilateral filter cannot work here and it is worth saying why. Its
@@ -47,7 +57,7 @@ def bilateral(img, sigma_s=3.0, sigma_r=None, iters=3, radius=3):
         if sigma_r is None:
             hi = out - guide
             soft = (out > -100) & (out < 200)
-            sr = 0.9 * (float(hi[soft].std()) if soft.any() else float(hi.std()))
+            sr = guide_scale * (float(hi[soft].std()) if soft.any() else float(hi.std()))
         else:
             sr = sigma_r
         num = np.zeros_like(out)
@@ -69,7 +79,9 @@ def main():
     ap = argparse.ArgumentParser(); ap.add_argument("--workspace", default=".")
     ws = ap.parse_args().workspace
     low = np.load(os.path.join(ws, "data", "low_dose.npy"))
-    rec = bilateral(low)
+    pr = load_params(ws, sigma_s=3.0, sigma_r_scale=0.9, iters=3.0, radius=3.0)
+    rec = bilateral(low, sigma_s=pr["sigma_s"], guide_scale=pr["sigma_r_scale"],
+                    iters=int(round(pr["iters"])), radius=int(round(pr["radius"])))
     os.makedirs(os.path.join(ws, "results"), exist_ok=True)
     np.save(os.path.join(ws, "results", "reconstruction.npy"), rec)
     print("restored", rec.shape)
