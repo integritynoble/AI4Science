@@ -43,7 +43,7 @@ Each of these is live, tested, and exercised on the installed binary.
 
 | Function | What it does |
 |---|---|
-| `run` | Hand the plan to `sarsi-claude` — starts its governed session. |
+| `run` | Hand the plan to `sarsi-claude` — starts its governed session. The brief is typed as **one keystroke stream**: `tmux send-keys -l` sends the literal text *including its newlines*, and a newline in a TUI input is a submit — so a multi-line brief was submitted in FRAGMENTS (`Goal: …` alone as a prompt, the rest arriving while the session answered it) and the loop then reported `undelivered` about a session it had fragmented itself. |
 | `release` | Raise the ceiling from the planning `A0` to what the agent has earned. |
 | `operate` | One supervision pass: answer the gates it has a rule for, submit a stranded prompt, report the rest. While **planning** it also answers the governance hook's own gate for a **provably read-only** command — A0 is *"reads allowed, everything else asks"*, but the hook gates every bash, so six passes in a row abstained at a `find … | head` the ceiling already permitted and planning needed a human at each gate. Judged by the same conservative classifier the harness gates on: an unknown binary, a redirect or a command substitution still goes to the owner. |
 | `supervise` | Drive a task to a verified result. |

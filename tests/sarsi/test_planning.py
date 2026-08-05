@@ -419,3 +419,115 @@ def test_the_planning_brief_says_how_to_look_around_at_a0(config, agent):
     assert "A0" in brief
     assert "shell" in brief.lower() or "command" in brief.lower()
     assert "read" in brief.lower()
+
+
+# ── a brief that landed, on a pane that wrapped it ────────────────────
+
+def _wrap(text, width=80):
+    """What `tmux capture-pane` returns: the pane's VISUAL lines. It breaks at
+    the column, mid-word, without inserting anything."""
+    out = []
+    for line in text.splitlines():
+        while len(line) > width:
+            out.append(line[:width])
+            line = line[width:]
+        out.append(line)
+    return "\n".join(out)
+
+
+def test_a_brief_the_pane_wrapped_is_seen_as_landed(config, agent):
+    """The live `undelivered` on `work`. Delivery is confirmed by finding a
+    40-character fragment of the brief on screen, tested as a plain substring —
+    and a pane wraps at its width, mid-word. This session's own captures show
+    it: `/home/grace/live-jobs/positioni` / `ng.md`. So a marker that straddles
+    the wrap is never found, the loop retypes to its limit, and a session that
+    HAS its brief is reported as not taking it."""
+    rt = FakeRuntime()
+    t = ses.assign(config, agent, _task(config, agent), runtime=rt)
+    t = ses.deliver_kickoff(config, agent, t, runtime=rt)
+    brief = rt.sent[0]
+    assert t.kickoff_pending, "it is pending until seen on screen"
+
+    after = ses.deliver_kickoff(config, agent, t, runtime=rt,
+                                screen=_wrap(brief))
+    assert after.kickoff_pending is None
+    assert after.kickoff_undelivered is False
+
+
+def test_a_narrow_pane_too(config, agent):
+    """Nothing about the fix may depend on the terminal being 80 wide."""
+    rt = FakeRuntime()
+    t = ses.assign(config, agent, _task(config, agent), runtime=rt)
+    t = ses.deliver_kickoff(config, agent, t, runtime=rt)
+    after = ses.deliver_kickoff(config, agent, t, runtime=rt,
+                                screen=_wrap(rt.sent[0], width=24))
+    assert after.kickoff_pending is None
+
+
+def test_a_screen_without_the_brief_is_still_not_landed(config, agent):
+    """The confirmation must still confirm something. Ignoring whitespace must
+    not turn "anything on screen" into proof."""
+    rt = FakeRuntime()
+    t = ses.assign(config, agent, _task(config, agent), runtime=rt)
+    t = ses.deliver_kickoff(config, agent, t, runtime=rt)
+    after = ses.deliver_kickoff(config, agent, t, runtime=rt,
+                                screen="⏵ Welcome to Claude Code\n❯\n")
+    assert after.kickoff_pending is not None
+
+
+def test_it_is_retyped_while_it_has_not_landed(config, agent):
+    rt = FakeRuntime()
+    t = ses.assign(config, agent, _task(config, agent), runtime=rt)
+    t = ses.deliver_kickoff(config, agent, t, runtime=rt)
+    before = len(rt.sent)
+    ses.deliver_kickoff(config, agent, t, runtime=rt, screen="nothing here")
+    assert len(rt.sent) == before + 1
+
+
+def test_and_after_the_limit_the_owner_is_told(config, agent):
+    """Unchanged: the loop does not type forever at a session that will not
+    take it."""
+    rt = FakeRuntime()
+    t = ses.assign(config, agent, _task(config, agent), runtime=rt)
+    t = ses.deliver_kickoff(config, agent, t, runtime=rt)
+    for _ in range(ses.MAX_KICKOFF_TRIES + 2):
+        t = ses.deliver_kickoff(config, agent, t, runtime=rt, screen="nothing")
+    assert t.kickoff_undelivered is True
+
+
+# ── a brief is one keystroke stream, not several ──────────────────────
+
+def test_a_multi_line_brief_is_typed_as_one_line(config, agent):
+    """`tmux send-keys -l` sends the literal text INCLUDING its newlines, and a
+    newline in a TUI input box is a submit. So a multi-line brief is not typed,
+    it is submitted in FRAGMENTS: "Goal: …" goes alone as a prompt, and the
+    rest arrive while the session is busy answering it. The session never sees
+    the brief, the marker scrolls out of the visible pane, and the loop reports
+    `undelivered` about a session it fragmented itself.
+
+    Observed twice over: as `undelivered` on `work`, and in my own hands — every
+    brief I delivered by hand this session I wrote as `.replace(chr(10), " ")`,
+    which is this fix, applied manually and never fed back.
+    """
+    sent = []
+    rt = ses.MachineRuntime()
+    rt.send("s", "Goal: do it\nYour plan is plan0.md in this folder.\nReport it.",
+            _send=lambda name, text: sent.append(text) or {"ok": True})
+    assert sent and "\n" not in sent[0]
+
+
+def test_and_the_words_all_survive(config, agent):
+    """Collapsing must not drop what the session is being told."""
+    sent = []
+    rt = ses.MachineRuntime()
+    rt.send("s", "Goal: do it\nVerified when: the file exists.",
+            _send=lambda name, text: sent.append(text) or {"ok": True})
+    assert "Goal: do it" in sent[0] and "Verified when: the file exists." in sent[0]
+
+
+def test_a_single_line_is_untouched(config, agent):
+    sent = []
+    rt = ses.MachineRuntime()
+    rt.send("s", "fix what the verifier named",
+            _send=lambda name, text: sent.append(text) or {"ok": True})
+    assert sent[0] == "fix what the verifier named"

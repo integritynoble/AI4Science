@@ -90,9 +90,26 @@ class MachineRuntime:
             name, cwd, govern=govern, ceiling=ceiling,
             claude_bin=f"ai4science chat --mode {spec}{extra}")
 
-    def send(self, name: str, text: str) -> Dict[str, Any]:
+    def send(self, name: str, text: str, *, _send=None) -> Dict[str, Any]:
+        """Type one instruction into a session — as ONE keystroke stream.
+
+        `tmux send-keys -l` sends the literal text *including its newlines*,
+        and a newline in a TUI input box is a submit. So a multi-line brief was
+        never typed, it was submitted in FRAGMENTS: `Goal: …` went alone as a
+        prompt, and the rest arrived while the session was busy answering it.
+        The session never received the brief, its first line scrolled out of
+        the visible pane, the delivery check never saw its marker — and the
+        loop reported `undelivered` about a session it had fragmented itself.
+
+        Seen twice: as that report on `work`, and in my own hands — every brief
+        delivered by hand this session was written `.replace("\\n", " ")`,
+        which is this rule, applied manually and never fed back into the code.
+        """
         from ai4science.harness.agents.machine import sessions
-        return sessions.send_to_session(name, text)
+        # Newlines to spaces, not stripped: the words all still arrive, in one
+        # submission, which is what "tell the session this" has always meant.
+        one_line = " ".join((text or "").split("\n"))
+        return (_send or sessions.send_to_session)(name, one_line)
 
     def stop(self, name: str) -> Dict[str, Any]:
         from ai4science.harness.agents.machine import sessions
