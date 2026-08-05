@@ -151,6 +151,11 @@ class Gateway:
             # than leaving the message unanswered.
             reply = f"{agent.id} could not answer: {type(e).__name__}"
         if reply:
+            # Logged before the send, and logged whatever the handler returned:
+            # the record is what the agent answered, not what the transport
+            # managed to deliver. A reply that failed to send is still the
+            # thing the owner is owed, and scroll-back should show it.
+            ownerlog.reply(self.config, agent, reply, surface=TELEGRAM, now=self.now)
             try:
                 self.transport.send_message(token, chat_id, reply)
             except Exception:

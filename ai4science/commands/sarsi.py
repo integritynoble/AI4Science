@@ -96,6 +96,10 @@ def ask(agent_id: str = typer.Argument(..., help="Agent id, e.g. work"),
     ownerlog.append(config, agent, text, surface=router.CLI_CHANNEL)
     reply = gateway.handle(config, agent=agent, text=text,
                            surface=router.CLI_CHANNEL)
+    if reply:
+        # Both doors record both roles, or the transcript depends on which door
+        # the owner happened to use.
+        ownerlog.reply(config, agent, reply, surface=router.CLI_CHANNEL)
     # markup off: an agent's reply is data. `[abraham]` is a name, not a style.
     console.print(reply or "(no reply)", markup=False, highlight=False)
 
