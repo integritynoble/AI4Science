@@ -68,7 +68,15 @@ def main():
 
     A = np.stack([b for ang in ANGLES for b in beamlets(prim.shape, ang, cy, cx)])
     K = len(A)
-    At = {n: A[:, m] for n, m in tgt.items()}
+    # Both filtered. `Ao` was guarded and `At` was not, and the asymmetry cost a
+    # patient: a target with no voxels on the planned slice gives a zero-column
+    # submatrix, `resid.mean()` over an empty array is NaN, and the objective
+    # returns NaN. Every `tcost < cost` is then False — NaN loses every
+    # comparison — so every trial step was rejected, the optimiser never moved
+    # off its flat starting fluence, and the plan delivered 70 Gy through the
+    # whole body. It read as an impossible constraint set. It was a missing
+    # `if m.any()`.
+    At = {n: A[:, m] for n, m in tgt.items() if m.any()}
     Ao = {n: A[:, m] for n, m in oars.items() if m.any()}
     Ab = A[:, body]
     rx = proto["PTV70"]["prescription"]
@@ -88,7 +96,7 @@ def main():
     # Deviation from prescription is penalised in both directions now, which is
     # what a clinical objective does and why uniformity is stated as D99 >= 95%
     # AND D1 <= 107% rather than a floor alone.
-    def grad_and_cost(w):
+    def grad_and_cost(w, wt):
         g = np.zeros(K)
         cost = 0.0
         for n, Am in At.items():
@@ -97,37 +105,162 @@ def main():
             # worse than a modest hot spot inside it. Symmetric weighting left
             # D99 at 62.2 against a 66.5 floor — uniform, and uniformly too
             # cold, because the cold tail counts no more than the warm one.
-            wgt = np.where(resid < 0, pr["under_weight"], 1.0)
+            wgt = np.where(resid < 0, wt["under"], 1.0)
             g += 2.0 * (Am @ (wgt * resid)) / max(Am.shape[1], 1)
             cost += float((wgt * resid ** 2).mean())
         for n, Am in Ao.items():
             lim = proto[n].get("Dmax") or proto[n].get("Dmean")
             over = np.clip((w @ Am) - lim * 0.85, 0, None)
-            g += pr["oar_weight"] * 2.0 * (Am @ over) / max(Am.shape[1], 1)
-            cost += pr["oar_weight"] * float((over ** 2).mean())
+            g += wt["oar"] * 2.0 * (Am @ over) / max(Am.shape[1], 1)
+            cost += wt["oar"] * float((over ** 2).mean())
         hot = np.clip((w @ Ab) - rx * 1.07, 0, None)
-        g += pr["hot_weight"] * 2.0 * (Ab @ hot) / max(Ab.shape[1], 1)
-        cost += pr["hot_weight"] * float((hot ** 2).mean())
+        g += wt["hot"] * 2.0 * (Ab @ hot) / max(Ab.shape[1], 1)
+        cost += wt["hot"] * float((hot ** 2).mean())
         return g, cost
 
-    w = np.full(K, rx / max(float(A[:, prim].sum(axis=0).mean()), 1e-9))
-    step = float(pr["step"])
-    _, cost = grad_and_cost(w)
-    for _ in range(int(round(float(pr["iters"])))):
-        g, _ = grad_and_cost(w)
-        gn = float(np.linalg.norm(g))
-        if not np.isfinite(gn) or gn < 1e-12:
-            break
-        trial = np.clip(w - step * g / gn * max(float(w.mean()), 1e-9), 0.0, None)
-        _, tcost = grad_and_cost(trial)
-        if tcost < cost:                    # accept and grow
-            w, cost, step = trial, tcost, min(step * 1.1, 2.0)
-        else:                               # overshot: shrink
-            step *= 0.5
-            if step < 1e-6:
-                break
+    def optimise(weights):
+        """One fluence optimisation at a fixed set of trade-off weights.
 
-    dose = np.tensordot(w, A, axes=(0, 0)) * body
+        Backtracking line search. The previous loop halved a single `step` on
+        every rejection and broke out when it fell below 1e-6, and the step was
+        never restored — so about twenty consecutive rejections ended the run
+        for good. On one patient every early trial was rejected because the
+        initial step was wrong for that geometry's scale, the loop exited on the
+        FLAT STARTING FLUENCE, and the plan it returned put 70 Gy through the
+        whole body: dose standard deviation 0.199 Gy where a working plan gives
+        8.5. Every organ then violated its limit, which read as an impossible
+        constraint set rather than an optimiser that never took a step.
+
+        `-g` is a descent direction, so a small enough step MUST reduce the cost
+        unless the point is already a minimum. Shrinking within the iteration
+        and letting the step grow again afterwards makes that guarantee usable;
+        breaking out on a small step throws it away."""
+        w = np.full(K, rx / max(float(A[:, prim].sum(axis=0).mean()), 1e-9))
+        step = float(pr["step"])
+        _, cost = grad_and_cost(w, weights)
+        # A non-finite objective disables the search silently, because NaN loses
+        # every comparison and so every candidate step is rejected. Refusing is
+        # better than returning the starting fluence dressed as a plan.
+        if not np.isfinite(cost):
+            raise SystemExit("objective is not finite at the starting fluence — "
+                             "a structure with no voxels on this slice, or a "
+                             "protocol entry with no dose limit")
+        scale = max(float(w.mean()), 1e-9)
+        for _ in range(int(round(float(pr["iters"])))):
+            g, _ = grad_and_cost(w, weights)
+            gn = float(np.linalg.norm(g))
+            if not np.isfinite(gn) or gn < 1e-12:
+                break
+            d = -(g / gn) * scale
+            s = step
+            for _ in range(40):                 # backtrack until it descends
+                trial = np.clip(w + s * d, 0.0, None)
+                _, tcost = grad_and_cost(trial, weights)
+                if tcost < cost:
+                    break
+                s *= 0.5
+            else:
+                break                           # genuinely at a minimum
+            w, cost = trial, tcost
+            # Start the next iteration a little bolder than what just worked,
+            # rather than from a step that has been ratcheted down permanently.
+            step = min(s * 2.0, 2.0)
+            scale = max(float(w.mean()), 1e-9)
+        return w
+
+    def evaluate(w):
+        """The plan's own DVH against the PROTOCOL — the clinical constraint set
+        the planner was given. Not against the clinical dose, which is withheld
+        and which this never reads. Same statistics the scorer uses: D99 is the
+        1st percentile in the structure, Dmax the maximum in it, hot spot the
+        maximum anywhere in the body."""
+        d = np.tensordot(w, A, axes=(0, 0)) * body
+        viol = {}
+        for n, m in tgt.items():
+            # A protocol can name a structure this patient has no contour for.
+            # Skipping is right: there is nothing to constrain, and reducing
+            # over an empty mask raises.
+            if not np.any(m):
+                continue
+            rule = proto[n]
+            if "D99_min" in rule:
+                got = float(np.percentile(d[m], 1))
+                if got < rule["D99_min"]:
+                    viol["under"] = max(viol.get("under", 0.0),
+                                        (rule["D99_min"] - got) / max(rule["D99_min"], 1e-9))
+        ptv_m = tgt.get("PTV70")
+        for n, m in oars.items():
+            if not np.any(m):
+                continue
+            # Same convention as the scorer: an organ overlapping the target is
+            # judged on the part outside it. The planner has to optimise toward
+            # the constraint it will be held to.
+            if ptv_m is not None and np.any(m & ptv_m):
+                m = m & ~ptv_m
+                if not np.any(m):
+                    continue
+            rule = proto[n]
+            if "Dmax" in rule:
+                got = float(d[m].max())
+                if got > rule["Dmax"]:
+                    viol["oar"] = max(viol.get("oar", 0.0),
+                                      (got - rule["Dmax"]) / max(rule["Dmax"], 1e-9))
+            if "Dmean" in rule:
+                got = float(d[m].mean())
+                if got > rule["Dmean"]:
+                    viol["oar"] = max(viol.get("oar", 0.0),
+                                      (got - rule["Dmean"]) / max(rule["Dmean"], 1e-9))
+        hot_lim = proto["PTV70"]["prescription"] * 1.15
+        got = float(d.max())
+        if got > hot_lim:
+            viol["hot"] = (got - hot_lim) / hot_lim
+        return d, viol
+
+    # ------------------------------------------------------------------
+    # Weight tuning, per patient.
+    #
+    # One global set of trade-off weights was used for every patient, and it
+    # suited about five of eight: a cord that abuts the target needs a different
+    # balance from one that does not, and no single number is right for both.
+    # That is not a defect in the optimiser, it is what inverse planning IS —
+    # a planner tunes the weights for the patient in front of it, looks at the
+    # resulting DVH, and tunes again.
+    #
+    # So: optimise, evaluate against the protocol, raise the weight for whatever
+    # is violated, repeat. The protocol is staged input; the clinical dose is
+    # the answer key and is never read here. The plan kept is the one violating
+    # least, ties broken on target coverage — not the last one tried.
+    weights = {"under": float(pr["under_weight"]),
+               "oar": float(pr["oar_weight"]),
+               "hot": float(pr["hot_weight"])}
+    best_w = best_dose = None
+    best_score = None
+    for round_no in range(int(round(float(pr.get("tuning_rounds", 4))))):
+        w = optimise(weights)
+        d, viol = evaluate(w)
+        # Rank on total relative violation first, coverage second.
+        total = sum(viol.values())
+        cover = (float(np.percentile(d[tgt["PTV70"]], 1))
+                 if "PTV70" in tgt and np.any(tgt["PTV70"]) else 0.0)
+        score = (total, -cover)
+        if best_score is None or score < best_score:
+            best_w, best_dose, best_score = w, d, score
+        if not viol:
+            break
+        # Raise the weight for what is violated, in proportion to how badly.
+        # Bounded so one round cannot drive a weight somewhere the search space
+        # does not go — the declared parameter range is the space.
+        # `key`, not `k`: `k` is the slice index in the enclosing scope, and
+        # shadowing it left `int(k)` reading the string "hot".
+        for key, (_lo, hi) in (("under", (1.0, 60.0)), ("oar", (1.0, 20.0)),
+                               ("hot", (0.5, 12.0))):
+            if key in viol:
+                weights[key] = min(hi, weights[key] * (1.0 + 3.0 * viol[key]))
+        print("  round %d: violations %s -> weights %s"
+              % (round_no, {k: round(v, 4) for k, v in viol.items()},
+                 {k: round(v, 2) for k, v in weights.items()}))
+
+    w, dose = best_w, best_dose
     os.makedirs(os.path.join(ws, "results"), exist_ok=True)
     np.save(os.path.join(ws, "results", "dose.npy"), dose)
     np.save(os.path.join(ws, "results", "slice_index.npy"), np.array([k]))
