@@ -169,3 +169,52 @@ class _Nothing:
 
     def stop(self, *a, **kw):
         return {"ok": True}
+
+
+# ── a plan that cannot be parsed is reported, not raised ──────────────
+
+def _write_bad_plan(agent, t):
+    """What a session actually wrote: a phase with no `Verified when:` line."""
+    (tsk.dir_of(agent, t.id) / f"{t.plan_version}.md").write_text(
+        f"# {t.goal}\n\n"
+        f"## Phase 1 — do it\nVerified when: {OWNERS}\n\n"
+        f"## Phase 2 — independent check of the file's contents\n"
+        f"Re-read it and confirm.\n")
+
+
+def test_why_reports_an_unparseable_plan_instead_of_crashing(config, agent):
+    """Caught live. `why` is the command you reach for when the rest is not
+    trusted, and it died on a traceback:
+
+        BadPlan: phase "independent check of the file's contents" has no
+        `Verified when:` line
+
+    The session had written that phase. Raising there means the one command
+    that explains what is going on is the one that cannot run when something is
+    wrong — and it takes the goal, the verdict and the criteria down with it."""
+    from ai4science.harness.agents.sarsi import why as wy
+    t = _owner_sets(config, agent, _task(config, agent))
+    _write_bad_plan(agent, t)
+    said = wy.explain(config, agent, t)
+    assert "verified when" in said.lower()
+    assert "cannot be read" in said.lower() or "could not be read" in said.lower()
+
+
+def test_and_still_says_what_it_knows(config, agent):
+    """The record holds the goal, the criteria and the verdict. A broken file on
+    disk is no reason to withhold them."""
+    from ai4science.harness.agents.sarsi import why as wy
+    t = _owner_sets(config, agent, _task(config, agent))
+    t.verdict = {"state": "FAIL", "why": "nothing was written"}
+    _write_bad_plan(agent, t)
+    said = wy.explain(config, agent, t)
+    assert OWNERS in said
+    assert "nothing was written" in said
+
+
+def test_the_plan_command_survives_it_too(config, agent):
+    """`sarsi plan` renders the same file."""
+    from ai4science.harness.agents.sarsi import task as _t
+    t = _owner_sets(config, agent, _task(config, agent))
+    _write_bad_plan(agent, t)
+    assert _t.read_plan_or_none(config, agent, t) is None

@@ -31,8 +31,14 @@ def explain(config: Config, agent: Agent, task: tsk.Task, *, acts=None) -> str:
     # not adopt: the file is writable by the session being judged.
     moved = tsk.criteria_drift(agent, task)
 
-    plan = tsk.read_plan(config, agent, task)
-    if plan is None or not plan.phases:
+    plan = tsk.read_plan_or_none(config, agent, task)
+    if plan is None and task.plan_version:
+        # On disk but unreadable — say which, and go on to the criteria and
+        # the verdict, which the RECORD holds and a broken file cannot spoil.
+        lines.append(f"plan: {task.plan_version}.md is on disk but cannot be "
+                     f"read — a phase is missing its `Verified when:` line, "
+                     f"so it cannot say what a verdict would apply.")
+    elif plan is None or not plan.phases:
         lines.append("plan: no plan yet — nothing has been written to judge "
                      "this against.")
     else:

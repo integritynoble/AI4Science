@@ -422,6 +422,24 @@ def adopt_plan(config: Config, agent: Agent, task: Task, plan: pl.Plan, *,
     return _touch(agent, task, now)
 
 
+def read_plan_or_none(config: Config, agent: Agent,
+                      task: Task) -> Optional[pl.Plan]:
+    """`read_plan`, for the commands that REPORT rather than act.
+
+    `read_plan` raises `BadPlan` on a malformed file, and `collect_plan` needs
+    that — a phase with no `Verified when:` line leaves the agent that did the
+    work as the only grader, and the session has to be told. But a session did
+    write one live, and `why` — the command reached for when the rest is not
+    trusted — died on the traceback, taking the goal, the criteria and the
+    verdict down with it. A reporter says what it cannot read; it does not
+    become the thing that cannot be read.
+    """
+    try:
+        return read_plan(config, agent, task)
+    except Exception:
+        return None
+
+
 def read_plan(config: Config, agent: Agent, task: Task) -> Optional[pl.Plan]:
     if not task.plan_version:
         return None

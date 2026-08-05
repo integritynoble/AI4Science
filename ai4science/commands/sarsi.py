@@ -859,7 +859,19 @@ def plan_cmd(agent_id: str = typer.Argument(..., help="Worker id"),
     if t is None:
         console.print(f"[red]no task {task_id!r} for {agent_id}[/red]")
         raise typer.Exit(code=2)
-    plan = tsk.read_plan(config, agent, t)
+    plan = tsk.read_plan_or_none(config, agent, t)
+    if plan is None and t.plan_version:
+        # Unreadable, not absent. Show the FILE: the owner is the one who has
+        # to fix it, and a rendered summary they cannot get is worth less
+        # than the broken text they can edit.
+        path = tsk.dir_of(agent, t.id) / f"{t.plan_version}.md"
+        if path.exists():
+            console.print(f"{t.plan_version}.md cannot be parsed — a phase is "
+                          f"missing its `Verified when:` line. The file as it "
+                          f"stands:", style="yellow", markup=False,
+                          highlight=False)
+            console.print(path.read_text(), markup=False, highlight=False)
+            raise typer.Exit(code=1)
     if plan is None:
         console.print(f"{task_id} has no plan yet")
         raise typer.Exit(code=1)
