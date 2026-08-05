@@ -536,3 +536,46 @@ def test_the_fallback_line_does_not_invent_one_either(config, agent):
     said = ses.answer(config, agent, t)
     assert "no session" not in said
     assert tsk.BLOCKED in said
+
+
+# ── what THIS run did, versus what the task still says ────────────────
+
+def test_a_verdict_this_run_did_not_produce_is_labelled(config, agent):
+    """`supervise` ends by printing the task's standing verdict, and prints it
+    the same way whether this run produced it or not. Live, that read as a
+    refusal by the run that had just finished:
+
+        not judged — … plan0.md no longer matches the criteria …
+
+    while a direct `criteria_drift()` returned `[]` and `check` judged the task
+    normally. Nothing disagreed: the line was an UNVERIFIED recorded an hour
+    earlier, re-displayed as news. I spent a long time hunting a drift bug that
+    was not there, which is the cost of a report that does not say when.
+    """
+    t = _task(config, agent)
+    t.verdict = {"state": "UNVERIFIED", "why": "the plan changed under it"}
+    said = ses.answer(config, agent, t, fresh=False)
+    assert "standing" in said.lower() or "earlier" in said.lower()
+    assert "the plan changed under it" in said
+
+
+def test_a_verdict_from_this_run_is_not(config, agent):
+    t = _task(config, agent)
+    t.verdict = {"state": "UNVERIFIED", "why": "nothing visible was supplied"}
+    said = ses.answer(config, agent, t)
+    assert "standing" not in said.lower()
+
+
+def test_the_default_is_fresh_so_check_is_unchanged(config, agent):
+    """`check` judges as it prints, so its answer is always about now."""
+    import inspect
+    assert inspect.signature(ses.answer).parameters["fresh"].default is True
+
+
+def test_supervise_says_which_it_is(config, agent):
+    """The wiring: it compares the verdict before the run with the one after."""
+    import inspect
+
+    from ai4science.commands import sarsi as cli
+    src = inspect.getsource(cli.supervise_cmd)
+    assert "fresh=" in src

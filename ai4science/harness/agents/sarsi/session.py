@@ -901,16 +901,31 @@ def verify(config: Config, agent: Agent, task: tsk.Task, *,
     return task
 
 
-def answer(config: Config, agent: Agent, task: tsk.Task) -> str:
+def answer(config: Config, agent: Agent, task: tsk.Task, *,
+           fresh: bool = True) -> str:
     """What the owner is told — **at what authority the claim stands.**
 
-    In a fleet, "it worked" is an incomplete sentence.
+    In a fleet, "it worked" is an incomplete sentence. So is "it was not
+    judged", when the run being reported did not judge it: `supervise` closes
+    by printing this, and printed a verdict recorded an HOUR earlier in the
+    same words it would use for one from just now. Live, that read as the run
+    refusing on a stale plan while a direct check said the plan was settled
+    and `check` judged it normally — nothing disagreed, and I hunted a drift
+    bug that was not there.
+
+    `fresh=False` says this verdict is the task's STANDING one and predates
+    the run being reported. It changes the sentence, never the verdict.
     """
     # No `or "no session"`: filling the hole with a phrase that reads like a
     # name produced `session no session, verdict PASS` on a task whose session
     # had already been released. Where there is no session there is no session
     # clause — the sentence is about the verdict either way.
     name = (task.session or {}).get("name") or ""
+    if not fresh and (task.verdict or {}).get("state"):
+        verdict = task.verdict or {}
+        return (f"nothing in this run judged {task.id}. Its standing verdict, "
+                f"recorded earlier, is {verdict.get('state')} — "
+                f"{verdict.get('why') or 'no reason given'}")
     if task.state == tsk.VERIFIED and (task.verdict or {}).get("state") == PASS:
         independence = "" if (task.verdict or {}).get("independent") \
             else " (judged by the same engine that did the work)"

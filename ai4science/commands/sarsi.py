@@ -1225,6 +1225,9 @@ def supervise_cmd(agent_id: str = typer.Argument(..., help="Worker id"),
     agent = _worker_or_exit(config, agent_id)
     t = _task_or_exit(config, agent, task_id)
     engine = vf.chosen_engine()
+    # What the task said BEFORE this run, so the closing line can say whether
+    # the verdict it prints is this run's or one it inherited.
+    was = dict(t.verdict or {})
     actions = op.run(config, agent, t, pane=op.TmuxPane(),
                      verifier=None if no_verify else vf.default_verifier(),
                      model=None if no_steer else cp.claude_model(),
@@ -1235,7 +1238,8 @@ def supervise_cmd(agent_id: str = typer.Argument(..., help="Worker id"),
                       markup=False, highlight=False)
     final = _task_or_exit(config, agent, task_id)
     from ai4science.harness.agents.sarsi import session as ses
-    console.print("\n" + ses.answer(config, agent, final),
+    console.print("\n" + ses.answer(config, agent, final,
+                                   fresh=dict(final.verdict or {}) != was),
                   markup=False, highlight=False)
     if any(a.kind == "abstained" for a in actions):
         console.print("a gate is waiting for you: tmux attach -t "
