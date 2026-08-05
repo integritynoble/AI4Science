@@ -238,30 +238,39 @@ def tick(config: Config, agent: Agent, task: tsk.Task, *, pane: Any,
         # The session is idle and can receive its first instruction now. It was
         # not given one at assign, because a session started moments earlier is
         # still booting and the text is simply lost.
+        stalled = None
         if task.kickoff_pending:
             after = ses.deliver_kickoff(config, agent, task, runtime=_Sender(pane),
                                         screen=screen, now=now)
-            if after.kickoff_unreachable:
+            task = after
                 # Not the same report. One says the session ignored the brief;
                 # this says the keystrokes never reached a session at all, and
                 # the owner would do something different about each.
-                return Action("no-session",
-                              f"the brief could not be sent — there is no "
-                              f"session {session!r} to send it to; the record "
-                              f"points at one that is gone")
-            if after.kickoff_undelivered:
-                return Action("undelivered",
-                              "the session is not taking its brief — attach and "
-                              "look: tmux attach -t " + session)
-            if after.kickoff_pending:
-                return Action("briefing", "waiting to see the brief land")
+            # Held, not returned. A plan the session has already WRITTEN is a
+            # fact on disk, and a report about typing must not outrank it —
+            # live, the brief landed, the session wrote a real plan, and the
+            # marker that proves delivery scrolled away the moment it started
+            # working. So the evidence of delivery was destroyed by delivery
+            # succeeding, and returning here made an exhausted counter a
+            # permanent block on the one step planning exists to reach.
+            if after.kickoff_unreachable:
+                stalled = Action("no-session",
+                                 f"the brief could not be sent — there is no "
+                                 f"session {session!r} to send it to; the record "
+                                 f"points at one that is gone")
+            elif after.kickoff_undelivered:
+                stalled = Action("undelivered",
+                                 "the session is not taking its brief — attach "
+                                 "and look: tmux attach -t " + session)
+            elif after.kickoff_pending:
+                stalled = Action("briefing", "waiting to see the brief land")
         after = ses.collect_plan(config, agent, task, runtime=_Sender(pane),
                                  now=now)
         if after.state != tsk.PLANNING:
             return Action("planned",
                           f"{len(after.criteria)} criterion(s); "
                           + (", ".join(after.awaiting) or "nothing to grant"))
-        return Action("planning")
+        return stalled or Action("planning")
 
     if model is not None:
         from ai4science.harness.agents.sarsi import composer as cp

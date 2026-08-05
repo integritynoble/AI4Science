@@ -240,3 +240,43 @@ def test_and_it_says_the_session_is_gone_rather_than_unwilling(config, agent):
     t = ses.deliver_kickoff(config, agent, t, runtime=DeadRuntime(),
                             screen=_screen_ready(), now=time.time)
     assert t.kickoff_unreachable is True
+
+
+# ── an undelivered brief must not bury a plan already written ─────────
+
+def test_a_plan_is_still_collected_when_the_brief_looks_undelivered(config, agent):
+    """Live: the session read its brief, wrote a real plan with a proper
+    `Verified when:` line — and the loop reported `undelivered` three passes
+    running and never collected it. The brief is judged delivered by seeing a
+    marker on screen, and the marker scrolls away as soon as the session starts
+    working, so the evidence of delivery is destroyed BY delivery succeeding.
+
+    `undelivered` returned before `collect_plan` ran, so the exhausted counter
+    became a permanent block on the one step planning exists to reach. Whatever
+    the brief's delivery status, a plan that is on disk is a fact, and a report
+    about typing must not outrank it."""
+    from ai4science.harness.agents.sarsi import operator as op
+
+    t = _task(config, agent)
+    t = ses.assign(config, agent, t, runtime=Runtime(), installed=lambda: set())
+    t.kickoff_tries = ses.MAX_KICKOFF_TRIES
+    t.kickoff_undelivered = True
+    tsk._touch(agent, t, time.time)
+
+    # what the session actually wrote, at the path the plan is read from
+    (tsk.dir_of(agent, t.id) / ses.PLAN_FILE).write_text(
+        "# goal\n\n## Phase 1 — write the file\n"
+        "Verified when: out.txt exists and contains 130.0\n")
+
+    class Pane:
+        def capture(self, name):
+            return "❯ \n"
+        def send(self, name, text):
+            return {"ok": True}
+        def key(self, name, key):
+            return {"ok": True}
+
+    act = op.tick(config, agent, t, pane=Pane(), now=time.time)
+    assert act.kind != "undelivered", act
+    after = tsk.get(config, agent, t.id)
+    assert after.criteria, "the plan on disk was never collected"
