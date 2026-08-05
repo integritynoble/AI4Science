@@ -1,7 +1,15 @@
 from __future__ import annotations
 from .rsi import config_id
 
-CONFIG_BOUNDS = {"iters": (20, 400), "tv_weight": (0.005, 0.2)}
+# The tv_weight floor was 0.005, which put the only setting that passes the
+# judge on real scenes (0.001) outside the space the search can reach: the
+# agent could have hill-climbed forever and never found it, because `clamp`
+# would have pulled every proposal back up. Bounds drawn around a synthetic
+# fixture are a way of deciding the answer in advance. 0.0002 is below the
+# point where the solver starts fitting the noise instead of the scene, which
+# `noise_consistency` rejects — so the useful range is inside the space and
+# the failure mode on either side is still reachable and still detected.
+CONFIG_BOUNDS = {"iters": (20, 400), "tv_weight": (0.0002, 0.2)}
 INITIAL_STEP = {"iters": 80, "tv_mul": 2.0}
 
 
@@ -50,7 +58,7 @@ def _incumbent_config(client) -> dict:
     meta = (lkg or {}).get("metadata") if lkg else None
     if meta and "iters" in meta and "tv_weight" in meta:
         return {"iters": int(meta["iters"]), "tv_weight": float(meta["tv_weight"])}
-    return {"iters": 80, "tv_weight": 0.01}
+    return {"iters": 300, "tv_weight": 0.001}
 
 
 def run_rsi_search(*, client, seed_solver_ws, search_scene_ids, val_scene_ids,

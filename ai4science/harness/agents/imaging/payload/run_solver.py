@@ -23,19 +23,26 @@ from cassi import forward
 from gap_tv import gap_tv
 
 
-def psnr(a: np.ndarray, b: np.ndarray) -> float:
-    mse = float(np.mean((a - b) ** 2))
+def psnr(reference: np.ndarray, estimate: np.ndarray) -> float:
+    """PSNR of `estimate` against `reference`, peak taken from the reference.
+
+    The peak must not come from the estimate. Taking `max(a.max(), b.max())`
+    lets a diverging reconstruction inflate its own denominator: this solver
+    reported 8.61 dB while it was actually at -16.79 dB, because it had blown
+    up to 18.6 and set the peak itself. A reconstruction cannot be graded on a
+    scale it chooses."""
+    mse = float(np.mean((reference - estimate) ** 2))
     if mse <= 1e-12:
         return 99.0
-    peak = float(max(a.max(), b.max(), 1.0))
+    peak = float(max(reference.max(), 1.0))
     return 10.0 * np.log10(peak ** 2 / mse)
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--workspace", default=".")
-    ap.add_argument("--iters", type=int, default=80)
-    ap.add_argument("--tv-weight", type=float, default=0.05)
+    ap.add_argument("--iters", type=int, default=300)
+    ap.add_argument("--tv-weight", type=float, default=0.001)
     args = ap.parse_args()
 
     ws = Path(args.workspace).resolve()

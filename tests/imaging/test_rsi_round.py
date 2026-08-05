@@ -8,9 +8,17 @@ def test_config_id_stable():
 
 def test_round_ranks_by_cp_scores(tmp_path):
     # a stub client that: opens runs, accepts stage_heldout/stage_input/sandbox_execute,
-    # and returns a FIXED psnr per candidate version from score_heldout (higher for iters160_tv0.01),
-    # records register_version calls, records all stage_heldout and score_heldout calls for coverage verification,
-    # and returns eval_ref from evaluate_candidates.
+    # and returns a FIXED psnr per candidate version from score_heldout (higher for the
+    # designated winner), records register_version calls, records all stage_heldout and
+    # score_heldout calls for coverage verification, and returns eval_ref from evaluate_candidates.
+    #
+    # The winner is taken FROM the grid rather than written as a literal. Naming one
+    # ("iters160_tv0.01") meant that when the grid moved to the settings that actually
+    # reconstruct real scenes, no candidate matched, every score tied at 20.0, and this
+    # failed while the ranking logic it covers was untouched. What is under test is
+    # "highest CP score sorts first", not which config the grid currently holds.
+    winner = config_id(DEFAULT_GRID[-1])
+
     class Stub:
         def __init__(self):
             self.registered = []
@@ -34,8 +42,8 @@ def test_round_ranks_by_cp_scores(tmp_path):
         def score_heldout(self, run_id, scene_id, version=None, domain="cassi"):
             # Record the call for coverage verification
             self.score_heldout_calls.append((run_id, scene_id, version))
-            # Return per-version PSNR (higher for iters160_tv0.01 for deterministic ranking)
-            return {"psnr": 30.0 if version == "iters160_tv0.01" else 20.0}
+            # Return per-version PSNR (higher for the designated winner, for deterministic ranking)
+            return {"psnr": 30.0 if version == winner else 20.0}
 
         def register_version(self, *a, **k):
             self.registered.append(a)
@@ -49,7 +57,7 @@ def test_round_ranks_by_cp_scores(tmp_path):
     out = run_rsi_round(client=client, held_out_scene_ids=held_out_scene_ids, seed_solver_ws=tmp_path / "seed")
 
     # Existing assertions: best config ranked first, eval_ref returned, each candidate registered
-    assert out["ranked"][0][0] == "iters160_tv0.01"      # best CP score ranked first
+    assert out["ranked"][0][0] == winner                 # best CP score ranked first
     assert out["eval_ref"] == "R"
     assert len(client.registered) == len(DEFAULT_GRID)   # each candidate registered
 

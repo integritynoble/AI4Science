@@ -6,11 +6,14 @@ from .benchmark import seed_cassi_workspace
 # could copy it to results/reconstruction_xhat.npy and pass the reference-free judge.
 _NEVER_STAGE = {"data/ground_truth_x.npy"}
 
+# Straddles the discrepancy-principle point (300 / 0.001) on both knobs, so a
+# round can see the cost of over-smoothing and of under-converging rather than
+# only the regime the old synthetic fixture lived in.
 DEFAULT_GRID = [
-    {"iters": 80, "tv_weight": 0.01},
-    {"iters": 160, "tv_weight": 0.01},
-    {"iters": 80, "tv_weight": 0.05},
-    {"iters": 160, "tv_weight": 0.05},
+    {"iters": 150, "tv_weight": 0.001},
+    {"iters": 300, "tv_weight": 0.001},
+    {"iters": 300, "tv_weight": 0.005},
+    {"iters": 300, "tv_weight": 0.0005},
 ]
 
 

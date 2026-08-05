@@ -7,10 +7,14 @@ withheld. It is reached through its own `AgentSpec` RUNNER rather than the
 shared `BENCHMARKS` registry, so that one agent does not have two ways to be
 scored.
 
-It is the one of the six still on a **generated** benchmark rather than a
-measured corpus — the scene is synthesised from the same forward model the
-solver inverts. That is honest for a physics check and it is not evidence about
-real instruments; the other five now read real data.
+**Since 2026-08-05 it reads a measured corpus like the other five.** The scene
+is a real hyperspectral cube from **CAVE** (64×64×8, nine scenes, adjacent-band
+correlation 0.93), and only the *measurement* is simulated — the SD-CASSI
+forward model is applied to a scene nobody synthesised. The forward model is
+still shared between generation and reconstruction, which is what makes this a
+physics check rather than evidence about a real instrument; what changed is that
+the thing being reconstructed is no longer drawn from the prior the solver
+assumes. That distinction turned out to matter more than expected — see §3b.
 
 ## 1. The field
 
@@ -75,6 +79,51 @@ Proposing a crossing, implementing it against the receiving subfield's operator,
 and evaluating it under that subfield's protocol is this agent's highest-value
 autonomous work — and it is work whose absence is caused purely by how people
 are organised, which is exactly the kind an agent should take.
+
+## 3b. What the real scenes refuted
+
+Swapping the synthetic fixture for real CAVE scenes broke the agent
+end-to-end, and the cause was not the benchmark. Recorded here because the
+reference solver had been passing for months.
+
+| Hypothesis | Result |
+|---|---|
+| The **benchmark** became unsolvable | Refuted. The ground-truth cube passes all four judge checks on seeds 42, 1 and 7. |
+| The solver is **under-converged** — real scenes need more iterations | Refuted, and backwards: PSNR fell monotonically with iterations, −1.4 → −25.9 → −76.8 dB at 80 → 300 → 1000. |
+| GAP-TV simply **cannot reconstruct** real scenes | Refuted. At the corrected settings it reaches 17.6–29.1 dB and passes the judge on all three seeds. |
+
+**The defect.** `tv_chambolle` had the sign of its dual step inverted. Chambolle
+ascends `grad(div p − g/weight)`, which with `u = g − weight·div(p)` is
+`−grad(u)/weight`; the code added it. That makes the "prox" an **expansion** —
+at weight 0.2 it *raised* the objective it claims to minimise from 28.9 to
+1549.7, and multiplied the norm by 4.69. Inside a proximal-gradient loop that
+compounds every iteration, so the solver diverged to values of 18.6 against a
+ground truth bounded by 1.0: a true PSNR of **−16.79 dB**. Fixing one sign moved
+seed 42 from −16.79 dB to **+21.2 dB**.
+
+> **Two things hid it for months.** Gaussian blobs are nearly
+> piecewise-constant, so the synthetic fixture had almost no total variation for
+> the term to mis-handle — the bug was real the whole time and simply never
+> engaged. And `run_solver.psnr` took its peak from `max(reference, estimate)`,
+> which let a diverging reconstruction inflate its own denominator: it reported
+> **8.61 dB while it was actually at −16.79**. A metric that lets the estimate
+> choose its own scale cannot report a scale error.
+
+**The search could not have found it.** `rsi_search.CONFIG_BOUNDS` floored
+`tv_weight` at 0.005, and the only setting that passes the judge on real scenes
+is 0.001 — `clamp` would have pulled every proposal back above it. The agent
+could have hill-climbed indefinitely without reaching the working region.
+Bounds drawn around a synthetic fixture decide the answer in advance; the floor
+is now 0.0002.
+
+**Where the operating point comes from.** 300 iterations at `tv_weight=0.001`
+drives the forward residual to ~0.0025 against a 0.003 noise floor — the
+Morozov discrepancy principle, matching the residual to the known noise rather
+than to anything the judge rewards. The check that it is not judge-fitting is
+that the same point is within 0.1 dB of the best PSNR anywhere in the sweep,
+and that the judge still rejects both neighbours for the right reasons:
+over-smoothing at 0.01 (residual 0.019), and fitting the noise below 0.0003
+(residual 0.0009, under the noise floor).
 
 ## 4. The rule this agent exists to hold
 

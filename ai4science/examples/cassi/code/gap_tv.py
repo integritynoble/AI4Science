@@ -41,7 +41,13 @@ def _div(px, py):
 
 def tv_chambolle(g: np.ndarray, weight: float = 0.05, n_iter: int = 25,
                  tau: float = 0.125) -> np.ndarray:
-    """Chambolle TV prox: argmin_u ||u-g||^2 + 2*weight*TV(u)."""
+    """Chambolle TV prox: argmin_u ||u-g||^2 + 2*weight*TV(u).
+
+    The dual step subtracts; see the note in
+    `harness/agents/imaging/payload/gap_tv.py`. With the sign positive this is
+    an expansion rather than a prox, and a proximal-gradient loop built on it
+    diverges on any scene with real texture.
+    """
     if weight <= 0:
         return g
     px = np.zeros_like(g); py = np.zeros_like(g)
@@ -50,8 +56,8 @@ def tv_chambolle(g: np.ndarray, weight: float = 0.05, n_iter: int = 25,
         ux, uy = _grad(u)
         norm = np.sqrt(ux ** 2 + uy ** 2)
         denom = 1.0 + (tau / weight) * norm
-        px = (px + (tau / weight) * ux) / denom
-        py = (py + (tau / weight) * uy) / denom
+        px = (px - (tau / weight) * ux) / denom
+        py = (py - (tau / weight) * uy) / denom
     return g - weight * _div(px, py)
 
 
