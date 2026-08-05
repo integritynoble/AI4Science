@@ -211,7 +211,17 @@ def tick(config: Config, agent: Agent, task: tsk.Task, *, pane: Any,
                 return Action("answered-question", asked[:70])
             return Action("asks-owner", out.escalate)
 
-    stranded = _stranded(screen)
+    # The same pane WITH its escape sequences, so a dimmed placeholder can
+    # be told from something typed. Optional on the pane object: a pane that
+    # cannot supply it falls back to the shape filter rather than failing.
+    styled = None
+    grab = getattr(pane, "capture_styled", None)
+    if callable(grab):
+        try:
+            styled = grab(session)
+        except Exception:
+            styled = None
+    stranded = _stranded(screen, styled=styled)
     if stranded and stranded != task.last_submitted:
         # Submitting what is already typed beats writing something new over it.
         # Once only: text still there after Enter was never input, and pressing
@@ -448,18 +458,56 @@ def _busy(screen: str) -> bool:
 _SUGGESTION = re.compile(r'^Try\s+"[^"]*"$', re.I)
 
 
-def _stranded(screen: str) -> Optional[str]:
+#: SGR **dim** — how Claude Code renders its own placeholder at the prompt, and
+#: how nothing the owner types is ever rendered. `tmux capture-pane -p` strips
+#: it, which is why a hint and an instruction were the same string for as long
+#: as the loop read only the stripped text.
+_DIM = "\x1b[2m"
+_SGR = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _dim_at_prompt(styled: str) -> bool:
+    """Is the last prompt line's content rendered dim?
+
+    Live: `❯ \\x1b[2mgranted, write report.md\\x1b[0m` was submitted at a session
+    waiting for the owner to grant a write. The session refused because it
+    wanted a formal grant — its discipline, not the loop's — but the pane now
+    held what reads like the owner saying "granted". The wording is Claude
+    Code's to change and has changed twice; the styling is what the terminal
+    actually reports, so that is what this reads.
+    """
+    for line in reversed((styled or "").splitlines()):
+        if "❯" not in line:
+            continue
+        after = line.split("❯", 1)[1]
+        if not _SGR.sub("", after).strip():
+            return False                      # an empty prompt is not a hint
+        return _DIM in after
+    return False
+
+
+def _stranded(screen: str, *, styled: Optional[str] = None) -> Optional[str]:
     """Text typed at the `❯` and left unsent.
 
     An empty prompt is not stranded, and neither is Claude Code's placeholder:
     submitting the tool's own hint is the loop typing into a session on nobody's
-    behalf.
+    behalf — and its hints are contextual now (*"go ahead, write the report"*,
+    *"granted, write report.md"*), which is to say shaped exactly like an
+    owner's authorisation.
+
+    `styled` is the same pane captured WITH escape sequences. When it is
+    available the decision is made on the styling, which the tool does not vary
+    to suit its wording. Without it the old shape filter still applies and
+    nothing more is claimed — an unstyled capture is not evidence that
+    something was typed.
     """
     hits = _PROMPT_LINE.findall(screen)
     if not hits:
         return None
     text = hits[-1].strip()
     if not text or _SUGGESTION.match(text):
+        return None
+    if styled and _dim_at_prompt(styled):
         return None
     return text
 
@@ -491,6 +539,23 @@ class TmuxPane:
         import subprocess
         try:
             out = subprocess.run(["tmux", "capture-pane", "-p", "-t", name],
+                                 capture_output=True, text=True, timeout=10)
+        except Exception:
+            return None
+        return out.stdout if out.returncode == 0 else None
+
+    def capture_styled(self, name: str):
+        """The pane's text WITH escape sequences (`capture-pane -e`).
+
+        Read only to tell a dimmed placeholder from something typed. Kept apart
+        from `capture` because every other reader here — gate detection, the
+        busy marker, the kickoff marker — is written against plain text, and
+        threading SGR codes through all of them to answer one question would be
+        a large change for a small one.
+        """
+        import subprocess
+        try:
+            out = subprocess.run(["tmux", "capture-pane", "-e", "-p", "-t", name],
                                  capture_output=True, text=True, timeout=10)
         except Exception:
             return None
