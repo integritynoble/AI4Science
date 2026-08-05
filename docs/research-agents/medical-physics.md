@@ -120,12 +120,12 @@ around it.
 7. **Link delivered dose to outcome** on retrospective data, with the
    confounding stated rather than hidden.
 
-The reference point the owner named is **Steve Jiang's MAIA Lab at UT
-Southwestern** — dose prediction, Pareto surface navigation, beam orientation
-optimisation, nomenclature standardisation, uncertainty estimation, and AI-based
-QA for online adaptive radiotherapy on MR-linacs. Their framing of *clinical
-deployment from single models to compound agentic systems* is the same shape as
-this design. It is one anchor in the field, not the boundary of it.
+The academic work this is measured against is the medical-physics AI
+literature generally — dose prediction, Pareto surface navigation, beam
+orientation optimisation, nomenclature standardisation, uncertainty estimation,
+and AI-based QA for online adaptive radiotherapy on MR-linacs. The field's move
+from single models toward compound agentic systems is the same shape as this
+design. That literature is one anchor, not the boundary of the field.
 
 ## 4. The rule this agent exists to hold
 

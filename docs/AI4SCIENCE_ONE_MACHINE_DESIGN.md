@@ -950,7 +950,7 @@ market, written where the domain knowledge is:
 |---|---|
 | **low-dose CT** | reconstruction at doses below what a classical pipeline can use |
 | **computational imaging** | the broader inverse-problem family — snapshot compressive imaging, coded aperture |
-| **medical physics** | treatment planning and QA, in the practice of Steve Jiang's group at UTSW |
+| **medical physics** | treatment planning and QA, as clinical radiotherapy practice does it |
 | **pill-camera** | capsule endoscopy — reading video no clinician has time to read whole |
 | **drug design** | docking, screening, and the loop from candidate to assay |
 
