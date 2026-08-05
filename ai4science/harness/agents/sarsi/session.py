@@ -250,6 +250,7 @@ def assign(config: Config, agent: Agent, task: tsk.Task, *,
     task.kickoff_tries = 0
     task.kickoff_undelivered = False
     task.kickoff_unreachable = False
+    task.acts_at_kickoff = None
     task = tsk._touch(agent, task, now)
 
     # The plan is made BETWEEN the worker and the session: if this task has no
@@ -450,7 +451,7 @@ MAX_KICKOFF_TRIES = 3
 
 def deliver_kickoff(config: Config, agent: Agent, task: tsk.Task, *,
                     runtime: Optional[Any] = None, screen: str = "",
-                    now=time.time) -> tsk.Task:
+                    acts=None, now=time.time) -> tsk.Task:
     """Hand the session its first instruction, and confirm it actually landed.
 
     Never for a spec this loop cannot read. Typing at an interface it does not
@@ -474,10 +475,30 @@ def deliver_kickoff(config: Config, agent: Agent, task: tsk.Task, *,
     if not pending:
         return task
 
+    # Two confirmations, and the second is why the first is not enough.
+    #
+    # The MARKER is a fragment of the brief seen on screen. Cheap, immediate,
+    # and it expires: it scrolls away the moment the session starts working, so
+    # the evidence of delivery is destroyed by delivery succeeding. Live, four
+    # `briefing` passes in a row at a session that was busy carrying the brief
+    # out, retyping what it already had.
     marker = _kickoff_marker(pending)
     if marker and marker in (screen or ""):
         task.kickoff_pending = None
+        task.acts_at_kickoff = None
         return tsk._touch(agent, task, now)
+
+    # ACTING does not expire. A session that has used a tool since the brief was
+    # typed received an instruction — nothing else was typed at it, and at the
+    # A0 planning ceiling nothing else prompts it. The count is taken WHEN THE
+    # BRIEF IS TYPED, not from zero: a session that ran fifty tools before being
+    # briefed has not thereby received the brief.
+    if task.acts_at_kickoff is not None:
+        since = _steps_so_far(task, acts)
+        if since is not None and since > task.acts_at_kickoff:
+            task.kickoff_pending = None
+            task.acts_at_kickoff = None
+            return tsk._touch(agent, task, now)
 
     # A screen that cannot take text is not typed at. Keystrokes into a modal
     # are discarded and the Enter answers whichever option is highlighted — the
@@ -508,6 +529,11 @@ def deliver_kickoff(config: Config, agent: Agent, task: tsk.Task, *,
         task.kickoff_unreachable = True
         return tsk._touch(agent, task, now)
     task.kickoff_unreachable = False
+    # What the transcript held at the moment it was typed. `None` when it could
+    # not be read, and that stays None rather than becoming 0 — an unreadable
+    # transcript treated as "no acts yet" would confirm delivery on the next
+    # pass from no evidence at all.
+    task.acts_at_kickoff = _steps_so_far(task, acts)
     task.kickoff_tries += 1
     return tsk._touch(agent, task, now)
 

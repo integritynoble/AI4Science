@@ -82,6 +82,12 @@ class Task:
     #: it was typed repeatedly and never appeared. The owner is told rather than
     #: the loop typing forever.
     kickoff_undelivered: bool = False
+    #: how many tool uses the transcript held when the brief was typed. A
+    #: session that has acted SINCE received an instruction, which is the one
+    #: confirmation of delivery that does not scroll off the screen. `None`
+    #: means the transcript could not be read, and stays None — read as 0 it
+    #: would confirm delivery on the next pass from no evidence at all.
+    acts_at_kickoff: Optional[int] = None
     #: the send never reached tmux at all — no such session. A DIFFERENT answer
     #: from `undelivered`, and the owner would do something different about it:
     #: one says the session ignored the brief, this says there was no session to

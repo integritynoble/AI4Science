@@ -145,7 +145,7 @@ def tick(config: Config, agent: Agent, task: tsk.Task, *, pane: Any,
         from ai4science.harness.agents.sarsi import session as ses
         if not _busy(screen) and _gate(screen) is None:
             after = ses.deliver_kickoff(config, agent, task, runtime=_Sender(pane),
-                                        screen=screen, now=now)
+                                        screen=screen, acts=acts, now=now)
             if after.kickoff_pending:
                 return Action("briefing", "waiting to see the brief land")
 
@@ -241,7 +241,7 @@ def tick(config: Config, agent: Agent, task: tsk.Task, *, pane: Any,
         stalled = None
         if task.kickoff_pending:
             after = ses.deliver_kickoff(config, agent, task, runtime=_Sender(pane),
-                                        screen=screen, now=now)
+                                        screen=screen, acts=acts, now=now)
             task = after
                 # Not the same report. One says the session ignored the brief;
                 # this says the keystrokes never reached a session at all, and

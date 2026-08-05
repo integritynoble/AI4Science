@@ -280,3 +280,111 @@ def test_a_plan_is_still_collected_when_the_brief_looks_undelivered(config, agen
     assert act.kind != "undelivered", act
     after = tsk.get(config, agent, t.id)
     assert after.criteria, "the plan on disk was never collected"
+
+
+# ── delivery is confirmed by the session ACTING ───────────────────────
+#
+# The marker rule alone cannot work: it looks for a fragment of the brief on
+# screen, and the fragment scrolls away the moment the session starts working.
+# So the evidence of delivery is destroyed by delivery succeeding, and the loop
+# retypes a brief the session already has — live, four `briefing` passes in a
+# row at a session that was busy carrying the brief out.
+#
+# A session that has USED A TOOL since the brief was typed received an
+# instruction. That is the confirmation, and unlike the screen it does not
+# expire.
+
+
+def _acting(counts):
+    """A transcript that grows: successive reads return successive counts."""
+    it = iter(counts)
+    return lambda cwd: [{"name": "Read", "input": {}}] * next(it)
+
+
+def test_a_session_that_acted_after_the_brief_has_it(config, agent):
+    t = _task(config, agent)
+    t = ses.assign(config, agent, t, runtime=Runtime(), installed=lambda: set())
+    acts = _acting([2, 5])              # 2 when typed, 5 on the next pass
+    t = ses.deliver_kickoff(config, agent, t, runtime=Runtime(),
+                            screen=_screen_ready(), acts=acts, now=time.time)
+    assert t.kickoff_pending, "not yet — nothing has happened since"
+    t = ses.deliver_kickoff(config, agent, t, runtime=Runtime(),
+                            screen=_screen_ready(), acts=acts, now=time.time)
+    assert t.kickoff_pending is None
+
+
+def test_a_session_that_has_done_nothing_is_briefed_again(config, agent):
+    """The guard must not be so wide that a genuinely undelivered brief is
+    declared delivered — that would be the original failure with the opposite
+    sign, and worse: a session working on nothing, silently."""
+    t = _task(config, agent)
+    t = ses.assign(config, agent, t, runtime=Runtime(), installed=lambda: set())
+    acts = _acting([3, 3, 3])
+    rt = Runtime()
+    for _ in range(2):
+        t = ses.deliver_kickoff(config, agent, t, runtime=rt,
+                                screen=_screen_ready(), acts=acts, now=time.time)
+    assert t.kickoff_pending
+    assert len(rt.sent) == 2
+
+
+def test_an_unreadable_transcript_does_not_confirm_delivery(config, agent):
+    """Unknown is not delivered. Treating a transcript we could not read as
+    proof the session acted would clear the brief on no evidence at all."""
+    def blows_up(cwd):
+        raise OSError("no transcript")
+    t = _task(config, agent)
+    t = ses.assign(config, agent, t, runtime=Runtime(), installed=lambda: set())
+    for _ in range(2):
+        t = ses.deliver_kickoff(config, agent, t, runtime=Runtime(),
+                                screen=_screen_ready(), acts=blows_up,
+                                now=time.time)
+    assert t.kickoff_pending
+
+
+def test_the_marker_still_confirms_it_on_its_own(config, agent):
+    """Cheaper and immediate — kept as the first answer, not replaced."""
+    t = _task(config, agent)
+    t = ses.assign(config, agent, t, runtime=Runtime(), installed=lambda: set())
+    marker = ses._kickoff_marker(t.kickoff_pending)
+    t = ses.deliver_kickoff(config, agent, t, runtime=Runtime(),
+                            screen=f"❯ \n{marker}", acts=_acting([9, 9]),
+                            now=time.time)
+    assert t.kickoff_pending is None
+
+
+def test_acts_already_on_the_clock_are_not_mistaken_for_new_ones(config, agent):
+    """A session that ran fifty tools BEFORE being briefed has not thereby
+    received the brief. The count is taken when it is typed, not at zero."""
+    t = _task(config, agent)
+    t = ses.assign(config, agent, t, runtime=Runtime(), installed=lambda: set())
+    acts = _acting([50, 50])
+    for _ in range(2):
+        t = ses.deliver_kickoff(config, agent, t, runtime=Runtime(),
+                                screen=_screen_ready(), acts=acts, now=time.time)
+    assert t.kickoff_pending
+
+
+def test_the_operator_passes_the_transcript_through(config, agent):
+    """The guard is inert if `tick` does not hand it the same acts reader every
+    other counter in the pass already uses."""
+    from ai4science.harness.agents.sarsi import operator as op
+
+    t = _task(config, agent)
+    t = ses.assign(config, agent, t, runtime=Runtime(), installed=lambda: set())
+
+    class Pane:
+        def capture(self, name):
+            return _screen_ready()
+        def send(self, name, text):
+            return {"ok": True}
+        def key(self, name, key):
+            return {"ok": True}
+
+    counts = iter([1, 4])
+    acts = lambda cwd: [{"name": "Read", "input": {}}] * next(counts)
+    op.tick(config, agent, t, pane=Pane(), acts=acts, now=time.time)
+    after = op.tick(config, agent, tsk.get(config, agent, t.id), pane=Pane(),
+                    acts=acts, now=time.time)
+    assert tsk.get(config, agent, t.id).kickoff_pending is None
+    assert after.kind != "briefing", after
