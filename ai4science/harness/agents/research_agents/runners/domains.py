@@ -87,6 +87,21 @@ def _score_ldct(seed_ws: Path, run_ws: Path) -> Dict[str, float]:
     d2 = (yy - cy) ** 2 + (xx - cx) ** 2
     r = int(np.sqrt(lesion.sum() / np.pi)) + 1
     ring = (d2 > (2 * r) ** 2) & (d2 <= (5 * r) ** 2)
+    # The background ROI is SOFT TISSUE within that annulus, not the annulus
+    # itself. A lesion near the lung leaves the ring straddling a ~1200 HU step
+    # from tissue to air, and its standard deviation then measures anatomy: one
+    # patient reported 396 HU of "noise" with 35% of the ring air. CNR is
+    # contrast over that number, so it fell below the Rose criterion however
+    # well the lesion had been restored — the denominator was broken, not the
+    # denoiser. A physicist draws this ROI in tissue; so does this now.
+    #
+    # The membership is decided on the FULL-DOSE reference, which is the answer
+    # key and outside the sandbox. Deciding it on the reconstruction would let a
+    # method choose its own background.
+    tissue = (truth > -200) & (truth < 300)
+    ring = ring & tissue
+    if ring.sum() < 50:                    # nothing to measure against
+        ring = (d2 > (2 * r) ** 2) & (d2 <= (5 * r) ** 2)
     noise_ref = float(np.load(seed_ws / "data" / "full_dose.npy")[ring].std())
 
     # Contrast is measured against the KNOWN inserted amplitude, using the

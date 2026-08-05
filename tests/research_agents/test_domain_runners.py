@@ -351,3 +351,43 @@ def test_validation_sites_contributed_nothing_to_the_fit(tmp_path):
     assert not any(r.tobytes() in dev_rows for r in ext[:, :50]), \
         "a sample appears in both the development and validation cohorts"
 
+def test_the_lesion_lands_in_tissue_and_the_noise_roi_is_noise(tmp_path):
+    """The site picker used to be dead code with a silent fallback.
+
+    Uniformity was tested as `local_var < 900` — 30 HU — on the raw image, which
+    carries about 100 HU of noise at full dose. The condition was never true
+    anywhere, an empty candidate set returned the centre of the image, and so
+    every lesion went to pixel (256, 256): mediastinum on two patients, lung on
+    the other two. Where it landed in lung the scorer's background ring filled
+    with air, `noise_hu` came out at 396 instead of ~15, and lesion CNR fell
+    below the Rose criterion however well the lesion had been restored.
+
+    The giveaway was `lesion_contrast_retained` of 2.02 — 202% of the inserted
+    contrast, which is not a restoration result but a broken denominator.
+
+    This asserts the physics rather than the fix: the background the benchmark
+    calls noise has to BE noise."""
+    import numpy as np
+    out = _run(LDCT, tmp_path)
+    m = out["metrics"]
+
+    full = np.load(tmp_path / "seed" / "data" / "full_dose.npy")
+    mask = np.load(tmp_path / "seed" / "data" / "lesion_mask.npy")
+    ys, xs = np.nonzero(mask)
+    cy, cx = int(ys.mean()), int(xs.mean())
+    yy, xx = np.ogrid[:full.shape[0], :full.shape[1]]
+    d2 = (yy - cy) ** 2 + (xx - cx) ** 2
+    r = int(np.sqrt(mask.sum() / np.pi)) + 1
+    ring = (d2 > (2 * r) ** 2) & (d2 <= (5 * r) ** 2)
+
+    air = float((full[ring] < -500).mean())
+    assert air < 0.02, ("%.0f%% of the background ring is air — CNR against a "
+                        "lung boundary measures anatomy, not detectability" % (100 * air))
+    # Not the image centre by default. Anywhere is fine; the middle every time
+    # is the fallback firing.
+    assert (cy, cx) != (full.shape[0] // 2, full.shape[1] // 2)
+    # Soft-tissue noise, not a tissue/air step.
+    assert m["noise_hu"] < 60, "noise %.0f HU is anatomy, not noise" % m["noise_hu"]
+    # More contrast out than was put in is not a restoration.
+    assert m["lesion_contrast_retained"] <= 1.2, m["lesion_contrast_retained"]
+
