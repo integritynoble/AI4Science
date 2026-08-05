@@ -792,7 +792,10 @@ def verify(config: Config, agent: Agent, task: tsk.Task, *,
     logged — a reason that only reaches a log steers nothing.
     """
     drifted = tsk.criteria_drift(agent, task)
-    if drifted:
+    # Refused only when nobody has said which of the two is meant. When the
+    # OWNER authored the criteria, somebody has: the session may rewrite its
+    # plan, and the standard stays theirs until they change it.
+    if drifted and not task.plan_owner_edited:
         # `sarsi plan` renders the file while this judges the copy taken at
         # attach time, so an owner sharpening a criterion in the file was
         # judged against the one they replaced — live, that produced two FAILs

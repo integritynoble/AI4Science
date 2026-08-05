@@ -299,6 +299,10 @@ def adopt_criteria(agent: Agent, task: Task, *, now=time.time) -> List[int]:
             clear_phase(task, index)
 
     task.criteria = fresh
+    # `adopt` IS the owner saying what the standard is. Recording that is
+    # what lets everything downstream tell their criterion from a session's —
+    # and it is why a later re-plan cannot quietly replace it.
+    task.plan_owner_edited = True
     _touch(agent, task, now)
     return changed
 
@@ -395,7 +399,6 @@ def adopt_plan(config: Config, agent: Agent, task: Task, plan: pl.Plan, *,
     already exists on disk, so the session's own wording survives intact.
     """
     task.plan_version = plan.version
-    task.criteria = plan.criteria()
     task.work_root = plan.work_root
     task.may_touch = list(plan.may_touch)
     task.max_steps, task.max_minutes = plan.max_steps, plan.max_minutes
@@ -404,6 +407,13 @@ def adopt_plan(config: Config, agent: Agent, task: Task, plan: pl.Plan, *,
     task.depends_on = list(plan.depends_on)
     task.awaiting = [p for p in plan.permissions if p not in task.grants]
     task.state = AWAITING_GRANT if task.awaiting else READY
+    if not task.plan_owner_edited:
+        task.criteria = plan.criteria()
+    # else: the owner authored the standard. The session may rewrite its
+    # steps, its notes and its phases; what a verdict is measured against is
+    # not its to change. Live, a session replaced the owner's criterion with
+    # one requiring a "cited source" that did not exist, and then could not
+    # satisfy it — three runs failed in the plan, never in the work.
     task.plan_agreed = True           # the session has had its say
     # Planning ends HERE on the automatic path — `release` is an owner
     # command the loop never calls, so anchoring the boundary only there

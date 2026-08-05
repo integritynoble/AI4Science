@@ -37,7 +37,17 @@ def explain(config: Config, agent: Agent, task: tsk.Task, *, acts=None) -> str:
                      "this against.")
     else:
         lines.append(f"plan: {task.plan_version}.md, {len(plan.phases)} phase(s)")
-        if moved:
+        if moved and task.plan_owner_edited:
+            # The session rewrote its plan and the owner's standard stands.
+            # Saying nothing would hide that the file on disk no longer
+            # describes what a verdict is measured against.
+            which = ", ".join(str(i + 1) for i in moved)
+            lines.append(f"  {task.plan_version}.md has been rewritten by the "
+                         f"session — phase {which} reads differently there. "
+                         f"YOURS below is what a verdict applies; take its "
+                         f"version with `sarsi adopt {agent.id} {task.id}` if "
+                         f"you want it.")
+        elif moved:
             # Said, not swallowed: a criterion that moved under a task changes
             # what a PASS would have meant, and any verdict it had is gone.
             which = ", ".join(str(i + 1) for i in moved)
