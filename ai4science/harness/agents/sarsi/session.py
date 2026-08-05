@@ -22,6 +22,7 @@ above is testable without a terminal or a model.
 from __future__ import annotations
 
 import time
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 from ai4science.harness.agents.sarsi import ledger, plan as pl, task as tsk
@@ -176,8 +177,25 @@ def assign(config: Config, agent: Agent, task: tsk.Task, *,
     secrets = _unlock(config, agent, task, vault_prompt)
 
     runtime = runtime or MachineRuntime()
-    workdir = tsk.dir_of(agent, task.id)
-    workdir.mkdir(parents=True, exist_ok=True)
+    home = tsk.dir_of(agent, task.id)
+    home.mkdir(parents=True, exist_ok=True)
+    # Where the session STANDS. `--workdir` says where the work happens, and a
+    # session standing five levels away from it addressed its own target as
+    # `../../../../../live-brief/report.md` — a path nothing checked, invented
+    # because the flag it was given moved the evidence root and not the cwd.
+    #
+    # Not created if it is missing: a typo would become a new empty directory
+    # that the session then truthfully reports as an empty project. The task
+    # folder is the honest fallback, and the owner sees the name they meant.
+    workdir = home
+    declared = (task.work_root or "").strip()
+    if declared:
+        try:
+            candidate = Path(declared).expanduser().resolve()
+            if candidate.is_dir():
+                workdir = candidate
+        except OSError:
+            pass
     name = f"{agent.id}-{task.id[-4:]}"
 
     # `A3 is earned, not set.` The registry states what this agent WANTS; the
@@ -194,6 +212,9 @@ def assign(config: Config, agent: Agent, task: tsk.Task, *,
     # refusing them did not stop the write, it pushed it into a `bash` heredoc
     # that `blast` cannot read. Two boundaries that disagree are one boundary
     # and one blind spot.
+    # The TASK FOLDER is in here whenever the session is standing somewhere
+    # else: `plan0.md` lives there and the planning step exists to edit it, so a
+    # sandbox permitting only the cwd would refuse the one write it is for.
     writable = [str(p) for p in tsk.evidence_roots(agent, task)
                 if str(p) != str(workdir)]
     writable += [str(p) for p in (task.may_touch or [])]
@@ -313,6 +334,35 @@ def _env_key(name: str) -> str:
     return name.upper().replace(".", "_").replace("-", "_")
 
 
+def _plan_reference(agent: Optional[Agent], task: tsk.Task) -> str:
+    """How to name the plan file to a session, given where it is standing.
+
+    Relative when the session is IN the task folder — no absolute paths where a
+    short relative one is correct. Absolute the moment it is not, because the
+    plan stays with the task: `plan0.md` is the record and does not follow the
+    session into a project directory that may be shared, versioned, or someone
+    else's.
+    """
+    name = f"{task.plan_version or 'plan0'}.md"
+    if agent is None:
+        # `kickoff` takes the agent optionally and callers that only want the
+        # goal and the phase pass none. Without it the task folder cannot be
+        # resolved, so the old relative wording is the honest answer — an
+        # absolute path guessed from a task id would be worse than a short one.
+        return f"{name} in this folder"
+    home = tsk.dir_of(agent, task.id)
+    cwd = (task.session or {}).get("cwd")
+    if not cwd:
+        declared = (task.work_root or "").strip()
+        try:
+            cwd = str(Path(declared).expanduser().resolve()) if declared else None
+        except OSError:
+            cwd = None
+    if not cwd or str(cwd) == str(home) or str(cwd) == str(home.resolve()):
+        return f"{name} in this folder"
+    return str(home / name)
+
+
 def planning_kickoff(config: Config, agent: Agent, task: tsk.Task) -> str:
     """Ask the session to **improve the worker's initial plan** — and stop.
 
@@ -329,6 +379,12 @@ def planning_kickoff(config: Config, agent: Agent, task: tsk.Task) -> str:
     from ai4science.harness.agents.sarsi import workspace as ws
 
     scope = (task.directive or {}).get("scope") or []
+    # The plan lives with the TASK; the session may be standing in the declared
+    # working directory instead. "in this folder" was true only while those were
+    # the same place — a session told to read a file that is not where it stands
+    # reads nothing and plans from the goal alone, and is then judged against
+    # criteria the owner never reviewed.
+    where = _plan_reference(agent, task)
     lines = [
         f"Goal: {task.goal}",
         "",
@@ -338,7 +394,7 @@ def planning_kickoff(config: Config, agent: Agent, task: tsk.Task) -> str:
         ws.render(config, agent, task),
         "",
         f"FIRST, PLAN — together. I have already written an initial "
-        f"{PLAN_FILE} in this folder: the goal, what I know it needs, and the "
+        f"plan at {where}: the goal, what I know it needs, and the "
         f"shape a plan takes here. It is a sketch, not an instruction.",
         "",
         f"Read it, then improve it in place. Sharpen it with what you can see "
@@ -346,8 +402,9 @@ def planning_kickoff(config: Config, agent: Agent, task: tsk.Task) -> str:
         "  - split or reorder the phases so they match the real work;",
         "  - rewrite each `Verified when:` line to name what an independent "
         "verifier must SEE — a file, a count, an exit code — never an intention;",
-        "  - add to `## Permissions needed` anything beyond this folder you will "
-        "actually need: paths, accounts, network, credentials by name.",
+        "  - add to `## Permissions needed` anything beyond where you are "
+        "standing that you will actually need: paths, accounts, network, "
+        "credentials by name.",
         "",
         "Keep the headings and the `Verified when:` lines: a phase without one "
         "cannot be judged by anyone but you.",
@@ -758,7 +815,7 @@ def kickoff(task: tsk.Task, plan: Optional[pl.Plan],
     work. Never the conversation that produced them."""
     lines = [f"Goal: {task.goal}"]
     if plan is not None and task.plan_version:
-        lines.append(f"Your plan is {task.plan_version}.md in this folder. "
+        lines.append(f"Your plan is {_plan_reference(agent, task)}. "
                      f"Work its earliest incomplete phase.")
         # The real number: the first phase without a PASS of its own. A phase is
         # complete when the VERIFIER said so about that phase — the session

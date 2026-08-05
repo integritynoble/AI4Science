@@ -40,6 +40,8 @@ from pathlib import Path
 
 import pytest
 
+from ai4science.harness.agents.sarsi import task as tsk
+
 from ai4science.harness.permissions import PermissionGate
 
 
@@ -222,10 +224,34 @@ def test_the_session_is_launched_able_to_write_where_the_plan_says(
     import ai4science.harness.agents.machine.sessions as machine
     calls = {}
     monkeypatch.setattr(machine, "start_session",
+                        lambda name, cwd, **kw: calls.update(kw, cwd=cwd) or
+                        {"ok": True, "name": name, "pid": 1, "cwd": cwd})
+    ses.assign(config, agent, t, runtime=ses.MachineRuntime())
+    # The declared root is now the session's CWD, and `PermissionGate` allows
+    # `[workspace] + writable_roots` — so being the workspace IS the permission,
+    # and a `--writable` for it would be restating it. What the flag now has to
+    # carry is the TASK FOLDER, which the session no longer stands in and still
+    # has to edit `plan0.md` in.
+    launched = calls.get("claude_bin") or ""
+    assert str(root) == calls.get("cwd")
+    assert f"--writable {tsk.dir_of(agent, t.id)}" in launched
+
+
+def test_and_the_task_folder_travels_with_it(tmp_path, monkeypatch):
+    """`plan0.md` stays with the task when the session moves. A sandbox
+    permitting only the cwd would refuse the one write planning exists for."""
+    from ai4science.harness.agents.sarsi import session as ses
+    root = tmp_path / "live-jobs"
+    root.mkdir()
+    config, agent, t = _sarsi(tmp_path, monkeypatch, work_root=root)
+
+    import ai4science.harness.agents.machine.sessions as machine
+    calls = {}
+    monkeypatch.setattr(machine, "start_session",
                         lambda name, cwd, **kw: calls.update(kw) or
                         {"ok": True, "name": name, "pid": 1, "cwd": cwd})
     ses.assign(config, agent, t, runtime=ses.MachineRuntime())
-    assert f"--writable {root}" in (calls.get("claude_bin") or "")
+    assert str(tsk.dir_of(agent, t.id)) in (calls.get("claude_bin") or "")
 
 
 def test_a_task_with_no_declared_directory_passes_none(tmp_path, monkeypatch):
