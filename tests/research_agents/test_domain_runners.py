@@ -186,12 +186,31 @@ def test_enrichment_is_reported_on_targets_held_out_entirely(tmp_path):
 # ------------------------------------------ cancer: external, and calibrated
 
 def test_the_model_is_validated_on_an_external_cohort(tmp_path):
+    """External means INDEPENDENT, not harder.
+
+    This used to assert `external_drop > 0` — "the external cohort should be
+    harder; otherwise it is not external". That is the wrong test and it was
+    load-bearing in the wrong direction: it would have failed any honest
+    site-disjoint split whose held-out hospitals happened to be easier, and it
+    passed happily while the benchmark was validating adenocarcinoma against
+    squamous cell and calling the result a transport failure.
+
+    What makes a cohort external is that nothing about it was used to fit — no
+    patient, and no contributing institution. Whether it scores higher or lower
+    is a fact about which hospitals landed in the held-out third, not a
+    property the benchmark gets to require."""
     out = _run(ONCO, tmp_path)
     m = out["metrics"]
     assert m["c_index_external"] > 0.5
-    assert m["external_drop"] > 0, \
-        "the external cohort should be harder; otherwise it is not external"
     assert any("external" in r for r in out["verdict"].reasons)
+    # The drop is reported, and its SIGN is not asserted.
+    assert "external_drop" in m
+    assert abs(m["external_drop"]) < 0.3, \
+        "internal %.4g vs external %.4g is too far apart to be one population" % (
+            m["c_index_internal"], m["c_index_external"])
+    # And the cross-histology number is present and NOT the pass criterion:
+    # it is a different disease, which is a different question.
+    assert 0.4 < m["c_index_cross_histology"] < 0.7
 
 
 def test_discrimination_alone_is_not_enough(tmp_path):

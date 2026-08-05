@@ -36,7 +36,7 @@ are not.
 |---|---|---|
 | [low-dose CT](low-dose-ct.md) | TCIA `LDCT-and-Projection-data` — real paired full/low dose | **passes** — and a higher-PSNR blur fails |
 | [drug design](drug-design.md) | DUD-E — 15,288 molecules, 6 targets | **passes** — EF@1% 41–56 at 51–77% of ceiling, 2.4–2.9× the property baseline, on a series-disjoint split |
-| [cancer](cancer.md) | TCGA via the GDC API — 978 cases, two cohorts | **fails** — C-index 0.668 internal, 0.577 external |
+| [cancer](cancer.md) | TCGA via the GDC API — 978 cases, site-disjoint validation | **passes** — 0.66–0.68 internal, 0.58–0.67 on held-out hospitals; 0.577 across histologies, reported not graded |
 | [medical physics](medical-physics.md) | OpenKBP — 8 real head-and-neck plans | **5 of 8 patients** on one global weight set; weights are per-patient |
 | [pill camera](pill-camera.md) | Kvasir-Capsule — 4,443 frames, 46 videos | **passes**, after its own night loop found the fix — 0.624 against 0.614 |
 | [computational imaging](computational-imaging.md) | CAVE — real hyperspectral scenes, CASSI measurement simulated | **passes** — after a sign error in the reference solver was found and fixed |

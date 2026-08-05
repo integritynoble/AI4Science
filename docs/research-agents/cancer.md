@@ -1,17 +1,29 @@
 # The cancer agent — how to design it
 
-**Status: built and running on real data, 2026-08-04.** Charter, self-model,
-budget, field map and both functions are implemented in
+**Status: built on real data; external cohort corrected 2026-08-05.** Charter,
+self-model, budget, field map and both functions are implemented in
 `ai4science/harness/agents/research_agents/`. The benchmark reads **TCGA
-clinical survival** through the GDC API — 491 TCGA-LUAD cases to develop on,
-487 TCGA-LUSC as an external cohort.
+clinical survival** through the GDC API, and validates on **held-out tissue
+source sites** — hospitals that contributed nothing to the fit.
 
-**Its reference method fails, and that is the result.** A Cox model on age,
-sex, stage and prior malignancy reaches C-index **0.668 internally and 0.577
-externally**: it discriminates on its own cohort and does not transport across
-histologies. Calibration is measured by Kaplan-Meier at a fixed horizon and is
-monotone. Adding T and N stage was tried and made the external number *worse*
-(0.571), because the two cohorts are missing those fields differently.
+**It used to validate LUAD against LUSC and call the result a transport
+failure. That reading was wrong, and this is the correction.** A Cox model on
+age, sex, stage and prior malignancy reaches C-index **0.66–0.68 internally and
+0.58–0.67 on held-out institutions**, with monotone Kaplan-Meier calibration.
+
+The old conclusion did not survive being checked in both directions. Fitted on
+LUAD the model scores 0.667 internally and 0.579 on LUSC; fitted on **LUSC** it
+scores **0.577 on its own cohort and 0.646 on LUAD** — better on the "external"
+set than the one it was fitted on. The score follows the cohort being *scored*,
+not the cohort that was fitted, and stage alone gives 0.658 in adenocarcinoma
+against 0.565 in squamous. Squamous cell is a population where these covariates
+carry little prognostic signal; the coefficients transport fine.
+
+So the benchmark was measuring the difficulty of a cohort and reporting it as a
+property of the model. External validation now means what the field means by it
+— a different institution, same disease — and the cross-histology number is
+still computed and reported beside it, because it is a real finding. It just is
+not the pass criterion.
 
 ## 1. The field
 
@@ -78,7 +90,7 @@ prediction to tailor treatment, expression signatures for prognosis and
 chemotherapy response, tooling for genome-scale data — are this agent's. One
 anchor in the field, not its boundary.
 
-## 3b. What was tried against the transport failure, and refuted
+## 3b. What was tried against the "transport failure", and refuted
 
 Recorded because a design that lists only its confirmations is not one anyone
 should trust, and because each of these is a hypothesis someone else would
@@ -92,10 +104,18 @@ otherwise spend a day re-testing.
 
 **What the experiments did establish.** Removing stage collapses internal
 discrimination to 0.485 — below chance — so **stage carries essentially the
-entire signal**, and it is stage's prognostic weight that fails to transport.
-Adenocarcinoma and squamous cell have different stage-specific survival. That is
-biology, not a specification defect, and no amount of shrinkage or recoding
-reaches it.
+entire signal**.
+
+**And what they did not.** Every hypothesis above asked why the model failed to
+transport, and the premise was wrong: it transports. Three careful refutations
+were spent on a question the data never posed, because none of them tested the
+direction of the effect. Reversing the fit takes one line and settles it —
+fitted on LUSC, the model scores 0.577 on LUSC and 0.646 on LUAD. The cohort is
+hard, not the transfer.
+
+That is the lesson worth keeping from this agent: a negative result is a claim
+like any other, and "the model does not transport" needed the symmetric
+experiment before it was written down. It was not run for a day.
 
 > **One real defect was found on the way, and it invalidated an earlier
 > conclusion.** The optimiser normalised its gradient to unit length —

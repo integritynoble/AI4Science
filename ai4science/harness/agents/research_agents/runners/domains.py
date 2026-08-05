@@ -557,6 +557,7 @@ def _score_onco(seed_ws: Path, run_ws: Path) -> Dict[str, float]:
     d = lambda n: np.load(seed_ws / "data" / (n + ".npy"))
     rd = np.load(run_ws / "results" / "risk_dev.npy")
     re_ = np.load(run_ws / "results" / "risk_ext.npy")
+    rx = np.load(run_ws / "results" / "risk_xh.npy")
     c_int = _c_index(rd, d("dev_time"), d("dev_event"))
     c_ext = _c_index(re_, d("ext_time"), d("ext_event"))
     # Calibration by Kaplan-Meier at a fixed horizon, per risk tertile.
@@ -574,6 +575,11 @@ def _score_onco(seed_ws: Path, run_ws: Path) -> Dict[str, float]:
     surv = [_km_at(t[m], e[m], horizon) for m in masks]
     monotone = float(surv[0] >= surv[1] >= surv[2])
     return {"c_index_internal": c_int, "c_index_external": c_ext,
+            # A different DISEASE, not a different hospital. Reported beside the
+            # external number and never confused with it: the model transports
+            # across institutions, and squamous cell is a cohort where these
+            # covariates carry little signal in either direction.
+            "c_index_cross_histology": _c_index(rx, d("xh_time"), d("xh_event")),
             "external_drop": c_int - c_ext,
             "calibration_monotone": monotone,
             "km_horizon_days": horizon,
@@ -598,6 +604,14 @@ def _judge_onco(m: Dict[str, float]) -> Verdict:
     reasons.append("internal %.4g → external %.4g (drop %.4g), reported together"
                    % (m["c_index_internal"], m["c_index_external"],
                       m["external_drop"]))
+    # Reported, never graded. A different disease is a different question, and
+    # grading on it once turned "squamous cell is hard to prognose" into "the
+    # model does not transport" — which the numbers did not support.
+    reasons.append("on the other histology entirely: %.4g. That cohort scores "
+                   "low whichever cohort the model was fitted on, and stage "
+                   "alone scores 0.658 in adenocarcinoma against 0.565 there, "
+                   "so it is the cohort that is hard and not the transport "
+                   "that failed" % m["c_index_cross_histology"])
     reasons.append("for a clinician. Not a diagnosis, not advice, no "
                    "patient-level claim")
     return Verdict(ok, tuple(reasons), m)

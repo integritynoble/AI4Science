@@ -63,6 +63,11 @@ def main():
     os.makedirs(os.path.join(ws, "results"), exist_ok=True)
     np.save(os.path.join(ws, "results", "risk_dev.npy"), Xd @ beta)
     np.save(os.path.join(ws, "results", "risk_ext.npy"), d("ext_X") @ beta)
+    # The other histology, scored with the same coefficients. Not the pass
+    # criterion — reported, because "how far does this carry to a different
+    # disease" is a different question from "does it hold at a hospital that did
+    # not contribute to the fit", and the two were once confused for each other.
+    np.save(os.path.join(ws, "results", "risk_xh.npy"), d("xh_X") @ beta)
     np.save(os.path.join(ws, "results", "coefficients.npy"), beta)
     print("cox fitted on %d cases, %d events" % (len(td), int(ed.sum())))
 
