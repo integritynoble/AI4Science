@@ -531,3 +531,102 @@ def ldct(argv=()) -> str:
                      "task-based assessment and are labelled as inserted.")
     return ("%s: %d patients, real paired full/low dose → %s"
             % (c.key, len(pairs), d))
+
+
+# --------------------------------------------------- CAVE (computational imaging)
+
+_CAVE = "https://cave.cs.columbia.edu/old/databases/multispectral/zip/%s.zip"
+
+#: Scenes chosen for spectral variety rather than looks: pigments, fabric,
+#: food and a colour chart span very different spectral signatures, and a
+#: reconstruction that only works on smooth spectra should fail somewhere here.
+CAVE_SCENES = ("balloons_ms", "chart_and_stuffed_toy_ms", "cloth_ms",
+               "beads_ms", "superballs_ms", "flowers_ms",
+               "feathers_ms", "photo_and_face_ms", "thread_spools_ms")
+
+
+def cave_hyperspectral(argv=()) -> str:
+    """Real hyperspectral scenes for the CASSI benchmark.
+
+    The benchmark it replaces synthesised its own cube from Gaussian blobs —
+    trivially sparse, unusually kind to a total-variation prior, and its own
+    docstring called it "a synthetic stand-in for real KAIST-like data". Real
+    scenes carry real spectral correlation and real spatial structure, which is
+    what a reconstruction prior is actually up against.
+
+    **The measurement is still simulated.** These are real scenes pushed through
+    the forward model, not captures from a physical CASSI instrument. That is a
+    meaningful step and it is not the same thing, and the benchmark says so
+    rather than letting "real data" cover both.
+    """
+    import io as _io
+    import zipfile
+    import numpy as np
+    from PIL import Image
+
+    c = _corpus.CAVE
+    d = c.dir()
+    d.mkdir(parents=True, exist_ok=True)
+    size = int(argv[0]) if argv else 64
+    bands = int(argv[1]) if len(argv) > 1 else 8
+
+    keep, meta = {}, {}
+    for name in CAVE_SCENES:
+        try:
+            raw = _get(_CAVE % name, timeout=900, binary=True)
+            # Parse inside the guard, not after it. A wrong scene name returns
+            # an HTML error page that a range probe answers 206 to, so it looks
+            # available and is not a zip — and with the parse outside the guard
+            # one bad name threw away four completed multi-megabyte downloads.
+            zf = zipfile.ZipFile(_io.BytesIO(raw))
+        except Exception as e:
+            meta[name] = {"skipped": "%s: %s" % (type(e).__name__, str(e)[:80])}
+            continue
+        pngs = sorted(x for x in zf.namelist()
+                      if x.lower().endswith(".png") and "_ms_" in x)
+        if len(pngs) < 31:
+            meta[name] = {"skipped": "only %d bands" % len(pngs)}
+            continue
+        # Spread the kept bands across 400-700nm rather than taking a block:
+        # a contiguous slice would be far more spectrally correlated than the
+        # full range and would make the reconstruction easier than it is.
+        idx = np.linspace(0, len(pngs) - 1, bands).round().astype(int)
+        cube = []
+        for i in idx:
+            im = Image.open(_io.BytesIO(zf.read(pngs[i])))
+            a = np.asarray(im, np.float32)
+            if a.ndim == 3:
+                a = a.mean(axis=2)
+            h, w = a.shape
+            s0 = min(h, w)
+            a = a[(h - s0) // 2:(h - s0) // 2 + s0, (w - s0) // 2:(w - s0) // 2 + s0]
+            step = max(1, s0 // size)
+            a = a[::step, ::step][:size, :size]
+            cube.append(a)
+        # Normalise the CUBE, not each band. Per-band normalisation was the
+        # first version and it destroys the thing this data is for: dividing
+        # every band by its own maximum flattens the relative amplitudes
+        # between bands, which IS the spectral signature a reconstruction is
+        # trying to recover. One global scale preserves the spectrum and puts
+        # the cube in [0, 1].
+        arr = np.stack(cube, axis=-1).astype(np.float32)
+        peak = float(arr.max())
+        if peak > 0:
+            arr = arr / peak
+        if arr.shape != (size, size, bands):
+            meta[name] = {"skipped": "shape %s" % (arr.shape,)}
+            continue
+        keep[name] = arr
+        meta[name] = {"shape": list(arr.shape), "mean": float(arr.mean())}
+
+    if len(keep) < 4:
+        raise RuntimeError("only %d CAVE scenes usable" % len(keep))
+    np.savez_compressed(d / "scenes.npz", **keep)
+    (d / "metadata.json").write_text(json.dumps(
+        {"scenes": sorted(keep), "shape": [size, size, bands],
+         "bands_nm": "400-700 spread across %d of 31" % bands, "detail": meta}))
+    _provenance(d, c, scenes=sorted(keep), shape=[size, size, bands],
+                note="real scenes; the CASSI measurement is still simulated by "
+                     "applying the forward model, which is not the same as a "
+                     "capture from a physical instrument")
+    return "%s: %d real scenes at %dx%dx%d -> %s" % (c.key, len(keep), size, size, bands, d)

@@ -145,8 +145,19 @@ LDCT = Corpus(
     approx_size="~200 MB for the slice subset used here",
 )
 
+CAVE = Corpus(
+    key="cave-hyperspectral",
+    title="CAVE multispectral — real 512x512x31 hyperspectral scenes",
+    required=("scenes.npz", "metadata.json"),
+    source="cave.cs.columbia.edu — Columbia CAVE multispectral database",
+    licence="free for research use, with attribution",
+    fetch=FETCH % "cave-hyperspectral",
+    approx_size="~100 MB for the scene subset used here",
+)
+
 ALL: Dict[str, Corpus] = {c.key: c for c in
-                          (TCGA_SURVIVAL, DUDE, OPENKBP, KVASIR_CAPSULE, LDCT)}
+                          (TCGA_SURVIVAL, DUDE, OPENKBP, KVASIR_CAPSULE, LDCT,
+                           CAVE)}
 
 
 def status(root: Optional[Path] = None) -> str:
