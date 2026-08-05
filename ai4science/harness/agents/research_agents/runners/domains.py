@@ -506,31 +506,27 @@ SCREENING = DomainBenchmark(
     deliverables=("results/scores.npy",),
     answer_key=("data/labels.npy",),
     score=_score_screening, judge=_judge_screening, corpus="dude",
-    # NOT ef_at_1pct, which was the obvious choice and is unusable: on this
-    # library it sits at 66.789 against a ceiling of 66.789 — **100.0% of the
-    # maximum, on every seed**. The top percentile is already all actives, so
-    # the number is pinned and seven different methods scored it identically
-    # to four significant figures. A search driving a saturated objective
-    # optimises nothing and reports a delta of zero forever.
+    # EF@1% is the field's metric — a screening campaign tests the top of the
+    # list and nothing else — and it is the objective again now that it has room
+    # to move. It briefly was not: the query set used to be drawn at random from
+    # each target's actives, DUD-E actives are largely analogue series, and so
+    # the ten molecules handed over were usually close relatives of the ones
+    # being scored. EF@1% pinned at 100% of its ceiling and seven methods scored
+    # it identically. AUC was the objective while that was true.
     #
-    # The judge already refuses one route to saturation — a library denser than
-    # 5% active, where EF@1% cannot exceed 1/fraction. This is the other route:
-    # the fraction is a healthy 1.5% and the *method* is good enough to fill the
-    # first percentile. Same broken metric, cause the existing guard does not
-    # look for. See the note in drug-design.md.
-    #
-    # auc_unseen moves (0.9304-0.9517 across seeds and configurations) and is
-    # measured on the same unseen molecules, so it is the objective.
-    objective="auc_unseen", objective_higher_is_better=True,
-    # EF@1% becomes the guardrail, and it is a good one precisely because it is
-    # at the ceiling: it cannot rise, so any movement is a loss. A method that
-    # improved global ranking by blunting the top of the list — useless to
-    # anyone who screens the first percentile and nothing else — is caught here.
-    # The held-out targets guard the other characteristic failure: gaining
-    # overall by suiting the well-represented targets and losing the ones the
-    # method was meant to generalise to, which is how a screening result
-    # usually fails to reproduce on a new target.
-    guardrails=("ef_at_1pct", "ef_at_1pct_heldout_targets"),
+    # The fix was to the SPLIT, not to the metric: the query set is drawn from
+    # whole clusters and the rest of those clusters is withheld, so what is left
+    # to find is a series the solver was never shown. The task got harder — AUC
+    # fell from 0.94 to 0.82-0.88 — and EF@1% came back to 51-77% of ceiling,
+    # which is a metric that ranks methods again.
+    objective="ef_at_1pct", objective_higher_is_better=True,
+    # AUC over all unseen molecules guards the other direction: EF@1% is a
+    # top-of-list number, and the cheapest way to raise it is to sharpen the
+    # first percentile while making the rest of the ranking worse — no use to
+    # anyone who screens deeper than 1%. The held-out targets guard the failure
+    # that ends screening papers: gaining overall by suiting the well-represented
+    # targets and losing the ones the method was meant to generalise to.
+    guardrails=("auc_unseen", "ef_at_1pct_heldout_targets"),
     parameters=(
         Parameter("top_k", 1, 15, 1, integer=True,
                   means="group fusion: average the top-k similarities to known "

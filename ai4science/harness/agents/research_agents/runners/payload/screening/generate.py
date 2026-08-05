@@ -19,6 +19,47 @@ import numpy as np
 
 KNOWN_PER_TARGET = 10           # actives handed to the solver as the query set
 
+#: Tanimoto below which two actives count as different chemical series.
+#:
+#: The query set used to be drawn at RANDOM from a target's actives, and DUD-E
+#: actives are largely analogue series, so the ten handed over were usually close
+#: relatives of the ones being scored: test actives sat at 0.519 mean max-Tanimoto
+#: to the query against 0.154 for decoys. Nearest-neighbour retrieval then found
+#: them without generalising at all, and EF@1% pinned at 100% of its ceiling —
+#: a metric that had stopped ranking methods.
+#:
+#: So the query set is drawn from whole clusters, and the rest of those clusters
+#: is dropped rather than scored. What is left to find is a series the solver was
+#: not shown. At 0.4 the analogue gap falls to 0.093 and EF@1% lands near 43% of
+#: ceiling; at 0.5 it is still 88% of ceiling, which is why this is not looser.
+CLUSTER_CUTOFF = 0.4
+
+
+def _tanimoto(A, B):
+    A = A.astype(np.uint16); B = B.astype(np.uint16)
+    inter = A @ B.T
+    union = A.sum(1)[:, None] + B.sum(1)[None, :] - inter
+    return inter / np.clip(union, 1, None)
+
+
+def _leader_clusters(F, cutoff):
+    """Leader clustering: each molecule joins the first leader within cutoff.
+
+    Deliberately the simple algorithm. What matters here is that whole series end
+    up together, not which of several clusterings is optimal — and a simple one
+    is a clustering a reader can check by hand."""
+    leaders, assign = [], np.full(len(F), -1)
+    for i in range(len(F)):
+        if leaders:
+            s = _tanimoto(F[i:i + 1], F[leaders])[0]
+            j = int(s.argmax())
+            if s[j] >= cutoff:
+                assign[i] = j
+                continue
+        assign[i] = len(leaders)
+        leaders.append(i)
+    return assign
+
 
 def main():
     ap = argparse.ArgumentParser()
@@ -40,16 +81,33 @@ def main():
     D, FP, y, tid, known = [], [], [], [], []
     for i, t in enumerate(names):
         rows = targets[t]
-        act = [j for j, r in enumerate(rows) if r["y"] == 1]
-        rng.shuffle(act)
-        query = set(act[:KNOWN_PER_TARGET])
-        for j, r in enumerate(rows):
+        # Fingerprints first: the split is decided on them, so they cannot be
+        # computed inside the emit loop any more.
+        parsed = []
+        for r in rows:
             m = Chem.MolFromSmiles(r["smiles"])
             if m is None:
                 continue
-            fp = gen.GetFingerprintAsNumPy(m).astype(np.uint8)
+            parsed.append((r, gen.GetFingerprintAsNumPy(m).astype(np.uint8)))
+
+        act_pos = [k for k, (r, _) in enumerate(parsed) if r["y"] == 1]
+        assign = _leader_clusters(np.array([parsed[k][1] for k in act_pos], bool),
+                                  CLUSTER_CUTOFF)
+        pool = []
+        for c in rng.permutation(np.unique(assign)):
+            pool += [act_pos[k] for k in np.flatnonzero(assign == c)]
+            if len(pool) >= KNOWN_PER_TARGET:
+                break
+        query = set(pool[:KNOWN_PER_TARGET])
+        # The rest of the query's own clusters are neither shown nor scored:
+        # scoring them would be scoring the query set's analogues back to itself.
+        withheld = set(pool) - query
+
+        for k, (r, fp) in enumerate(parsed):
+            if k in withheld:
+                continue
             D.append(r["d"]); FP.append(fp); y.append(r["y"]); tid.append(i)
-            known.append(1 if j in query else 0)
+            known.append(1 if k in query else 0)
 
     D = np.array(D, float); FP = np.array(FP, np.uint8)
     y = np.array(y, int); tid = np.array(tid, int); known = np.array(known, int)

@@ -35,7 +35,7 @@ are not.
 | Agent | Corpus | Reference method |
 |---|---|---|
 | [low-dose CT](low-dose-ct.md) | TCIA `LDCT-and-Projection-data` — real paired full/low dose | **passes** — and a higher-PSNR blur fails |
-| [drug design](drug-design.md) | DUD-E — 15,288 molecules, 6 targets | **refused** — EF@1% is pinned at 100% of its ceiling and no longer ranks methods |
+| [drug design](drug-design.md) | DUD-E — 15,288 molecules, 6 targets | **passes** — EF@1% 41–56 at 51–77% of ceiling, 2.4–2.9× the property baseline, on a series-disjoint split |
 | [cancer](cancer.md) | TCGA via the GDC API — 978 cases, two cohorts | **fails** — C-index 0.668 internal, 0.577 external |
 | [medical physics](medical-physics.md) | OpenKBP — 8 real head-and-neck plans | **5 of 8 patients** on one global weight set; weights are per-patient |
 | [pill camera](pill-camera.md) | Kvasir-Capsule — 4,443 frames, 46 videos | **passes**, after its own night loop found the fix — 0.624 against 0.614 |
