@@ -109,7 +109,7 @@ Three rules carry the same weight:
     │
     ├── machine agent    THE ENTRY CHAT · knows this machine · MAY NOT drive a session
     ├── sarsi-worker     the base worker — any task with no better home
-    ├── work             the 9-to-5 job · reads mail, never sends
+    ├── work             RETIRED 2026-08-05 · out of routing, its history still readable
     ├── social           one daily read · drafts for the three destinations
     ├── funding          applications · an eligibility claim must cite a source
     ├── jobs             CV · application sites
@@ -153,8 +153,8 @@ bring **no session-starting sub-agent**; what bounds a bad one is the invariant.
 | Agent | For | Tools | May complete |
 |---|---|---|---|
 | **machine agent** | this machine: routing, inventory, the fleet-of-one view | none — it does not execute | nothing |
-| **`sarsi-worker`** | any task with no better home | shell, editor, browser | nothing — its work stays here |
-| **`work`** | the 9-to-5 job | qupath, matlab, mail.read | **nothing** — it reads mail and drafts; sending is not its act |
+| **`sarsi-worker`** | the one general worker — any task with no better home | shell, editor, browser | nothing — its work stays here |
+| **`work`** | **retired 2026-08-05.** Out of routing, still readable | — | — |
 | **`social`** | one daily read, and influence | browser | `post` |
 | **`funding`** | applications | browser, documents | `submission` |
 | **`jobs`** | CV, application sites | browser, documents | `submission` |
@@ -173,9 +173,31 @@ it"*.
 agent's row is refused before the machine is asked whether it has it: `work` has
 no payment tool, so it is not asked to pay on a machine that could.
 
-### `work` — mail is the sharp edge
+### `work` — retired, and why it was not deleted
 
-| It may | It may not |
+The roster shipped two general workers on the same engine with the same
+authority: `sarsi-worker` (shell, editor, browser) and `work` (qupath, matlab,
+**mail**). The owner asked for one to begin with. Deleting the roster entry was
+the obvious move and the wrong one — **a roster entry owns its task folder**, and
+`work` holds 32 archived tasks on this machine. Removing it makes that history
+unreachable from every command that reads it: `tasks --archived`, `plan`,
+`blast`, `spend`.
+
+So an agent can be **retired**: out of routing, still readable.
+
+| What retiring does | What it deliberately does not do |
+|---|---|
+| `workers()` stops offering it, so routing never suggests it | its folder, plans, verdicts and spend read exactly as before |
+| `do <it>` is refused **by name**, not silently accepted | it is listed as *retired*, not missing — an agent that vanished would read as a machine that lost one |
+| its general vocabulary (`code`, `repo`, `script`, `benchmark`…) moved to `sarsi-worker`, so no demand is stranded on *"I cannot tell"* | **`mail` did not move**, and neither did `email`/`mailbox` — the vocabulary follows the capability |
+
+**Mail is why the merge was not a merge.** A single do-everything agent that also
+reads the mailbox is exactly the concentration the split exists to prevent, and
+mail is the tool most likely to carry someone else's instructions into a session.
+The rule below is the one that made `work` a separate agent in the first place,
+and it now applies to whoever picks mail up next:
+
+| A mail agent may | It may not |
 |---|---|
 | read the mailbox | send anything |
 | draft a reply and show it | send the draft it wrote |
@@ -646,6 +668,123 @@ is worth as much as an agent, and paying only for agents would starve the socket
 review — or require ones from the market, and then the install screen names every
 author whose code comes with it and what each part may touch.
 
+### What an agent package is
+
+```
+sarsi-agent-<name>/
+  agent.json      identity, purpose, author, version, price
+  spec.md         what it is for, in the author's words — shown in agents-search
+  roster.json     tools it expects · outward classes it may complete
+  tools/          plug-ins it brings (§11a)
+  subagents/      sub-agents it brings, e.g. a specialised sarsi-claude
+  tests/          what the author says proves it works
+```
+
+```json
+{
+  "id": "protein-fold",
+  "version": "1.2.0",
+  "author": {"handle": "…", "pwm_address": "…"},
+  "purpose": "one line, shown in agents-search",
+  "tools": ["browser", "pymol"],
+  "outward": [],
+  "reserved_refused": ["money", "consent", "publishing", "legal"],
+  "price_share": 1.0,
+  "requires": {"ai4science": ">=…", "subagents": ["sarsi-claude>=…"]}
+}
+```
+
+Everything above is what the **market** needs and nothing the runtime should
+trust. But the package as written describes an agent that cannot run, because it
+never says where the agent *lives*:
+
+> **Every agent owns a workspace and a task list. Both are created by the
+> installer, and neither ships in the package.**
+
+The runtime already does this — `ensure_dirs` gives every roster entry
+`workspace/`, `host/`, `tasks/`, `sessions/` and `selfmodel/` under its own
+id — and the package format has to say so, for one reason that is not
+bookkeeping:
+
+**an author must not be able to ship a task list or a workspace.** A package
+that arrived with tasks already in it would file work the owner never asked for,
+past `CAP`, past the plan, past the grant — the market's install screen is a
+consent step, and pre-filled work walks straight through it. A package that
+arrived with a workspace would be an author writing standing instructions into a
+place the agent reads at plan time, which is the same hole `rules` closes by
+requiring the owner's `--sign`. So the installer creates both **empty**, keyed by
+the installed id, and a package containing either is refused at acceptance.
+
+**This holds for agents that never execute, too.** The manager (`sarsi-machine`
+here, and the app's manager agent) and the machine agent in both apps get the
+same two directories as any worker. Their task lists stay empty by construction —
+`worker.admit` refuses a manager, which is §2 in code — and that is exactly why
+they must exist: *"no tasks"* and *"no task list"* are different answers, and the
+first is only readable if the second is false. The workspace is not empty for
+them: it is where the manager's own record lives, so the agent you talk to has a
+history you can read even though it has no work you can point at.
+
+### 11z. Installing an agent creates a workspace and a task list
+
+A package is what the author ships. **The workspace is what this machine
+creates**, and it never travels: it belongs to one owner, on one machine, under
+that agent's `W_<name>`, and it is most of what a research agent actually is —
+charter, self-model, field map, budget, three ledgers, a corpus cache and the
+benchmark seeds.
+
+So the package declares the workspace's *shape*, and the install builds it.
+Two files, described in full in [the market design](2026-08-04-sarsi-agent-market-and-pwm-design.md) §3a:
+`workspace.json` — what is kept, what is append-only, what must never be staged
+into a sandbox, and what must never be packaged — and `tasks.json` — the task
+classes it accepts, and which transitions need the owner's signature.
+
+Three of those fields matter on *this* machine specifically:
+
+| Field | What it prevents here |
+|---|---|
+| `never_stage` | the answer key reaching the sandbox. A solver that reads `data/labels.npy`, or a reconstruction that reads the ground truth, passes every judge by copying it. The list is enforced at staging, next to the code that stages. |
+| `never_packaged` | an installed agent arriving with its autonomous switch **on** or a budget already granted. Both are the owner's (§8), and a package that carried them would let the author decide that this machine runs overnight and spends. |
+| `owner_signature_required` | an agent adopting its own improvement. Proposing is the agent's; adopting is the owner's. |
+
+**The corpus is the exception that proves the shape.** It is the largest thing
+in a workspace and the only part shared between agents on a machine — several
+agents read the same TCGA or DUD-E cache — so it is declared with a fetch
+command and a size, and an agent whose corpus is absent **refuses and names the
+command** rather than substituting generated data. The workspace declaration is
+where that requirement is visible before anything is installed.
+
+### The exchange node also exchanges compute
+
+The exchange node was built to trade **LLM credentials**. It trades **GPU
+compute** on the same rails, and for a reason that is not symmetry: the agents
+this system is built for are the compute-hungry ones. A computational-imaging
+reconstruction is not an LLM call with a bigger context — it is hours on a card,
+and an agent that cannot get one cannot finish.
+
+Two facts decide whether a job can land on a provider's machine, and they are
+known in **different ways**. Getting them from the same place is the mistake.
+
+| | How | Why not the other way |
+|---|---|---|
+| **operating system** | **declared** by the provider — `linux`, `windows`, `macos`, and nothing else | It is a **routing constraint**: a solver built against CUDA on Linux does not run on Windows, and neither runs on Apple Silicon. It is not read from the process that registers, because `join` gets run from WSL, from containers and over SSH — the platform underneath *that* is not evidence about the box that will serve. Only the provider knows which machine that is. |
+| **GPU** | **detected** on the OS just declared | It is a fact about the machine, so the machine answers. A provider typing `--kind gpu` on a box with no card is not lying, they are guessing — and the first heavy job is an expensive place to find out. The OS comes first because *how you ask* differs: `nvidia-smi` on Linux and Windows, `metal` on a Mac, where there is no CUDA to ask about. |
+
+**Detection that could not run reports `unknown`, never `none`.** A driver that
+was unreadable must not register as a CPU-only box, because a user picking a
+provider reads that as a checked fact — the same rule `blast`, `spend` and
+`budget` already follow about what was not observed. So the refusal is narrow:
+
+* the machine answered **"no GPU"** and the provider claimed one → **refused**,
+  with the reason, before any user's PWM is at risk;
+* the probe **could not run** → **registered**, and recorded as unobserved.
+  Locking out a real provider on the strength of something never seen would
+  treat a failed probe as a missing card.
+
+Both go into the provider record — `system` and `detected` kept apart from
+`device`, so a reader can tell a card the machine reported from one a provider
+typed in. The owner's own two boxes are one Windows and one Linux, which is why
+this is the shape rather than a Linux assumption with an exception bolted on.
+
 ## 11a. The tools and sub-agents this system needs (Point 13)
 
 A **tool** is something a task needs *present* to run — checked at `CAP`,
@@ -762,6 +901,39 @@ rather than asking for more. An agent may not turn it on or extend it.
 > its own benchmark, passed it, and counted the pass toward its record would have
 > published its own reputation — so owner-set tasks, benchmarks and self-directed
 > research are three lines and never one number.
+
+### One workspace, one task list, two functions
+
+Both functions run against the workspace this machine created at install
+(§11z) and the single task list in it. **One of each, deliberately.** Two would
+give the agent a private record of itself beside the one the owner reads, and
+the first thing to diverge would be the part that flatters it.
+
+| State in `W_<name>` | 1 · on demand | 2 · autonomous |
+|---|---|---|
+| task list | works owner-created tasks | creates its own, from owner tasks, benchmarks, or the charter |
+| `selfmodel.json` | written by `observe()` — measured, never asserted | the same file, and also the **queue**: where its evidence is thin is where it works next |
+| `fieldmap.json` | not used | worked, and not repeated |
+| `charter.json` | bounds the work | bounds it, and supplies the direction when the other sources are empty |
+| **switch, budget** | **not touched** | required, owner-set, never packaged |
+| ledgers | `owner` | `benchmark`, `self_directed` |
+
+**Function 1 does not read the switch.** An agent that needed autonomous
+research turned on before it would answer a question would have made a standing
+spending permission the price of ordinary use. It is stated in `tasks.json` and
+held by a test: `test_a_user_task_runs_with_the_autonomous_function_OFF`.
+
+**The source is stamped when a task is created, by whoever created it, and is
+never rewritten.** That is what makes "three lines, never one number"
+enforceable rather than a promise — an agent that could set the source could
+file its own research as work the owner asked for.
+(`test_a_user_task_lands_in_the_owner_ledger_only`,
+`test_the_three_ledgers_are_kept_apart`.)
+
+**Turning the switch off does not empty the task list.** Self-directed tasks
+already created keep their source; the owner chooses whether a running one
+finishes or is closed. Deleting them on revocation would erase exactly the
+record the owner wants to read after turning it off.
 
 ### The governor's research agents (Points 6 and 12)
 

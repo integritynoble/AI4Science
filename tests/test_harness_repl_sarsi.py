@@ -43,7 +43,7 @@ def registry(tmp_path):
     return tmp_path
 
 
-def _state(agent: str = "work") -> dict:
+def _state(agent: str = "sarsi-worker") -> dict:
     return {"read_only": False, "auto_yes": False, "exit": False, "agent": agent}
 
 
@@ -52,33 +52,33 @@ def _state(agent: str = "work") -> dict:
 def test_do_creates_a_task_on_the_matching_worker(registry):
     from ai4science.harness.agents.sarsi import registry as reg, task as tsk
     handled, msg = _dispatch_slash("/do write a gap-tv algorithm for cassi",
-                                   _state("work"))
+                                   _state("sarsi-worker"))
     assert handled
     config = reg.load()
-    goals = [t.goal for t in tsk.all_of(config, config.agents["work"])]
+    goals = [t.goal for t in tsk.all_of(config, config.agents["sarsi-worker"])]
     assert goals == ["write a gap-tv algorithm for cassi"]
 
 
 def test_do_reports_the_task_id_so_it_can_be_opened(registry):
     from ai4science.harness.agents.sarsi import registry as reg, task as tsk
-    _, msg = _dispatch_slash("/do drain the export queue", _state("work"))
+    _, msg = _dispatch_slash("/do drain the export queue", _state("sarsi-worker"))
     config = reg.load()
-    task = tsk.all_of(config, config.agents["work"])[0]
+    task = tsk.all_of(config, config.agents["sarsi-worker"])[0]
     assert task.id in msg
 
 
 def test_do_says_the_plan_comes_next_rather_than_claiming_it_is_done(registry):
     """The worker drafts, `sarsi-claude` agrees it, the owner releases it."""
-    _, msg = _dispatch_slash("/do ship the thing", _state("work"))
+    _, msg = _dispatch_slash("/do ship the thing", _state("sarsi-worker"))
     assert "plan" in msg.lower()
 
 
 def test_do_does_not_execute_the_goal_itself(registry):
     """The whole point of the bridge: delegation, not another executor."""
     from ai4science.harness.agents.sarsi import registry as reg, task as tsk
-    _dispatch_slash("/do rm -rf /tmp/nothing-here", _state("work"))
+    _dispatch_slash("/do rm -rf /tmp/nothing-here", _state("sarsi-worker"))
     config = reg.load()
-    task = tsk.all_of(config, config.agents["work"])[0]
+    task = tsk.all_of(config, config.agents["sarsi-worker"])[0]
     assert task.session is None          # nothing started from the REPL process
 
 
@@ -87,14 +87,14 @@ def test_a_different_agent_opens_the_task_on_its_own_worker(registry):
     _dispatch_slash("/do draft the thread", _state("social"))
     config = reg.load()
     assert tsk.all_of(config, config.agents["social"])
-    assert tsk.all_of(config, config.agents["work"]) == []
+    assert tsk.all_of(config, config.agents["sarsi-worker"]) == []
 
 
 # ── /tasks reads the board through the same door ──────────────────────
 
 def test_tasks_lists_the_workers_board(registry):
-    _dispatch_slash("/do finish the export", _state("work"))
-    handled, msg = _dispatch_slash("/tasks", _state("work"))
+    _dispatch_slash("/do finish the export", _state("sarsi-worker"))
+    handled, msg = _dispatch_slash("/tasks", _state("sarsi-worker"))
     assert handled and "finish the export" in msg
 
 
@@ -104,7 +104,7 @@ def test_do_from_an_agent_with_no_worker_names_the_ones_that_exist(registry):
     """Guessing a worker would file the task under the wrong owner."""
     handled, msg = _dispatch_slash("/do something", _state("general-purpose"))
     assert handled
-    assert "work" in msg and "abraham" in msg
+    assert "sarsi-worker" in msg and "abraham" in msg
     from ai4science.harness.agents.sarsi import registry as reg, task as tsk
     config = reg.load()
     assert all(not tsk.all_of(config, a) for a in config.agents.values())
@@ -112,20 +112,20 @@ def test_do_from_an_agent_with_no_worker_names_the_ones_that_exist(registry):
 
 def test_do_with_no_registry_says_how_to_make_one(tmp_path, monkeypatch):
     monkeypatch.setenv("SARSI_STATE_DIR", str(tmp_path / "empty"))
-    handled, msg = _dispatch_slash("/do something", _state("work"))
+    handled, msg = _dispatch_slash("/do something", _state("sarsi-worker"))
     assert handled and "sarsi init" in msg
 
 
 def test_do_with_no_goal_asks_for_one_rather_than_filing_an_empty_task(registry):
     from ai4science.harness.agents.sarsi import registry as reg, task as tsk
-    handled, msg = _dispatch_slash("/do", _state("work"))
+    handled, msg = _dispatch_slash("/do", _state("sarsi-worker"))
     assert handled and "usage" in msg.lower()
     config = reg.load()
-    assert tsk.all_of(config, config.agents["work"]) == []
+    assert tsk.all_of(config, config.agents["sarsi-worker"]) == []
 
 
 def test_help_mentions_the_bridge(registry):
-    _, msg = _dispatch_slash("/help", _state("work"))
+    _, msg = _dispatch_slash("/help", _state("sarsi-worker"))
     assert "/do" in msg
 
 
@@ -151,8 +151,8 @@ def test_the_running_repl_files_the_task_under_the_agent_in_use(registry, tmp_pa
     monkeypatch.setattr("builtins.input", lambda _p="": next(inputs))
 
     repl_mod.run_common_repl(tmp_path, backend="anthropic", model="stub",
-                             mode_label="work")
+                             mode_label="social")
 
     config = reg.load()
-    goals = [t.goal for t in tsk.all_of(config, config.agents["work"])]
+    goals = [t.goal for t in tsk.all_of(config, config.agents["social"])]
     assert goals == ["write a gap-tv algorithm for cassi"]

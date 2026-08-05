@@ -41,7 +41,7 @@ def config(tmp_path):
 
 @pytest.fixture
 def agent(config):
-    return config.agents["work"]
+    return config.agents["sarsi-worker"]
 
 
 class FakeRuntime:
@@ -222,14 +222,14 @@ def test_an_archived_task_never_asks_for_attention(config, agent):
 
 def test_the_fleet_view_names_which_agent(config):
     from ai4science.harness.agents.sarsi import registry as _reg
-    work, social = config.agents["work"], config.agents["social"]
+    work, social = config.agents["sarsi-worker"], config.agents["social"]
     _task(config, work, "read my mail", secrets=["mail.read"])
     _task(config, social, "draft the thread", secrets=["x.post"])
     # `live` is injected: without it this asks the REAL tmux, and a session
     # someone else started on this machine walks into the assertion. A live
     # `sarsi-worker-…` did exactly that.
     rows = att.across(config, pane=Pane(), live=lambda: set())
-    assert {r.agent_id for r in rows.items} == {"work", "social"}
+    assert {r.agent_id for r in rows.items} == {"sarsi-worker", "social"}
 
 
 def test_the_manager_holds_no_tasks_and_is_not_scanned(config):
@@ -303,13 +303,13 @@ def test_a_live_terminal_no_task_claims_is_waiting_on_you(config, agent):
     busier than the machine. This is the reverse — something is running, still
     holding whatever it was granted, and the board shows NOTHING at all.
     """
-    got = att.needs(config, agent, pane=Pane(), live=lambda: {"work-9zz9"})
+    got = att.needs(config, agent, pane=Pane(), live=lambda: {"sarsi-worker-9zz9"})
     assert [i.kind for i in got.items] == ["unclaimed"]
-    assert "work-9zz9" in got.items[0].detail
+    assert "sarsi-worker-9zz9" in got.items[0].detail
 
 
 def test_it_says_how_to_close_one(config, agent):
-    got = att.needs(config, agent, pane=Pane(), live=lambda: {"work-9zz9"})
+    got = att.needs(config, agent, pane=Pane(), live=lambda: {"sarsi-worker-9zz9"})
     assert "tmux" in got.items[0].action
 
 
@@ -348,13 +348,13 @@ def test_an_unclaimed_terminal_outranks_a_stale_plan(config, agent):
     t = _task(config, agent)
     t.plan_stale = True
     tsk._touch(agent, t, __import__("time").time)
-    got = att.needs(config, agent, pane=Pane(), live=lambda: {"work-9zz9"})
+    got = att.needs(config, agent, pane=Pane(), live=lambda: {"sarsi-worker-9zz9"})
     kinds = [i.kind for i in got.items]
     assert kinds.index("unclaimed") < kinds.index("stale")
 
 
 def test_the_fleet_view_carries_it_too(config):
-    rows = att.across(config, pane=Pane(), live=lambda: {"work-9zz9",
+    rows = att.across(config, pane=Pane(), live=lambda: {"sarsi-worker-9zz9",
                                                          "social-4242"})
     assert {(i.agent_id, i.kind) for i in rows.items} == {
-        ("work", "unclaimed"), ("social", "unclaimed")}
+        ("sarsi-worker", "unclaimed"), ("social", "unclaimed")}

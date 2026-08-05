@@ -40,7 +40,7 @@ def config(tmp_path):
 
 @pytest.fixture
 def agent(config):
-    return config.agents["work"]
+    return config.agents["sarsi-worker"]
 
 
 class FakeRuntime:
@@ -214,9 +214,9 @@ def test_attention_carries_an_open_question(config, agent):
 
 
 def test_the_fleet_view_names_which_agent_is_waiting(config):
-    _escalate(config, config.agents["work"], "tsk_1", "which directory?")
+    _escalate(config, config.agents["sarsi-worker"], "tsk_1", "which directory?")
     _escalate(config, config.agents["abraham"], "tsk_2", "which card?")
-    assert {q.agent_id for q in qs.across(config)} == {"work", "abraham"}
+    assert {q.agent_id for q in qs.across(config)} == {"sarsi-worker", "abraham"}
 
 
 # ── both doors ────────────────────────────────────────────────────────

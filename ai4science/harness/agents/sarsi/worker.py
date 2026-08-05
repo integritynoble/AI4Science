@@ -88,6 +88,15 @@ def admit(config: Config, agent: Agent, directive: Directive, *,
         raise NotAWorker(
             f"{agent.id} is a manager: it may tell a worker to work, and may "
             f"not admit work itself")
+    if getattr(agent, "retired", False):
+        # Refused by name rather than accepted: a task filed against a
+        # retired agent is one nobody is going to supervise. Its record
+        # stays readable — `tasks --archived`, `plan`, `blast`, `spend` all
+        # still work — because retiring is about new work, not history.
+        raise NotAWorker(
+            f"{agent.id} is retired: it holds its history and takes no new "
+            f"work. Hand this to sarsi-worker instead — its past tasks are "
+            f"still readable with `sarsi tasks {agent.id} --archived`")
 
     if directive.agent_id != agent.id:
         out = Admission(False, directive, reason="not-mine",

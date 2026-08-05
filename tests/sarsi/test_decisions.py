@@ -41,7 +41,7 @@ def config(tmp_path):
 
 @pytest.fixture
 def agent(config):
-    return config.agents["work"]
+    return config.agents["sarsi-worker"]
 
 
 def _log(config, agent, state, *, task="tsk_1", ceiling="A2", evidence="…"):
@@ -174,10 +174,10 @@ def test_everything_can_still_be_read(config, agent):
 # ── across the fleet ──────────────────────────────────────────────────
 
 def test_the_fleet_view_names_which_agent_decided(config):
-    _log(config, config.agents["work"], "answered")
+    _log(config, config.agents["sarsi-worker"], "answered")
     _log(config, config.agents["abraham"], "submitted")
     rows = dec.across(config)
-    assert {d.agent_id for d in rows.items} == {"work", "abraham"}
+    assert {d.agent_id for d in rows.items} == {"sarsi-worker", "abraham"}
 
 
 def test_a_decision_in_the_same_second_as_the_acknowledgement_still_shows(

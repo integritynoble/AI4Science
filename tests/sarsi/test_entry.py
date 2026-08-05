@@ -42,7 +42,7 @@ def config(tmp_path):
 
 @pytest.fixture
 def agent(config):
-    return config.agents["work"]
+    return config.agents["sarsi-worker"]
 
 
 class FakeRuntime:

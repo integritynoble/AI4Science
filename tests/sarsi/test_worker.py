@@ -28,7 +28,8 @@ def _which(present):
 
 
 def _directive(**kw):
-    base = dict(agent_id="work", goal="triage the mailbox and draft replies")
+    base = dict(agent_id="sarsi-worker",
+                goal="run the benchmark and write up the numbers")
     base.update(kw)
     return worker.Directive(**base)
 
@@ -55,21 +56,21 @@ def test_a_directive_records_what_it_will_need(config):
 # ── WK: the worker admits it, or does not ─────────────────────────────
 
 def test_a_directive_whose_tools_are_here_is_admitted(config):
-    out = worker.admit(config, config.agents["work"],
+    out = worker.admit(config, config.agents["sarsi-worker"],
                        _directive(requires_tools=["matlab"]),
                        which=_which({"matlab"}))
     assert out.admitted is True and out.missing == []
 
 
 def test_a_directive_needing_an_absent_tool_is_refused(config):
-    out = worker.admit(config, config.agents["work"],
+    out = worker.admit(config, config.agents["sarsi-worker"],
                        _directive(requires_tools=["matlab"]),
                        which=_which(set()))
     assert out.admitted is False and out.reason == "capability"
 
 
 def test_the_refusal_names_what_is_missing(config):
-    out = worker.admit(config, config.agents["work"],
+    out = worker.admit(config, config.agents["sarsi-worker"],
                        _directive(requires_tools=["matlab", "qupath"]),
                        which=_which({"qupath"}))
     assert out.missing == ["matlab"]
@@ -78,13 +79,13 @@ def test_the_refusal_names_what_is_missing(config):
 
 def test_a_refused_directive_is_not_queued(config):
     """The whole point of NOM: nothing waits quietly."""
-    worker.admit(config, config.agents["work"], _directive(requires_tools=["matlab"]),
+    worker.admit(config, config.agents["sarsi-worker"], _directive(requires_tools=["matlab"]),
                  which=_which(set()))
-    assert worker.outstanding(config, config.agents["work"]) == []
+    assert worker.outstanding(config, config.agents["sarsi-worker"]) == []
 
 
 def test_an_admitted_directive_is_outstanding_until_reported(config):
-    agent = config.agents["work"]
+    agent = config.agents["sarsi-worker"]
     out = worker.admit(config, agent, _directive(requires_tools=["matlab"]),
                        which=_which({"matlab"}))
     assert [d["id"] for d in worker.outstanding(config, agent)] == [out.directive.id]
@@ -103,14 +104,14 @@ def test_the_manager_may_not_admit_a_directive(config):
 
 def test_a_worker_refuses_a_directive_addressed_to_another_agent(config):
     out = worker.admit(config, config.agents["abraham"],
-                       _directive(agent_id="work"), which=_which(set()))
+                       _directive(agent_id="sarsi-worker"), which=_which(set()))
     assert out.admitted is False and out.reason == "not-mine"
 
 
 # ── REP: the report says what happened, and no more ───────────────────
 
 def test_every_directive_is_recorded_admitted_or_not(config):
-    agent = config.agents["work"]
+    agent = config.agents["sarsi-worker"]
     worker.admit(config, agent, _directive(requires_tools=["matlab"]), which=_which(set()))
     worker.admit(config, agent, _directive(requires_tools=["matlab"]),
                  which=_which({"matlab"}))
@@ -119,21 +120,21 @@ def test_every_directive_is_recorded_admitted_or_not(config):
 
 
 def test_a_report_is_recorded(config):
-    agent = config.agents["work"]
+    agent = config.agents["sarsi-worker"]
     out = worker.admit(config, agent, _directive(), which=_which(set()))
     worker.report(config, agent, out.directive, state="done", evidence=["ran it"])
-    assert ledger.count(config, "reports", agent="work", state="done") == 1
+    assert ledger.count(config, "reports", agent="sarsi-worker", state="done") == 1
 
 
 def test_a_report_may_not_claim_a_verdict_the_verifier_did_not_give(config):
-    agent = config.agents["work"]
+    agent = config.agents["sarsi-worker"]
     out = worker.admit(config, agent, _directive(), which=_which(set()))
     with pytest.raises(worker.UnverifiedClaim):
         worker.report(config, agent, out.directive, state="verified", evidence=["trust me"])
 
 
 def test_a_report_with_a_verdict_is_allowed(config):
-    agent = config.agents["work"]
+    agent = config.agents["sarsi-worker"]
     out = worker.admit(config, agent, _directive(), which=_which(set()))
     rec = worker.report(config, agent, out.directive, state="verified",
                         evidence=["screenshot"], verdict={"state": "PASS", "by": "verifier"})
@@ -141,7 +142,7 @@ def test_a_report_with_a_verdict_is_allowed(config):
 
 
 def test_a_report_carrying_a_secret_is_refused(config):
-    agent = config.agents["work"]
+    agent = config.agents["sarsi-worker"]
     out = worker.admit(config, agent, _directive(), which=_which(set()))
     with pytest.raises(ledger.SecretInLedger):
         worker.report(config, agent, out.directive, state="done",
@@ -149,7 +150,7 @@ def test_a_report_carrying_a_secret_is_refused(config):
 
 
 def test_a_report_says_what_it_needed_and_did_not_get(config):
-    agent = config.agents["work"]
+    agent = config.agents["sarsi-worker"]
     out = worker.admit(config, agent, _directive(requires_tools=["matlab"]),
                        which=_which(set()))
     reports = ledger.read(config, "reports")
@@ -158,6 +159,6 @@ def test_a_report_says_what_it_needed_and_did_not_get(config):
 
 def test_a_refusal_reports_itself_without_being_asked(config):
     """CAP → REP is automatic: the miss becomes an answer, not a silence."""
-    agent = config.agents["work"]
+    agent = config.agents["sarsi-worker"]
     worker.admit(config, agent, _directive(requires_tools=["matlab"]), which=_which(set()))
     assert ledger.count(config, "reports", state="blocked") == 1

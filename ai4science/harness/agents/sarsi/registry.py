@@ -41,6 +41,12 @@ class Agent:
     self_aware: bool = True
     rsi: bool = True
     tools: List[str] = field(default_factory=list)
+    #: Out of routing, still readable. A roster entry OWNS its task folder,
+    #: so deleting one to simplify the roster makes its history unreachable
+    #: from every command that reads it. Retiring keeps the record and stops
+    #: new work — the owner asked for one general worker, not for the other
+    #: one's 32 archived tasks to disappear.
+    retired: bool = False
     digest: bool = False
     standing_grants: bool = True
     max_concurrent_tasks: int = 3
@@ -123,7 +129,10 @@ class Config:
         return self.root / "ledger"
 
     def workers(self) -> List[Agent]:
-        return [a for a in self.agents.values() if a.is_worker]
+        """Workers that may be given NEW work. A retired one is still in
+        `agents` — its history is read through it — and is not offered here."""
+        return [a for a in self.agents.values()
+                if a.is_worker and not a.retired]
 
     def ensure_dirs(self) -> None:
         for d in (self.user_workspace, self.vault_dir, self.ledger_dir):
@@ -205,6 +214,11 @@ def _agent_from(entry: Dict[str, Any], defaults: Dict[str, Any], root: Path) -> 
         self_aware=bool(pick("selfAware", True)),
         rsi=bool(pick("rsi", True)),
         tools=list(pick("tools", []) or []),
+        # Roster fallback, like `spec` and `about`: an older registry file on
+        # disk has no `retired` key, and reading that as "not retired" would
+        # quietly route work to an agent this machine has retired. The same
+        # hole was shipped twice before — once for `spec`, once for `about`.
+        retired=bool(pick("retired", _ROSTER_RETIRED.get(agent_id, False))),
         digest=bool(pick("digest", False)),
         standing_grants=bool(pick("standingGrants", True)),
         max_concurrent_tasks=int(pick("maxConcurrentTasks", 3)),
@@ -246,9 +260,22 @@ def _validate_binding(b: Dict[str, Any], agents: Dict[str, Agent],
 #: permission-tight one, which is why abraham runs on it.
 _ROSTER = [
     {"id": "sarsi-machine", "role": MANAGER_ROLE, "spec": "manager"},
+    # The one general worker. It took over the general-work vocabulary from
+    # `work` when that retired — without it, "fix the failing test in the repo"
+    # matches nobody and routing answers "I cannot tell", which is worse than
+    # the answer it replaced. `email` and `mailbox` deliberately did NOT come
+    # across: the vocabulary follows the capability, and this agent has no
+    # mailbox to clear.
     {"id": "sarsi-worker", "role": WORKER_ROLE, "spec": "claude-code",
-     "tools": ["shell", "editor", "browser"]},
-    {"id": "work", "role": WORKER_ROLE, "spec": "claude-code",
+     "tools": ["shell", "editor", "browser"],
+     "about": ["code", "data", "analysis", "script", "repo", "benchmark",
+               "experiment"]},
+    # RETIRED 2026-08-05: the owner asked for one general worker to begin
+    # with. `sarsi-worker` is it. This entry stays so its 32 archived tasks
+    # remain readable, and `mail` deliberately did NOT move across — a single
+    # do-everything agent that also reads the mailbox is the concentration
+    # the split exists to prevent.
+    {"id": "work", "role": WORKER_ROLE, "spec": "claude-code", "retired": True,
      "tools": ["qupath", "matlab", "mail"],
      "about": ["code", "data", "analysis", "script", "repo", "email",
                "mailbox", "benchmark", "experiment"]},
@@ -276,6 +303,7 @@ _ROSTER = [
 #: id -> spec, so an entry that names no spec still binds to the agent it was
 #: designed on rather than to a flat default.
 _ROSTER_SPECS = {a["id"]: a["spec"] for a in _ROSTER}
+_ROSTER_RETIRED = {a["id"]: bool(a.get("retired")) for a in _ROSTER}
 #: id -> what it is for, for the same reason: an older registry must not lose
 #: the routing evidence just because it was written before the field existed.
 _ROSTER_ABOUT = {a["id"]: list(a.get("about") or []) for a in _ROSTER}

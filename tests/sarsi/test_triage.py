@@ -50,9 +50,9 @@ def _verified(config, agent_id, goal):
 # ── it suggests, and says why ─────────────────────────────────────────
 
 def test_a_tool_the_roster_declares_is_a_reason(config):
-    got = triage.suggest(config, "run the qupath segmentation")
-    assert got.best and got.best.agent_id == "work"
-    assert "qupath" in got.best.why
+    got = triage.suggest(config, "open the editor and fix the header")
+    assert got.best and got.best.agent_id == "sarsi-worker"
+    assert "editor" in got.best.why
 
 
 def test_every_suggestion_carries_its_reason(config):
@@ -64,8 +64,8 @@ def test_every_suggestion_carries_its_reason(config):
 def test_precedent_outranks_a_matching_tool(config):
     """A worker that has already VERIFIED similar work is a result, not a
     claim — the strongest signal available."""
-    _verified(config, "jobs", "draft the qupath segmentation writeup")
-    got = triage.suggest(config, "draft the qupath segmentation writeup")
+    _verified(config, "jobs", "draft the editor migration writeup")
+    got = triage.suggest(config, "draft the editor migration writeup")
     assert got.best.agent_id == "jobs"
     assert "verified" in got.best.why.lower() or "before" in got.best.why.lower()
 
@@ -80,10 +80,10 @@ def test_precedent_names_the_task_it_is_citing(config):
 def test_unverified_work_is_not_precedent(config):
     """Holding a similar task proves nothing about being able to finish one."""
     agent = config.agents["jobs"]
-    d = worker.Directive(agent_id="jobs", goal="run the qupath segmentation")
+    d = worker.Directive(agent_id="jobs", goal="open the editor and fix the header")
     tsk.attach_plan(config, agent, tsk.create(config, agent, d), pl.draft(d))
-    got = triage.suggest(config, "run the qupath segmentation")
-    assert got.best.agent_id == "work"
+    got = triage.suggest(config, "open the editor and fix the header")
+    assert got.best.agent_id == "sarsi-worker"
 
 
 # ── the manager routes and never executes ─────────────────────────────
@@ -96,7 +96,7 @@ def test_the_manager_is_never_a_candidate(config):
 
 
 def test_suggesting_creates_nothing(config):
-    triage.suggest(config, "run the qupath segmentation")
+    triage.suggest(config, "open the editor and fix the header")
     assert all(not tsk.all_of(config, a) for a in config.agents.values())
 
 
@@ -134,9 +134,9 @@ def test_an_empty_demand_is_refused(config):
 # ── what the owner is told ────────────────────────────────────────────
 
 def test_the_summary_names_the_worker_and_the_command_to_use(config):
-    got = triage.suggest(config, "run the qupath segmentation")
-    assert "work" in got.summary
-    assert "sarsi do work" in got.summary
+    got = triage.suggest(config, "open the editor and fix the header")
+    assert "sarsi-worker" in got.summary
+    assert "sarsi do sarsi-worker" in got.summary
 
 
 def test_the_summary_of_a_tie_asks_rather_than_assumes(config):
@@ -150,14 +150,14 @@ def test_the_summary_of_a_tie_asks_rather_than_assumes(config):
 def test_asking_the_manager_who_should_do_it(config):
     from ai4science.harness.agents.sarsi import chat
     out = chat.handle(config, config.agents["sarsi-machine"],
-                      "/who run the qupath segmentation", surface="cli")
-    assert "work" in out
+                      "/who open the editor and fix the header", surface="cli")
+    assert "sarsi-worker" in out
 
 
 def test_a_worker_asked_the_same_thing_still_answers(config):
     """The question is about the fleet, not about who was asked."""
     from ai4science.harness.agents.sarsi import chat
-    out = chat.handle(config, config.agents["work"],
+    out = chat.handle(config, config.agents["sarsi-worker"],
                       "/who post the thread", surface="cli")
     assert "social" in out
 
@@ -181,14 +181,14 @@ def test_one_shared_word_is_not_precedent(config):
     """Live: "post the thread about the CASSI results" routed to `work`,
     because an old verified task shared the single word "cassi". One noun in
     common is a coincidence, and it outranked what `social` is actually for."""
-    _verified(config, "work", "reconstruct the CASSI cube with GAP-TV")
+    _verified(config, "sarsi-worker", "reconstruct the CASSI cube with GAP-TV")
     got = triage.suggest(config, "post the thread about the CASSI results")
     assert got.best and got.best.agent_id == "social"
 
 
 def test_two_shared_words_still_count_as_precedent(config):
-    _verified(config, "jobs", "draft the qupath segmentation writeup")
-    got = triage.suggest(config, "draft the qupath segmentation writeup")
+    _verified(config, "jobs", "draft the editor migration writeup")
+    got = triage.suggest(config, "draft the editor migration writeup")
     assert got.best.agent_id == "jobs"
 
 

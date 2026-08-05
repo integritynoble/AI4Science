@@ -46,7 +46,7 @@ def config(tmp_path):
 
 @pytest.fixture
 def agent(config):
-    return config.agents["work"]
+    return config.agents["sarsi-worker"]
 
 
 class FakeRuntime:
@@ -198,12 +198,12 @@ def test_a_total_says_how_many_it_could_not_measure(config, agent):
 
 
 def test_the_fleet_total_names_each_worker(config):
-    work, social = config.agents["work"], config.agents["social"]
+    work, social = config.agents["sarsi-worker"], config.agents["social"]
     _running(config, work, "job one")
     _running(config, social, "draft it")
     rows = sp.across(config, usage=_transcript({"input_tokens": 5,
                                                 "output_tokens": 1}))
-    assert {r.agent_id for r in rows} == {"work", "social"}
+    assert {r.agent_id for r in rows} == {"sarsi-worker", "social"}
 
 
 def test_an_archived_task_still_counts_towards_what_was_spent(config, agent):

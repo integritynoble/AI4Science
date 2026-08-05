@@ -133,6 +133,9 @@ def join(
     wallet: str = typer.Option(..., "--wallet",
                                help="Your 0x wallet — earns PWM when users run jobs on your box."),
     kind: str = typer.Option("gpu", "--kind", help="What you provide: gpu | cpu."),
+    system: str = typer.Option("", "--system",
+                               help="What the machine that SERVES runs: linux | windows | macos. "
+                                    "Required — a solver built for one does not run on another."),
     provider_id: str = typer.Option("", "--id", help="Provider id (default: derived)."),
     endpoint: str = typer.Option("", "--endpoint",
                                   help="Inbox dir you poll (default: ~/.config/ai4science/compute-inbox/<id>)."),
@@ -153,10 +156,32 @@ def join(
     re-verifies results, so you are paid for verified work, not trusted blindly.
     PWM is earned, never bought — this is one of the earning on-ramps.
     """
+    from ai4science.compute import host
+
     kind = kind.lower()
     if kind not in ("gpu", "cpu"):
         console.print(f"[red]--kind must be gpu or cpu, got {kind!r}[/red]")
         raise typer.Exit(2)
+
+    # Declared first — the OS is a routing constraint, and this command is run
+    # from WSL, from containers and over SSH, so the platform underneath it is
+    # not evidence about the box that will serve.
+    try:
+        system = host.normalise_system(system)
+    except ValueError as e:
+        console.print(f"[red]{e}[/red]")
+        console.print("[dim]  e.g. --system linux · --system windows · "
+                      "--system macos[/dim]")
+        raise typer.Exit(2)
+
+    # Detected second — on the OS just declared, because how you ask differs.
+    gpu = host.detect_gpu(system)
+    try:
+        host.check_claim(kind, gpu)
+    except host.NoSuchHardware as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(2)
+
     if not is_valid_eth_address(wallet):
         console.print(f"[red]Invalid wallet address:[/red] {wallet!r} "
                       "(expected 0x + 40 hex chars)")
@@ -175,6 +200,7 @@ def join(
             kind=kind,
             price_pwm_per_hour=price_pwm_per_hour,
             max_concurrent=max_concurrent,
+            gpu_capability=host.capability(system, gpu),
             trust_tier="open",
             status="active",
         )
@@ -187,6 +213,10 @@ def join(
     console.print(f"[green]✓ You're registered as a compute provider![/green]")
     console.print(f"  id:       [cyan]{pid}[/cyan]  ({kind}, {price_pwm_per_hour:g} PWM/hr, "
                   f"serves {max_concurrent} at once)")
+    # Shown back, because the provider declared one of these and the machine
+    # answered the other — they should see both before jobs start landing.
+    console.print(f"  system:   {system}  [dim](declared)[/dim]")
+    console.print(f"  gpu:      {gpu.summary}  [dim]({'detected' if gpu.present else 'not observed' if gpu.present is None else 'none found'})[/dim]")
     console.print(f"  earns to: [magenta]{wallet}[/magenta]")
     console.print(f"  inbox:    {provider.endpoint_path}")
     console.print("\n[bold]How you earn PWM:[/bold] when a user runs a job on your box, "

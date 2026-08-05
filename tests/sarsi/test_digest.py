@@ -86,7 +86,7 @@ def test_it_names_the_agent(config, agent):
 
 
 def test_another_agents_work_is_not_in_this_digest(config, agent):
-    _report(config, config.agents["work"], "verified")
+    _report(config, config.agents["sarsi-worker"], "verified")
     assert dg.compile(config, agent).verified == 0
 
 
@@ -158,20 +158,20 @@ def test_an_unreadable_ledger_says_so_instead(config, agent, monkeypatch):
 
 def test_the_roster_says_which_agents_want_one(config):
     assert config.agents["social"].digest is True
-    assert config.agents["work"].digest is False
+    assert config.agents["sarsi-worker"].digest is False
 
 
 def test_one_can_still_be_compiled_for_an_agent_that_did_not_ask(config):
     """The flag says who gets it UNPROMPTED. Asking is always allowed."""
-    _report(config, config.agents["work"], "verified")
-    assert dg.compile(config, config.agents["work"]).verified == 1
+    _report(config, config.agents["sarsi-worker"], "verified")
+    assert dg.compile(config, config.agents["sarsi-worker"]).verified == 1
 
 
 def test_the_fleet_digest_covers_every_worker(config):
-    _report(config, config.agents["work"], "verified")
+    _report(config, config.agents["sarsi-worker"], "verified")
     _report(config, config.agents["social"], "answered")
     rows = dg.across(config)
-    assert {r.agent_id for r in rows} >= {"work", "social"}
+    assert {r.agent_id for r in rows} >= {"sarsi-worker", "social"}
 
 
 def test_only_the_agents_that_asked_are_due(config):
