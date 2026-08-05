@@ -58,6 +58,15 @@ def agents(bindings: bool = typer.Option(False, "--bindings",
     for row in rows:
         # the invariant, shown rather than assumed: the manager may not execute
         drives = "[green]yes[/green]" if row["drives_sessions"] else "[yellow]no[/yellow]"
+        # Retired is shown here rather than dropped from the list: an agent that
+        # vanished would read as a machine that lost one. It also stops claiming
+        # it drives sessions — nothing can be given to it to drive one with.
+        if row.get("retired"):
+            # In this column rather than appended to the role: `worker
+            # (retired)` wraps to a second line in a narrow terminal, and a
+            # marker that only shows on a wide console is not a marker. The
+            # column asks what it does, and this answers it.
+            drives = "[yellow]retired[/yellow]"
         # the supervision loop reads Claude Code's TUI; on another interface it
         # can start the session but must not claim it can drive it
         built_on = row["spec"]

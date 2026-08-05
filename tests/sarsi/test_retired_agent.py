@@ -143,3 +143,31 @@ def test_handing_it_work_is_refused_by_name(config):
     d = worker.Directive(agent_id=agent.id, goal="do a new thing")
     with pytest.raises(worker.NotAWorker, match="retired"):
         worker.admit(config, agent, d)
+
+
+# ── and the LISTING says so, not just the record behind it ────────────
+
+def test_the_rendered_listing_marks_it(isolated):
+    """Live on grace this was the gap: `agent_rows` carried `retired` and the
+    table the owner actually reads showed `work` as an ordinary worker that
+    drives sessions. Asserting on the record and not on the output tested my
+    own abstraction rather than the thing anybody looks at."""
+    from typer.testing import CliRunner
+    from ai4science.cli import app as cli
+    runner = CliRunner()
+    runner.invoke(cli, ["sarsi", "init", "--owner-id", "7007143162"])
+    out = runner.invoke(cli, ["sarsi", "agents"]).output
+    line = [l for l in out.splitlines() if "work " in l and "sarsi-worker" not in l]
+    assert line, out
+    assert "retired" in line[0].lower()
+
+
+def test_a_retired_agent_is_not_shown_as_driving_sessions(isolated):
+    """It can no longer be given anything to drive one WITH."""
+    from typer.testing import CliRunner
+    from ai4science.cli import app as cli
+    runner = CliRunner()
+    runner.invoke(cli, ["sarsi", "init", "--owner-id", "7007143162"])
+    out = runner.invoke(cli, ["sarsi", "agents"]).output
+    line = [l for l in out.splitlines() if "work " in l and "sarsi-worker" not in l][0]
+    assert "yes" not in line
