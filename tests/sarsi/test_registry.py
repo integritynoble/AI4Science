@@ -129,14 +129,20 @@ def test_agent_inherits_defaults(tmp_path):
     assert c.agents["work"].ceiling == "A1"
 
 
-def test_the_shipped_roster_runs_at_a2(tmp_path):
-    """The owner's setting: A2 is the auto level the seven run at.
+def test_the_shipped_roster_runs_at_the_everyday_ceiling(tmp_path):
+    """CHANGED from A2, deliberately, and this test asserted A2.
 
-    A2 is a ceiling, not a floor — planning still drops to A0, and A3 stays
-    capped until the trust ledger has earned it.
+    A2 was "the auto level the seven run at", chosen so the loop answered the
+    ordinary gates itself. The cost was that A2 became the ceiling of every
+    released task — so "A2 may do consequential things" meant every run could,
+    and A2 was an elevated tier in name only. Now the roster ships at A1 and A2
+    is something the owner grants with `sarsi ceiling`.
+
+    Still a ceiling, not a floor: planning drops to A0, and A3 stays capped
+    until the trust ledger has earned it.
     """
     c = reg.parse(reg.default_config(owner_id="1"), root=tmp_path)
-    assert {a.ceiling for a in c.agents.values()} == {"A2"}
+    assert {a.ceiling for a in c.agents.values()} == {reg.EVERYDAY_CEILING}
 
 
 def test_a2_does_not_reach_past_what_the_ledger_earned(tmp_path):

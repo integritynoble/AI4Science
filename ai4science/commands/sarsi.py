@@ -44,6 +44,7 @@ def init(owner_id: str = typer.Option(..., "--owner-id",
 @app.command("agents", help="List the agents, their ceilings, and (with --bindings) how each is reached.")
 def agents(bindings: bool = typer.Option(False, "--bindings",
                                          help="Show each agent's channel bindings.")) -> None:
+    from ai4science.harness.agents.sarsi.registry import EVERYDAY_CEILING
     config = _load()
     table = Table(title="sarsi agents", show_lines=False)
     table.add_column("Agent", style="cyan")
@@ -76,9 +77,25 @@ def agents(bindings: bool = typer.Option(False, "--bindings",
         ceiling = row["ceiling"]
         if row.get("ceiling_effective") != ceiling:
             ceiling = f"{row['ceiling_effective']} (asked {ceiling})"
+        # Above what the seven run at. An existing registry keeps its stored
+        # ceiling — silently lowering a recorded permission is the same class
+        # of move as silently raising one — so the owner is TOLD, here, in the
+        # listing they already read, rather than finding out from a gate that
+        # never fired. Marked in the cell so a narrow terminal cannot wrap the
+        # warning off the row it belongs to.
+        if row.get("elevated"):
+            ceiling = f"{ceiling} [yellow]![/yellow]"
         table.add_row(row["id"], row["role"], drives, built_on, ceiling,
                       row["telegram"])
     console.print(table)
+    if any(r.get("elevated") for r in rows):
+        raised = ", ".join(r["id"] for r in rows if r.get("elevated"))
+        console.print(f"\n[yellow]![/yellow] above the everyday ceiling "
+                      f"({EVERYDAY_CEILING}): {raised}", markup=True)
+        console.print(f"[dim]  an elevated agent may run consequential "
+                      f"commands — git push, installs, sudo — without asking\n"
+                      f"  bring one down with: ai4science sarsi ceiling <agent> "
+                      f"{EVERYDAY_CEILING}[/dim]")
     if bindings:
         # printed as lines rather than a table column: a wrapped cell can split
         # `telegram:work` across two rows, and a binding you cannot read is a

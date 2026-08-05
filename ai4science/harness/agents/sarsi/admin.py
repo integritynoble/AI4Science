@@ -86,6 +86,20 @@ def set_ceiling(agent_id: Optional[str], ceiling: str, *,
     return changed
 
 
+def _above_everyday(ceiling: str) -> bool:
+    """Is this agent above what the seven run at?
+
+    Read from the ORDER the ceilings are ranked in, not by string comparison —
+    `"A10" > "A2"` is true of strings and false of ceilings, and a ladder that
+    is compared alphabetically will eventually gain a rung that breaks it.
+    """
+    from ai4science.harness.agents.machine.session import _CEILING_ORDER
+    from ai4science.harness.agents.sarsi.registry import EVERYDAY_CEILING
+    here = _CEILING_ORDER.get(str(ceiling).upper())
+    base = _CEILING_ORDER.get(EVERYDAY_CEILING)
+    return here is not None and base is not None and here > base
+
+
 def agent_rows(config: reg.Config) -> List[Dict[str, Any]]:
     """One row per agent, for `sarsi agents list --bindings`. Never a token."""
     accounts = _accounts(config)
@@ -102,6 +116,12 @@ def agent_rows(config: reg.Config) -> List[Dict[str, Any]]:
             # Retired, not gone. An agent that vanished from this listing
             # would leave the owner wondering whether the machine lost it.
             "retired": bool(getattr(agent, "retired", False)),
+            # Above what the seven run at. An existing registry is never
+            # rewritten — a stored ceiling is indistinguishable from one the
+            # owner chose, and silently lowering a recorded permission is the
+            # same class of move as silently raising it. So it is SHOWN, with
+            # the command to bring it down.
+            "elevated": _above_everyday(agent.ceiling),
             "ceiling": agent.ceiling,
             # A3 is earned, not set: show what the ledger would actually grant
             "ceiling_effective": _effective(agent.ceiling),
