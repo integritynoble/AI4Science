@@ -1,10 +1,25 @@
 # The medical physics agent — how to design it
 
-**Status: built and running on real data, 2026-08-04.** The benchmark reads
-**OpenKBP** — eight real head-and-neck cases with CT, contours, and the dose the
-patient was actually treated with. The clinical dose is the answer key and never
+**Status: built, on real data, planner rewritten 2026-08-05.** The benchmark
+reads **OpenKBP** — eight real head-and-neck cases with CT, contours, and the
+dose the patient was actually treated with, which is the answer key and never
 enters the sandbox. The protocol is the real one: D99 to three target volumes,
 brainstem 54 Gy, cord 45, parotid mean 26, mandible 70.
+
+**The planner was not short of 3D modulation, as claimed here earlier — it was
+wrong in three ways.** Its objective penalised target *underdose* only, so
+nothing pushed dose down and normalising D99 to the prescription dragged the
+slice up with it: target mean 101.9 Gy against a 70 Gy prescription, and 381 of
+655 body voxels above 80. The plan met D99 because D99 is the coldest
+percentile — the one statistic that structurally cannot see an overdose. Made
+two-sided, it went uniformly *cold*; made asymmetric, as clinical objectives are
+because missing the tumour is worse than a hot spot inside it, it plans.
+
+**It now passes on 5 of the 8 patients** with one global set of objective
+weights: coverage short on two, and on a third the optimiser bought full
+coverage by putting **70.1 Gy into a cord limited to 45**. That is not a defect
+to tune away. Objective weights are patient-specific — finding them per case is
+what a dosimetrist does, and it is what the night loop's search is for.
 
 **Its reference method fails, and the failure is honest.** A coplanar 2D planner
 reaches every target and tracks the delivered plan closely — PTV70 D99 = **70.0

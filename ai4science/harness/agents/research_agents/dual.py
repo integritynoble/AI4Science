@@ -326,6 +326,7 @@ def autonomous_round(agent, bench: DomainBenchmark, *, client_factory,
                          search_seeds=search_seeds,
                          validation_seeds=validation_seeds,
                          rounds=rounds, spend=spend,
+                         guardrail_direction=bench.guardrail_directions(),
                          prior_validations=getattr(agent, "_validations", 0))
     except BudgetExhausted as e:
         return Round(agent.name, claim.statement if claim else None,

@@ -9,6 +9,13 @@ Output is a plan CANDIDATE. There is no file this can write that means approved
 """
 import argparse, json, os
 import numpy as np
+
+
+def load_params(ws, **defaults):
+    f = os.path.join(ws, "params.json")
+    if os.path.exists(f):
+        defaults.update(json.load(open(f)))
+    return defaults
 from scipy.ndimage import gaussian_filter, rotate, shift as ndshift
 
 ANGLES = tuple(range(0, 360, 40))
@@ -61,51 +68,64 @@ def main():
 
     A = np.stack([b for ang in ANGLES for b in beamlets(prim.shape, ang, cy, cx)])
     K = len(A)
-    want = np.zeros(prim.shape)
-    for n, m in sorted(tgt.items()):
-        want[m] = proto[n]["prescription"]
-
     At = {n: A[:, m] for n, m in tgt.items()}
     Ao = {n: A[:, m] for n, m in oars.items() if m.any()}
     Ab = A[:, body]
-    w = np.ones(K)
+    rx = proto["PTV70"]["prescription"]
 
-    def normalise(v):
-        d = v @ At["PTV70"]
-        p = float(np.percentile(d, 1)) if d.size else 0.0
-        return v * (proto["PTV70"]["prescription"] / p) if p > 1e-9 else v
+    pr = load_params(ws, oar_weight=6.0, hot_weight=3.0, step=0.6, iters=900,
+                     under_weight=20.0)
 
-    w = normalise(w)
-    for _ in range(400):
-        pull = np.zeros(K)
-        for n, m in tgt.items():
-            cold = np.clip(proto[n]["prescription"] - (w @ At[n]), 0, None)
-            if cold.sum() > 0:
-                pull += (At[n] @ cold) / cold.sum()
-        push = np.zeros(K)
+    # Projected gradient on a TWO-SIDED objective.
+    #
+    # The previous cost penalised target UNDERDOSE only — `clip(rx - d, 0)` —
+    # so nothing anywhere pushed the target dose down, and normalising D99 to
+    # the prescription then dragged the whole slice up with it: target mean
+    # 101.9 Gy against a 70 Gy prescription, target max 148, and 381 of 655
+    # body voxels above 80. The plan met D99 because D99 is the COLDEST
+    # percentile, which is exactly the statistic that cannot see an overdose.
+    #
+    # Deviation from prescription is penalised in both directions now, which is
+    # what a clinical objective does and why uniformity is stated as D99 >= 95%
+    # AND D1 <= 107% rather than a floor alone.
+    def grad_and_cost(w):
+        g = np.zeros(K)
+        cost = 0.0
+        for n, Am in At.items():
+            resid = (w @ Am) - proto[n]["prescription"]       # BOTH directions
+            # Asymmetric, as clinical objectives are: missing the tumour is
+            # worse than a modest hot spot inside it. Symmetric weighting left
+            # D99 at 62.2 against a 66.5 floor — uniform, and uniformly too
+            # cold, because the cold tail counts no more than the warm one.
+            wgt = np.where(resid < 0, pr["under_weight"], 1.0)
+            g += 2.0 * (Am @ (wgt * resid)) / max(Am.shape[1], 1)
+            cost += float((wgt * resid ** 2).mean())
         for n, Am in Ao.items():
             lim = proto[n].get("Dmax") or proto[n].get("Dmean")
-            # Push from well below the limit, and hard: the cord abuts the
-            # target in head and neck, so sparing it is the constraint that
-            # actually shapes the plan.
-            over = np.clip((w @ Am) - lim * 0.6, 0, None)
-            if over.sum() > 0:
-                push += 8.0 * (Am @ over) / over.sum()
-        hot = np.clip((w @ Ab) - proto["PTV70"]["prescription"] * 1.02, 0, None)
-        if hot.sum() > 0:
-            push += 10.0 * (Ab @ hot) / hot.sum()
-        drive = pull - push
-        w = np.clip(w * np.exp(0.3 * drive / max(float(np.abs(drive).max()), 1e-12)),
-                    1e-9, None)
-        # Smooth along the leaf direction, per beam: a plan asking for a spike
-        # in one leaf and nothing beside it is undeliverable, and it is also
-        # how a single beamlet burns a hole nobody notices in the DVH.
-        ncol = len(w) // len(ANGLES)
-        f = w.reshape(len(ANGLES), ncol)
-        kern = np.array([0.25, 0.5, 0.25])
-        w = np.apply_along_axis(
-            lambda r: np.convolve(r, kern, mode="same"), 1, f).reshape(-1)
-        w = normalise(w)
+            over = np.clip((w @ Am) - lim * 0.85, 0, None)
+            g += pr["oar_weight"] * 2.0 * (Am @ over) / max(Am.shape[1], 1)
+            cost += pr["oar_weight"] * float((over ** 2).mean())
+        hot = np.clip((w @ Ab) - rx * 1.07, 0, None)
+        g += pr["hot_weight"] * 2.0 * (Ab @ hot) / max(Ab.shape[1], 1)
+        cost += pr["hot_weight"] * float((hot ** 2).mean())
+        return g, cost
+
+    w = np.full(K, rx / max(float(A[:, prim].sum(axis=0).mean()), 1e-9))
+    step = float(pr["step"])
+    _, cost = grad_and_cost(w)
+    for _ in range(int(round(float(pr["iters"])))):
+        g, _ = grad_and_cost(w)
+        gn = float(np.linalg.norm(g))
+        if not np.isfinite(gn) or gn < 1e-12:
+            break
+        trial = np.clip(w - step * g / gn * max(float(w.mean()), 1e-9), 0.0, None)
+        _, tcost = grad_and_cost(trial)
+        if tcost < cost:                    # accept and grow
+            w, cost, step = trial, tcost, min(step * 1.1, 2.0)
+        else:                               # overshot: shrink
+            step *= 0.5
+            if step < 1e-6:
+                break
 
     dose = np.tensordot(w, A, axes=(0, 0)) * body
     os.makedirs(os.path.join(ws, "results"), exist_ok=True)

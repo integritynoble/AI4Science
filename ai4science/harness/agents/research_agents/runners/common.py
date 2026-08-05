@@ -120,6 +120,20 @@ class DomainBenchmark:
     #: trade the field refuses to make: fidelity at the cost of detectability,
     #: enrichment at the cost of the property baseline.
     guardrails: Tuple[str, ...] = ()
+    #: Which of those are LOWER-is-better. Named explicitly because the default
+    #: was silently higher-is-better, which inverted the check for exactly the
+    #: metrics that matter most: a spinal cord dose RISING read as fine and a
+    #: cord dose falling read as a breach. A guardrail pointing the wrong way is
+    #: worse than none — it rejects the candidates that spare the organ.
+    guardrail_lower_is_better: Tuple[str, ...] = ()
+
+    def guardrail_directions(self) -> Dict[str, bool]:
+        low = set(self.guardrail_lower_is_better)
+        unknown = low - set(self.guardrails)
+        if unknown:
+            raise ValueError("%s: %s is marked lower-is-better but is not a "
+                             "guardrail" % (self.agent, sorted(unknown)))
+        return {g: (g not in low) for g in self.guardrails}
 
     def defaults(self) -> Dict[str, float]:
         return {p.name: p.default for p in self.parameters}
@@ -168,8 +182,18 @@ def seed_workspace(bench: DomainBenchmark, ws: Path, *, seed: int,
     (ws / "code").mkdir(parents=True, exist_ok=True)
     if bench.parameters:
         chosen = bench.check_params(params or {})
-        (ws / "code").mkdir(parents=True, exist_ok=True)
         (ws / "params.json").write_text(json.dumps(chosen, indent=1))
+    elif params:
+        # Refusing beats dropping. A caller that passes knobs to a benchmark
+        # declaring none has a wrong belief about what it is tuning, and
+        # silently ignoring them lets a whole parameter sweep return identical
+        # numbers that look like a flat response surface. That happened: five
+        # settings of the RT planner produced the same figure to four decimals
+        # and read as "the objective weights do not matter".
+        raise ValueError(
+            "%s declares no parameters, so %s cannot be applied. The space is "
+            "the benchmark's; declare it there before tuning it."
+            % (bench.agent, sorted(params)))
     for p in bench.files():
         (ws / "code" / p.name).write_bytes(p.read_bytes())
     out = subprocess.run([sys.executable, "code/generate.py", "--workspace", ".",

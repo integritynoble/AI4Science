@@ -254,6 +254,27 @@ MEDPHYS = DomainBenchmark(
     # could read it would copy it, so it stays outside the sandbox.
     answer_key=("data/clinical_dose.npy",),
     score=_score_medphys, judge=_judge_medphys, corpus="open-kbp",
+    objective="PTV70_D99", objective_higher_is_better=True,
+    # Coverage is the target; the organ and the hot spot are what must not be
+    # bought with it. An optimiser that raises D99 by irradiating the cord has
+    # not planned, it has traded.
+    guardrails=("SpinalCord_Dmax", "hot_spot"),
+    guardrail_lower_is_better=("SpinalCord_Dmax", "hot_spot"),
+    parameters=(
+        # Default 20, not the 8.0 first guessed: at 8.0 the plan lands on
+        # PTV70 D99 = 66.4991 against a 66.5 floor, short by 0.0009 Gy. Chosen
+        # by sweeping this parameter against the protocol on one patient and
+        # then checked across all eight, where it meets every constraint on
+        # five. It is a starting point, not a solution — the three it misses
+        # are why objective weights are tuned per patient in practice, and why
+        # the night loop searches them.
+        Parameter("under_weight", 1.0, 60.0, 20.0,
+                  means="how much worse underdosing the tumour is than overdosing it"),
+        Parameter("oar_weight", 1.0, 20.0, 6.0, means="organ-at-risk penalty"),
+        Parameter("hot_weight", 0.5, 12.0, 3.0, means="hot-spot penalty"),
+        Parameter("step", 0.1, 1.5, 0.6, means="projected-gradient step"),
+        Parameter("iters", 200, 1500, 900, integer=True, means="iterations"),
+    ),
     criteria=("each PTV reaches D99 ≥ 95% of its prescription",
               "brainstem ≤ 54 Gy, cord ≤ 45 Gy, parotid mean ≤ 26 Gy, mandible ≤ 70 Gy",
               "no hot spot above 115% of the primary prescription",

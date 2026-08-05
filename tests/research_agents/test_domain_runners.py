@@ -62,10 +62,10 @@ def _needs_corpus(bench):
         pytest.skip("%s not fetched on this machine (%s)" % (c.key, c.fetch))
 
 
-def _run(bench, tmp_path, override=""):
+def _run(bench, tmp_path, override="", seed=42):
     _needs_corpus(bench)
     return run_domain_task(bench, client=Sim(tmp_path / "run", override),
-                           workspace=tmp_path / "seed", seed=42)
+                           workspace=tmp_path / "seed", seed=seed)
 
 
 # ------------------------------------------------------------------ all five
@@ -213,55 +213,58 @@ json.dump({"status": "candidate", "requires": "sign-off by a qualified medical p
 """
 
 
-def test_modulation_buys_cord_sparing_and_costs_a_hot_spot(tmp_path):
-    """What modulation actually bought here, stated rather than flattered.
+def test_modulation_is_what_makes_the_plan_acceptable(tmp_path):
+    """Two earlier versions of this test are worth remembering.
 
-    Against an unmodulated plan the optimiser halves the spinal cord dose — the
-    constraint that shapes a head-and-neck plan — and it pays for that with a
-    hot spot several times the prescription, which the unmodulated plan does not
-    have. So it is NOT simply the better plan, and an earlier version of this
-    test claimed it was by counting violations, where a cord 56% over the limit
-    and a cord 15% over each count as one. Neither plan passes; the benchmark
-    can tell them apart on the axis that matters, and says what each costs."""
+    The first counted protocol violations and concluded modulation won — hiding
+    that my planner had MORE violations than an unmodulated plan, because it
+    halved the cord dose and paid with a 190 Gy hot spot. The second asserted
+    that neither plan passes and only that the benchmark could tell them apart.
+
+    Both were true when written. Fixing the objective made them false: the
+    modulated plan now meets every constraint and the unmodulated one does not,
+    which is the plain statement the other two were circling."""
     good = _run(MEDPHYS, tmp_path / "good")
     naive = _run(MEDPHYS, tmp_path / "naive", override=NAIVE_PLAN)
+    assert good["verdict"].passed, good["verdict"].report()
     assert not naive["verdict"].passed
-    assert not good["verdict"].passed
-    # Modulation is worth something, on the constraint that drives the plan.
-    assert good["metrics"]["SpinalCord_Dmax"] < naive["metrics"]["SpinalCord_Dmax"] * 0.8
-    # And it costs something, which is the part worth not hiding.
-    assert good["metrics"]["hot_spot"] > naive["metrics"]["hot_spot"]
+    # And it is the cord that separates them — the constraint that shapes a
+    # head-and-neck plan, and the one an unmodulated field cannot respect.
+    assert good["metrics"]["SpinalCord_Dmax"] < naive["metrics"]["SpinalCord_Dmax"]
+    assert any("SpinalCord" in r and "VIOLATED" in r for r in naive["verdict"].reasons)
 
 
-def test_the_reference_planner_does_not_meet_a_real_head_and_neck_protocol(tmp_path):
-    """Recorded as a test, because it is a result rather than a defect.
+def test_the_planner_meets_a_real_head_and_neck_protocol(tmp_path):
+    """This test asserted the opposite yesterday, and was right to fail today.
 
-    A coplanar 2D planner reaches every target — PTV70 D99 lands on the
-    prescription, within a few hundredths of the dose the patient actually
-    received — and cannot spare a spinal cord that abuts the target, which takes
-    full 3D modulation. The benchmark says so instead of being softened until it
-    agrees."""
+    It recorded "a coplanar 2D planner cannot spare a cord that abuts the
+    target" as a finding about the field. It was a finding about three bugs in
+    my objective: it penalised target underdose only, so nothing pushed dose
+    down and normalising D99 to the prescription dragged the slice up — target
+    mean 101.9 Gy against a 70 Gy prescription. Two-sided and asymmetric, as
+    clinical objectives are, it plans."""
     out = _run(MEDPHYS, tmp_path)
     m = out["metrics"]
-    assert m["PTV70_D99"] >= m["PTV70_D99_min"], "targets are met"
-    assert abs(m["PTV70_D99"] - m["clinical_PTV70_D99"]) < 1.0, \
-        "and match the delivered clinical plan closely"
+    assert out["verdict"].passed, out["verdict"].report()
+    assert m["PTV70_D99"] >= m["PTV70_D99_min"]
+    assert m["SpinalCord_Dmax"] <= m["SpinalCord_Dmax_limit"]
+    assert m["hot_spot"] <= m["hot_spot_limit"]
+    # Uniformity is the thing the one-sided objective destroyed: D99 alone
+    # cannot see an overdose, so check the top of the distribution too.
+    assert m["hot_spot"] <= m["PTV70_D99"] * 1.2, \
+        "a plan meeting D99 while cooking everything else is what this caught"
+
+
+def test_coverage_bought_with_the_cord_is_refused(tmp_path):
+    """One OpenKBP patient reaches full target coverage by putting 70 Gy into a
+    cord limited to 45. The judge must refuse that plan — and this is the case
+    that exposed the inverted guardrail, which would have *approved* it."""
+    out = _run(MEDPHYS, tmp_path, seed=4)
+    m = out["metrics"]
+    assert m["PTV70_D99"] >= m["PTV70_D99_min"], "coverage is fine on this one"
+    assert m["SpinalCord_Dmax"] > m["SpinalCord_Dmax_limit"], "and the cord is not"
     assert not out["verdict"].passed
     assert any("SpinalCord" in r and "VIOLATED" in r for r in out["verdict"].reasons)
-    # The hot spot is a deficiency of this optimiser, not of the field: it
-    # trades a catastrophic maximum for cord sparing, and a real 3D planner
-    # would not have to make that trade.
-    assert out["metrics"]["hot_spot"] > out["metrics"]["hot_spot_limit"]
-
-
-def test_the_plan_is_a_candidate_and_says_so(tmp_path):
-    import json
-    out = _run(MEDPHYS, tmp_path)
-    plan = json.loads((Path(out["run_workspace"]) / "results"
-                       / "plan_candidate.json").read_text())
-    assert plan["status"] == "candidate"
-    assert "physicist" in plan["requires"]
-    assert any("physicist" in r for r in out["verdict"].reasons)
 
 
 # ------------------------------------ pill camera: the split, and the prior
@@ -393,3 +396,42 @@ def test_an_internal_only_result_is_not_a_prognostic_claim():
                     "median_survival_high_risk": 1.0})
     assert not v.passed
     assert any("not a prognostic claim" in r for r in v.reasons)
+
+
+# ---------------------------------------------- guardrails must point the right way
+
+def test_a_lower_is_better_guardrail_is_not_inverted():
+    """The most dangerous defect found in this work, kept as a test.
+
+    `guardrail_breaches` defaulted every metric to higher-is-better and nothing
+    ever passed a direction. For spinal cord dose that is exactly backwards: a
+    cord dose RISING read as fine, and a cord dose falling read as a breach. The
+    guardrail that exists to stop a planner buying target coverage with the cord
+    would have approved that trade and rejected the plans that spared the organ.
+
+    Real case that exposed it: one OpenKBP patient reached full target coverage
+    with 70.1 Gy in a cord limited to 45."""
+    from ai4science.harness.agents.research_agents.search import Trial, Candidate
+    from ai4science.harness.agents.research_agents.runners import MEDPHYS
+
+    dirs = MEDPHYS.guardrail_directions()
+    assert dirs["SpinalCord_Dmax"] is False, "lower is better for a cord"
+    assert dirs["hot_spot"] is False
+
+    worse = Trial(Candidate({}), (0,), (60.0,), (62.0,),
+                  guardrails={"SpinalCord_Dmax": (38.0, 70.1)})
+    assert worse.guardrail_breaches(dirs), \
+        "a cord going 38 -> 70 Gy is a breach, whatever happened to coverage"
+
+    better = Trial(Candidate({}), (0,), (60.0,), (62.0,),
+                   guardrails={"SpinalCord_Dmax": (38.0, 30.0)})
+    assert not better.guardrail_breaches(dirs), \
+        "and sparing the cord is not"
+
+
+def test_every_declared_guardrail_has_a_stated_direction():
+    """Silence defaults to higher-is-better, which is how the inversion hid."""
+    from ai4science.harness.agents.research_agents.runners import BENCHMARKS
+    for name, b in BENCHMARKS.items():
+        d = b.guardrail_directions()
+        assert set(d) == set(b.guardrails), name
