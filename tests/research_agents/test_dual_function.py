@@ -92,9 +92,16 @@ def test_the_user_task_is_verified_by_the_field_s_own_judge(tmp_path):
 
 def test_a_user_task_delivers_when_the_method_meets_the_field_s_bar(tmp_path):
     """And the other side of it: where the reference method does clear the
-    domain's criteria, the same path delivers."""
-    agent = build("drug-design")
-    out = run_user_task(agent, benchmark_for("drug-design"),
+    domain's criteria, the same path delivers.
+
+    This was `drug-design` until its judge began refusing a pinned EF@1% — the
+    metric sits at 100% of its own ceiling and can no longer rank one method
+    above another. `low-dose-ct` is the agent whose reference method still
+    clears its field's bar on real data, so it is the one that demonstrates
+    delivery here. What the test is about is the *path*, not which domain
+    happens to exercise it."""
+    agent = build("low-dose-ct")
+    out = run_user_task(agent, benchmark_for("low-dose-ct"),
                         client=Sim(tmp_path / "run"), store=_store(tmp_path),
                         task_id="user-2b", workspace=tmp_path / "seed")
     assert out["status"] == "delivered", out.get("metrics")

@@ -84,10 +84,40 @@ def test_each_agent_computes_and_is_judged(name, tmp_path):
     assert out["provenance"], "a result must say where its data came from"
 
 
-@pytest.mark.parametrize("name", ["low-dose-ct", "drug-design"])
+@pytest.mark.parametrize("name", ["low-dose-ct"])
 def test_the_intended_method_passes(name, tmp_path):
     out = _run(benchmark_for(name), tmp_path)
     assert out["verdict"].passed, out["verdict"].report()
+
+
+def test_drug_design_is_refused_because_its_metric_is_pinned(tmp_path):
+    """`drug-design` left the list above, and the reason is the benchmark, not
+    the method.
+
+    EF@1% comes out at 66.789 against a ceiling of 66.789 — the top percentile
+    is entirely actives, so the number has no headroom left. Seven methods whose
+    AUC differed by 0.014 scored it identically to four significant figures,
+    which is what a metric that has stopped measuring looks like.
+
+    The judge already refused saturation caused by a dense *library* (>5%
+    active). This library is a healthy 1.5%; what pins the metric here is that
+    the *method* is good enough to fill the first percentile. Same broken
+    number, a cause the original guard did not look for — so the refusal is now
+    on observed headroom, whatever produced it.
+
+    This is the `cancer` situation: a correct benchmark returning FAIL.
+    Asserting a pass would make the suite demand a result rather than a
+    measurement."""
+    out = _run(SCREENING, tmp_path)
+    v, m = out["verdict"], out["metrics"]
+    assert not v.passed, v.report()
+    assert any("headroom" in r for r in v.reasons), v.report()
+    assert m["ef_at_1pct"] == pytest.approx(m["ef_ceiling"], rel=1e-6)
+    # And what is NOT wrong with it, so the refusal is not misread as "the
+    # screen is bad": it clears the property baseline comfortably, and the
+    # metric that survives is the one the search now optimises.
+    assert m["ef_at_1pct"] / m["ef_property_baseline"] > 1.5
+    assert 0.5 < m["auc_unseen"] < 1.0
 
 
 def test_a_clinical_only_model_does_not_transport_across_histologies(tmp_path):
@@ -347,10 +377,16 @@ def test_ranking_by_molecular_weight_is_not_screening(tmp_path):
     that, a weight detector passes as a virtual screen."""
     good = _run(SCREENING, tmp_path / "good")
     weight = _run(SCREENING, tmp_path / "w", override=BIASED_DECOYS)
-    assert good["verdict"].passed, good["verdict"].report()
     assert not weight["verdict"].passed
     assert any("it is that baseline" in r for r in weight["verdict"].reasons)
     assert weight["metrics"]["auc_unseen"] < good["metrics"]["auc_unseen"]
+    # The reference method is NOT asserted to pass overall — it is refused for
+    # a pinned EF@1% (see the test above), which is a different complaint about
+    # a different thing. What this test is about is the property baseline, so
+    # that is what is asserted about it: whatever else the judge says, it does
+    # not say the reference method is merely a weight detector.
+    assert not any("it is that baseline" in r for r in good["verdict"].reasons), \
+        good["verdict"].report()
 
 
 def test_the_library_is_not_dense_enough_to_saturate_the_metric(tmp_path):

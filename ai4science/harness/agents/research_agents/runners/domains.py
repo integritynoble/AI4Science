@@ -447,6 +447,32 @@ def _judge_screening(m: Dict[str, float]) -> Verdict:
         reasons.append("the library is %.1f%% active — EF@1%% saturates at %.3g "
                        "and stops discriminating between methods"
                        % (100 * m["active_fraction"], m["ef_ceiling"]))
+    # The check above catches saturation caused by a dense *library*. It does
+    # not catch saturation caused by a good *method*, and that is the case this
+    # benchmark actually hit: at a healthy 1.5% active the top percentile came
+    # out entirely active, EF@1% sat at 66.789 against a ceiling of 66.789, and
+    # seven methods whose AUC differed by 0.014 all scored it identically to
+    # four significant figures.
+    #
+    # A metric with no headroom is not a lenient grader, it is a broken one, and
+    # reporting the ceiling as a triumph is the thing this judge exists to
+    # refuse. So the refusal is on the *observed* value against the ceiling,
+    # whatever put it there.
+    #
+    # This is a statement about the BENCHMARK, not about the method. A screen
+    # that fills the first percentile with actives is doing well; the point is
+    # that EF@1% can no longer say how well, or that anything else is better.
+    headroom = 1.0 - (m["ef_at_1pct"] / max(m["ef_ceiling"], 1e-9))
+    if headroom < 0.02:
+        ok = False
+        reasons.append("EF@1%% %.4g against a ceiling of %.4g — %.2f%% headroom. "
+                       "The top percentile is essentially all actives, so this "
+                       "number cannot rank one method above another and must "
+                       "not be read as a score. It is a statement about the "
+                       "benchmark, not the method. auc_unseen (%.4g) still "
+                       "discriminates and is what the search optimises"
+                       % (m["ef_at_1pct"], m["ef_ceiling"], 100 * headroom,
+                          m.get("auc_unseen", float("nan"))))
     if m["ef_at_1pct"] < 2.0:
         ok = False
         reasons.append("EF@1%% %.3g — no useful enrichment" % m["ef_at_1pct"])
@@ -480,8 +506,50 @@ SCREENING = DomainBenchmark(
     deliverables=("results/scores.npy",),
     answer_key=("data/labels.npy",),
     score=_score_screening, judge=_judge_screening, corpus="dude",
+    # NOT ef_at_1pct, which was the obvious choice and is unusable: on this
+    # library it sits at 66.789 against a ceiling of 66.789 — **100.0% of the
+    # maximum, on every seed**. The top percentile is already all actives, so
+    # the number is pinned and seven different methods scored it identically
+    # to four significant figures. A search driving a saturated objective
+    # optimises nothing and reports a delta of zero forever.
+    #
+    # The judge already refuses one route to saturation — a library denser than
+    # 5% active, where EF@1% cannot exceed 1/fraction. This is the other route:
+    # the fraction is a healthy 1.5% and the *method* is good enough to fill the
+    # first percentile. Same broken metric, cause the existing guard does not
+    # look for. See the note in drug-design.md.
+    #
+    # auc_unseen moves (0.9304-0.9517 across seeds and configurations) and is
+    # measured on the same unseen molecules, so it is the objective.
+    objective="auc_unseen", objective_higher_is_better=True,
+    # EF@1% becomes the guardrail, and it is a good one precisely because it is
+    # at the ceiling: it cannot rise, so any movement is a loss. A method that
+    # improved global ranking by blunting the top of the list — useless to
+    # anyone who screens the first percentile and nothing else — is caught here.
+    # The held-out targets guard the other characteristic failure: gaining
+    # overall by suiting the well-represented targets and losing the ones the
+    # method was meant to generalise to, which is how a screening result
+    # usually fails to reproduce on a new target.
+    guardrails=("ef_at_1pct", "ef_at_1pct_heldout_targets"),
+    parameters=(
+        Parameter("top_k", 1, 15, 1, integer=True,
+                  means="group fusion: average the top-k similarities to known "
+                        "actives rather than taking the single nearest. 1 is "
+                        "1-NN, which is what this solver has always done"),
+        Parameter("tversky_alpha", 0.2, 2.0, 1.0,
+                  means="weight on features the candidate has and the query "
+                        "lacks; lower tolerates analogues larger than the query"),
+        Parameter("tversky_beta", 0.2, 2.0, 1.0,
+                  means="weight on features the query has and the candidate "
+                        "lacks. alpha = beta = 1 is Tanimoto exactly"),
+        Parameter("idf_weight", 0.0, 2.0, 0.0,
+                  means="exponent on inverse-document-frequency bit weights; "
+                        "0 weighs every bit alike, as unweighted Tanimoto does"),
+    ),
     criteria=("EF@1% ≥ 2 on molecules not handed to the solver",
               "and ≥ 1.5x what molecular weight alone achieves on the same library",
+              "and with at least 2% headroom below its own ceiling — a pinned "
+              "EF@1% cannot rank methods and is refused whatever pinned it",
               "the decoy property match is measured and reported",
               "no activity claimed without an assay"),
 )

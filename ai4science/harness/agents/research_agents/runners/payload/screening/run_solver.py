@@ -1,18 +1,92 @@
 """Ligand-based virtual screening: rank by similarity to the known actives.
 
-Maximum Tanimoto similarity to the query set, per target — the oldest and still
-one of the most competitive ligand-based baselines. It reads the query set,
-which it is given, and never the labels, which it is not.
+Similarity to the query set, per target — the oldest and still one of the most
+competitive ligand-based baselines. It reads the query set, which it is given,
+and never the labels, which it is not.
+
+The method has four knobs, and **at their defaults this is exactly the
+max-Tanimoto solver it has always been**: `top_k=1` takes the single nearest
+active, `tversky_alpha = tversky_beta = 1` is Tanimoto by definition, and
+`idf_weight=0` makes every bit weigh one. That matters because the incumbent in
+any search is this solver at its defaults — if the defaults drifted, every
+reported delta would be measured against a baseline nobody had ever run.
+
+What each knob is, in the field's terms:
+
+**`top_k`** — group fusion. Ranking by the single nearest known active is 1-NN;
+averaging the top *k* similarities is the standard alternative, and on targets
+whose actives fall into several chemical series it is usually the better one,
+because a molecule close to *several* known actives is a stronger bet than one
+close to a single outlier.
+
+**`tversky_alpha` / `tversky_beta`** — Tversky's index generalises Tanimoto by
+weighting the two asymmetries separately: features the candidate has and the
+query lacks (`alpha`), and features the query has and the candidate lacks
+(`beta`). Tanimoto forces them equal. Lowering `alpha` tolerates candidates
+larger than the query — analogues carrying extra substituents — and raising it
+demands the candidate be contained in what the query already shows.
+
+**`idf_weight`** — bits shared by most of the library say little about binding;
+rare bits say more. Weighting each bit by its inverse document frequency,
+raised to this exponent, is the usual correction. At 0 every bit weighs the
+same, which is what unweighted Tanimoto assumes.
+
+None of these can reach the labels. They change how molecules are compared to
+the query set, which is the only thing the solver is given.
 """
-import argparse, os
+import argparse, json, os
 import numpy as np
+
+
+def load_params(ws, **defaults):
+    f = os.path.join(ws, "params.json")
+    if os.path.exists(f):
+        defaults.update(json.load(open(f)))
+    return defaults
+
+
+def bit_weights(FP: np.ndarray, idf_weight: float) -> np.ndarray:
+    """Inverse document frequency per bit, raised to `idf_weight`.
+
+    At `idf_weight == 0` this is all ones and the similarity below reduces to
+    the ordinary unweighted one — returned exactly, not approximately, so the
+    default path is the historical path."""
+    if idf_weight <= 0:
+        return np.ones(FP.shape[1], dtype=np.float64)
+    df = FP.sum(axis=0).astype(np.float64)              # documents per bit
+    idf = np.log((len(FP) + 1.0) / (df + 1.0)) + 1.0
+    return np.maximum(idf, 1e-9) ** float(idf_weight)
+
+
+def similarity(F: np.ndarray, q: np.ndarray, w: np.ndarray,
+               alpha: float, beta: float) -> np.ndarray:
+    """Weighted Tversky similarity of every row of F to every row of q.
+
+    With `w` all ones and `alpha == beta == 1` the denominator is
+    `|F| + |q| - common` — the Tanimoto union, exactly."""
+    Fw = F.astype(np.float64) * w
+    qf = q.astype(np.float64)
+    common = Fw @ qf.T                                   # weighted intersection
+    only_f = Fw.sum(1)[:, None] - common                 # candidate has, query lacks
+    only_q = (qf * w).sum(1)[None, :] - common           # query has, candidate lacks
+    denom = common + alpha * only_f + beta * only_q
+    return common / np.clip(denom, 1e-12, None)
 
 
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument("--workspace", default=".")
     ws = ap.parse_args().workspace
+    pr = load_params(ws, top_k=1, tversky_alpha=1.0, tversky_beta=1.0,
+                     idf_weight=0.0)
+    top_k = max(1, int(round(float(pr["top_k"]))))
+    alpha, beta = float(pr["tversky_alpha"]), float(pr["tversky_beta"])
+
     d = lambda n: np.load(os.path.join(ws, "data", n + ".npy"))
     FP, tid, known = d("fingerprints").astype(bool), d("target_id"), d("known_active")
+
+    # Document frequency is computed over the whole library, which the solver is
+    # given. It is a property of the fingerprints, not of the labels.
+    w = bit_weights(FP, float(pr["idf_weight"]))
 
     scores = np.full(len(FP), -np.inf)
     for t in np.unique(tid):
@@ -21,14 +95,18 @@ def main():
         if len(q) == 0:
             scores[m] = 0.0
             continue
-        F = FP[m]
-        inter = F.astype(np.uint16) @ q.T.astype(np.uint16)
-        union = F.sum(1)[:, None] + q.sum(1)[None, :] - inter
-        tan = inter / np.clip(union, 1, None)
-        scores[m] = tan.max(axis=1)          # nearest known active
+        sim = similarity(FP[m], q, w, alpha, beta)
+        k = min(top_k, sim.shape[1])
+        if k == 1:
+            scores[m] = sim.max(axis=1)                  # nearest known active
+        else:
+            # Mean of the k most similar actives. Partition then average the
+            # tail; sorting the whole row would cost more and say the same.
+            scores[m] = np.partition(sim, -k, axis=1)[:, -k:].mean(axis=1)
     os.makedirs(os.path.join(ws, "results"), exist_ok=True)
     np.save(os.path.join(ws, "results", "scores.npy"), scores)
-    print("scored", len(scores))
+    print("scored %d  top_k=%d alpha=%.3g beta=%.3g idf=%.3g"
+          % (len(scores), top_k, alpha, beta, float(pr["idf_weight"])))
 
 
 if __name__ == "__main__":
