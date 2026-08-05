@@ -29,6 +29,10 @@ WORK_ROOT_PREFIX = "Working directory:"
 MAY_TOUCH_PREFIX = "May also touch:"
 #: a declared ceiling — "Budget: 40 steps, 30 minutes". Absent means none.
 BUDGET_PREFIX = "Budget:"
+#: Planning's own ceiling. Named apart from `Budget:` because the two
+#: are spent apart — a task that used its whole budget planning reached
+#: its goal with nothing left, which is exactly what one live run did.
+PLAN_BUDGET_PREFIX = "Planning budget:"
 #: another task this one waits on — `<agent>/<task>`, one per line
 DEPENDS_PREFIX = "Depends on:"
 _PHASE_RE = re.compile(r"^##\s+Phase\s+\d+\s+—\s+(?P<title>.+?)\s*$", re.M)
@@ -90,6 +94,8 @@ class Plan:
     #: default, because one either kills legitimate long work or never fires.
     max_steps: Optional[int] = None
     max_minutes: Optional[int] = None
+    max_plan_steps: Optional[int] = None
+    max_plan_minutes: Optional[int] = None
     #: tasks that must be VERIFIED before this one starts
     depends_on: Sequence[str] = field(default_factory=tuple)
 
@@ -132,6 +138,10 @@ class Plan:
             parts = ([f"{self.max_steps} steps"] if self.max_steps else []) + \
                     ([f"{self.max_minutes} minutes"] if self.max_minutes else [])
             out += [f"{BUDGET_PREFIX} {', '.join(parts)}", ""]
+        if self.max_plan_steps or self.max_plan_minutes:
+            parts = ([f"{self.max_plan_steps} steps"] if self.max_plan_steps else []) + \
+                    ([f"{self.max_plan_minutes} minutes"] if self.max_plan_minutes else [])
+            out += [f"{PLAN_BUDGET_PREFIX} {', '.join(parts)}", ""]
         for i, phase in enumerate(self.phases, start=1):
             out.append(f"## Phase {i} — {phase.title}")
             if phase.body:
@@ -244,6 +254,8 @@ def parse(text: str) -> Plan:
     may_touch: List[str] = []
     max_steps: Optional[int] = None
     max_minutes: Optional[int] = None
+    max_plan_steps: Optional[int] = None
+    max_plan_minutes: Optional[int] = None
     depends_on: List[str] = []
     for line in lines:
         stripped = line.strip()
@@ -253,6 +265,8 @@ def parse(text: str) -> Plan:
             extra = stripped.split(":", 1)[1].strip()
             if extra:
                 may_touch.append(extra)
+        elif stripped.lower().startswith(PLAN_BUDGET_PREFIX.lower()):
+            max_plan_steps, max_plan_minutes = _budget(stripped.split(":", 1)[1])
         elif stripped.lower().startswith(BUDGET_PREFIX.lower()):
             max_steps, max_minutes = _budget(stripped.split(":", 1)[1])
         elif stripped.lower().startswith(DEPENDS_PREFIX.lower()):
@@ -320,6 +334,8 @@ def parse(text: str) -> Plan:
     return Plan(goal=goal, phases=phases, permissions=permissions,
                 constraints=constraints, work_root=work_root,
                 may_touch=may_touch, max_steps=max_steps,
+                max_plan_steps=max_plan_steps,
+                max_plan_minutes=max_plan_minutes,
                 max_minutes=max_minutes, depends_on=depends_on)
 
 

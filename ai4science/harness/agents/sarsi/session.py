@@ -491,7 +491,7 @@ def collect_plan(config: Config, agent: Agent, task: tsk.Task, *,
 
 def release(config: Config, agent: Agent, task: tsk.Task, *,
             runtime: Optional[Any] = None, vault_prompt: Optional[Callable] = None,
-            now=time.time) -> tsk.Task:
+            acts: Optional[Callable] = None, now=time.time) -> tsk.Task:
     """Let the session work its plan — only once the owner has granted.
 
     `VLT` sits here rather than at `assign`: the plan is what declares which
@@ -527,11 +527,35 @@ def release(config: Config, agent: Agent, task: tsk.Task, *,
     if task.session:
         task.session["ceiling"] = raised
         task = tsk._touch(agent, task, now)
+    # This call IS the boundary between planning and work — it is what raises
+    # the ceiling from A0. Marking it here is what lets the declared budget
+    # cover the WORK: without the mark, a task that spent its steps planning
+    # arrives at its goal with nothing left, which is what happened live.
+    task.steps_before_work = _steps_so_far(task, acts)
+    task.work_started_at = float(now())
+    task = tsk._touch(agent, task, now)
+
     if drivable(agent.spec):
         # Quiet, like `deliver_kickoff`: raising would make `release` fail
         # outright on an attended agent, and the owner briefs one by hand.
         rt.send((task.session or {}).get("name", ""), kickoff(task, plan, agent))
     return task
+
+
+def _steps_so_far(task: tsk.Task, acts=None) -> Optional[int]:
+    """What planning spent, or None when it cannot be read.
+
+    None rather than 0: an unreadable count recorded as zero would charge the
+    work for every planning step, which is the bug this mark exists to fix.
+    """
+    cwd = (task.session or {}).get("cwd")
+    if not cwd:
+        return None
+    from ai4science.harness.agents.sarsi import blast
+    try:
+        return len((acts or blast.acts_of)(cwd))
+    except Exception:
+        return None
 
 
 def stop(config: Config, agent: Agent, task: tsk.Task, *,

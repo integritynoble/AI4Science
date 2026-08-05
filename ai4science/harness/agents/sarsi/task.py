@@ -93,8 +93,23 @@ class Task:
     #: Tasks that must be VERIFIED before this one starts — `<agent>/<task>`.
     depends_on: List[str] = field(default_factory=list)
     #: Declared ceilings from the plan's `Budget:` line. None means no budget.
+    #: These are the WORK budget: they begin when planning ends. A live task
+    #: declared 24 steps, spent 25 of them planning, and stopped with its
+    #: working directory empty — a ceiling a task can exhaust without attempting
+    #: its goal does not bound the work.
     max_steps: Optional[int] = None
     max_minutes: Optional[int] = None
+    #: The same, for PLANNING, declared separately and — like every budget here
+    #: — absent by default: a default either kills legitimate long planning or
+    #: never fires.
+    max_plan_steps: Optional[int] = None
+    max_plan_minutes: Optional[int] = None
+    #: How many steps had been taken when planning ended, recorded by `release`.
+    #: The work count is measured from here. `None` means the mark was never
+    #: made, and counting from zero would charge the work for the planning.
+    steps_before_work: Optional[int] = None
+    #: When the work began, for the work clock. Planning's minutes are its own.
+    work_started_at: Optional[float] = None
     #: Paths besides the working directory this plan declared it may change.
     may_touch: List[str] = field(default_factory=list)
     #: Where the work happens, from the plan's `Working directory:` line.
@@ -340,6 +355,8 @@ def attach_plan(config: Config, agent: Agent, task: Task, plan: pl.Plan, *,
     task.work_root = plan.work_root
     task.may_touch = list(plan.may_touch)
     task.max_steps, task.max_minutes = plan.max_steps, plan.max_minutes
+    task.max_plan_steps = plan.max_plan_steps
+    task.max_plan_minutes = plan.max_plan_minutes
     task.depends_on = list(plan.depends_on)
     task.awaiting = [p for p in plan.permissions if p not in task.grants]
     # asking here is the point of the plan step: the worst moment to request a
@@ -347,6 +364,27 @@ def attach_plan(config: Config, agent: Agent, task: Task, plan: pl.Plan, *,
     task.state = AWAITING_GRANT if task.awaiting else READY
     task.plan_agreed = False          # a seed: the session has not seen it yet
     return _touch(agent, task, now)
+
+
+def _mark_work_start(agent: Agent, task: Task, acts=None, now=time.time) -> None:
+    """Record what planning spent, so the WORK budget starts from here.
+
+    Set once: a second planning round after an edit does not reset the line,
+    because the steps before it were still not work.
+    """
+    if task.steps_before_work is not None:
+        return
+    task.work_started_at = float(now())
+    cwd = (task.session or {}).get("cwd")
+    if not cwd:
+        return
+    from ai4science.harness.agents.sarsi import blast
+    try:
+        task.steps_before_work = len((acts or blast.acts_of)(cwd))
+    except Exception:
+        # Unreadable: leave it unset rather than record a wrong floor. The
+        # budget then counts from zero, which stops earlier, never later.
+        pass
 
 
 def adopt_plan(config: Config, agent: Agent, task: Task, plan: pl.Plan, *,
@@ -361,10 +399,16 @@ def adopt_plan(config: Config, agent: Agent, task: Task, plan: pl.Plan, *,
     task.work_root = plan.work_root
     task.may_touch = list(plan.may_touch)
     task.max_steps, task.max_minutes = plan.max_steps, plan.max_minutes
+    task.max_plan_steps = plan.max_plan_steps
+    task.max_plan_minutes = plan.max_plan_minutes
     task.depends_on = list(plan.depends_on)
     task.awaiting = [p for p in plan.permissions if p not in task.grants]
     task.state = AWAITING_GRANT if task.awaiting else READY
     task.plan_agreed = True           # the session has had its say
+    # Planning ends HERE on the automatic path — `release` is an owner
+    # command the loop never calls, so anchoring the boundary only there
+    # would leave most tasks with the work budget still paying for planning.
+    _mark_work_start(agent, task)
     return _touch(agent, task, now)
 
 

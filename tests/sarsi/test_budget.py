@@ -69,12 +69,17 @@ class FakeRuntime:
         return {"ok": True}
 
 
-def _task(config, agent, *, steps=None, minutes=None):
+def _task(config, agent, *, steps=None, minutes=None, agreed=True):
     plan = pl.Plan(goal="finish the export", max_steps=steps,
                    max_minutes=minutes,
                    phases=[pl.Phase(title="x", verified_when="y")])
     d = worker.Directive(agent_id=agent.id, goal="finish the export")
     t = tsk.attach_plan(config, agent, tsk.create(config, agent, d), plan)
+    # `--steps` is the WORK budget, and work begins when the plan is agreed —
+    # the same flag `assign` reads to leave the A0 planning ceiling. Before
+    # that a task is planning, and planning is bounded by `--plan-steps` if
+    # the owner declared one. These cases are all about the work.
+    t.plan_agreed = agreed
     return tsk.start(config, agent, t)
 
 

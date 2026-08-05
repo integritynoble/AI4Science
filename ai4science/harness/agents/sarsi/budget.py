@@ -46,17 +46,45 @@ class Status:
 def check(config: Config, agent: Agent, task: tsk.Task, *,
           acts: Optional[Callable[[str], List[Dict[str, Any]]]] = None,
           now=time.time) -> Status:
-    """Is this task past what its plan declared?"""
+    """Is this task past what its plan declared?
+
+    PLANNING and WORK are counted apart. A live task declared 24 steps, spent 25
+    of them planning, and stopped with its working directory empty — a ceiling a
+    task can exhaust without attempting its goal does not bound the work, it
+    just makes the failure arrive earlier and say less.
+    """
     out = Status()
-    max_steps = task.max_steps
-    max_minutes = task.max_minutes
+    # `plan_agreed` and not `state`: a task sits in `planning` while its
+    # session works, and this is already the line the system draws — `assign`
+    # picks the A0 planning ceiling from exactly this flag.
+    planning = not task.plan_agreed
+    if planning:
+        max_steps, max_minutes = task.max_plan_steps, task.max_plan_minutes
+        label = "planning "
+        # Planning's clock runs from the session's own start.
+        started = (task.session or {}).get("started_at")
+        floor = 0
+    else:
+        max_steps, max_minutes = task.max_steps, task.max_minutes
+        label = ""
+        # The work began where planning ended. Falling back to the session start
+        # would charge the work for the planning all over again.
+        started = task.work_started_at or (task.session or {}).get("started_at")
+        # No mark means nobody recorded where planning stopped — a task that
+        # never planned, or one from before this was written. Counting from
+        # ZERO is then the honest floor: it is the old behaviour, it can only
+        # stop a task EARLIER than the truth, and treating it as unknown
+        # instead would quietly switch the step budget off for every task that
+        # never passed through the transition — which is most of them, since
+        # `release` is an owner command the supervision loop never calls.
+        floor = task.steps_before_work or 0
+
     if not max_steps and not max_minutes:
         return out                       # nothing declared, nothing to enforce
 
     session = task.session or {}
 
     # ── the clock, which is always readable ───────────────────────────
-    started = session.get("started_at")
     if max_minutes:
         if not started:
             out.minutes_known = False
@@ -64,7 +92,7 @@ def check(config: Config, agent: Agent, task: tsk.Task, *,
             out.minutes = (float(now()) - float(started)) / 60.0
             if out.minutes > float(max_minutes):
                 out.over = True
-                out.why = (f"{out.minutes:.0f} minutes is past the "
+                out.why = (f"{out.minutes:.0f} {label}minutes is past the "
                            f"{max_minutes} this plan declared")
                 return out
 
@@ -76,15 +104,16 @@ def check(config: Config, agent: Agent, task: tsk.Task, *,
             return out
         from ai4science.harness.agents.sarsi import blast
         try:
-            out.steps = len((acts or blast.acts_of)(cwd))
+            total = len((acts or blast.acts_of)(cwd))
         except Exception:
             # Not "over". A number nobody could read must not stop real work.
             out.steps_known = False
             return out
+        out.steps = max(0, total - int(floor or 0))
         if out.steps > int(max_steps):
             out.over = True
-            out.why = (f"{out.steps} steps is past the {max_steps} this plan "
-                       f"declared")
+            out.why = (f"{out.steps} {label}steps is past the {max_steps} this "
+                       f"plan declared")
     return out
 
 

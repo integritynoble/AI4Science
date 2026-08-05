@@ -109,6 +109,13 @@ def do(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
                                         help="A secret the work will need (repeatable)."),
        workdir: str = typer.Option("", "--workdir",
                                    help="Where the work happens — evidence is gathered from here."),
+       plan_steps: Optional[int] = typer.Option(None, "--plan-steps",
+                                    help="Stop PLANNING after this many steps "
+                                         "(no default). Counted apart from "
+                                         "--steps, which is the work."),
+       plan_minutes: Optional[int] = typer.Option(None, "--plan-minutes",
+                                    help="Stop planning after this many minutes "
+                                         "(no default)."),
        steps: Optional[int] = typer.Option(None, "--steps",
                                            help="Stop after this many steps (no default)."),
        minutes: Optional[int] = typer.Option(None, "--minutes",
@@ -130,7 +137,9 @@ def do(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
             raise typer.Exit(code=2)
         root = str(root.resolve())
 
-    for name, value in (("--steps", steps), ("--minutes", minutes)):
+    for name, value in (("--steps", steps), ("--minutes", minutes),
+                        ("--plan-steps", plan_steps),
+                        ("--plan-minutes", plan_minutes)):
         if value is not None and value < 1:
             # A budget of zero stops the task before it starts. That is not a
             # budget; it is a way to file work that can never run.
@@ -178,10 +187,12 @@ def do(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
     if waits:
         from dataclasses import replace as _replace2
         draft = _replace2(draft, depends_on=waits)
-    if root or steps or minutes:
+    if root or steps or minutes or plan_steps or plan_minutes:
         from dataclasses import replace as _replace
         draft = _replace(draft, work_root=root or draft.work_root,
                          max_steps=steps, max_minutes=minutes,
+                         max_plan_steps=plan_steps,
+                         max_plan_minutes=plan_minutes,
                          depends_on=draft.depends_on)
     t = tsk.attach_plan(config, agent, tsk.create(config, agent, directive), draft)
     t = tsk.start(config, agent, t)
@@ -192,9 +203,22 @@ def do(agent_id: str = typer.Argument(..., help="Worker id, e.g. work"),
     if steps or minutes:
         limits = ([f"{steps} steps"] if steps else []) + \
                  ([f"{minutes} minutes"] if minutes else [])
-        console.print(f"budget: {', '.join(limits)} — it stops and keeps its "
+        console.print(f"budget: {', '.join(limits)} for the WORK, counted from "
+                      f"when planning ends — it stops and keeps its "
                       f"plan, it does not fail", style="dim", markup=False,
                       highlight=False)
+    if plan_steps or plan_minutes:
+        limits = ([f"{plan_steps} steps"] if plan_steps else []) + \
+                 ([f"{plan_minutes} minutes"] if plan_minutes else [])
+        console.print(f"planning budget: {', '.join(limits)} — spent apart "
+                      f"from the work's", style="dim", markup=False,
+                      highlight=False)
+    elif steps or minutes:
+        # Said once, here: an undeclared planning ceiling is not enforced, and
+        # an owner who set --steps could reasonably read it as covering both.
+        console.print("planning has no budget — declare one with "
+                      "--plan-steps/--plan-minutes", style="dim",
+                      markup=False, highlight=False)
     if t.awaiting:
         # asking here is the point of the plan step, and it names what it wants
         console.print("waiting on you to grant:", style="yellow")

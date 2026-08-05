@@ -138,6 +138,9 @@ def test_the_step_budget_now_binds_on_an_attended_session_too(config, tmp_path):
     t = tsk.attach_plan(config, agent, tsk.create(config, agent, d), pl.draft(d))
     folder = tsk.dir_of(agent, t.id)
     t.max_steps = 2
+    # the WORK budget, so the plan is agreed — that flag is the line between
+    # planning and work, and planning is bounded by `--plan-steps` instead
+    t.plan_agreed = True
     t.session = {"name": "n", "cwd": str(folder)}
     tsk._touch(agent, t, __import__("time").time)
     _ai4_session(tmp_path, folder,
