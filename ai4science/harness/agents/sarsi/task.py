@@ -82,6 +82,11 @@ class Task:
     #: it was typed repeatedly and never appeared. The owner is told rather than
     #: the loop typing forever.
     kickoff_undelivered: bool = False
+    #: the send never reached tmux at all — no such session. A DIFFERENT answer
+    #: from `undelivered`, and the owner would do something different about it:
+    #: one says the session ignored the brief, this says there was no session to
+    #: ignore it. Live, the second was reported as the first for three passes.
+    kickoff_unreachable: bool = False
     #: the last text `SP` pressed Enter on. Text still sitting at the prompt
     #: after that was never input — it is Claude Code's dimmed suggestion, which
     #: a captured pane renders identically to something typed.

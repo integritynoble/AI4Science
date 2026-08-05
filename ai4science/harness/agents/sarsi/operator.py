@@ -231,6 +231,14 @@ def tick(config: Config, agent: Agent, task: tsk.Task, *, pane: Any,
         if task.kickoff_pending:
             after = ses.deliver_kickoff(config, agent, task, runtime=_Sender(pane),
                                         screen=screen, now=now)
+            if after.kickoff_unreachable:
+                # Not the same report. One says the session ignored the brief;
+                # this says the keystrokes never reached a session at all, and
+                # the owner would do something different about each.
+                return Action("no-session",
+                              f"the brief could not be sent — there is no "
+                              f"session {session!r} to send it to; the record "
+                              f"points at one that is gone")
             if after.kickoff_undelivered:
                 return Action("undelivered",
                               "the session is not taking its brief — attach and "

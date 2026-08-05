@@ -221,6 +221,14 @@ def assign(config: Config, agent: Agent, task: tsk.Task, *,
                     "engine": getattr(runtime, "engine", "claude"),
                     "planner": agent.model}
     task.state = tsk.RUNNING
+    # A count of failures belongs to the session that failed. Live: a task
+    # burned all three tries against a session `start_session` had reported and
+    # never actually started, and the restart inherited the count — so the loop
+    # declared the brief undeliverable before one keystroke reached the session
+    # that existed. Carrying it forward reports the past as the present.
+    task.kickoff_tries = 0
+    task.kickoff_undelivered = False
+    task.kickoff_unreachable = False
     task = tsk._touch(agent, task, now)
 
     # The plan is made BETWEEN the worker and the session: if this task has no
@@ -414,11 +422,35 @@ def deliver_kickoff(config: Config, agent: Agent, task: tsk.Task, *,
         task.kickoff_pending = None
         return tsk._touch(agent, task, now)
 
+    # A screen that cannot take text is not typed at. Keystrokes into a modal
+    # are discarded and the Enter answers whichever option is highlighted — the
+    # loop would be voting on a permission prompt with the brief. The work
+    # branch of the operator has guarded this since it was written; the
+    # PLANNING branch, which is where every task starts, did not, so this lives
+    # here rather than at one call site and applies to both.
+    from ai4science.harness.agents.sarsi.operator import _busy, _gate
+    if _busy(screen or "") or _gate(screen or "") is not None:
+        # No try is spent: the count is of attempts to DELIVER, and a pass that
+        # correctly declined to type made no attempt. Charging it walks the
+        # owner toward "the session is refusing its brief" about a session that
+        # has not been asked.
+        return task
+
     if task.kickoff_tries >= MAX_KICKOFF_TRIES:
         task.kickoff_undelivered = True
         return tsk._touch(agent, task, now)
 
-    (runtime or MachineRuntime()).send((task.session or {}).get("name", ""), pending)
+    out = (runtime or MachineRuntime()).send(
+        (task.session or {}).get("name", ""), pending) or {}
+    if not out.get("ok", True):
+        # The keystrokes never reached tmux — there is no such session. That is
+        # not the session declining its brief, and charging a try for it walks
+        # the owner to "the session is not taking its brief" about a session
+        # that is not there. Live: the pane was gone, every send returned
+        # ok:False, the result was discarded, and three tries were counted.
+        task.kickoff_unreachable = True
+        return tsk._touch(agent, task, now)
+    task.kickoff_unreachable = False
     task.kickoff_tries += 1
     return tsk._touch(agent, task, now)
 
