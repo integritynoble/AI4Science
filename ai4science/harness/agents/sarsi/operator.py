@@ -180,7 +180,10 @@ def tick(config: Config, agent: Agent, task: tsk.Task, *, pane: Any,
     deletes = None
     if task.work_root:
         deletes = (tsk.evidence_root(agent, task), list(task.grants or []))
-    gate = _gate(screen, planning=planning, deletes=deletes)
+    # The ceiling has not lifted until `release` runs, so what A0 permits and
+    # what the plan step is allowed to write both hold until then.
+    released = task.work_started_at is not None
+    gate = _gate(screen, planning=planning, deletes=deletes, released=released)
     if gate is not None:
         answer, why = gate
         if answer is None:
@@ -191,6 +194,22 @@ def tick(config: Config, agent: Agent, task: tsk.Task, *, pane: Any,
         _report(config, agent, task, state="answered",
                 evidence=f"pressed {answer} — {why}", now=now)
         return Action("answered", why)
+
+    if task.state == tsk.AWAITING_GRANT:
+        # Grants come from the owner at the CLI; there is no move the loop can
+        # make. Live, it spent every remaining pass abstaining at a gate it
+        # could not answer until a grant it cannot give — passes spent
+        # discovering that are passes spent not handing control back.
+        #
+        # AFTER the gate block, deliberately. A session waiting on a grant may
+        # still have a modal up — it was finishing its plan edits when the
+        # record moved — and handing back with that on screen leaves it stuck
+        # on a prompt no `sarsi grant` will clear. Unstick the screen, then
+        # hand back.
+        want = ", ".join(task.awaiting or []) or "a permission its plan declared"
+        return Action("awaiting-grant",
+                      f"it needs you to grant {want[:120]} — "
+                      f"sarsi grant {agent.id} {task.id} \"<permission>\"")
 
     if _busy(screen):
         # A permission menu's cursor is not a prompt, and a live spinner means
@@ -306,7 +325,8 @@ def run(config: Config, agent: Agent, task: tsk.Task, *, pane: Any,
         action = tick(config, agent, task, pane=pane, verifier=verifier,
                       model=model, engine=engine)
         seen.append(action)
-        if action.kind in ("no-session", "done", "paused", "verified"):
+        if action.kind in ("no-session", "done", "paused", "verified",
+                           "awaiting-grant"):
             break
         if i + 1 < passes:
             sleep(interval)
@@ -333,7 +353,8 @@ _PLAN_WRITE = re.compile(r"\b(create|write|overwrite|edit|update)\b[^\n]*"
                          re.I)
 
 
-def _gate(screen: str, *, planning: bool = False, deletes=None):
+def _gate(screen: str, *, planning: bool = False, deletes=None,
+          released: bool = False):
     """(answer, why) when a gate is on screen; (None, why) when unrecognised.
 
     `deletes` is `(root, granted)` when this task has a declared working
@@ -356,10 +377,18 @@ def _gate(screen: str, *, planning: bool = False, deletes=None):
             # told the owner nothing about what was being asked.
             return (("1", f"a delete this task is allowed: {why}") if allowed
                     else (None, f"a delete this loop will not answer: {why}"))
-    if planning and _PLAN_WRITE.search(screen):
+    # BEFORE RELEASE, not `state == PLANNING`. `collect_plan` moves the record
+    # to `awaiting-grant` the moment it reads a plan back, and the session is
+    # still finishing the edits that produced it — live, the loop answered
+    # `Do you want to make this edit to plan0.md?` on one pass and abstained at
+    # the identical screen on the next, because the record had moved between
+    # them. Writing this file is what the session was asked to do, and it stays
+    # that until the owner releases the task and the work begins.
+    still_planning = planning or not released
+    if still_planning and _PLAN_WRITE.search(screen):
         return ("1", "writing this task's own plan file, which is exactly what "
                      "it was asked to do")
-    if planning:
+    if still_planning:
         # A0 is "reads allowed, everything else asks", but the governance hook
         # gates EVERY bash — so six supervision passes in a row abstained at a
         # `find … | head` the ceiling already permits, and planning a drivable

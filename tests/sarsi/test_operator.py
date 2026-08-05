@@ -621,11 +621,21 @@ def test_a_command_substitution_is_not_read_only(config, agent):
     assert answer is None
 
 
-def test_once_the_plan_is_agreed_this_rule_is_gone(config, agent):
-    """It exists to unstick PLANNING at A0. Past that the ceiling has been
+def test_once_the_task_is_released_this_rule_is_gone(config, agent):
+    """It exists to unstick planning at A0. Past RELEASE the ceiling has been
     raised deliberately, and a gate still on screen is not this one."""
-    answer, _ = op._gate(_hook_gate("ls -la"), planning=False)
+    answer, _ = op._gate(_hook_gate("ls -la"), planning=False, released=True)
     assert answer is None
+
+
+def test_but_it_survives_the_record_leaving_PLANNING(config, agent):
+    """`collect_plan` moves the task to `awaiting-grant` while the session is
+    still finishing its plan, and the session's ceiling is fixed at `assign` —
+    only `release` raises it. So between those two points the ceiling is still
+    A0, and the rule that exists to unstick A0 still has to apply. Keyed on the
+    state, the loop abstained here at gates it had answered a pass earlier."""
+    answer, _ = op._gate(_hook_gate("ls -la"), planning=False, released=False)
+    assert answer == "1"
 
 
 def test_the_wider_option_is_still_never_pressed(config, agent):
