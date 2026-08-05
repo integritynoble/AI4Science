@@ -133,13 +133,28 @@ def test_unknown_tool_asks_below_a3():
     assert decide_tool_call({"tool_name": "SomeMcpTool", "tool_input": {}}, ceiling="A2")["decision"] == "ask"
 
 
-def test_a2_allows_consequential_and_sensitive_writes():
+def test_a2_allows_consequential_commands():
     push = {"tool_name": "Bash", "tool_input": {"command": "git push origin main"}}
     assert decide_tool_call(push, ceiling="A1")["decision"] == "ask"
     assert decide_tool_call(push, ceiling="A2")["decision"] == "allow"
+
+
+def test_but_a2_no_longer_writes_outside_the_project():
+    """CHANGED, deliberately, and this test asserted the opposite.
+
+    A2 reads as an elevated tier — consequential acts, earned. In deployment it
+    is neither: the roster sets A2 for every agent and `release` gives it to
+    every task, so "A2 may write /etc/hosts" meant every ordinary released run
+    could. For a `claude-code` session this hook is the only boundary in force,
+    so nothing else was going to stop it.
+
+    Consequential COMMANDS are untouched above — `git push` at A2 still runs.
+    What changed is writes to sensitive or out-of-project paths, and they ask
+    rather than being denied, so an owner who wants one still gets it."""
     sysfile = {"tool_name": "Write", "tool_input": {"file_path": "/etc/hosts"}}
     assert decide_tool_call(sysfile, ceiling="A1")["decision"] == "ask"
-    assert decide_tool_call(sysfile, ceiling="A2")["decision"] == "allow"
+    assert decide_tool_call(sysfile, ceiling="A2")["decision"] == "ask"
+    assert decide_tool_call(sysfile, ceiling="A3")["decision"] == "ask"
 
 
 def test_a3_allows_unknown_but_forbidden_still_trips():

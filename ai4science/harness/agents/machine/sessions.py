@@ -502,7 +502,8 @@ def _tmux_run(args):
 
 def start_session(name, cwd=".", *, claude_bin: str = "claude", govern: bool = False,
                   ceiling: str = "A1", run: Optional[Callable] = None,
-                  register: Optional[Callable] = None, wire: Optional[Callable] = None) -> Dict[str, Any]:
+                  register: Optional[Callable] = None, wire: Optional[Callable] = None,
+                  writable=None) -> Dict[str, Any]:
     """Start a NEW interactive Claude session inside a fresh tmux session, so the
     machine can drive it (send/operate) AND you can attach to it. Optionally wires
     the governance hook first (so the new session is governed). Registers a
@@ -517,7 +518,9 @@ def start_session(name, cwd=".", *, claude_bin: str = "claude", govern: bool = F
             if wire is None:
                 from ai4science.harness.agents.machine.claude_driver import ensure_governance_hook
                 wire = ensure_governance_hook
-            wire(cwd, ceiling=ceiling)
+            # The declared paths travel WITH the ceiling: the hook and the
+            # sandbox have to draw one boundary, not two that can disagree.
+            wire(cwd, ceiling=ceiling, writable=writable)
         except Exception:
             pass
     rc, out, err = run(["tmux", "new-session", "-d", "-s", tname, "-c", cwd, claude_bin])

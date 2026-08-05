@@ -79,7 +79,11 @@ class MachineRuntime:
         # ai4science harness in that mode.
         binary = "claude" if spec == "claude-code" else None
         if binary:
-            return sessions.start_session(name, cwd, govern=govern, ceiling=ceiling)
+            # `writable` reaches Claude Code through the governance hook rather
+            # than a launch flag — it has no `--writable`, and the hook is the
+            # only boundary a claude-code session actually has.
+            return sessions.start_session(name, cwd, govern=govern,
+                                          ceiling=ceiling, writable=writable)
         # The plan's working directory reaches the sandbox as a launch flag, so
         # widening it needs a NEW session: an agent that rewrites its own plan
         # mid-run does not thereby gain a directory. Quoted — a declared path

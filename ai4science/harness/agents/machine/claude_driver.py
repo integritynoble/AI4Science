@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import shlex
 import sys
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
@@ -87,7 +88,8 @@ def _fallback_ceiling(project_dir, ceiling: str) -> str:
     return min(known, key=_CEILING_ORDER.index)
 
 
-def ensure_governance_hook(project_dir, *, ceiling: str = "A1") -> Path:
+def ensure_governance_hook(project_dir, *, ceiling: str = "A1",
+                           writable=None) -> Path:
     """Write a project settings file wiring the PreToolUse governance hook.
 
     Uses THIS interpreter and embeds PYTHONPATH so the hook resolves ai4science
@@ -110,6 +112,14 @@ def ensure_governance_hook(project_dir, *, ceiling: str = "A1") -> Path:
     d = Path(project_dir) / ".claude"
     d.mkdir(parents=True, exist_ok=True)
     prefix = f"PWM_CEILING={_fallback_ceiling(project_dir, ceiling)}"
+    # The paths the task DECLARED, so the hook and the sandbox draw the same
+    # boundary. Without them the hook sees only the project dir, and a session
+    # standing in its working directory would be asked about every write to its
+    # own task folder with nothing left to answer. Quoted: a declared path may
+    # contain spaces, and this string becomes a shell command.
+    roots = [str(w) for w in (writable or []) if str(w).strip()]
+    if roots:
+        prefix += " PWM_WRITABLE=" + shlex.quote(os.pathsep.join(roots))
     pp = _hook_pythonpath()
     if pp:
         prefix += f" PYTHONPATH={pp}"

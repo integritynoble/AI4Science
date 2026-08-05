@@ -283,7 +283,8 @@ def test_start_session_govern_wires_hook_before_start():
     from ai4science.harness.agents.machine.sessions import start_session
     order = []
     start_session("g", cwd="/p", govern=True, ceiling="A2",
-                  wire=lambda cwd, *, ceiling: order.append(("wire", cwd, ceiling)),
+                  wire=lambda cwd, *, ceiling, writable=None:
+                      order.append(("wire", cwd, ceiling)),
                   run=lambda a: order.append(("run", a[1])) or (0, "9\n" if a[1] == "list-panes" else "", ""),
                   register=lambda **kw: {"name": "g"})
     assert order[0][0] == "wire"                              # hook wired BEFORE new-session

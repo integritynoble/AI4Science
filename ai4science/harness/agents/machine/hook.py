@@ -133,7 +133,8 @@ def main(argv=None) -> int:
         ceiling = _trust.effective_ceiling(ceiling)
     except Exception:
         _trust = None
-    verdict = decide_tool_call(call, ceiling=ceiling, project_dir=project_dir)
+    verdict = decide_tool_call(call, ceiling=ceiling, project_dir=project_dir,
+                               writable=_declared_writable())
     # remote approval channel: escalate an 'ask' to the owner's Telegram if configured
     if verdict.get("decision") == "ask":
         verdict = _maybe_telegram(verdict, data)
@@ -151,6 +152,18 @@ def main(argv=None) -> int:
                 pass
     print(json.dumps(verdict_to_hook_output(verdict)))
     return 0
+
+
+def _declared_writable() -> list:
+    """The paths this task declared, as the session was launched with them.
+
+    Empty when unset — NOT `[""]`, which would resolve to the process's cwd,
+    whatever launched the daemon. "Nothing was declared" and "the current
+    directory was declared" are very different permissions.
+    """
+    import os
+    raw = (os.environ.get("PWM_WRITABLE") or "").strip()
+    return [p for p in raw.split(os.pathsep) if p.strip()] if raw else []
 
 
 def _maybe_telegram(verdict: Dict[str, Any], data: Dict[str, Any]) -> Dict[str, Any]:

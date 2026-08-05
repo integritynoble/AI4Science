@@ -210,6 +210,42 @@ _SENSITIVE_PREFIXES = ("/etc", "/usr", "/bin", "/sbin", "/boot", "/sys", "/lib",
 _SENSITIVE_SUBSTR = (".ssh/", ".aws/", ".config/gcloud", "credential", "authorized_keys", "/etc/")
 
 
+def _is_sensitive_by_name(path: str) -> bool:
+    """Sensitive because of WHAT it is — `/etc`, `.ssh`, a credential — rather
+    than because of where the project happens to be. Declaring one of these as
+    a working directory does not unlock it."""
+    p = (path or "")
+    if any(sub in p for sub in _SENSITIVE_SUBSTR):
+        return True
+    return p.startswith("/") and any(p.startswith(pre)
+                                     for pre in _SENSITIVE_PREFIXES)
+
+
+def _within_declared(path: str, writable) -> bool:
+    """Is *path* inside a root the task DECLARED and the owner granted?
+
+    Compared as resolved paths, never as strings: `/x/work-evil` shares six
+    characters with `/x/work` and is not inside it.
+    """
+    import os
+    if not writable or not path:
+        return False
+    try:
+        target = os.path.realpath(path)
+    except Exception:
+        return False
+    for root in writable:
+        try:
+            real = os.path.realpath(str(root))
+        except Exception:
+            continue
+        if target == real:
+            continue                      # the directory itself is not a file
+        if os.path.commonpath([target, real]) == real:
+            return True
+    return False
+
+
 def _write_is_sensitive(path: str, project_dir: Optional[str]) -> bool:
     p = (path or "")
     if any(s in p for s in _SENSITIVE_SUBSTR):
@@ -231,7 +267,8 @@ def _deny(reason, tripwire=False): return {"decision": "deny", "reason": reason,
 
 
 def decide_tool_call(call: Dict[str, Any], *, ceiling: str = "A1",
-                     project_dir: Optional[str] = None) -> Dict[str, Any]:
+                     project_dir: Optional[str] = None,
+                     writable=None) -> Dict[str, Any]:
     tool = call.get("tool_name") or call.get("tool") or ""
     inp = call.get("tool_input") or call.get("input") or {}
     lvl = _CEILING_ORDER.get(ceiling, 1)
@@ -246,9 +283,27 @@ def decide_tool_call(call: Dict[str, Any], *, ceiling: str = "A1",
         path = inp.get("file_path") or inp.get("path") or inp.get("notebook_path") or ""
         if _write_is_protected(path):                          # governor config / owner state: never
             return _deny("writing a governance/state path (hook config or trust ledger) is not permitted")
-        if _write_is_sensitive(path, project_dir):              # sensitive/out-of-project write: >= A2
-            return (_allow("sensitive/out-of-project write (A2+)") if lvl >= 2
-                    else _ask(f"write to a sensitive/out-of-project path: {path!r}"))
+        if _write_is_sensitive(path, project_dir):
+            # A2 is trusted to WORK, not trusted to write anywhere. It is what
+            # `release` gives every task, so it was the standing authority of
+            # an ordinary run — and for a claude-code session this hook is the
+            # ONLY boundary in force, which made `/etc/passwd` an allow.
+            #
+            # A path the task DECLARED and the owner granted is in-project by
+            # agreement: the session now stands in the working directory, so
+            # its own task folder is out of project, and without this every
+            # `plan0.md` edit would ask with nothing left to answer it. Two
+            # boundaries that disagree are one boundary and one blind spot.
+            #
+            # Declaring does NOT reach a genuinely sensitive path — `/etc`,
+            # `.ssh`, credentials. A path that can authorise itself is the hole
+            # the declaration exists to close.
+            if (not _is_sensitive_by_name(path)
+                    and _within_declared(path, writable)):
+                return (_allow("a write inside a declared path (A1+)")
+                        if lvl >= 1
+                        else _ask("A0 is advisory; writes require approval"))
+            return _ask(f"write to a sensitive/out-of-project path: {path!r}")
         return _allow("in-project write") if lvl >= 1 else _ask("A0 is advisory; writes require approval")
 
     if tool == "Bash":
