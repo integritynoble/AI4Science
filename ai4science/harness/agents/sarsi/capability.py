@@ -21,6 +21,11 @@ from typing import Callable, Dict, Iterable, List, Optional
 from ai4science.harness.agents.sarsi.registry import Agent, Config
 
 INVENTORY_NAME = "tools.json"
+#: The owner's standing word about tools this module has no probe for. Kept
+#: APART from the inventory, which is a cache: an absent entry there is
+#: re-probed every pass and a present one ages out in fifteen minutes, so a
+#: declaration living inside it would be one `_save` away from gone.
+DECLARED_NAME = "tools-declared.json"
 MAX_AGE_S = 900.0            # 15 minutes: long enough to be cheap, short enough to notice an uninstall
 
 # Tools whose presence is a binary on the PATH. A tuple means any one will do.
@@ -52,7 +57,8 @@ class Probe:
 
 def probe(tool: str, *, which: Callable[[str], Optional[str]] = shutil.which,
           now: Callable[[], float] = time.time,
-          configured: Optional[Callable[[str], bool]] = None) -> Probe:
+          configured: Optional[Callable[[str], bool]] = None,
+          declared: Optional[Dict[str, str]] = None) -> Probe:
     name = (tool or "").strip()
     stamp = now()
     if name in _INHERENT:
@@ -64,6 +70,16 @@ def probe(tool: str, *, which: Callable[[str], Optional[str]] = shutil.which,
                      stamp)
     candidates = _BINARIES.get(name)
     if not candidates:
+        # Nothing here can check this one. The owner may say it is here, and
+        # that is worth having — an in-house CLI or a GUI app off `PATH` was
+        # otherwise absent forever and `NOM` refused the work needing it.
+        # Reported AS a declaration: the owner's word is legitimate and is not
+        # evidence, and a line that read like somebody looked would be exactly
+        # the assumption this module exists to refuse.
+        note = (declared or {}).get(name)
+        if note is not None:
+            how = "declared by the owner — not probed"
+            return Probe(name, True, f"{how}: {note}" if note else how, stamp)
         # Silence here would read as "no problem". Say why instead.
         return Probe(name, False, f"no probe for {name!r} — unknown tool", stamp)
     for candidate in candidates:
@@ -82,6 +98,7 @@ def inventory(config: Config, agent: Agent, tools: Optional[Iterable[str]] = Non
     when an entry is older than `max_age`."""
     wanted = list(tools) if tools is not None else list(agent.tools)
     cached = _load(agent)
+    declared = _load_declared(agent)
     stamp = now()
     out: Dict[str, Probe] = {}
     changed = False
@@ -92,10 +109,20 @@ def inventory(config: Config, agent: Agent, tools: Optional[Iterable[str]] = Non
         # nothing — you find out when you use it. Being stale about absence
         # blocks work that could run: the owner installs the tool because the
         # agent said it was missing, asks again, and hears the same refusal.
+        if name in declared and name not in _BINARIES \
+                and name not in _INHERENT and name not in _NEEDS_CONFIG:
+            # A declaration is not a probe and does not expire: software gets
+            # uninstalled, but the owner's standing word does not go stale on
+            # a timer, and re-declaring every fifteen minutes is not a thing
+            # anyone would do.
+            out[name] = probe(name, which=which, now=now,
+                              configured=configured, declared=declared)
+            continue
         if hit is not None and hit.present and (stamp - float(hit.checked_at or 0)) <= max_age:
             out[name] = hit
             continue
-        out[name] = probe(name, which=which, now=now, configured=configured)
+        out[name] = probe(name, which=which, now=now, configured=configured,
+                          declared=declared)
         changed = True
     if changed:
         cached.update(out)
@@ -108,6 +135,52 @@ def missing(config: Config, agent: Agent, required: Iterable[str], **kw) -> List
     required = list(required)
     inv = inventory(config, agent, required, **kw)
     return [name for name in required if not inv[name].present]
+
+
+def declare(config: Config, agent: Agent, tool: str, *, note: str = "") -> None:
+    """The owner says this tool is here. Only for tools nothing can check.
+
+    Where `CAP` CAN check, checking wins — declaring `matlab` present on a
+    machine without it is a claim the probe falsifies, and letting a
+    declaration win there would switch off the one check that catches it.
+    """
+    current = _load_declared(agent)
+    current[str(tool).strip()] = str(note or "")
+    _save_declared(agent, current)
+
+
+def undeclare(config: Config, agent: Agent, tool: str) -> None:
+    current = _load_declared(agent)
+    current.pop(str(tool).strip(), None)
+    _save_declared(agent, current)
+
+
+def declared_tools(agent: Agent) -> Dict[str, str]:
+    """What the owner has said is here, for this agent."""
+    return _load_declared(agent)
+
+
+def _declared_path(agent: Agent):
+    return agent.host / DECLARED_NAME
+
+
+def _load_declared(agent: Agent) -> Dict[str, str]:
+    path = _declared_path(agent)
+    if not path.exists():
+        return {}
+    try:
+        raw = json.loads(path.read_text())
+    except Exception:
+        # A damaged declaration file is not a declaration. Absent is the safe
+        # reading: it refuses work rather than authorising it.
+        return {}
+    return {str(k): str(v or "") for k, v in (raw or {}).items()}
+
+
+def _save_declared(agent: Agent, values: Dict[str, str]) -> None:
+    path = _declared_path(agent)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(values, indent=2, sort_keys=True) + "\n")
 
 
 def _path(agent: Agent):

@@ -1278,6 +1278,47 @@ def guide_cmd(agent_id: str = typer.Argument(..., help="Worker id"),
                   markup=False, highlight=False)
 
 
+@app.command("tools", help="What this machine has, as this agent sees it — and declare what it cannot check.")
+def tools_cmd(agent_id: str = typer.Argument(..., help="Agent id, e.g. work"),
+              declare: Optional[str] = typer.Option(None, "--declare",
+                                    help="Tell CAP a tool it cannot check IS here."),
+              note: str = typer.Option("", "--note",
+                                    help="Why, or which build — shown beside the declaration."),
+              undeclare: Optional[str] = typer.Option(None, "--undeclare",
+                                    help="Withdraw a declaration.")) -> None:
+    """`CAP` had no CLI at all, so what an agent believed about this machine was
+    only visible from inside the code — and a tool it has no probe for could not
+    be declared present by anybody.
+    """
+    from ai4science.harness.agents.sarsi import capability as cap
+
+    config = _load()
+    agent = config.agents.get(agent_id)
+    if agent is None:
+        console.print(f"[red]no agent {agent_id!r}[/red] — known: "
+                      f"{', '.join(sorted(config.agents))}")
+        raise typer.Exit(code=2)
+
+    if declare:
+        cap.declare(config, agent, declare, note=note)
+        console.print(f"{agent.id}: {declare} is declared present — the owner's "
+                      f"word, not a probe", markup=False, highlight=False)
+    if undeclare:
+        cap.undeclare(config, agent, undeclare)
+        console.print(f"{agent.id}: {undeclare} is no longer declared",
+                      markup=False, highlight=False)
+
+    inv = cap.inventory(config, agent)
+    if not inv:
+        console.print(f"{agent.id} declares no tools", markup=False,
+                      highlight=False)
+        return
+    for name, p in inv.items():
+        mark = "yes" if p.present else "no "
+        console.print(f"  {mark}  {name:<12} {p.how}", markup=False,
+                      highlight=False)
+
+
 @app.command("adopt", help="Take the plan FILE as the standard, after editing it by hand.")
 def adopt_cmd(agent_id: str = typer.Argument(..., help="Worker id"),
               task_id: str = typer.Argument(..., help="Task id, e.g. tsk_…")) -> None:

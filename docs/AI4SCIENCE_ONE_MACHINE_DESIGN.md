@@ -664,19 +664,29 @@ provides.
 
 ### Tools the seven need
 
-> **How presence is decided, and why it needs declaring.** `CAP` asks
-> `tool_present`, which reads `<agent>/host/tools.json` and, for anything not
-> named there, falls back to `shutil.which`. That settles `matlab` and
-> `qupath`, which are real commands. It cannot settle `shell`, `editor`,
-> `browser`, `documents`, `calendar`, `payment` or `mail.read`, none of which
-> is a command — and the fallback does not return "unknown", it returns
-> whatever `which` finds. On a fresh install that reads
-> `{'shell': False, 'editor': True, 'browser': False}` on a machine with bash
-> and no browser: `which` matched an unrelated `editor` symlink. Nothing writes
-> `tools.json` today, so **the seven arrive with their tool presence decided by
-> which unrelated packages happen to be installed.** An owner who has never
-> heard of the file should still get a legible refusal. Until that is fixed,
-> declaring the file by hand is what makes `CAP` mean anything.
+> **How presence is decided.** `CAP` answers from three lists and nothing
+> else: `shell`, `editor` and `documents` are **inherent** — the worker runs in
+> a shell and edits through the session; `mail`, `calendar` and `payment` need
+> an **account**, and are absent until the vault holds one; `matlab`, `qupath`,
+> `browser`, `claude`, `codex`, `tmux` and `git` are **binaries**, each with its
+> own candidate names. A tool on none of those lists is reported **absent with
+> its reason** — `no probe for 'zotero' — unknown tool` — and is never guessed
+> at from `PATH`. Run against the real registry, all seven agents answer
+> specifically: `browser  False  not on PATH (chromium, chromium-browser,
+> google-chrome, firefox)`.
+>
+> **What the owner can add.** `tools.json` is a probe CACHE — an absent entry is
+> re-probed every pass, a present one ages out in fifteen minutes — so nothing
+> written there by hand survives. A tool `CAP` cannot check is declared instead,
+> in `tools-declared.json`: it does not expire, it is reported as *declared by
+> the owner — not probed*, and it never overrides a probe. Declaring `matlab`
+> present on a machine without `matlab` is a claim the probe falsifies, and a
+> declaration that won there would switch off the one check that catches it.
+>
+> *An earlier version of this note said `CAP` fell back to `shutil.which` for
+> anything unnamed, so a fresh install read `{'shell': False, 'editor': True}`
+> off unrelated binaries. That was true of an earlier `CAP` and is not true of
+> this one; it was merged here from the mirror without being run.*
 
 | Tool | Who | What it touches |
 |---|---|---|
