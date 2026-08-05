@@ -45,7 +45,7 @@ Each of these is live, tested, and exercised on the installed binary.
 |---|---|
 | `run` | Hand the plan to `sarsi-claude` — starts its governed session. |
 | `release` | Raise the ceiling from the planning `A0` to what the agent has earned. |
-| `operate` | One supervision pass: answer the gates it has a rule for, submit a stranded prompt, report the rest. |
+| `operate` | One supervision pass: answer the gates it has a rule for, submit a stranded prompt, report the rest. While **planning** it also answers the governance hook's own gate for a **provably read-only** command — A0 is *"reads allowed, everything else asks"*, but the hook gates every bash, so six passes in a row abstained at a `find … | head` the ceiling already permitted and planning needed a human at each gate. Judged by the same conservative classifier the harness gates on: an unknown binary, a redirect or a command substitution still goes to the owner. |
 | `supervise` | Drive a task to a verified result. |
 | `guide` / `/guided` | Steer by hand. The owner's word always goes through; the worker's stands down when the owner holds the wheel. **Never at an interface the loop cannot read** — `by_owner` is not an exemption, because the hazard is the screen, not the author. Every path that types at a session now passes this: `retry`, `answer`, `guide`, a goal change, the verdict `check` sends back, `release`'s re-brief and the chat door. A task with **no session at all** is a different refusal from a session it may not type at — *nowhere to deliver* rather than *not allowed to* — and it names `sarsi run` instead of pointing at a terminal that does not exist. |
 | `/interact` | Hands over the `tmux attach` line and stands back. **It does not relay.** |

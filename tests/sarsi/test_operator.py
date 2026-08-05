@@ -569,3 +569,75 @@ def test_a_quoted_instruction_that_is_not_the_hint_shape_still_counts(config,
     """Only the hint's exact shape is ignored — `Try "…"` and nothing else."""
     assert op._stranded('❯ Try "the staging host" first\n') \
         == 'Try "the staging host" first'
+
+
+# ── A0 says reads are allowed; the hook asked anyway ──────────────────
+
+def _hook_gate(command):
+    """The governance hook's own confirmation, as it appears on the pane."""
+    return (" Bash command\n"
+            f"   {command}\n"
+            "   List task folder contents\n"
+            " Hook PreToolUse:Bash requires confirmation for this command:\n"
+            " A0 is advisory; commands require approval [settings]\n"
+            " Do you want to proceed?\n"
+            " ❯ 1. Yes\n"
+            "   2. No\n")
+
+
+def test_a_read_only_command_while_planning_is_answered(config, agent):
+    """Observed live on `work`. Planning runs at A0 — "reads allowed,
+    everything else asks" — but the hook gates EVERY bash, so six supervision
+    passes in a row reported `abstained` at a `find … | head` that the ceiling
+    already permits. Planning a drivable task needed a human for each gate,
+    which is the one thing an unattended loop cannot supply."""
+    answer, why = op._gate(
+        _hook_gate("find /home/grace/.sarsi/agents/work/tasks/tsk_1 -maxdepth 2 "
+                   "-not -path '*/.git/*' | head -100"), planning=True)
+    assert answer == "1"
+    assert "read" in why.lower()
+
+
+def test_and_the_ordinary_listings_too(config, agent):
+    for command in ("ls -la", "cat plan0.md", "wc -w README.md",
+                    "git status", "grep -n 'Verified when' plan0.md"):
+        answer, _ = op._gate(_hook_gate(command), planning=True)
+        assert answer == "1", command
+
+
+def test_anything_that_writes_is_still_the_owners(config, agent):
+    """The classifier is the conservative one the harness already uses: what it
+    cannot PROVE read-only stays with the owner."""
+    for command in ("rm -rf /tmp/x", "cat a > b", "python script.py",
+                    "mkdir -p out", "curl https://example.com",
+                    "echo hi > note.md", "find . -delete"):
+        answer, _ = op._gate(_hook_gate(command), planning=True)
+        assert answer is None, command
+
+
+def test_a_command_substitution_is_not_read_only(config, agent):
+    """`$(…)` can run anything, so it is refused even wrapped in `echo`."""
+    answer, _ = op._gate(_hook_gate("echo $(rm -rf /tmp/x)"), planning=True)
+    assert answer is None
+
+
+def test_once_the_plan_is_agreed_this_rule_is_gone(config, agent):
+    """It exists to unstick PLANNING at A0. Past that the ceiling has been
+    raised deliberately, and a gate still on screen is not this one."""
+    answer, _ = op._gate(_hook_gate("ls -la"), planning=False)
+    assert answer is None
+
+
+def test_the_wider_option_is_still_never_pressed(config, agent):
+    """`1` is Yes for this command. `2` here is No, but on the gates that offer
+    it the second option is "and don't ask again" — a standing grant this loop
+    does not take."""
+    answer, _ = op._gate(_hook_gate("ls -la"), planning=True)
+    assert answer == "1"
+
+
+def test_an_unrecognised_gate_is_still_abstained(config, agent):
+    """Widening one rule must not turn the default into yes."""
+    answer, why = op._gate(
+        " Do you want to proceed?\n ❯ 1. Yes\n   2. No\n", planning=True)
+    assert answer is None and "no rule" in why.lower()

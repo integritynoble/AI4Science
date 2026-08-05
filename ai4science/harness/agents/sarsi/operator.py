@@ -326,6 +326,23 @@ def _gate(screen: str, *, planning: bool = False, deletes=None):
     if planning and _PLAN_WRITE.search(screen):
         return ("1", "writing this task's own plan file, which is exactly what "
                      "it was asked to do")
+    if planning:
+        # A0 is "reads allowed, everything else asks", but the governance hook
+        # gates EVERY bash — so six supervision passes in a row abstained at a
+        # `find … | head` the ceiling already permits, and planning a drivable
+        # task needed a human at each gate. That is the one thing an unattended
+        # loop cannot supply.
+        #
+        # Answered only when the command is PROVABLY read-only, by the same
+        # conservative classifier the harness already gates on: anything it
+        # cannot prove — an unknown binary, a redirect, a command substitution —
+        # falls through to the owner exactly as before.
+        command = _gate_command(screen)
+        if command:
+            from ai4science.harness.permissions import is_read_only_bash
+            if is_read_only_bash(command):
+                return ("1", f"a read-only command, which A0 already allows: "
+                             f"{command[:80]}")
     if _ONBOARDING.search(screen):
         # Recognised, and still not answered. Clicking through a setup wizard on
         # the owner's behalf is the guess the allowlist forbids — but a fresh
