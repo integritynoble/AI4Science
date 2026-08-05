@@ -24,6 +24,10 @@ from typing import Any, Dict, List, Optional
 from ai4science.harness.agents.sarsi.state import state_dir
 
 CONFIG_NAME = "sarsi.json"
+#: What the seven run at unless the owner raises one. Named once: two places
+#: that both decide what "ordinary" means will disagree, and the one that
+#: disagrees quietly is the one that grants too much.
+EVERYDAY_CEILING = "A1"
 MANAGER_ROLE = "manager"
 WORKER_ROLE = "worker"
 
@@ -320,11 +324,21 @@ def default_config(owner_id: str = "", bot_tokens: Optional[Dict[str, str]] = No
                              "match": {"channel": channel, "accountId": a["id"]}})
     return {
         "agents": {
-            # A2 is the auto level the seven run at: the loop answers the
-            # ordinary gates itself. It is a CEILING, not a floor — planning
-            # still drops to A0, the outward acts still stop at the owner, and
-            # A3 stays capped until the trust ledger has earned it.
-            "defaults": {"model": "anthropic/claude-haiku-4-5", "ceiling": "A2",
+            # A1 is the everyday ceiling: in-project writes, network, running
+            # and testing — the work a task was released to do. It is a
+            # CEILING, not a floor: planning still drops to A0, the outward
+            # acts still stop at the owner, and A3 stays capped until the trust
+            # ledger has earned it.
+            #
+            # This used to be A2, so that "the loop answers the ordinary gates
+            # itself". The cost was that A2 became the ceiling of every
+            # ordinary released task — so "A2 may do consequential things"
+            # meant every run could, and A2 stopped being an elevated tier
+            # while still being described as one. A consequential command
+            # (`git push`, `pip install`, `sudo`) now stops for the owner,
+            # which is what consequential means.
+            "defaults": {"model": "anthropic/claude-haiku-4-5",
+                         "ceiling": EVERYDAY_CEILING,
                          "selfAware": True, "rsi": True, "maxConcurrentTasks": 3},
             "list": [dict(a) for a in _ROSTER],
         },
