@@ -802,6 +802,18 @@ def release_session(config: Config, agent: Agent, task: tsk.Task, *,
 
     try:
         (runtime or MachineRuntime()).stop(name)
+    except AttributeError:
+        # The operator hands `verify` a `_Sender(pane)`, which can only TYPE.
+        # Swallowing this cleared the record and left the terminal running —
+        # `attention` then reported a session no task claims, holding whatever
+        # it was granted, which is the exact thing this function exists to
+        # prevent. A runtime that cannot stop is the CALLER's mistake, not a
+        # machine failure, so fall back to the real one. `ses.stop` has carried
+        # this same fallback, for this same reason, since before I wrote this.
+        try:
+            MachineRuntime().stop(name)
+        except Exception:
+            pass
     except Exception:
         pass                          # it may already be gone; the task is done
 

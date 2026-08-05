@@ -271,3 +271,31 @@ def test_the_last_phase_finishing_releases_it_too(config, agent):
     assert t.state == tsk.VERIFIED
     assert t.session is None
     assert rt.stopped == [name]
+
+
+def test_a_runtime_that_cannot_stop_falls_back_to_the_real_one(config, agent,
+                                                               monkeypatch):
+    """Caught live, and it is the trap `ses.stop` already documents.
+
+    The operator hands `verify` a `_Sender(pane)` — a wrapper that can only
+    TYPE. `release_session` called `.stop()` on it, got AttributeError, and my
+    blanket `except Exception: pass` swallowed it: the record cleared and the
+    terminal kept running, which `attention` then reported as a session no task
+    claims. A runtime that cannot stop is the CALLER's mistake, not a machine
+    failure, so the real one is used rather than the session left alive."""
+    killed = []
+    from ai4science.harness.agents.machine import sessions as machine
+    monkeypatch.setattr(machine, "kill_session",
+                        lambda name: killed.append(name) or {"ok": True})
+
+    class TypeOnly:                       # exactly what the operator passes
+        engine = "claude"
+        def send(self, name, text, **kw):
+            return {"ok": True}
+
+    t = _task(config, agent, Runtime())
+    name = t.session["name"]
+    t = ses.verify(config, agent, t, verifier=_passing, evidence="e",
+                   runtime=TypeOnly(), now=time.time)
+    assert t.session is None
+    assert killed == [name], "the terminal outlived the task"
