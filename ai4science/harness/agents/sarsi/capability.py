@@ -96,9 +96,17 @@ def inventory(config: Config, agent: Agent, tools: Optional[Iterable[str]] = Non
               configured: Optional[Callable[[str], bool]] = None) -> Dict[str, Probe]:
     """This agent's view of what this machine has. Cached in W_host, re-probed
     when an entry is older than `max_age`."""
-    wanted = list(tools) if tools is not None else list(agent.tools)
     cached = _load(agent)
     declared = _load_declared(agent)
+    if tools is not None:
+        wanted = list(tools)
+    else:
+        # The roster's tools AND anything the owner declared. Asking only the
+        # roster meant a declaration was accepted, stored and honoured by
+        # `missing`, yet absent from the listing the owner was reading — and a
+        # declaration you cannot see is one you cannot check or withdraw.
+        wanted = list(agent.tools) + [n for n in sorted(declared)
+                                      if n not in agent.tools]
     stamp = now()
     out: Dict[str, Probe] = {}
     changed = False

@@ -163,3 +163,13 @@ def test_a_declared_tool_stops_being_reported_missing(config, agent):
     assert cap.missing(config, agent, ["zotero"], which=_none) == ["zotero"]
     cap.declare(config, agent, "zotero")
     assert cap.missing(config, agent, ["zotero"], which=_none) == []
+
+
+def test_a_declared_tool_is_visible_without_being_on_the_roster(config, agent):
+    """Caught live. `inventory` with no list asks about the agent's ROSTER
+    tools, so a freshly declared `zotero` was accepted, stored, honoured by
+    `missing` — and absent from the listing the owner was looking at. A
+    declaration you cannot see is one you cannot check or withdraw."""
+    cap.declare(config, agent, "zotero")
+    got = cap.inventory(config, agent, which=_none)
+    assert "zotero" in got and got["zotero"].present is True
