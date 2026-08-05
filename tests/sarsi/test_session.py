@@ -504,11 +504,17 @@ def test_it_still_reports_the_verdict_and_its_authority(config, agent):
 
 
 def test_a_verified_task_with_a_session_still_names_it(config, agent):
+    """A verified task now CLOSES its terminal — it was sitting there holding
+    the grants for work that had finished. The name is read before that, and
+    the requirement is unchanged: the record still says which run produced the
+    result, from `past_sessions` once the live one is gone."""
     rt = FakeRuntime()
     t = ses.assign(config, agent, _task(config, agent), runtime=rt)
+    name = t.session["name"]
     t = ses.verify(config, agent, t, evidence="ok",
                    verifier=lambda **kw: {"state": "PASS"})
-    assert t.session["name"] in ses.answer(config, agent, t)
+    assert t.session is None
+    assert name in ses.answer(config, agent, t)
 
 
 def test_an_unjudged_task_with_no_session_reads_as_a_sentence(config, agent):

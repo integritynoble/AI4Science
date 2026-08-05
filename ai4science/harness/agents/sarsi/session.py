@@ -758,6 +758,56 @@ def stop(config: Config, agent: Agent, task: tsk.Task, *,
     return task
 
 
+def release_session(config: Config, agent: Agent, task: tsk.Task, *,
+                    runtime: Optional[Any] = None, now=time.time) -> tsk.Task:
+    """Close a finished task's terminal, and change nothing else.
+
+    Live, `attention` reported it straight after a PASS: *"its task is verified
+    but session sarsi-worker-5b2f is still running, holding whatever it was
+    granted"*. The board was right and nothing acted on it — a live session at
+    the released ceiling, with write permission to the working directory, and no
+    task left that needs any of it. Every one of those grants was justified by a
+    piece of work that has finished. It also holds one of the worker's
+    concurrency slots, so a fleet that verifies ten tasks and closes none of
+    them cannot start an eleventh.
+
+    **Not `stop`.** That sets the state to `off`, which would erase the one
+    outcome worth keeping. This closes the terminal and leaves the verdict, the
+    plan and the state exactly as they are.
+
+    Best-effort, for the same reason `stop` is: a tmux that will not die must
+    not cost the record of work that was actually verified.
+    """
+    if task.steering_paused:
+        # Interact handed the wheel to the owner. A verdict is not a reason to
+        # take their terminal out from under them mid-keystroke; they close it
+        # when they are done with it.
+        return task
+    name = (task.session or {}).get("name")
+    if not name:
+        return task
+
+    try:
+        from ai4science.harness.agents.sarsi import handoff as _ho
+        _ho.write(config, agent, task)
+    except Exception:
+        pass                          # the record matters more than the note
+
+    try:
+        (runtime or MachineRuntime()).stop(name)
+    except Exception:
+        pass                          # it may already be gone; the task is done
+
+    # Kept, not cleared: `spend` finds the transcript through this working
+    # directory, and a total that fell when a task SUCCEEDED is the one thing a
+    # spend figure must never do.
+    past = list(task.past_sessions or [])
+    past.append(dict(task.session or {}, ended_at=now()))
+    task.past_sessions = past
+    task.session = None
+    return tsk._touch(agent, task, now)
+
+
 def _verify_phase(config: Config, agent: Agent, task: tsk.Task, *,
                   verifier: Callable[..., Dict[str, Any]], evidence: str,
                   engine: Optional[str], index: int, now) -> tsk.Task:
@@ -1040,7 +1090,7 @@ def verify(config: Config, agent: Agent, task: tsk.Task, *,
         ledger.append(config, "reports",
                       {"agent": agent.id, "task": task.id, "state": "verified",
                        "verdict": verdict, "evidence": [evidence[:500]]}, now=now)
-        return task
+        return release_session(config, agent, task, runtime=runtime, now=now)
 
     task.verdict = verdict
     task.state = tsk.RUNNING
@@ -1090,7 +1140,12 @@ def answer(config: Config, agent: Agent, task: tsk.Task, *,
     # name produced `session no session, verdict PASS` on a task whose session
     # had already been released. Where there is no session there is no session
     # clause — the sentence is about the verdict either way.
-    name = (task.session or {}).get("name") or ""
+    #
+    # The PAST one counts. A verified task closes its terminal, and "session X,
+    # verdict PASS" is how the record says which run produced the result —
+    # letting go of the terminal must not take that with it.
+    name = ((task.session or {}).get("name")
+            or ((task.past_sessions or [{}])[-1]).get("name") or "")
     if not fresh and (task.verdict or {}).get("state"):
         verdict = task.verdict or {}
         return (f"nothing in this run judged {task.id}. Its standing verdict, "
