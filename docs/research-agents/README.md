@@ -27,7 +27,7 @@ Each covers a **field**, not a project. This page is what they share.
 
 ## 0. What is built, and what each benchmark reads
 
-Five of the six read a **measured corpus**. A benchmark whose corpus is absent
+All six read a **measured corpus** — computational imaging was the last to, on 2026-08-05. A benchmark whose corpus is absent
 refuses and names the command that fetches it; it never falls back to generated
 data, because a synthetic substitute produces numbers that look like results and
 are not.
@@ -35,11 +35,11 @@ are not.
 | Agent | Corpus | Reference method |
 |---|---|---|
 | [low-dose CT](low-dose-ct.md) | TCIA `LDCT-and-Projection-data` — real paired full/low dose | **passes** — and a higher-PSNR blur fails |
-| [drug design](drug-design.md) | DUD-E — 15,288 molecules, 6 targets | **passes** — EF@1% 66.8 vs a 20.2 property baseline |
+| [drug design](drug-design.md) | DUD-E — 15,288 molecules, 6 targets | **refused** — EF@1% is pinned at 100% of its ceiling and no longer ranks methods |
 | [cancer](cancer.md) | TCGA via the GDC API — 978 cases, two cohorts | **fails** — C-index 0.668 internal, 0.577 external |
 | [medical physics](medical-physics.md) | OpenKBP — 8 real head-and-neck plans | **5 of 8 patients** on one global weight set; weights are per-patient |
 | [pill camera](pill-camera.md) | Kvasir-Capsule — 4,443 frames, 46 videos | **passes**, after its own night loop found the fix — 0.624 against 0.614 |
-| [computational imaging](computational-imaging.md) | generated CASSI scenes | passes its physics judge |
+| [computational imaging](computational-imaging.md) | CAVE — real hyperspectral scenes, CASSI measurement simulated | **passes** — after a sign error in the reference solver was found and fixed |
 
 > **One of those failures has since been repaired by the agent itself.** The
 > night loop found that pill-camera's frame summary was taking the wrong
