@@ -12,10 +12,18 @@ read them would produce a perfect clock and tell you nothing.
 import argparse, json, os, sys
 import numpy as np
 
-#: Sites held out. Utah and USC together are ~48% of the cohort and neither is
-#: the site the model is mostly fitted on, so the validation set is neither
-#: trivially small nor a near-copy of the training distribution.
-HELD_OUT_SITES = ("Utah", "USC")
+#: How much of the cohort is held out, by SITE.
+#:
+#: The held-out sites used to be the constant ("Utah", "USC"), and the seed
+#: argument was accepted and never used — so every seed produced byte-identical
+#: data. A paired comparison across seeds then had zero spread by construction,
+#: `paired_p` returned exactly 0, and a night reported p = 0 for a result
+#: measured once. That is arithmetic, not evidence, and it nearly got an
+#: improvement adopted on nothing.
+#:
+#: The seed now chooses which institutions are held out, so seeds are genuinely
+#: different validations of the same question — the same thing `cancer` does.
+HELD_OUT_FRACTION = 0.45
 
 
 def main():
@@ -31,7 +39,18 @@ def main():
     male = np.load(os.path.join(root, "male.npy"))
     site = np.load(os.path.join(root, "site.npy"))
 
-    held = np.isin(site, HELD_OUT_SITES)
+    # Whole institutions, chosen by the seed. Sites are taken in a seeded order
+    # until enough of the cohort is held out, so no patient and no contributing
+    # site appears on both sides and different seeds ask genuinely different
+    # questions.
+    rng = np.random.default_rng(a.seed)
+    order = rng.permutation(np.unique(site))
+    held = np.zeros(len(site), dtype=bool)
+    for s in order:
+        if held.mean() >= HELD_OUT_FRACTION:
+            break
+        held |= (site == s)
+    held_sites = sorted({str(s) for s in site[held]})
     if held.sum() < 50 or (~held).sum() < 50:
         raise SystemExit("site split leaves too few samples: %d dev, %d held"
                          % ((~held).sum(), held.sum()))
@@ -51,7 +70,7 @@ def main():
         "dev": int((~held).sum()), "ext": int(held.sum()),
         "probes": int(B.shape[1]),
         "dev_sites": sorted({str(s) for s in site[~held]}),
-        "held_out_sites": sorted({str(s) for s in site[held]}),
+        "held_out_sites": held_sites,
         "dev_age_range": [int(age[~held].min()), int(age[~held].max())],
         "ext_age_range": [int(age[held].min()), int(age[held].max())],
         "real": True}))

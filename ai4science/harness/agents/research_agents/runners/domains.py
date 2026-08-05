@@ -769,7 +769,17 @@ METHYLAGE = DomainBenchmark(
     guardrails=("bulk_structure_share", "mae_years_internal"),
     guardrail_lower_is_better=("bulk_structure_share", "mae_years_internal"),
     parameters=(
-        Parameter("ridge", 1.0, 5000.0, 100.0,
+        # ADOPTED 2026-08-05, owner-signed. Proposed by the agent's night loop
+        # and validated on six genuinely different institutional splits:
+        # -2.08 years median error, p = 0.014, no guardrail breach. The first
+        # night proposed the same value with p = 0, which was zero-spread
+        # arithmetic from a seed that did nothing; that result was refused and
+        # this one earned.
+        #
+        # NOTE: the winner sits at the FLOOR of the declared range, which
+        # usually means the optimum is outside the space. Worth widening before
+        # trusting this as the best available rather than merely better.
+        Parameter("ridge", 1.0, 5000.0, 1.0,
                   means="shrinkage; with 20k probes and a few hundred samples "
                         "this is what stops the clock memorising the fit"),
         Parameter("n_pcs_removed", 1, 20, 5, integer=True,
