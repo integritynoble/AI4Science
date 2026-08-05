@@ -104,6 +104,25 @@ def _shell_segments(cmd: str):
 #: is the `grep` inside.
 _ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 
+#: A loop is judged by every command in it — the list, the condition, the body.
+#: `for`/`while`/`until` open one and `done` closes it; `do` separates the head
+#: from the body. None of the four is a program, so each is dropped and what is
+#: left is classified exactly as it would be on its own.
+#:
+#: `if`/`case` are NOT here. They are a different construct with their own
+#: keywords, and leaving them off the list leaves them refused, which is where
+#: an unproven thing belongs. Neither are `true` and `:` — without them
+#: `while true; do …; done` cannot be written, and that is the one thing
+#: keeping a read-only command that never returns out of an unattended session.
+_LOOP_OPEN = ("for", "while", "until")
+#: A loop variable is a NAME, and the shell's reserved words are not names.
+#: Without this `for in in a; …` satisfied the shape check — harmless, since
+#: bash refuses to run it, but a check that accepts what it means to reject has
+#: stopped being one.
+_RESERVED = frozenset({"in", "do", "done", "for", "while", "until", "if",
+                       "then", "else", "elif", "fi", "case", "esac", "function"})
+_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
 
 def _substitutions(cmd: str):
     """Split *cmd* into (outer, [inner…]) — or None when it will not parse.
@@ -172,6 +191,7 @@ def is_read_only_bash(cmd: str) -> bool:
     segments = _shell_segments(cmd)
     if not segments:
         return False
+    opened = closed = 0
     for words in segments:
         # Leading `NAME=value` runs nothing; what matters is the command after
         # them, and a segment that is ONLY assignments has no command at all.
@@ -179,6 +199,36 @@ def is_read_only_bash(cmd: str) -> bool:
             words = words[1:]
         if not words:
             continue
+
+        # ONE leading `do`. Stripping repeatedly would let `do do rm x` walk a
+        # program past the allowlist behind a keyword.
+        if words[0] == "do":
+            words = words[1:]
+            while words and _ASSIGNMENT.match(words[0]):
+                words = words[1:]
+            if not words:
+                continue
+        if words == ["done"]:
+            closed += 1
+            continue
+
+        if words[0] == "for":
+            # `for NAME in WORDS` runs nothing: the words are data, and any
+            # command among them was already opened and judged as a
+            # substitution. The shape is checked rather than assumed — `for`
+            # alone, or the arithmetic `for ((…))`, is not this and is refused.
+            if (len(words) < 3 or not _NAME.match(words[1])
+                    or words[1] in _RESERVED or words[2] != "in"):
+                return False
+            opened += 1
+            continue
+        if words[0] in ("while", "until"):
+            # The rest of the segment IS a command — it decides whether the
+            # loop runs again, so it runs.
+            opened += 1
+            words = words[1:]
+            if not words:
+                return False
         prog = words[0]
         if prog not in _READ_ONLY_CMDS:
             return False
@@ -191,6 +241,11 @@ def is_read_only_bash(cmd: str) -> bool:
         elif prog == "sort":
             if "-o" in words[1:]:
                 return False
+    # A loop that does not close is not a command this can reason about — half
+    # a `for` is a syntax error, and `done` with nothing open is a keyword
+    # standing where a program should be.
+    if opened != closed:
+        return False
     return True
 
 
