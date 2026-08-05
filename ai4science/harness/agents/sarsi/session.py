@@ -813,7 +813,8 @@ def release_session(config: Config, agent: Agent, task: tsk.Task, *,
 
 def _verify_phase(config: Config, agent: Agent, task: tsk.Task, *,
                   verifier: Callable[..., Dict[str, Any]], evidence: str,
-                  engine: Optional[str], index: int, now) -> tsk.Task:
+                  engine: Optional[str], index: int, now,
+                  runtime: Optional[Any] = None) -> tsk.Task:
     """Judge ONE phase against ONE criterion.
 
     Judging a phase against every criterion would make "phase 1 passed" mean
@@ -865,6 +866,11 @@ def _verify_phase(config: Config, agent: Agent, task: tsk.Task, *,
             "engine": verdict["engine"],
             "independent": verdict["independent"],
             "criteria": criteria}, now=now)
+        # The loop reaches `verified` THROUGH HERE, not through the whole-task
+        # path — `supervise` judges the phase the work is on. Releasing only
+        # there covered the way a task finishes when the owner runs `check` by
+        # hand, and left every loop-driven task holding its terminal.
+        task = release_session(config, agent, task, runtime=runtime, now=now)
         return task
     return tsk._touch(agent, task, now)
 
@@ -1058,7 +1064,7 @@ def verify(config: Config, agent: Agent, task: tsk.Task, *,
     if phase is not None:
         return _verify_phase(config, agent, task, verifier=verifier,
                              evidence=evidence, engine=engine, index=phase,
-                             now=now)
+                             runtime=runtime, now=now)
 
     criteria = list(task.criteria or [])
     verdict = dict(verifier(goal=task.goal, criteria=criteria, evidence=evidence) or {})

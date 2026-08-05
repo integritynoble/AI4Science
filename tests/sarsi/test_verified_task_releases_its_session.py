@@ -250,3 +250,24 @@ def test_and_a_task_that_never_had_one_says_nothing(config, agent):
     t.verdict = {"state": "PASS", "why": "done"}
     t.state = tsk.VERIFIED
     assert "session" not in ses.answer(config, agent, t)
+
+
+# ── the path the loop actually takes ──────────────────────────────────
+
+def test_the_last_phase_finishing_releases_it_too(config, agent):
+    """`supervise` judges the phase the work is ON, so a task the loop drives
+    to completion finishes through `_verify_phase`, not the whole-task path.
+    Live, the orphan came straight back: the fix covered one of the two ways a
+    task reaches `verified`, and the loop only ever uses the other."""
+    rt = Runtime()
+    t = _task(config, agent, rt)
+    name = t.session["name"]
+    t = ses.verify(config, agent, t, verifier=_passing, evidence="e",
+                   runtime=rt, phase=0, now=time.time)
+    assert t.state != tsk.VERIFIED          # one of two phases
+    assert t.session is not None
+    t = ses.verify(config, agent, t, verifier=_passing, evidence="e",
+                   runtime=rt, phase=1, now=time.time)
+    assert t.state == tsk.VERIFIED
+    assert t.session is None
+    assert rt.stopped == [name]
