@@ -155,9 +155,19 @@ CAVE = Corpus(
     approx_size="~100 MB for the scene subset used here",
 )
 
+METHYLATION_AGE = Corpus(
+    key="methylation-age",
+    title="GEO GSE40279 — whole-blood methylation with chronological age",
+    required=("betas.npy", "age.npy", "site.npy", "cpg_ids.json", "metadata.json"),
+    source="GEO GSE40279 (Hannum 2013) — 656 whole-blood samples, Illumina 450k",
+    licence="GEO public; no agreement required",
+    fetch=FETCH % "methylation-age",
+    approx_size="~1.1 GB downloaded, ~55 MB stored",
+)
+
 ALL: Dict[str, Corpus] = {c.key: c for c in
                           (TCGA_SURVIVAL, DUDE, OPENKBP, KVASIR_CAPSULE, LDCT,
-                           CAVE)}
+                           CAVE, METHYLATION_AGE)}
 
 
 def status(root: Optional[Path] = None) -> str:

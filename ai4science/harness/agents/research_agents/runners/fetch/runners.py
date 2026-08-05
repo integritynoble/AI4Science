@@ -32,6 +32,27 @@ def _get(url: str, *, timeout: int = 120, binary: bool = False):
     return raw.decode("utf-8", "replace")
 
 
+def _open_stream(url: str, timeout: int = 600):
+    """A live response to read through, rather than a buffer to hold.
+
+    The beta matrix is 1.1 GB and what is kept from it is ~55 MB. `_get` would
+    materialise the whole thing first, which is the difference between a fetch
+    that runs on a small machine and one that does not."""
+    req = urllib.request.Request(url, headers=UA)
+    return urllib.request.urlopen(req, timeout=timeout)
+
+
+def _to_float(s: str) -> float:
+    """A beta value, or NaN. GEO writes blanks, NA and quoted numbers."""
+    s = s.strip().strip('"')
+    if not s or s.upper() in ("NA", "NAN", "NULL"):
+        return float("nan")
+    try:
+        return float(s)
+    except ValueError:
+        return float("nan")
+
+
 def _provenance(d: Path, c: "_corpus.Corpus", **extra) -> Path:
     p = d / "PROVENANCE.json"
     p.write_text(json.dumps(
@@ -630,3 +651,169 @@ def cave_hyperspectral(argv=()) -> str:
                      "applying the forward model, which is not the same as a "
                      "capture from a physical instrument")
     return "%s: %d real scenes at %dx%dx%d -> %s" % (c.key, len(keep), size, size, bands, d)
+
+
+# ---------------------------------------------------- methylation and age
+
+#: How many CpG probes to keep, and how they are chosen.
+#:
+#: **Chosen without looking at age.** A subset picked by correlation with age
+#: would be selection on the target: the held-out sites would already have voted
+#: on which probes exist, and the clock's error would be optimistic for a reason
+#: no amount of held-out validation could detect. A seeded random subset cannot
+#: do that. Age signal in the methylome is diffuse enough that 20k random probes
+#: support a clock comfortably, and the *method* is still free to select among
+#: them — inside its training fold, which is where selection belongs.
+METHYL_N_PROBES = 20000
+METHYL_PROBE_SEED = 20260805
+
+_GSE = "GSE40279"
+_GEO_META = ("https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi"
+             "?acc=%s&targ=gsm&form=text&view=brief" % _GSE)
+_GEO_BETA = ("https://ftp.ncbi.nlm.nih.gov/geo/series/GSE40nnn/%s/suppl/"
+             "%s_average_beta.txt.gz" % (_GSE, _GSE))
+
+
+def _methyl_metadata():
+    """Ages, sex and source site per sample, from the 1.1 MB GEO metadata.
+
+    The full SOFT family file is 2.8 GB and carries the same fields; this is the
+    same information for a four-hundredth of the download."""
+    import re
+    raw = _get(_GEO_META)          # _get already decodes
+    samples, cur = [], None
+    for line in raw.split("\n"):
+        line = line.strip()
+        if line.startswith("^SAMPLE"):
+            if cur:
+                samples.append(cur)
+            cur = {"gsm": line.split("=")[-1].strip()}
+        elif cur is not None and "Sample_characteristics" in line:
+            v = line.split("=", 1)[-1].strip()
+            if ":" not in v:
+                continue
+            k, val = v.split(":", 1)
+            cur[k.strip().lower()] = val.strip()
+        elif cur is not None and line.startswith("!Sample_title"):
+            cur["title"] = line.split("=", 1)[-1].strip()
+    if cur:
+        samples.append(cur)
+    out = []
+    for s in samples:
+        age = s.get("age (y)") or s.get("age")
+        if not age or not re.match(r"^\d+$", age):
+            continue
+        out.append({"gsm": s["gsm"], "title": s.get("title", ""),
+                    "age": int(age),
+                    "male": 1 if (s.get("gender", "").upper().startswith("M")) else 0,
+                    # The source institution. A clock validated on a re-split of
+                    # one cohort is the mistake `cancer` had to correct; this is
+                    # what makes a site-disjoint split possible here.
+                    "site": s.get("source", "unknown")})
+    return out
+
+
+def methylation_age(argv=None) -> str:
+    """GEO GSE40279: whole-blood methylation with chronological age.
+
+    Streams the 1.1 GB beta matrix and keeps a fixed probe subset, so the
+    download is large and what lands on disk is not. Nothing is written until
+    the whole parse succeeds."""
+    import gzip, io, json, re
+    import numpy as np
+    from .. import corpus as _c
+
+    c = _c.METHYLATION_AGE
+    d = c.dir(); d.mkdir(parents=True, exist_ok=True)
+
+    meta = _methyl_metadata()
+    if len(meta) < 300:
+        raise RuntimeError("GEO returned %d usable samples for %s; expected ~656. "
+                           "The metadata format may have changed." % (len(meta), _GSE))
+    # The two files do not share an identifier directly. Beta columns are
+    # "X1001"; sample titles are "age 67y 1001". The trailing number is the
+    # subject id in both, and it is the only thing that joins them — matching on
+    # the title verbatim finds nothing, which is what the guard below caught.
+    def _subject_key(s):
+        m_ = re.findall(r"(\d+)", str(s))
+        return m_[-1] if m_ else None
+
+    by_key = {}
+    for m_ in meta:
+        k = _subject_key(m_["title"])
+        if k:
+            by_key[k] = m_
+
+    print("  %d samples with an age, %d source sites"
+          % (len(meta), len({m["site"] for m in meta})))
+    print("  streaming %s (~1.1 GB) and keeping %d probes ..." % (_GSE, METHYL_N_PROBES))
+
+    resp = _open_stream(_GEO_BETA)
+    gz = gzip.GzipFile(fileobj=resp)
+    header = gz.readline().decode("utf8", "ignore").rstrip("\n").split("\t")
+    # Column layout is: probe id, then <sample> and <sample>.Detection Pval pairs.
+    cols, keep_idx = [], []
+    for i, h in enumerate(header[1:], start=1):
+        h = h.strip().strip('"')
+        if h.lower().endswith("pval") or "detection" in h.lower():
+            continue
+        cols.append(h); keep_idx.append(i)
+    matched = [h for h in cols if _subject_key(h) in by_key]
+    if len(matched) < 300:
+        raise RuntimeError("only %d of %d beta columns matched a sample title; "
+                           "the column naming may have changed" % (len(matched), len(cols)))
+
+    rng = np.random.default_rng(METHYL_PROBE_SEED)
+    rows, ids = [], []
+    n_seen = 0
+    # Reservoir sampling: one pass, no need to know the probe count in advance
+    # and no need to hold 450k x 656 in memory to choose from.
+    reservoir_row, reservoir_id = [], []
+    for line in gz:
+        parts = line.decode("utf8", "ignore").rstrip("\n").split("\t")
+        if len(parts) <= max(keep_idx):
+            continue
+        pid = parts[0].strip().strip('"')
+        if not pid.startswith("cg"):
+            continue
+        n_seen += 1
+        vals = np.array([_to_float(parts[i]) for i in keep_idx], dtype=np.float32)
+        if len(reservoir_row) < METHYL_N_PROBES:
+            reservoir_row.append(vals); reservoir_id.append(pid)
+        else:
+            j = int(rng.integers(0, n_seen))
+            if j < METHYL_N_PROBES:
+                reservoir_row[j] = vals; reservoir_id[j] = pid
+        if n_seen % 50000 == 0:
+            print("    %d probes scanned" % n_seen)
+    gz.close(); resp.close()
+    if n_seen < 100000:
+        raise RuntimeError("only %d probes parsed; expected ~450k" % n_seen)
+
+    B = np.vstack(reservoir_row).T            # samples x probes
+    order = [by_key[_subject_key(h)] for h in cols if _subject_key(h) in by_key]
+    sel = [k for k, h in enumerate(cols) if _subject_key(h) in by_key]
+    B = B[sel]
+    age = np.array([m["age"] for m in order], dtype=np.float64)
+    male = np.array([m["male"] for m in order], dtype=np.int64)
+    site = np.array([m["site"] for m in order])
+
+    np.save(d / "betas.npy", B)
+    np.save(d / "age.npy", age)
+    np.save(d / "male.npy", male)
+    np.save(d / "site.npy", site)
+    (d / "cpg_ids.json").write_text(json.dumps(reservoir_id))
+    (d / "metadata.json").write_text(json.dumps({
+        "series": _GSE, "samples": int(len(age)), "probes": int(B.shape[1]),
+        "probes_scanned": int(n_seen), "probe_seed": METHYL_PROBE_SEED,
+        "age_range": [int(age.min()), int(age.max())],
+        "sites": sorted({str(s) for s in site}),
+        "tissue": "whole blood", "platform": "Illumina 450k",
+        "note": ("probes chosen by seeded reservoir sampling, never by "
+                 "correlation with age — selecting probes on the target would "
+                 "make held-out error optimistic in a way held-out data cannot "
+                 "detect"),
+    }, indent=1))
+    return ("%s: %d samples x %d probes from %d scanned, ages %d-%d, %d sites"
+            % (c.key, len(age), B.shape[1], n_seen, age.min(), age.max(),
+               len(set(site.tolist()))))
