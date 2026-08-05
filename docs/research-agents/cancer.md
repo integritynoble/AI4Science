@@ -78,6 +78,39 @@ prediction to tailor treatment, expression signatures for prognosis and
 chemotherapy response, tooling for genome-scale data — are this agent's. One
 anchor in the field, not its boundary.
 
+## 3b. What was tried against the transport failure, and refuted
+
+Recorded because a design that lists only its confirmations is not one anyone
+should trust, and because each of these is a hypothesis someone else would
+otherwise spend a day re-testing.
+
+| Hypothesis | Result |
+|---|---|
+| **The model is under-regularised** and overfits the development cohort | Refuted. External C-index moves between 0.5769 and 0.5792 across ridge 0 → 400. The best is a gain of 0.0006 — noise. |
+| **Stage is mis-specified** as a linear term when hazard by stage is roughly exponential | Refuted. Dummy coding gives 0.5713, slightly *worse*. |
+| **T and N stage add signal** the overall stage collapses | Refuted, and harmful: external falls to 0.571, because the two cohorts are missing those fields differently. |
+
+**What the experiments did establish.** Removing stage collapses internal
+discrimination to 0.485 — below chance — so **stage carries essentially the
+entire signal**, and it is stage's prognostic weight that fails to transport.
+Adenocarcinoma and squamous cell have different stage-specific survival. That is
+biology, not a specification defect, and no amount of shrinkage or recoding
+reaches it.
+
+> **One real defect was found on the way, and it invalidated an earlier
+> conclusion.** The optimiser normalised its gradient to unit length —
+> `b += lr * g / ‖g‖` — which makes the step independent of gradient magnitude
+> and so swamps the ridge term: shrinkage changed only the direction, and the
+> coefficient norm sat at 0.63 from ridge 0.001 to 25 before collapsing at 200.
+> The first "regularisation does not help" result was therefore a statement
+> about the optimiser rather than about the data. Fixed, re-run, and the
+> conclusion happens to survive — but it had to be re-earned.
+
+**The next experiment, not yet run:** molecular covariates from the GDC. The
+literature's expectation is that expression-based models transport *worse* than
+clinical ones, so this is worth doing as a test of that expectation rather than
+as a rescue.
+
 ## 4. The rule this agent exists to hold
 
 > **It advises a clinician. It never advises a patient.**

@@ -161,6 +161,10 @@ def test_a_searching_round_reports_every_validation_seed(tmp_path):
 def test_the_owner_can_turn_it_off_mid_round(tmp_path):
     """'Users can also turn off this function' has to mean work already running
     stops, not merely that the next one will not start."""
+    # `cancer` has parameters now, so this exercises the SEARCH path — which
+    # had no switch check at all when it was written. The owner turning the
+    # function off was honoured for a measuring agent and ignored for a
+    # searching one, and this test is what noticed.
     agent = build("cancer")
     agent.switch.owner_turn_on(Budget("cancer", units=6.0), by="owner")
     seen = {"n": 0}
@@ -232,9 +236,16 @@ def test_the_three_ledgers_are_kept_apart(tmp_path):
                      client_factory=lambda s: Sim(tmp_path / ("a%d" % s)),
                      workspace_root=tmp_path / "aw", seeds=(0, 1),
                      cost_per_seed=0.5, ledgers=led)
+    # One owner-set task, one self-directed round, and one benchmark row per
+    # run the round made. The count is not pinned: `cancer` measured two seeds
+    # when it had no parameters and searches many more now that it has some,
+    # and the property being tested is that the three stay APART, not how busy
+    # the middle one was.
     assert len(led.of(OWNER_SET)) == 1
-    assert len(led.of(BENCHMARK)) == 2
     assert len(led.of(SELF_DIRECTED)) == 1
+    assert len(led.of(BENCHMARK)) >= 2
+    assert all(r.get("seed") is not None for r in led.of(BENCHMARK)), \
+        "a benchmark row records which seed produced it"
     assert "never summed" in led.report()
 
 

@@ -525,6 +525,17 @@ ONCO = DomainBenchmark(
     deliverables=("results/risk_dev.npy", "results/risk_ext.npy"),
     answer_key=(),      # outcomes are the data; what is tested is transport
     score=_score_onco, judge=_judge_onco, corpus="tcga-survival",
+    objective="c_index_external", objective_higher_is_better=True,
+    # Internal discrimination is the guardrail: a "transporting" model that
+    # got there by throwing away its fit is not the thing anyone wants.
+    guardrails=("c_index_internal",),
+    parameters=(
+        Parameter("ridge", 0.0, 400.0, 10.0,
+                  means="shrinkage toward zero; more should transport better, "
+                        "and on this cohort pair it does not"),
+        Parameter("lr", 0.1, 1.0, 0.5, means="gradient step"),
+        Parameter("iters", 200, 1200, 800, integer=True, means="fit iterations"),
+    ),
     criteria=("external C-index ≥ 0.58 on a cohort the model never saw",
               "calibration reported with discrimination",
               "no patient-level claim"),

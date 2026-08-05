@@ -278,7 +278,17 @@ def autonomous_round(agent, bench: DomainBenchmark, *, client_factory,
         budget.spend(cost, what="%d runs of %s" % (n_runs, bench.agent))
         spent["n"] += cost
 
+    class _SwitchedOff(Exception):
+        pass
+
     def score(params, seed):
+        # Checked before every run, not once per round. The search path had no
+        # switch check at all when it was added: an owner turning the function
+        # off mid-round was honoured for a measuring agent and ignored for a
+        # searching one, which is the half that spends the most. A test written
+        # for the measurement path is what noticed.
+        if not agent.switch.on:
+            raise _SwitchedOff()
         out = run_domain_task(bench, client=client_factory(seed),
                               workspace=Path(workspace_root) / ("p%d" % abs(hash(
                                   tuple(sorted(params.items())) + (seed,)))),
@@ -320,11 +330,36 @@ def autonomous_round(agent, bench: DomainBenchmark, *, client_factory,
     except BudgetExhausted as e:
         return Round(agent.name, claim.statement if claim else None,
                      bench.objective, spent["n"], stopped=str(e))
+    except _SwitchedOff:
+        return Round(agent.name, claim.statement if claim else None,
+                     bench.objective, spent["n"],
+                     stopped="the owner turned it off mid-round")
+
+    if not res.get("searched"):
+        # A round must never idle. Searching was impossible — no parameters, no
+        # objective, or too few seeds to hold a validation set back — so the
+        # night measures instead, which is real work and the strongest single
+        # use this design claims for these agents.
+        #
+        # This is the second time the same hole appeared: first for agents with
+        # no parameters at all, and then again for parameterised agents given
+        # too few seeds to validate on. Both times the round returned having run
+        # nothing, spent nothing and stopped for no stated reason. Falling back
+        # on ANY refusal to search closes the shape rather than the instance.
+        fell_back = _measure_only(agent, bench, client_factory=client_factory,
+                                  workspace_root=workspace_root, seeds=seeds,
+                                  cost_per_seed=cost_per_seed, ledgers=ledgers,
+                                  claim=claim, budget=budget)
+        if fell_back.outcome:
+            fell_back.outcome["why"] = "%s; %s" % (
+                res.get("why", "could not search"), fell_back.outcome.get("why", ""))
+        fell_back.spent += spent["n"]
+        return fell_back
 
     r = Round(agent.name, claim.statement if claim else None,
               bench.objective or "unnamed", spent["n"])
-    if not res.get("searched"):
-        r.outcome = no_change(agent.name, because=res.get("why", ""))
+    if False:
+        pass
     elif not res.get("improved"):
         r.outcome = no_change(agent.name,
                               because=res.get("why")
