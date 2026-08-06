@@ -243,6 +243,69 @@ def _measure_only(agent, bench: DomainBenchmark, *, client_factory,
     return r
 
 
+def seed_data_classes(bench, seeds, workspace_root) -> Dict[int, str]:
+    """Hash the data each seed actually generates.
+
+    A seed is a request for a different problem; it is not a guarantee of one.
+    Every benchmark here maps its seed into a FINITE corpus — a patient index, a
+    site permutation, a video split — so past some width, more seeds means the
+    same data again under a new number. Measured: low-dose CT produces 4 distinct
+    datasets across 16 seeds, medical physics 8, reverse aging 7.
+
+    That is the same failure as the seed that did nothing and reported p = 0,
+    only quieter: the duplicates are real data, so nothing looks wrong.
+    """
+    from .runners.common import seed_workspace
+    import hashlib, tempfile
+    out: Dict[int, str] = {}
+    for s in seeds:
+        ws = Path(workspace_root) / ("cls%d" % s)
+        seed_workspace(bench, ws, seed=s)
+        h = hashlib.sha256()
+        for f in sorted((ws / "data").rglob("*")):
+            if f.is_file():
+                h.update(f.name.encode())
+                h.update(f.read_bytes())
+        out[s] = h.hexdigest()[:16]
+    return out
+
+
+def check_seed_independence(bench, search_seeds, validation_seeds, workspace_root):
+    """Refuse a round whose validation set is not actually held out.
+
+    Two ways it fails, both silent:
+      * a validation seed generates the SAME data as a search seed — the winner
+        was selected on the set it is then validated on;
+      * two validation seeds generate the same data — the paired test counts one
+        measurement twice, so the spread is understated and the p-value is not
+        what it says it is.
+
+    Returns None when the split is sound, or a sentence saying why it is not.
+    """
+    cls = seed_data_classes(bench, tuple(search_seeds) + tuple(validation_seeds),
+                            workspace_root)
+    searched = {cls[s] for s in search_seeds}
+    leaked = [s for s in validation_seeds if cls[s] in searched]
+    if leaked:
+        return ("validation seeds %s generate the same data as the search seeds — "
+                "the winner would be validated on what it was selected on. %s "
+                "produces only %d distinct problems across these seeds."
+                % (leaked, bench.agent, len(set(cls.values()))))
+    seen: Dict[str, int] = {}
+    dupes = []
+    for s in validation_seeds:
+        if cls[s] in seen:
+            dupes.append((seen[cls[s]], s))
+        else:
+            seen[cls[s]] = s
+    if dupes:
+        return ("validation seeds %s are the same problem: %d seeds but %d "
+                "distinct, so the paired test would count a measurement more "
+                "than once and report a spread it did not measure"
+                % (dupes, len(validation_seeds), len(seen)))
+    return None
+
+
 def autonomous_round(agent, bench: DomainBenchmark, *, client_factory,
                      workspace_root: Path, seeds: Sequence[int] = (0, 1, 2, 3, 4),
                      metric: str = "", cost_per_seed: float = 0.5,
@@ -271,6 +334,17 @@ def autonomous_round(agent, bench: DomainBenchmark, *, client_factory,
     else:
         validation_seeds = tuple(validation_seeds)
         search_seeds = tuple(s for s in seeds if s not in validation_seeds) or seeds
+    # A seed set is only as wide as the distinct problems behind it. Checked
+    # before anything is spent, because the failure is invisible afterwards: the
+    # numbers look fine and the held-out set quietly is not one.
+    bad = check_seed_independence(bench, search_seeds, validation_seeds,
+                                  Path(workspace_root) / "seedcheck")
+    if bad:
+        return Round(agent.name, claim.statement if claim else None,
+                     bench.objective or "measurement", 0.0,
+                     stopped="the seed set does not hold a validation set apart: "
+                             + bad)
+
     spent = {"n": 0.0}
 
     def spend(n_runs: int) -> None:

@@ -91,6 +91,47 @@ says which test it fails and what the first objection would be.
 > tractable, which is how a year of easy rungs comes to look like a year of
 > progress.
 
+## 0b1. A seed is a request for a different problem, not a guarantee of one
+
+**Widening the seed set turned up two live defects, and they were invisible.**
+Every benchmark maps its seed into a finite corpus — a patient index, a site
+permutation, a video split — so past some width, more seeds means the same data
+again under a new number. Measured across 16 seeds:
+
+| agent | distinct problems / 16 seeds |
+|---|---|
+| cancer, pill camera, drug design | **16** — the seed genuinely varies the data |
+| medical physics | **8** — one per OpenKBP patient, then it repeats |
+| reverse aging | **7**, irregularly — seeds 2 and 3 are the same problem |
+| low-dose CT | **4** — seeds 0, 4, 8, 12 are byte-identical |
+
+A night ran six seeds, split search `(0,1)` and validation `(2,3,4,5)`. So:
+
+- **low-dose CT validated on its own search set.** Seeds 4 and 5 generate data
+  byte-identical to seeds 0 and 1, so half the held-out set was not held out and
+  the winner was validated on what it was selected on.
+- **reverse aging counted one measurement twice.** Validation had four seeds and
+  three distinct problems, so the paired test reported a spread it had not
+  measured.
+
+> **This is the p = 0 failure again, quieter.** There the seed did nothing and
+> the duplicates were obvious once looked for. Here the duplicates are real,
+> different-looking data — they just repeat — so every number stayed plausible.
+> The first version failed loudly; this one would not have failed at all.
+
+**The loop now refuses before spending anything.** Before a round runs it hashes
+the data behind each seed and stops if a validation seed matches a search seed,
+or if two validation seeds match each other, naming the seeds and how many
+distinct problems the agent can actually produce. Four agents pass; two are
+refused until their seed sets are drawn inside their real capacity.
+
+**What this means for widening.** More seeds buys evidence only up to each
+agent's capacity, and beyond it buys the appearance of evidence. Cancer, pill
+camera and drug design can be widened freely. Medical physics stops at 8.
+Reverse aging and low-dose CT are corpus-bound and need more data, not more
+seeds — which is the same conclusion their pages already reach for other
+reasons.
+
 ## 0b2. What a night actually costs
 
 Measured 2026-08-06, one agent at a time on one machine — sequential on purpose,
