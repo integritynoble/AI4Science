@@ -43,7 +43,7 @@ in what a run costs is the only place it matters.
 
 ### Where each of the fourteen points is answered
 
-The requirement came as fourteen numbered points. The sections that answer one
+The requirement came as numbered points. The sections that answer one
 say so in their own titles, so a point can be found by scrolling:
 
 ```
@@ -54,6 +54,11 @@ say so in their own titles, so a point can be found by scrolling:
 11. The market                                  (Points 1 and 2)
 11a. The tools and sub-agents this system needs (Point 13)
 11b. Research agents                            (Point 11)
+     What a research agent is FOR                (Point 23)
+     The two functions, and who verifies what    (Point 24)
+     What one research agent is made of          (Point 25)
+     Self-awareness, in a research agent         (Point 26)
+     RSI, and how a field ends                   (Point 27)
      The governor's research agents             (Points 6 and 12)
 13. What runs it costs                          (Points 2, 3 and 4)
      Your own key, run freely, and earn         (Point 5)
@@ -1016,6 +1021,184 @@ file its own research as work the owner asked for.
 already created keep their source; the owner chooses whether a running one
 finishes or is closed. Deleting them on revocation would erase exactly the
 record the owner wants to read after turning it off.
+
+### What a research agent is FOR: an ordered list of problems (Point 23)
+
+A research agent is not "an agent that does science in this field". It is an
+agent that holds **the field's open problems, in the order they have to be
+solved**, and knows which one is next. Without that it is a chatbot with a
+budget.
+
+The order is not a preference. It falls out of what a field is made of, which
+is the same four tiers the registry already uses and the same four
+`physicsworldmodel.org` publishes:
+
+| | | why it comes before the next |
+|---|---|---|
+| **L1 principle** | the physics or biology the field rests on | a spec that contradicts the principle is wrong in a way no benchmark will catch |
+| **L2 spec** | the forward model — what a measurement *is* | a benchmark without one measures agreement with an implementation, not with reality |
+| **L3 benchmark** | the task, the data, the metric | a solution with no benchmark cannot be beaten, only asserted |
+| **L4 solution** | a method that meets or beats the bar | the only tier where "better" is a checkable claim |
+
+So the ordering rule is: **solve what unblocks the most tiers below it, among
+the things that can be verified now.** Two clauses, and the second is doing as
+much work as the first — a principle nobody can test yet unblocks nothing,
+because every tier under it inherits the doubt.
+
+Worked, for **computational imaging**, which is the field furthest along:
+
+| # | problem | tier | why here |
+|---|---|---|---|
+| 1 | the forward model disagrees between papers — mask convention, dispersion, normalisation | L2 | every number below it is uncomparable until this is settled. The CASSI wrapper bug that cost 35.5→28 dB was exactly this, one layer down |
+| 2 | a benchmark that fixes data, mask and metric together | L3 | a metric on unfixed data measures the data |
+| 3 | baselines re-run under that benchmark, not quoted from papers | L3 | a quoted number is a claim about somebody else's forward model |
+| 4 | a solution that beats the re-run baselines | L4 | the first checkable "better" in the field |
+| 5 | the principle behind why it beats them | L1 | promoted *last*, because a principle inferred from one win is a story |
+
+Note where L1 sits. A field's principle is often the **last** thing that can be
+verified, not the first — which is why "start from first principles" is bad
+advice for an agent that has to show its work.
+
+**Each research agent has its own page** on `physicsworldmodel.org`, and the
+page *is* the problem list: the open problems in order, what tier each sits at,
+what is solved, and by whom. A page that showed only finished work would be a
+brochure; the value is that a reader can see what is next and take it.
+
+### The two functions, and who verifies what (Point 24)
+
+Every research agent has exactly two, and the difference between them is who
+started the work, never what the work may do:
+
+| | **on demand** | **autonomous** |
+|---|---|---|
+| started by | the owner asks | its own self-model, charter, or an open problem on its page |
+| picks the problem | the owner | the ordering rule above |
+| the switch | not read at all | required, owner-set, revocable, budgeted |
+| ledger | `owner` | `benchmark` / `self_directed` |
+
+**Every gate is identical across the two.** That is the point of having two
+functions rather than two agents: the second is the first with the asking
+removed, and nothing else.
+
+**How a person verifies.** They read the plan's `Verified when:` lines before
+granting, and the verdict after. Both name artefacts — a file, a number, an
+exit code — so verification is *reading a result*, not *trusting a narrative*.
+On a research agent this matters more than anywhere else, because the work is
+in a field the owner may not know: a criterion they cannot check is a criterion
+they are accepting on faith.
+
+**How a sub-agent verifies.** The verifier is a sub-agent, and on a research
+agent it is a **domain** verifier — it re-runs the benchmark rather than reading
+the claim. The market's own note applies hardest here: *a verifier is the
+sharpest thing to accept, because a lenient one inflates the record of every
+agent it judges.*
+
+**How a sub-agent teaches a person to verify.** This is the part that decides
+whether any of it is worth trusting, and it is a deliverable, not a courtesy:
+alongside the verdict, the verifier emits **the check itself** — the command,
+the data, the expected value, and what a wrong answer would look like. The
+owner runs it. Then they can verify the next one without the agent, and the
+one after that they can *disagree* with it. An agent that cannot teach its own
+check has not been verified; it has been believed.
+
+> **Independence is the whole of it.** A verdict from the same engine that did
+> the work already says so, in the record. A field where the only verifier is
+> the agent's own sub-agent has a number nobody outside has checked, and §27
+> below is what that becomes if nothing stops it.
+
+### What one research agent is made of (Point 25)
+
+Taking computational imaging as the worked example. **Sub-agents** are things
+that do or judge; **tools** are things that must be present to run.
+
+| Sub-agent | Socket | What it is for |
+|---|---|---|
+| `sarsi-claude` | session backend | drives the work, at the ceiling it was released to |
+| the planner | drafts the seed plan | turns an open problem into phases with checkable criteria |
+| the **domain verifier** | given criteria + evidence | re-runs the benchmark; the sharpest listing to accept |
+| the **reconstruction runner** | work that is not code editing | GAP-TV, deep-unrolled, transformer — the actual method |
+| the **teacher** | emits the owner's own check | the deliverable of Point 24, not a summary |
+
+| Tool | What it touches | Refused by name when absent |
+|---|---|---|
+| `shell` | the working directory | yes — `CAP` |
+| `editor` | declared paths | yes |
+| GPU / CUDA | the card | yes — and the OS is declared before it is probed (§13) |
+| the benchmark corpus | a read-only cache, shared between agents | yes, **and it names the fetch command** rather than substituting generated data |
+
+That last row is the one with teeth. An agent whose corpus is missing must
+**refuse and say how to get it**. Generating stand-in data and proceeding is how
+a field fills with results nobody can reproduce.
+
+### Self-awareness, in a research agent (Point 26)
+
+The self-model is not a personality. It is **a measured record of where this
+agent's evidence is thin**, and it has one job: to decide what the autonomous
+function works on next.
+
+* it is **written by `observe()`** from outcomes — verdicts, benchmark results,
+  refusals — and never by the agent asserting things about itself. Measured,
+  never claimed, for the same reason a verdict comes from a verifier.
+* it is **the queue**: where the evidence is thinnest is where the next
+  self-directed task goes. That is how "what should I work on" stops being a
+  preference and becomes a reading.
+* it is **one file, read by both functions**. Two would give the agent a private
+  record beside the one the owner reads, and the first thing to diverge would be
+  the part that flatters it.
+
+So self-awareness here is instrumental: it exists to aim the work, and it is
+auditable because it is derived from things that already have verdicts on them.
+
+### Recursive self-improvement, and how a field ends (Point 27)
+
+**RSI without human intervention** is the autonomous function pointed at its own
+playbook: the agent observes where it fails, proposes a change to how it works,
+tries it, and keeps what the verifier passes. Today it **proposes and holds**,
+and the owner signs — an agent that can adopt its own improvement can widen what
+it may do, and the propose/hold/sign shape exists for exactly that.
+
+The end state described here removes the signature. What replaces it is
+**agents verifying agents**: a change is adopted when independent sub-agents,
+and agents from other fields, pass it. That is a real mechanism and it has a
+real failure mode, which this document should name rather than assume away:
+
+> **Independence is not the number of verifiers, it is where they came from.**
+> Sub-agents an agent brought with it are not independent of it, however many
+> there are. A field whose verifiers all descend from the agent being verified
+> has a closed loop with a number on it, and the number will be excellent.
+
+**A field then ends in one of two ways.** Both are called collapse and they are
+opposites:
+
+| | **saturation** | **exhaustion** |
+|---|---|---|
+| what happened | the problems are being solved faster than people can follow | the open problems are not worth solving |
+| who verifies | other AI agents; no human in the loop | nobody, because nobody is asking |
+| the tell | the page's problem list keeps clearing and nobody reads the results | the problem list stops moving and nobody adds to it |
+| the risk | a closed verification loop nobody outside has checked | a live agent spending a budget on nothing |
+
+The honest handling is the same for both: **a field that no human verifies is a
+field whose page says so.** Not a hidden state — the agent's public page carries
+the last time a person checked one of its results, and how long the chain of
+agent-only verification has run since. A reader deciding whether to trust the
+field can then see the one thing that decides it.
+
+**And a field ends by splitting, which is the good ending.** When a small
+sub-scope keeps producing results with more energy and meaning than the field
+around it, that is not a sub-topic — it is a new field, and it gets **its own
+research agent, its own page, its own problem list in its own order.** Classical
+physics did not absorb quantum mechanics; quantum mechanics left. The registry
+already supports this: the new field's L1 principle is a new entry, not an
+amendment, and the old field's agent keeps its history exactly as a retired
+agent does.
+
+> **What is built, and what is not.** The two functions, the switch, the three
+> ledgers, the self-model as a queue, the domain-verifier socket and the
+> propose/hold/sign RSI loop are built. **The page, the ordered problem list,
+> the teacher sub-agent, the agent-only verification chain and the field-split
+> mechanism are design.** The last two are the ones to be slowest about: they
+> are where a system that has spent this much effort on *not reporting what it
+> did not check* would be able to stop checking.
 
 ### The governor's research agents (Points 6 and 12)
 
