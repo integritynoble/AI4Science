@@ -630,6 +630,10 @@ def _bare_launch(read_only: bool, auto_yes: bool, plan_mode: bool,
                 continue_session=continue_session,
                 model=model, backend=None, resume=resume, mode=mode,
                 intro=intro,
+                # The bare launch grants nothing beyond the workspace. Omitting
+                # it left an OptionInfo in `writable`, which is truthy and not
+                # iterable, so `list(writable or [])` killed every bare start.
+                writable=None,
             )
         except typer.Exit as e:
             sys.exit(e.exit_code or 0)

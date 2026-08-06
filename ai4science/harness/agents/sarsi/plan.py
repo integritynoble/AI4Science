@@ -46,6 +46,46 @@ class OwnerOnly(Exception):
     """Only the owner may do this. The agent asked anyway."""
 
 
+#: Words that promise a number produced by running something. A criterion that
+#: uses one and names no file is asking to be judged on a claim.
+_MEASURED = ("measur", "psnr", "ssim", "max abs", "difference", "diff",
+             "benchmark", "runtime", "accuracy", "throughput", "latency",
+             "speedup", "error rate")
+
+
+def _unused_needs_its_artefact(title: str, verified_when: str) -> None:
+    """Kept for its reasoning; the live rule is `needs_artefacts`, on the parsed
+    plan rather than on every Phase built.
+
+    A criterion that claims a measurement must say where the number lands.
+
+    Found the late way. A live run compared two forward operators, measured the
+    difference correctly, and was refused — the task folder held a report and no
+    run, so the numbers were "unverified assertions rather than demonstrated
+    measurements", and the verifier closed with the line worth keeping:
+    **coherence is not evidence of a run.**
+
+    That refusal is right and it arrives after the work. Asked here it costs one
+    edit, and it is the same argument as the `Verified when:` rule one level in:
+    a criterion nobody else can check is one the agent grades itself.
+
+    Narrow on purpose. Most criteria are not measurements, and a validator that
+    argued with all of them would be worked around rather than satisfied.
+    """
+    from ai4science.harness.agents.sarsi import evidence as _evd
+    low = verified_when.lower()
+    if not any(w in low for w in _MEASURED):
+        return
+    if _evd.named_files([verified_when]):
+        return
+    raise BadPlan(
+        f"phase {title!r} promises a measured number and does not say where it "
+        f"lands — name the file that will hold the run's output (the script and "
+        f"what it printed), so the verifier judges the run rather than the "
+        f"write-up. A report of a measurement is not the measurement: coherence "
+        f"is not evidence of a run.")
+
+
 @dataclass(frozen=True)
 class Phase:
     title: str
@@ -240,6 +280,24 @@ def _budget(text: str):
         elif unit == "hour":
             minutes = int(value) * 60
     return steps, minutes
+
+
+def needs_artefacts(plan: "Plan") -> List[str]:
+    """Criteria that promise a measured number and say nowhere to find it.
+
+    A read, not a refusal — deliberately. `Phase` is also how the SEED plan is
+    built, and the seed is a stub the session is asked to improve; validating it
+    there rejected the system's own draft, including `pl.draft()` for any goal
+    with the word "benchmark" in it. Arguing with a draft is not the point. What
+    is worth checking is the plan the SESSION wrote back.
+    """
+    from ai4science.harness.agents.sarsi import evidence as _evd
+    out = []
+    for ph in plan.phases:
+        low = (ph.verified_when or "").lower()
+        if any(w in low for w in _MEASURED) and not _evd.named_files([ph.verified_when]):
+            out.append(ph.title)
+    return out
 
 
 def parse(text: str) -> Plan:
