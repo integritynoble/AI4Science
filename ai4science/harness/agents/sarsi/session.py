@@ -666,6 +666,18 @@ def release(config: Config, agent: Agent, task: tsk.Task, *,
     if task.awaiting:
         raise NotReady("this task is still waiting on a grant: "
                        + ", ".join(task.awaiting))
+    # Still PLANNING means the session drafted a plan and nothing attached it to
+    # the task record, so there is no declared permission to have granted and
+    # nothing to release against. `tsk.start` returns such a task UNCHANGED, so
+    # this printed "tsk_… — planning": the owner handed back the state they
+    # already knew, with no hint of the missing step. Every other refusal on
+    # this path names its route; this one printed a noun.
+    if task.state == tsk.PLANNING:
+        raise NotReady(
+            f"{task.id} is still planning: its plan has not been collected from "
+            f"the session yet, so nothing has been declared to grant. Collect "
+            f"it first — sarsi supervise {agent.id} {task.id} — which attaches "
+            f"the plan and then says what to grant")
     # A secret the plan declared that the directive did not: it cannot be
     # delivered into a session that is already running, so say so rather than
     # start work that will fail for a reason nobody can see.

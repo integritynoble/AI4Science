@@ -331,15 +331,24 @@ def run(config: Config, agent: Agent, task: tsk.Task, *, pane: Any,
         action = tick(config, agent, task, pane=pane, verifier=verifier,
                       model=model, engine=engine)
         seen.append(action)
-        # `attended` belongs here for a different reason than the rest: those
-        # are states the loop has finished with, this one is a fact about the
-        # AGENT that no amount of waiting changes. Left out, `supervise` spent
-        # twelve passes at twenty seconds re-deriving that it cannot read a
-        # session's interface — four minutes that read as a hang, which is how
-        # it was found. `over-budget` deliberately stays out: the owner can
-        # raise a budget from another terminal, so that one can change.
+        # Three of these are states the loop has finished with. The other two
+        # are things another pass cannot bring closer, and both were found by
+        # watching a live run burn its whole budget on one of them:
+        #
+        #   * `attended` — a fact about the AGENT: this loop cannot read that
+        #     interface. Twelve passes at twenty seconds re-deriving it read as
+        #     a hang, which is how it was noticed.
+        #   * `asks-owner` — the loop has already decided that nothing in the
+        #     plan, the scope or the record settles the session's question. It
+        #     changes when the OWNER answers, and six identical passes of
+        #     "sarsi-worker needs you" is the same sentence six times while the
+        #     work sits finished in the folder. `awaiting-grant` was terminal
+        #     for exactly this reason and this is its shape.
+        #
+        # `over-budget` deliberately stays OUT: the owner can raise a budget
+        # from another terminal, so that one really can change under the loop.
         if action.kind in ("no-session", "done", "paused", "verified",
-                           "awaiting-grant", "attended"):
+                           "awaiting-grant", "attended", "asks-owner"):
             break
         if i + 1 < passes:
             sleep(interval)

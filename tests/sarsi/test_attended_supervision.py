@@ -269,3 +269,98 @@ def test_an_empty_folder_still_says_it_is_empty(tmp_path):
     from ai4science.harness.agents.sarsi import evidence as evd
     got = evd.gather(tmp_path, [])
     assert got.strip(), "an empty folder is a fact, not an empty string"
+
+
+# ── 5. release says why, instead of printing the state back ───────────
+
+def test_releasing_a_task_whose_plan_was_never_collected_says_so(config):
+    """Live: `sarsi release` on a task still in `planning` printed
+    "tsk_… — planning" and did nothing. `task.start` returns unchanged unless
+    the state is READY or OFF, so the owner was handed back the state they
+    already knew, with no hint of the missing step.
+
+    The missing step is that the session drafted a plan and nothing attached it
+    to the task record — which is `sarsi supervise`'s job. Every other refusal
+    in this file names its route; this one printed a noun.
+    """
+    from ai4science.harness.agents.sarsi import session as ses
+    agent = config.agents["sarsi-worker"]
+    t = tsk.create(config, agent, tsk.Directive(agent_id=agent.id, goal="count files"))
+    assert t.state == tsk.PLANNING
+    with pytest.raises(ses.NotReady) as e:
+        ses.release(config, agent, t)
+    assert "plan" in str(e.value).lower()
+    assert "sarsi supervise" in str(e.value)
+
+
+def test_the_existing_awaiting_grant_refusal_is_unchanged(config):
+    """It already named what it waited on, and it keeps its own wording."""
+    from ai4science.harness.agents.sarsi import session as ses
+    agent = config.agents["sarsi-worker"]
+    t = tsk.create(config, agent, tsk.Directive(agent_id=agent.id, goal="count files"))
+    t.state = tsk.AWAITING_GRANT
+    t.awaiting = ["read-only shell"]
+    with pytest.raises(ses.NotReady, match="read-only shell"):
+        ses.release(config, agent, t)
+
+
+def test_a_granted_ready_task_still_releases(config):
+    """The fix must not turn a working path into a refusal."""
+    from ai4science.harness.agents.sarsi import session as ses
+    agent = config.agents["sarsi-worker"]
+    t = tsk.create(config, agent, tsk.Directive(agent_id=agent.id, goal="count files"))
+    t.state = tsk.READY
+    t = ses.release(config, agent, t)
+    assert t.state == tsk.RUNNING
+    assert t.released_at is not None
+
+
+# ── 6. a question only the owner can answer stops the loop ────────────
+
+class _AskingPane:
+    """A session sitting on a question the plan does not settle."""
+    def __init__(self):
+        self.sent = []
+
+    def capture(self, name):
+        return ("I need one thing from you before I can finish:\n"
+                "update that one line in the plan to match your chosen string?")
+
+    def send(self, name, text):
+        self.sent.append(text)
+        return {"ok": True}
+
+
+def test_a_question_only_the_owner_can_settle_ends_the_run(config, monkeypatch):
+    """Live on grace: the loop reported `asks-owner` on six consecutive passes —
+    the same sentence each time — and spent its whole budget while the work was
+    already done and sitting in the folder.
+
+    `awaiting-grant` is already terminal for exactly this reason. A question the
+    loop has decided it cannot answer is the same shape: it changes when the
+    OWNER acts, which is not something another pass brings closer.
+    """
+    agent = config.agents["sarsi-worker"]
+    t = tsk.create(config, agent, tsk.Directive(agent_id=agent.id, goal="count files"))
+    t.session = {"name": "sarsi-worker-test"}
+    t.state = tsk.RUNNING
+
+    monkeypatch.setattr(op, "tick",
+                        lambda *a, **k: op.Action("asks-owner", "needs you"))
+    slept = []
+    actions = op.run(config, agent, t, pane=_AskingPane(), passes=6,
+                     interval=12.0, sleep=slept.append)
+    assert [a.kind for a in actions] == ["asks-owner"]
+    assert slept == []
+
+
+def test_but_ordinary_progress_still_uses_every_pass(config, monkeypatch):
+    """The guard is that one kind, not a general shortening of the loop."""
+    agent = config.agents["sarsi-worker"]
+    t = tsk.create(config, agent, tsk.Directive(agent_id=agent.id, goal="count files"))
+    t.session = {"name": "sarsi-worker-test"}
+    monkeypatch.setattr(op, "tick",
+                        lambda *a, **k: op.Action("steered", "kept going"))
+    actions = op.run(config, agent, t, pane=_AskingPane(), passes=4,
+                     interval=0.0, sleep=lambda s: None)
+    assert len(actions) == 4
