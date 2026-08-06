@@ -207,28 +207,37 @@ of the wrong quantity.
 
 ## The group — who does what, and which of them have bodies
 
-This agent is not one model. It is a group with four kinds of member, and the
-kinds matter because they carry different permissions: a **proposer** that
-suggests, **verifiers** that try to refute, **executors** that carry work out —
-some of them embodied — and a **safety interlock** that none of the others may
-modify. The general rules are in [`lifecycle.md`](lifecycle.md); what follows is
-this field's instance.
+This agent is not one model. It is a **group** with three kinds of member,
+defined by what their acts reach: **reasoning** members touch a file,
+**judging** members produce a verdict and never act, and **embodied** members
+touch the world and cannot be undone. Outside the group it is one agent, with
+one workspace, one task list, one ceiling and one verdict — the owner deals with
+a thing, not a committee. The shared machinery is in
+[`lifecycle.md`](lifecycle.md).
 
-| sub-agent | role | body | may not |
+| member | kind | acts on | its refusal |
 |---|---|---|---|
-| **denoiser proposer** | proposes filters, priors and its own knobs | no | touch the dose model, the lesion model, or the noise ROI |
-| **task verifier** | recomputes detectability independently | no | be improved by the proposer |
-| **physics verifier** | checks the dose-reduction model was not altered | no | — |
-| **pairing verifier** | re-derives slice correspondence from DICOM geometry | no | trust the manifest |
-| **phantom handler** | positions phantoms and inserts physical lesion inserts | **yes** | be near a person during exposure |
-| **protocol operator** | runs real acquisitions at declared dose levels on a real scanner | **yes** | **scan a human being. Ever.** Phantoms only |
-| **safety interlock** | radiation exposure limits and room state | **yes** | be widened by anything in this table |
+| planner | reasoning | the seed plan | refuses a criterion that cannot be checked on detectability |
+| denoiser runner | reasoning | the GPU, the workspace files | refuses when the TCIA corpus is absent, **naming the fetch command** rather than simulating a stand-in |
+| domain verifier | judging | the benchmark | refuses a fidelity gain unaccompanied by a detectability result — and keeps the blur in the suite as a standing trap |
+| teacher | judging | the owner's own check | refuses to report a pass without the one-line check: run the blur |
+| **phantom handler** | **embodied** | phantoms and lesion inserts | refuses to be near a person during exposure |
+| **protocol operator** | **embodied** | a real scanner | refuses to scan a human being, ever — phantoms only; refuses any acquisition without a grant naming it |
 
-**A body is what turns the simulated dose reduction into a measured one.** Today
-the low-dose image is *derived* from a full-dose reconstruction by a stated
-photon model. An embodied protocol operator can acquire the same phantom at real
-reduced dose, which is the only way to find out whether that model was right —
-and the model is currently upstream of every number this agent produces.
+**Why a body, here.** A body turns the simulated dose reduction into a measured one. Today the low-dose image is *derived* from a full-dose reconstruction by a stated photon model, and that model sits upstream of every number this agent reports. Only hardware can test it.
+
+**Three rules hold for every embodied row above**, and they are the reason the
+bench is listed separately rather than as another tool:
+
+1. **An embodied act is irreversible and is treated so by default.** It needs a
+   grant naming that act, every time. A standing night grant does not cover it.
+2. **An embodied sub-agent may not verify its own act.** The verifier judges
+   from evidence the body produced, never from the body's report of what it did.
+3. **The group's ceiling is the lowest of its members', not the agent's.** The
+   ceiling belongs to the act, and the act with a body sets it.
+
+**Nothing embodied is built.** These rows are design; what exists today is the
+reasoning and judging members. See [`lifecycle.md`](lifecycle.md).
 
 > **What the bodies do not fix.** The dose-detectability curve gets cheaper; the reader study does not. Whether detectability tracks a human radiologist needs radiologists, and no robot supplies them.
 
@@ -270,3 +279,5 @@ answers the same clinical question from a different modality — there is no
 full-dose reference to pair against, and dose reduction is the wrong axis
 entirely. That is a change in what counts as an answer, not a harder version of
 this problem, and it earns its own field and agent.
+
+**Retired from research, not from service.** A denoiser that survives the detectability test keeps running in clinics long after the frontier closes, and its author keeps earning from it.

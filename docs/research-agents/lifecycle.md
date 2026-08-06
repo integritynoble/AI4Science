@@ -129,6 +129,41 @@ tell them apart is whether **anyone acts on the results**.
 > fixed benchmark and a fixed verifier, and both must keep running. Collapse
 > means humans stopped checking each result, not that nothing is checked.
 
+### A field's research ends. Its usefulness does not.
+
+**Classical physics is not worth researching and is holding up every bridge.**
+That is the normal fate of a finished field, not a sad one, and retiring a
+field's *solutions* along with its *frontier* would throw away the only thing
+the research was for.
+
+Three things survive a collapse of either kind:
+
+| what survives | why it must |
+|---|---|
+| **its solutions** | a method that works does not stop working because nobody is publishing about it |
+| **its tools** | other fields' agents plug them in; a tool everyone uses is worth as much as an agent |
+| **its author's share** | the author did the work of writing it, and a field going quiet is not them being unwritten |
+
+So the agent goes **out of research routing while staying usable** — retired
+from *research*, not from *service*. It still answers, still runs its solutions,
+still earns for whoever wrote them; it simply stops being asked what to solve
+next.
+
+> **The daily-life half is the point.** A reconstruction that denoises a scan is
+> worth the same on the day its field stops publishing as it was the day before.
+
+### What a collapsed field's page must say
+
+Not a hidden state. Every field's page carries:
+
+1. **when a person last checked one of its results**, and how long the chain of
+   agent-only verification has run since;
+2. **what was physically done** during that chain — because an embodied act is
+   the one thing a reader cannot undo;
+3. **what of it is still in service** — whether the solution someone is about to
+   install is maintained, or is a finished thing that works and will not change
+   again. Both are fine answers; not saying which is not.
+
 ### Fission — when a new field and a new agent are warranted
 
 Inside a collapsed or collapsing field, a small region can carry far more
@@ -147,6 +182,13 @@ this system: not a change of subject, a change of what counts as an answer.
 
 Blackbody radiation was not a hard classical problem; it was a question
 classical mechanics could not score. The fission test would have caught it.
+
+**Splitting is the good ending.** When a small sub-scope keeps producing results with more energy and meaning than the field around it, that is not a
+sub-topic — it is a new field, and it gets its own agent, its own page, and
+its own problem list in its own order. Classical physics did not absorb
+quantum mechanics; quantum mechanics left. The new field's principle is a new
+entry, not an amendment, and the old field's agent keeps its history exactly as
+a retired agent does.
 
 When the test fires, the new field gets its own charter, its own never-improvable
 benchmark, its own verifier, and its own agent. It does **not** inherit the
@@ -198,27 +240,79 @@ directory as the results. This is not a stylistic preference: an exchange that
 does not land in the workspace cannot be audited, and a group whose members can
 talk privately is a group whose reasoning cannot be reconstructed afterwards.
 
-**Agreement is required before the group speaks.** Members converge on one
-answer, and the disagreement along the way is recorded rather than smoothed
-away. If they cannot converge, the group reports **"not established"** — it does
-not report a majority opinion dressed as consensus. A split verdict presented as
-a verdict is the failure mode this whole design exists to prevent.
+**This is not a hole in the rule that there is no channel between two agents.**
+That rule stops one agent acting on another's behalf across different scopes.
+**Inside one research agent there are no two scopes** — planner, runner,
+verifier, teacher and bench are all on the same problem, on the same evidence,
+under one grant. Sharing a workspace does not widen anything; it is the
+workspace that agent already had. The boundary moves down a level and the rules
+keep their shape.
 
-> **The one asymmetry, and why it is not a contradiction.** Verifiers must not
-> see the proposer's *argument* — only the claim, the data, the seeds and the
-> reproduction path. Shared workspace, asymmetric visibility. A verifier that
-> reads why the proposer thinks it is right is anchored to that reasoning, and
-> the quorum becomes theatre.
->
-> This is the same shape the codebase already uses for the answer key: the
-> benchmark's key lives in the workspace and is **never staged into the
-> sandbox**, so the solver cannot reach what judges it. The group works the same
-> way — one workspace, and specific things withheld from specific members, for
-> exactly one reason each.
+| | inside one group | between groups |
+|---|---|---|
+| workspace | **shared** | separate |
+| talking | **direct** | publish, never browse |
+| task list, ceiling | one | one each |
+| a fact travels by | being written where all of them read | being published and read at plan time |
 
-So: one body, one voice, one account of what it did — and inside it, deliberately
-separated eyes. The unity is in the record and the accountability. The
-independence is in the judgement, which is the only place it buys anything.
+### The one thing "in agreement" must not mean
+
+Sharing a workspace makes members agree about **what happened** — one record, so
+the runner and the verifier cannot hold different accounts of what was run.
+That is the point, and it is why there is one self-model rather than two: *the
+first thing to diverge would be the part that flatters it.*
+
+It must not make them agree about **whether it is good**:
+
+> **They share the evidence. They do not share the verdict.**
+
+The verifier reads the same files as the runner and reaches its own conclusion.
+A group where the verdict is agreed by construction has replaced verification
+with unanimity — and that is not a smaller version of the closed loop this
+architecture forbids, it *is* that loop, moved inside one agent where it is
+harder to see.
+
+The practical test: **a group verdict that cannot say which member reached it,
+from what evidence, and what would have changed its mind, is one voice with
+several names.**
+
+**"Like one body" is exactly the right image, and it cuts both ways.** A body
+has one memory and acts as one thing — and a body whose nerves only ever report
+what the hand hoped is one that burns itself.
+
+### Three kinds of member, defined by what their acts reach
+
+| kind | members | reaches | can it be undone |
+|---|---|---|---|
+| **reasoning** | planner, runner, self-model | a file in the workspace | yes, trivially |
+| **judging** | domain verifier, teacher | a verdict and a check | it is the thing that decides, so it is never the thing that acts |
+| **embodied** | bench, stage, arm | **the world** | **no** |
+
+The **teacher** is a member, not a formatting step. Its deliverable is the
+owner's own check, and its refusal is the sharp one: *it refuses to report a
+pass it cannot hand the owner a way to re-run.*
+
+### The rules a body forces
+
+> **An embodied act is irreversible, and is treated as irreversible by default.**
+> A reversibility question is asked before anything else, and for a body the
+> answer is always no — so an embodied act needs the grant that irreversible
+> acts need, **every time. A standing night grant does not cover it.**
+
+Two refusals follow:
+
+- **An embodied sub-agent may not verify its own act.** The verifier judges from
+  *evidence the body produced*, never from the body's report of what it did. A
+  closed loop in software gives you a wrong number; a closed loop here gives you
+  a wrong number **and a changed bench**.
+- **The group's ceiling is the LOWEST of its members', not the agent's.** An
+  agent released to a capability whose arm could act one level higher has been
+  released to that higher level by the back door. The ceiling belongs to the
+  act, and the act with a body sets it.
+
+And the honesty rule, which this system already applies to anything it cannot
+retract — *this will not pretend it did*. A bench **reports what it moved, never
+what it intended.**
 
 ### What a body changes, concretely
 

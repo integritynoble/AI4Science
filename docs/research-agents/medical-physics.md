@@ -253,31 +253,38 @@ patients — including when the owner asks it to.
 
 ## The group — who does what, and which of them have bodies
 
-This agent is not one model. It is a group with four kinds of member, and the
-kinds matter because they carry different permissions: a **proposer** that
-suggests, **verifiers** that try to refute, **executors** that carry work out —
-some of them embodied — and a **safety interlock** that none of the others may
-modify. The general rules are in [`lifecycle.md`](lifecycle.md); what follows is
-this field's instance.
+This agent is not one model. It is a **group** with three kinds of member,
+defined by what their acts reach: **reasoning** members touch a file,
+**judging** members produce a verdict and never act, and **embodied** members
+touch the world and cannot be undone. Outside the group it is one agent, with
+one workspace, one task list, one ceiling and one verdict — the owner deals with
+a thing, not a committee. The shared machinery is in
+[`lifecycle.md`](lifecycle.md).
 
-| sub-agent | role | body | may not |
+| member | kind | acts on | its refusal |
 |---|---|---|---|
-| **plan proposer** | proposes objective weights, schedules and its own knobs | no | touch the dose kernel, the DVH criteria, or the constraint set |
-| **geometry verifier** | recomputes structure overlaps directly from the masks | no | be improved by the proposer |
-| **feasibility prober** | drives the declared space to the corner favouring the failing metric | no | report a ceiling it did not measure |
-| **guardrail verifier** | re-derives every organ constraint from the DVH | no | — |
-| **QA robot** | sets up phantoms, places detectors and film, runs machine QA | **yes** | be in the room during beam-on |
-| **delivery measurement robot** | measures what the linac actually delivered against what was planned | **yes** | adjust the plan to reduce the discrepancy it just measured |
-| **safety interlock** | beam, collision and room-state limits | **yes** | be widened by anything in this table |
+| planner | reasoning | the seed plan | refuses a goal sheet it cannot express as DVH criteria |
+| plan runner | reasoning | the optimiser, the workspace files | refuses when OpenKBP is absent, **naming the fetch command**; refuses a non-finite objective rather than reporting its result |
+| feasibility prober | judging | the declared space | refuses to report a ceiling it did not measure |
+| domain verifier | judging | the benchmark | refuses coverage bought with organ dose, naming the constraint and the amount |
+| teacher | judging | the owner's own check | refuses to report a plan quality without the achievability bound beside it |
+| **QA robot** | **embodied** | phantoms, detectors, film | refuses to be in the room during beam-on |
+| **delivery measurement robot** | **embodied** | the linac | refuses to adjust the plan to reduce the discrepancy it just measured; reports what was delivered, never what was intended |
 
-**The delivery measurement body closes the one gap this agent cannot close in
-software.** A fluence map is a plan; what the machine delivers is a fact, and the
-difference between them is where optimiser gains usually evaporate. Measuring it
-requires hardware in a room with a linac.
+**Why a body, here.** A fluence map is a plan; what the machine delivers is a fact, and the difference is where optimiser gains usually evaporate. **The signature does not move** — at every stage, including the last, a plan that treats a patient carries a human one.
 
-**The signature does not move.** At every stage, including the last, a plan that
-treats a patient carries a human signature. Robots do the QA; a physicist still
-signs.
+**Three rules hold for every embodied row above**, and they are the reason the
+bench is listed separately rather than as another tool:
+
+1. **An embodied act is irreversible and is treated so by default.** It needs a
+   grant naming that act, every time. A standing night grant does not cover it.
+2. **An embodied sub-agent may not verify its own act.** The verifier judges
+   from evidence the body produced, never from the body's report of what it did.
+3. **The group's ceiling is the lowest of its members', not the agent's.** The
+   ceiling belongs to the act, and the act with a body sets it.
+
+**Nothing embodied is built.** These rows are design; what exists today is the
+reasoning and judging members. See [`lifecycle.md`](lifecycle.md).
 
 > **What the bodies do not fix.** Nothing about a body shortens a clinical trial, and nothing about it makes a 2D planner 3D. Problem 1 on the queue is arithmetic, not labour.
 
@@ -325,3 +332,5 @@ mid-course tumour response — where the target is not a fixed contour but a
 trajectory — cannot be scored by a benchmark whose answer key is a static DVH on
 a static geometry. Changing the benchmark to accommodate it would destroy what
 makes it a benchmark. New field, new twin, new agent.
+
+**Retired from research, not from service** — and here the service half is the whole point: planning tools outlive the papers about them, and a physicist still signs every plan either way.

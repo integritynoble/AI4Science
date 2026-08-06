@@ -216,29 +216,38 @@ well" and "works" is the entire field.
 
 ## The group — who does what, and which of them have bodies
 
-This agent is not one model. It is a group with four kinds of member, and the
-kinds matter because they carry different permissions: a **proposer** that
-suggests, **verifiers** that try to refute, **executors** that carry work out —
-some of them embodied — and a **safety interlock** that none of the others may
-modify. The general rules are in [`lifecycle.md`](lifecycle.md); what follows is
-this field's instance.
+This agent is not one model. It is a **group** with three kinds of member,
+defined by what their acts reach: **reasoning** members touch a file,
+**judging** members produce a verdict and never act, and **embodied** members
+touch the world and cannot be undone. Outside the group it is one agent, with
+one workspace, one task list, one ceiling and one verdict — the owner deals with
+a thing, not a committee. The shared machinery is in
+[`lifecycle.md`](lifecycle.md).
 
-| sub-agent | role | body | may not |
+| member | kind | acts on | its refusal |
 |---|---|---|---|
-| **ranking proposer** | proposes similarity measures, weights and its own knobs | no | touch the split, the decoy set, or the property baseline |
-| **leakage verifier** | recomputes query-to-test similarity | no | be improved by the proposer |
-| **baseline verifier** | fits a properties-only model as the floor | no | — |
-| **ceiling verifier** | computes the metric's bound before any comparison is allowed | no | — |
-| **synthesis robot** | makes the compounds the batch proposer selected | **yes** | start a synthesis without a signed act — reagents are spent and some are hazardous |
-| **assay robot** | runs the biological readout, plates, reads, records provenance | **yes** | re-run a failed assay silently; a discarded plate is a recorded event |
-| **safety interlock** | reagent, containment and disposal limits | **yes** | be widened by anything in this table |
+| planner | reasoning | the seed plan | refuses a target list it cannot split by chemical series |
+| ranking runner | reasoning | the workspace files | refuses when DUD-E is absent, **naming the fetch command** |
+| ceiling verifier | judging | the metric's bound | refuses to compare before the bound is computed — a saturated enrichment is refused, not celebrated |
+| domain verifier | judging | the benchmark | refuses an enrichment that does not clear the property-only floor |
+| teacher | judging | the owner's own check | refuses to report a result without the query-to-test analogue similarity |
+| **synthesis robot** | **embodied** | reagents, glassware | refuses to start a synthesis without a grant naming it — reagents are spent and some are hazardous |
+| **assay robot** | **embodied** | plates, cells, the reader | refuses to re-run a failed assay silently; a discarded plate is a recorded event |
 
-**This is the field where bodies change the most.** The other six evaluate
-existing data; this one can close the loop — design, make, test, redesign —
-because the making and testing are robotic. That is why problems 5 and 6 on the
-queue (calibrated uncertainty, then next-batch proposal) are the ones that
-matter: a self-driving lab without calibrated uncertainty is a machine for
-generating expensive random samples.
+**Why a body, here.** This is the field where bodies change the most: the others evaluate existing data, this one closes the loop — design, make, test, redesign. Which is exactly why calibrated uncertainty becomes load-bearing. A self-driving lab without it is a machine for generating expensive random samples.
+
+**Three rules hold for every embodied row above**, and they are the reason the
+bench is listed separately rather than as another tool:
+
+1. **An embodied act is irreversible and is treated so by default.** It needs a
+   grant naming that act, every time. A standing night grant does not cover it.
+2. **An embodied sub-agent may not verify its own act.** The verifier judges
+   from evidence the body produced, never from the body's report of what it did.
+3. **The group's ceiling is the lowest of its members', not the agent's.** The
+   ceiling belongs to the act, and the act with a body sets it.
+
+**Nothing embodied is built.** These rows are design; what exists today is the
+reasoning and judging members. See [`lifecycle.md`](lifecycle.md).
 
 > **What the bodies do not fix.** A closed loop makes wrong answers faster too. Every compound synthesised on a leaked split is real money spent on a ranking that measured memory.
 
@@ -283,3 +292,5 @@ rather than enumerated. That is a change in what counts as an answer, and by the
 [`lifecycle.md`](lifecycle.md) test it is a separate field with its own
 benchmark and its own agent. The methodology transfers — series-disjoint
 validation above all — and the chemistry does not.
+
+**Retired from research, not from service.** The screening tools stay installable and get plugged into other fields' agents — which is how the series-disjoint discipline reaches places this agent never worked.

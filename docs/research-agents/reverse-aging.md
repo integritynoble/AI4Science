@@ -266,30 +266,40 @@ result.
 
 ## The group — who does what, and which of them have bodies
 
-This agent is not one model. It is a group with four kinds of member, and the
-kinds matter because they carry different permissions: a **proposer** that
-suggests, **verifiers** that try to refute, **executors** that carry work out —
-some of them embodied — and a **safety interlock** that none of the others may
-modify. The general rules are in [`lifecycle.md`](lifecycle.md); what follows is
-this field's instance.
+This agent is not one model. It is a **group** with three kinds of member,
+defined by what their acts reach: **reasoning** members touch a file,
+**judging** members produce a verdict and never act, and **embodied** members
+touch the world and cannot be undone. Outside the group it is one agent, with
+one workspace, one task list, one ceiling and one verdict — the owner deals with
+a thing, not a committee. The shared machinery is in
+[`lifecycle.md`](lifecycle.md).
 
-| sub-agent | role | body | may not |
+| member | kind | acts on | its refusal |
 |---|---|---|---|
-| **clock proposer** | proposes shrinkage, component removal and its own knobs | no | touch the split, the sites, or the age labels |
-| **composition verifier** | estimates cell proportions independently | no | be improved by the proposer |
-| **split verifier** | confirms held-out institutions contributed nothing | no | — |
-| **degeneracy verifier** | checks that the seed actually changes the data | no | — |
-| **array processing robot** | bisulphite conversion, array runs, batch layout with provenance per plate | **yes** | place samples so that institution aligns with plate — the batch confound is created at the bench |
-| **collection robot** | draws, aliquots and tracks longitudinal samples | **yes** | collect outside consented scope |
-| **governance gate** | consent, outcome-linkage terms | binds custody | be satisfied by any agent in this table |
+| planner | reasoning | the seed plan | refuses a design whose held-out institutions are fixed rather than drawn |
+| clock runner | reasoning | the workspace files | refuses when GSE40279 is absent, **naming the fetch command** |
+| degeneracy verifier | judging | the generated data | refuses a comparison whose seeds produce identical data — the check that would have caught p = 0 |
+| domain verifier | judging | the benchmark | refuses an error improvement bought by raising bulk-structure share |
+| teacher | judging | the owner's own check | refuses to report a clock without the fraction of its accuracy that survives removing leading components |
+| **array processing robot** | **embodied** | plates, the array | refuses a plate layout in which institution aligns with plate — the batch confound is created at the bench, and nothing downstream undoes it |
+| **collection robot** | **embodied** | donors, samples | refuses to collect outside consented scope |
 
-**The array robot has one job nobody thinks of as a job: plate layout.** If
-institution and plate coincide, the batch effect and the biology are
-inseparable — and no downstream method can undo it. That is a decision made by
-whatever physically loads the plate, which is exactly why it belongs to an
-embodied sub-agent with a rule attached.
+**Why a body, here.** The array robot has a job nobody thinks of as a job: plate layout. If institution and plate coincide, batch effect and biology are inseparable. That decision belongs to whatever physically loads the plate, which is why it needs a rule attached.
 
-> **What the bodies do not fix.** Outcome linkage stays blocked, and it is the item that decides whether this field is worth anything. It needs follow-up time and a data agreement. A collection robot can draw samples faster; it cannot make anyone older, and it cannot sign the agreement.
+**Three rules hold for every embodied row above**, and they are the reason the
+bench is listed separately rather than as another tool:
+
+1. **An embodied act is irreversible and is treated so by default.** It needs a
+   grant naming that act, every time. A standing night grant does not cover it.
+2. **An embodied sub-agent may not verify its own act.** The verifier judges
+   from evidence the body produced, never from the body's report of what it did.
+3. **The group's ceiling is the lowest of its members', not the agent's.** The
+   ceiling belongs to the act, and the act with a body sets it.
+
+**Nothing embodied is built.** These rows are design; what exists today is the
+reasoning and judging members. See [`lifecycle.md`](lifecycle.md).
+
+> **What the bodies do not fix.** Outcome linkage stays blocked, and it is the item that decides whether this field is worth anything. A collection robot can draw samples faster; it cannot make anyone older, and it cannot sign the agreement.
 
 ## At AGI and ASI
 
@@ -333,3 +343,5 @@ the new question's answer key does not exist at fitting time at all. It needs
 longitudinal data, outcomes, and a twin that models trajectories rather than
 cross-sections. By the [`lifecycle.md`](lifecycle.md) test that is unambiguously
 a different field, and it is where all of this field's value actually lives.
+
+**And if it collapses by indifference, little survives** — which is the honest asymmetry. A clock with no outcome link has no service half to retire into. That is what makes problem 4 the one that decides the field.

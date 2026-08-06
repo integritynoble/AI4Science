@@ -222,30 +222,40 @@ what would settle it, and that it has no path to one.
 
 ## The group — who does what, and which of them have bodies
 
-This agent is not one model. It is a group with four kinds of member, and the
-kinds matter because they carry different permissions: a **proposer** that
-suggests, **verifiers** that try to refute, **executors** that carry work out —
-some of them embodied — and a **safety interlock** that none of the others may
-modify. The general rules are in [`lifecycle.md`](lifecycle.md); what follows is
-this field's instance.
+This agent is not one model. It is a **group** with three kinds of member,
+defined by what their acts reach: **reasoning** members touch a file,
+**judging** members produce a verdict and never act, and **embodied** members
+touch the world and cannot be undone. Outside the group it is one agent, with
+one workspace, one task list, one ceiling and one verdict — the owner deals with
+a thing, not a committee. The shared machinery is in
+[`lifecycle.md`](lifecycle.md).
 
-| sub-agent | role | body | may not |
+| member | kind | acts on | its refusal |
 |---|---|---|---|
-| **classifier proposer** | proposes pooling, sequence models and its own knobs | no | touch the video split or the class pooling |
-| **split verifier** | checks video identity across the partition | no | be improved by the proposer |
-| **variance verifier** | establishes seed spread before any delta is believed | no | — |
-| **sampling verifier** | confirms frames were drawn per video, not per archive | no | — |
-| **bench GI rig** | drives a capsule through a physical phantom tract under controlled optics | **yes** | be used on a person |
-| **device handling robot** | assembles, charges and configures capsule hardware for bench runs | **yes** | modify a device intended for clinical use |
-| **safety interlock** | device power, ingestion-safety boundary | **yes** | be widened by anything in this table |
+| planner | reasoning | the seed plan | refuses a split that is not by video |
+| classifier runner | reasoning | the GPU, the workspace files | refuses when Kvasir-Capsule is absent, **naming the fetch command** |
+| variance verifier | judging | the seed spread | refuses a delta smaller than the spread it measured |
+| domain verifier | judging | the benchmark | refuses a pooled mean presented without per-video results |
+| teacher | judging | the owner's own check | refuses to report an improvement without the seed spread beside it |
+| **bench GI rig** | **embodied** | a physical phantom tract | refuses to be used on a person |
+| **device handling robot** | **embodied** | capsule hardware | refuses to modify a device intended for clinical use |
 
-**The bench rig is what makes this a hardware field again.** Frame
-classification on a fixed corpus is bounded; the interesting questions —
-localisation along the tract, illumination and frame rate, what a capsule should
-capture at all — are co-design questions, and co-design needs something to
-build.
+**Why a body, here.** The bench rig makes this a hardware field again. Frame classification on a fixed corpus is bounded; localisation, illumination and frame rate are co-design questions, and co-design needs something to build.
 
-> **What the bodies do not fix.** More videos is the binding constraint on problem 4, and a bench rig produces phantom footage, not patients. Per-finding classes stay blocked on real studies.
+**Three rules hold for every embodied row above**, and they are the reason the
+bench is listed separately rather than as another tool:
+
+1. **An embodied act is irreversible and is treated so by default.** It needs a
+   grant naming that act, every time. A standing night grant does not cover it.
+2. **An embodied sub-agent may not verify its own act.** The verifier judges
+   from evidence the body produced, never from the body's report of what it did.
+3. **The group's ceiling is the lowest of its members', not the agent's.** The
+   ceiling belongs to the act, and the act with a body sets it.
+
+**Nothing embodied is built.** These rows are design; what exists today is the
+reasoning and judging members. See [`lifecycle.md`](lifecycle.md).
+
+> **What the bodies do not fix.** More videos is the binding constraint on per-finding classes, and a bench rig produces phantom footage, not patients.
 
 ## At AGI and ASI
 
@@ -284,3 +294,5 @@ delivers at a located finding is not scored by any frame-classification metric �
 the answer key would have to describe an intervention and its outcome, which
 this benchmark cannot express. New twin (a device with actuation), new benchmark
 (outcome, not label), new agent.
+
+**Retired from research, not from service.** A reader that shortens review time is worth the same after the frontier closes.

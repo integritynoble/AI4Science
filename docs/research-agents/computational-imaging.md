@@ -263,29 +263,37 @@ them mean.
 
 ## The group — who does what, and which of them have bodies
 
-This agent is not one model. It is a group with four kinds of member, and the
-kinds matter because they carry different permissions: a **proposer** that
-suggests, **verifiers** that try to refute, **executors** that carry work out —
-some of them embodied — and a **safety interlock** that none of the others may
-modify. The general rules are in [`lifecycle.md`](lifecycle.md); what follows is
-this field's instance.
+This agent is not one model. It is a **group** with three kinds of member,
+defined by what their acts reach: **reasoning** members touch a file,
+**judging** members produce a verdict and never act, and **embodied** members
+touch the world and cannot be undone. Outside the group it is one agent, with
+one workspace, one task list, one ceiling and one verdict — the owner deals with
+a thing, not a committee. The shared machinery is in
+[`lifecycle.md`](lifecycle.md).
 
-| sub-agent | role | body | may not |
+| member | kind | acts on | its refusal |
 |---|---|---|---|
-| **reconstruction proposer** | proposes priors, unrolling depth, schedules, and its own knobs | no | touch the forward operator or the test scenes |
-| **physics verifier** | recomputes the forward-model residual under the published operator | no | be improved by the proposer |
-| **reproduction verifier** | re-runs from seeds in a clean sandbox | no | share the proposer's context |
-| **leakage verifier** | checks no test scene entered the fit | no | — |
-| **bench robot** | mounts optics, aligns the system, positions the sample, triggers capture | **yes** | move anything into a beam path without a signed act |
-| **calibration robot** | measures the *actual* mask, PSF and dispersion of the instrument as built | **yes** | write its result into the operator used for scoring without a person confirming it |
-| **safety interlock** | laser and stage limits | **yes** | be widened by anything in this table |
+| planner | reasoning | the seed plan | refuses a criterion no independent verifier can read |
+| reconstruction runner | reasoning | the GPU, the workspace files | refuses when the corpus is absent, **naming the fetch command** rather than generating stand-in scenes |
+| domain verifier | judging | the benchmark | refuses to judge a run that drifted from what was released; recomputes the residual under the published operator |
+| teacher | judging | the owner's own check | refuses to report a pass it cannot hand the owner a way to re-run |
+| **optical bench** | **embodied** | mask, stage, camera | refuses **every** act without a grant naming that act; reports what it moved, never what it intended |
+| **calibration rig** | **embodied** | the instrument as built | refuses to write a measured operator into scoring without a person confirming it |
 
-**Why the calibration body matters more than the bench one.** This field's whole
-discipline is that the forward operator is fixed and published. That is only
-honest if the published operator matches the instrument that actually exists —
-and the gap between the designed optic and the built one is measured with
-hardware, not asserted. An embodied calibration sub-agent turns
-"physics is not a hyperparameter" from a rule into a measurement.
+**Why a body, here.** The bench row is the whole change: everything above it can be re-run, and the bench row can only be *reported*. The calibration rig is what makes "the forward operator is fixed and published" an honest claim rather than an assumption — the gap between the designed optic and the built one is measured with hardware.
+
+**Three rules hold for every embodied row above**, and they are the reason the
+bench is listed separately rather than as another tool:
+
+1. **An embodied act is irreversible and is treated so by default.** It needs a
+   grant naming that act, every time. A standing night grant does not cover it.
+2. **An embodied sub-agent may not verify its own act.** The verifier judges
+   from evidence the body produced, never from the body's report of what it did.
+3. **The group's ceiling is the lowest of its members', not the agent's.** The
+   ceiling belongs to the act, and the act with a body sets it.
+
+**Nothing embodied is built.** These rows are design; what exists today is the
+reasoning and judging members. See [`lifecycle.md`](lifecycle.md).
 
 > **What the bodies do not fix.** Instrument time is finite and bookable, and a robot does not create more of it. The transfer table stays open because it needs many instruments, not faster hands.
 
@@ -333,3 +341,5 @@ commitment is a fixed published operator. By the test in
 [`lifecycle.md`](lifecycle.md), that makes it a different field: not a harder
 version of this one, a change in what counts as an answer. It would need its own
 charter, its own twin, its own never-improvable benchmark, and its own agent.
+
+**Retired from research, not from service.** When the transfer table is full, the reconstruction solutions stay installable and keep working — a method that denoises a real capture is worth the same on the day its field stops publishing as it was the day before.
