@@ -46,6 +46,15 @@ going all the way to 0.0001 buys **0.081 years, about a month** — and it pushe
 clock lean harder on cell composition, which is precisely the failure this
 benchmark exists to see.
 
+**Widening the floor was not enough on its own.** The search steps each knob by
+a fixed fraction of its declared width, so on a range 7.7 decades wide every
+step is about 2500 — from an incumbent of 1.0 the downward candidate clamps to
+the floor and nothing in between is ever visited. The first night after the
+widening proposed exactly one reachable value below 1.0, and it was the floor.
+`ridge` is now walked multiplicatively, and the next night measured 0.0119
+directly (+0.014) alongside 84.1. Same conclusion — nothing beat the incumbent —
+but the range is now actually searched rather than nominally available.
+
 **So the range was widened and the adopted value stayed at 1.0.** A floor that
 hides a flat region is still a measurement defect worth fixing, but the thing it
 was hiding is not a better clock. Had only the error been reported, this would

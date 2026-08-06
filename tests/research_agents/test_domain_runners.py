@@ -386,3 +386,60 @@ def test_the_lesion_lands_in_tissue_and_the_noise_roi_is_noise(tmp_path):
     # More contrast out than was put in is not a restoration.
     assert m["lesion_contrast_retained"] <= 1.2, m["lesion_contrast_retained"]
 
+
+
+# ------------------------------------------------- log-scale stepping
+
+def test_a_log_knob_reaches_the_middle_of_a_range_linear_stepping_cannot():
+    """The reason log stepping exists.
+
+    reverse-aging's ridge spans [0.0001, 5000]. A linear step is (high-low)/2
+    ~= 2500, so from an incumbent of 1.0 the downward candidate clamps to the
+    floor and every value between is unreachable. The search then reports that
+    it explored the range while never visiting the part where the knob does
+    anything — which is what the first night after the floor was widened
+    actually did.
+    """
+    from ai4science.harness.agents.research_agents.search import CoordinateSearch
+    inc = {"ridge": 1.0, "n_pcs_removed": 5}
+    got = {}
+    for rd in (0, 1, 2):
+        for c in CoordinateSearch(METHYLAGE).propose(inc, tried=set(), round_no=rd):
+            if c.params["n_pcs_removed"] == inc["n_pcs_removed"]:
+                got[round(c.params["ridge"], 12)] = c.origin
+
+    interior = [v for v in got if METHYLAGE.parameters[0].low < v < 1.0]
+    assert interior, "no candidate landed strictly between the floor and the incumbent: %s" % sorted(got)
+    assert any(v > 1.0 for v in got), "and it should still look upward too"
+    # multiplicative, so the label says so
+    assert any("x" in o or "/" in o for o in got.values()), got
+
+
+def test_log_stepping_is_symmetric_in_ratio_not_in_distance():
+    """Up and down are the same *factor*. With linear steps on a wide range the
+    downward move is swallowed by the floor while the upward one is not, which
+    silently biases the search toward large values."""
+    from ai4science.harness.agents.research_agents.search import CoordinateSearch
+    inc = {"ridge": 1.0, "n_pcs_removed": 5}
+    vals = sorted(c.params["ridge"] for c in
+                  CoordinateSearch(METHYLAGE).propose(inc, tried=set(), round_no=2)
+                  if c.params["n_pcs_removed"] == inc["n_pcs_removed"])
+    assert len(vals) == 2, vals
+    lo, hi = vals
+    assert abs((1.0 / lo) - (hi / 1.0)) < 1e-6 * hi, (lo, hi)
+
+
+def test_a_log_parameter_must_have_a_positive_floor():
+    """log(0) is not a step. Refuse at declaration rather than at search time."""
+    from ai4science.harness.agents.research_agents.runners.common import Parameter
+    with pytest.raises(ValueError):
+        Parameter("bad", 0.0, 10.0, 1.0, log=True)
+
+
+def test_linear_knobs_are_untouched_by_the_log_change():
+    """Only reverse-aging's ridge is declared log — everything else spans about
+    a decade, where equal absolute steps are the right walk."""
+    from ai4science.harness.agents.research_agents.runners import BENCHMARKS
+    logged = [(n, p.name) for n, b in BENCHMARKS.items()
+              for p in b.parameters if getattr(p, "log", False)]
+    assert logged == [("reverse-aging", "ridge")], logged

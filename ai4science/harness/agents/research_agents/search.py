@@ -85,15 +85,32 @@ class CoordinateSearch:
                 round_no: int) -> List[Candidate]:
         out: List[Candidate] = []
         for p in self.bench.parameters:
-            span = (p.high - p.low) * self.step / (round_no + 1)
+            # A knob declared over orders of magnitude is walked multiplicatively.
+            # Linear steps across [0.0001, 5000] are ~2500 wide, so every value
+            # below 1 is reachable only by clamping to the floor: the search
+            # reports that it explored the range while never visiting the part
+            # of it where the parameter does anything. Measured on reverse-aging,
+            # where widening the floor bought exactly one reachable candidate.
+            log = getattr(p, "log", False) and incumbent[p.name] > 0
+            if log:
+                span = (math.log(p.high) - math.log(p.low)) * self.step / (round_no + 1)
+            else:
+                span = (p.high - p.low) * self.step / (round_no + 1)
             for direction in (+1, -1):
-                v = p.clamp(incumbent[p.name] + direction * span)
+                if log:
+                    v = p.clamp(math.exp(math.log(incumbent[p.name])
+                                         + direction * span))
+                else:
+                    v = p.clamp(incumbent[p.name] + direction * span)
                 if v == incumbent[p.name]:
                     continue
                 params = dict(incumbent)
                 params[p.name] = v
-                c = Candidate(params, origin="%s %s%.3g" % (
-                    p.name, "+" if direction > 0 else "-", span))
+                origin = ("%s %s%.3g" % (p.name, "x" if direction > 0 else "/",
+                                         math.exp(span))
+                          if log else
+                          "%s %s%.3g" % (p.name, "+" if direction > 0 else "-", span))
+                c = Candidate(params, origin=origin)
                 if c.key() not in tried:
                     out.append(c)
         return out

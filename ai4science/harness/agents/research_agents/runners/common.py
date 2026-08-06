@@ -67,10 +67,26 @@ class Parameter:
     high: float
     default: float
     integer: bool = False
+    #: Walk this knob multiplicatively rather than in equal absolute steps.
+    #:
+    #: It does NOT change the declared space — same low, same high — only how a
+    #: search crosses it. That distinction matters here: the space is the
+    #: benchmark's to declare and the traversal is the search's business.
+    #:
+    #: Set it when the range spans orders of magnitude. A linear step across
+    #: [0.0001, 5000] is ~2500 wide, so every value below 1 is reachable only by
+    #: clamping to the floor, and a search "exploring" that range never sees the
+    #: region where the parameter actually does something. Requires low > 0.
+    log: bool = False
     #: What turning it up actually does, in the field's terms. Written for the
     #: person reading the search log, who has to judge whether the winner is
     #: sensible or merely lucky.
     means: str = ""
+
+    def __post_init__(self) -> None:
+        if self.log and self.low <= 0:
+            raise ValueError("%s: log stepping needs low > 0, got %g"
+                             % (self.name, self.low))
 
     def clamp(self, v: float) -> float:
         v = max(self.low, min(self.high, float(v)))

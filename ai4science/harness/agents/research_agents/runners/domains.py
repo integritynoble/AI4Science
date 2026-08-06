@@ -807,7 +807,12 @@ METHYLAGE = DomainBenchmark(
         # 4 points on 6 seeds is thinner evidence than the floor case, and
         # narrowing a declared range on thin evidence is how a space gets shaped
         # to flatter a result.
-        Parameter("ridge", 0.0001, 5000.0, 1.0,
+        # log=True because this range is 7.7 decades and nothing else in any
+        # benchmark is above ~1. A linear step here is ~2500 wide: the first
+        # night after the floor was opened proposed exactly one reachable
+        # candidate below the incumbent (clamped to 0.0001, delta +0.0138) and
+        # never saw anything in between. The space is unchanged; only the walk.
+        Parameter("ridge", 0.0001, 5000.0, 1.0, log=True,
                   means="shrinkage; with 20k probes and a few hundred samples "
                         "this is what stops the clock memorising the fit"),
         Parameter("n_pcs_removed", 1, 20, 5, integer=True,
