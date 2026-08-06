@@ -91,6 +91,35 @@ says which test it fails and what the first objection would be.
 > tractable, which is how a year of easy rungs comes to look like a year of
 > progress.
 
+## 0b2. What a night actually costs
+
+Measured 2026-08-06, one agent at a time on one machine — sequential on purpose,
+because two BLAS jobs sharing the cores make every timing from either of them
+meaningless.
+
+| agent | night | before caching | what dominates |
+|---|---|---|---|
+| pill camera | 7s | 14s | nothing; the corpus is small |
+| cancer | 25s | 41s | the fit |
+| low-dose CT | 84s | 110s | reconstruction per candidate |
+| **drug design** | **141s** | **536s** | was fingerprinting and clustering; now the screen itself |
+| reverse aging | 251s | 338s | the SVD in the PC-removal fit |
+| imaging | 300s | 364s | reconstruction |
+| medical physics | 554s | 551s | **the optimiser** — unchanged, and correctly so |
+| **total** | **24 min** | **32 min** | |
+
+Two caches did that, both keyed on source rather than on a version string:
+generated benchmarks are reused across candidates for the same seed, and
+screening's fingerprints and clusters are reused across seeds. Neither changes
+what the data is — the night returned byte-identical verdicts to the one before
+it, which is the cleanest available evidence that the keys are right.
+
+> **Medical physics did not get faster, and that is the useful part of the
+> table.** Its cost is the optimiser, not the setup, so caching cannot touch it.
+> It is also the agent whose next rung is 3D, where each optimisation is much
+> heavier — which makes it the one that will actually need dedicated compute
+> rather than a cleverer cache.
+
 ## 0c. Every agent, five questions
 
 Each field document now answers the same five, after its field-specific
