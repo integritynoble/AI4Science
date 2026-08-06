@@ -6,7 +6,7 @@ domain benchmarks are implemented in
 `ai4science/harness/agents/research_agents/` — 113 tests, verified on two
 machines and from a published wheel.
 
-Seven agents are **authored by the governor and listed in the market** like any
+Eight agents are **authored by the governor and listed in the market** like any
 other: accepted the same way, found in agents-search the same way, installed by
 anyone who wants them. Governor-authored means the governor wrote them, not that
 anyone is kept out — there is no visibility gate on these.

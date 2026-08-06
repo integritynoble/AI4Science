@@ -1,18 +1,25 @@
 # ai4science on one machine — design
 
-**Status: design, 2026-08-04.** The agent loop is built, tested, and exercised
-live on a second user account: tasks, plans, per-phase verdicts, the supervision
-loop, the vault, the outward gates, and the reporting around them —
-`attention`, `why`, `spend`, `decisions`, `blast`, `questions`, `board`. **§11 and §13 are built** except
-where noted below; **§11's local half is built** — the package format, and installing one here with its acceptance
-questions asked by the machine doing the installing. **Uploading, the
-governor's acceptance and the PWM earning are not**, and neither is §13: those
-need a server, which is the app's half. See *What is built, and what is not* in
-§11.
+**Status: mostly built, 2026-08-06.** The agent loop is built, tested, and
+exercised live on a second user account: tasks, plans, per-phase verdicts, the
+supervision loop, the vault, the outward gates, and the reporting around them —
+`attention`, `why`, `spend`, `decisions`, `blast`, `questions`, `board`. **§11
+and §13 are built** except where noted below; **§11's local half is built** —
+the package format, and installing one here with its acceptance questions asked
+by the machine doing the installing. **Uploading, the governor's acceptance and
+the PWM earning are not**: those need a server, which is the app's half. See
+*What is built, and what is not* in §11.
+
+**§11b is built too, and this file said otherwise for a day.** The research
+agents — loop, self-model, charter, budget, field map, both functions, seven
+domain benchmarks on real corpora — are in
+`ai4science/harness/agents/research_agents/`, with 113 tests. What is *not*
+built there is named on the line where it is claimed: nothing embodied, no
+signed scope change, and no `teacher` yet.
 
 Where a row below says **built**, it means built in
-`AI4Science/ai4science/harness/agents/sarsi/`, which is the canonical
-implementation. `singularity/sarsi/` is a second, superseded build of the same
+`AI4Science/ai4science/harness/agents/sarsi/` — or, for §11b, in
+`.../research_agents/`. `singularity/sarsi/` is a second, superseded build of the same
 spec and is not evidence for anything here.
 
 > **This file is the design of record**, and it sits beside the code it
@@ -969,6 +976,19 @@ opposite:
 
 ## 11b. Research agents (Point 11)
 
+> **Built and running on real data.** The loop, the self-model, the charter,
+> the budget, the field map, both functions and seven domain benchmarks are
+> implemented in `ai4science/harness/agents/research_agents/` — 113 tests,
+> verified on two machines and from a published wheel. This section described
+> them as a design for a day longer than it should have; where a claim below is
+> still design, it now says so on the line rather than in a table at the end.
+>
+> Each agent is designed in its own file — charter, self-model dimensions, what
+> it may improve and the things it may never touch, what an improvement must
+> survive, the problem ladder, and what a night of it costs:
+> [`research-agents/`](research-agents/README.md). Where this section and those
+> files disagree, **those files are right**: they sit beside the agents.
+
 A **research agent** — computational imaging, cancer, drug design — has two
 functions. The first is ordinary: it holds tasks and works them through
 `sarsi-claude` like any agent. The second is **autonomous research**, driven by
@@ -1098,6 +1118,36 @@ machine holds** — no optic has been fabricated here and nothing has been joint
 optimised — and `sarsi problems` prints that on the line rather than in a
 footnote.
 
+> **The field's own ladder decomposes this further, and it is the one to
+> follow.** `research-agents/computational-imaging.md` §12b breaks joint design
+> into a **sub-ladder, 6.1–6.5**, numbered *inside* rung 6 rather than added to
+> the field's ladder — because they are one rung's problems, and a subfield
+> needing five steps is a subfield, not a field.
+>
+> ```
+> 6.1 system-level twin ─┬─> 6.3 tolerance ─┬─> 6.4 joint optimisation ─> 6.5 build & measure
+> 6.2 buyable parts ─────┴──────────────────┘                              (a body)
+> ```
+>
+> Two of its five floors **are not research at all** — a twin that models
+> hardware rather than an operator, and a design space made of parts that can be
+> bought — and the field is already working at 6.4, three rungs above its own
+> floor. That gap is the sub-ladder's whole claim: joint design is not short of
+> optimisation, it is short of a twin that models the thing being designed.
+>
+> It is also the **fission tripwire**. The field's L1 assumes a *fixed* operator
+> with a learned prior; every rung here treats the operator as something being
+> **chosen**. If the sub-ladder closes, the field's principle has been outgrown
+> by its own best result, which is the condition for a new field and a new
+> agent.
+>
+> **`sarsi problems computational-imaging` does not yet say any of this.** It
+> carries three flat hardware entries where the field carries a five-rung
+> sub-ladder, and two orderings of one field is the failure this design names
+> everywhere else: nobody can tell whether the list moved because the field did
+> or because a second copy was edited. The ladder in `research-agents/` is the
+> field's; the code is what has to change.
+
 Note where L1 sits. A field's principle is often the **last** thing that can be
 verified, not the first — which is why "start from first principles" is bad
 advice for an agent that has to show its work.
@@ -1166,15 +1216,49 @@ So the design gains a role it did not have, and it is a **human** one:
 > it. The agent may **propose** a change to its scope, with its reason and its
 > evidence, and may not adopt one.
 
+**The scope is a declared object, not a paragraph.** `agent.json` carries it and
+an owner reads it before installing:
+
+| | |
+|---|---|
+| **in** | the subfields this agent works on, named at subfield granularity |
+| **out** | what it will not work on **and why** — "not our problem" is not a reason; "this is the neighbouring field's, and here it is" is |
+| **adjacent** | the fields it borders, and what it hands over rather than attempts |
+| **set by** | the experts, **by role and by date** — never by name, because naming a person in a design document commits them to something they have not agreed to |
+| **version** | scope is versioned like anything else that changes what an agent does |
+
+> **Out matters more than in.** An agent whose scope lists only what it does has
+> declared an ambition; one that says what it will not touch has declared a
+> boundary, and only the second can be violated.
+
+**They exist** — one JSON per agent under `research-agents/scope/`, with a
+validator. They are a proposal in the correct format and nothing more:
+**`set_by.named` is null in every one of them**, and stays null until a panel
+exists. An agent shipping a scope object with its own name in that field would
+have set its own boundary through the file meant to stop it.
+
 That is the propose/hold/sign shape again — the same one that governs house
 rules, plan adoption and RSI — and it is here for the same reason: *an agent
 that can widen its own boundary has no boundary.*
 
-| | who | what they may do |
+| | who | what they decide |
 |---|---|---|
-| **the owner** | runs the machine | grants, releases, sets the ceiling and the budget |
-| **the expert** | knows the field | owns the scope; signs a change to it; is the human in §24's verification chain |
-| **the agent** | works | proposes a scope change with evidence; works inside the scope it has |
+| **the owner** | runs the machine | money, permission, the physical envelope, whether the agent runs at all |
+| **the expert** | knows the field | what the field *is*: scope, whether a ladder rung is stated correctly, and — with the registry — when a field is declared finished |
+| **the verifier** | judges one claim | whether it held against a criterion fixed **before** it |
+| **the agent** | works | proposes all of the above and settles none of it |
+
+Two refusals keep the new role narrow, and they point in opposite directions:
+
+> **An expert may not grant, spend, or sign a result.** Scope is not authority:
+> saying *photon-counting is in this field* does not say the agent may buy GPU
+> time, touch a repository, or publish. An expert who could do those things
+> would be a second owner with none of the owner's exposure.
+>
+> **And an owner may not set scope.** Money buys the work; it does not decide
+> what the field is. An owner who could redraw the boundary would get an agent
+> that studies what they wish were true — the same failure as an agent drifting
+> toward what it finds easy, with a bigger budget behind it.
 
 **The owner and the expert are not the same person, and the design should stop
 assuming they are.** The owner of this machine can grant a write and cannot tell
@@ -1239,23 +1323,49 @@ check has not been verified; it has been believed.
 
 ### What one research agent is made of (Point 25)
 
-Taking computational imaging as the worked example. **Sub-agents** are things
-that do or judge; **tools** are things that must be present to run.
+**Sub-agents** are things that do or judge; **tools** are things that must be
+present to run. The roster is **nine core roles**, and it is a *floor*: a field
+may add a role and may not remove one. Each is carried per-field as a versioned
+object beside its charter — `research-agents/roster/<agent>.json`.
 
-| Sub-agent | Socket | What it is for |
+| Sub-agent | What it is for | why it is separate |
 |---|---|---|
-| `sarsi-claude` | session backend | drives the work, at the ceiling it was released to |
-| the planner | drafts the seed plan | turns an open problem into phases with checkable criteria |
-| the **domain verifier** | given criteria + evidence | re-runs the benchmark; the sharpest listing to accept |
-| the **reconstruction runner** | work that is not code editing | GAP-TV, deep-unrolled, transformer — the actual method |
-| the **teacher** | emits the owner's own check | the deliverable of Point 24, not a summary |
+| `literature` | finds and reads prior work; produces claims with citations | reading and doing must not share a context, or the agent finds what it set out to find |
+| `twin` | maintains the forward model — the L2 digital twin | the twin is what a method is graded against; the method's author may not own it |
+| `corpus` | fetches and validates real data; **refuses when absent** | a benchmark that silently substitutes synthetic data produces numbers that are not results |
+| `method` | proposes and implements candidate solutions | the only role that writes the thing being judged |
+| `runner` | executes runs, on leased compute when needed | keeps cost and placement out of the method's hands |
+| `verifier` | judges a claim against the criterion written **before** it | independence is temporal and authorial, not informational |
+| `reproducer` | re-runs a published result from its artifacts alone | catches the result that only exists on the machine that made it |
+| `teacher` | derives the curriculum from the evidence chain | teaching is a product, and must be checkable like one |
+| `writer` | assembles the field page and the paper | writing last, from the record, not from intent |
+
+**Two of those replace an earlier mistake in this section.** It listed a
+"domain verifier" and a "reconstruction runner" as if judging and running were
+one role each, and it had no `reproducer` and no `twin` at all — so the thing
+that grades a method and the thing that writes it could have been the same
+author, and a result that existed only on the machine that made it had nothing
+looking for it.
+
+**A field may add**, and computational imaging does — `system-designer`,
+admitted for one reason and recorded with it: *rung 6 grades a system-and-method
+pair, and a system proposed by `method` would be optimised against the same twin
+that grades it.* An addition that cannot name the rung it is admitted for is a
+role somebody wanted rather than a role the ladder needs.
+
+Every entry carries `embodied: true|false`. Three of the nine are embodied even
+in a field with no robot in it — `corpus`, `runner`, `reproducer` — because
+fetching, executing and re-running reach outside this machine. That flag, and
+`needs_envelope` on tools, are **built as declarations**; nothing acts on them
+yet.
 
 | Tool | What it touches | Refused by name when absent |
 |---|---|---|
 | `shell` | the working directory | yes — `CAP` |
 | `editor` | declared paths | yes |
-| GPU / CUDA | the card | yes — and the OS is declared before it is probed (§13) |
+| GPU / CUDA, or a leased card | the card | yes — and the OS is declared before it is probed (§13) |
 | the benchmark corpus | a read-only cache, shared between agents | yes, **and it names the fetch command** rather than substituting generated data |
+| optical bench · fabrication line · metrology | **the world** | yes, and each is marked `needs_envelope` — see the body rules below |
 
 That last row is the one with teeth. An agent whose corpus is missing must
 **refuse and say how to get it**. Generating stand-in data and proceeding is how
@@ -1517,17 +1627,62 @@ agent does.
 Some ship from the governor rather than from a user. These are the seed of the
 market, written where the domain knowledge is:
 
-| Agent | Domain |
-|---|---|
-| **low-dose CT** | reconstruction at doses below what a classical pipeline can use |
-| **computational imaging** | the broader inverse-problem family — snapshot compressive imaging, coded aperture |
-| **medical physics** | treatment planning and QA, as clinical radiotherapy practice does it |
-| **pill-camera** | capsule endoscopy — reading video no clinician has time to read whole |
-| **drug design** | docking, screening, and the loop from candidate to assay |
+**Eight** — seven built, and one added as a design that says so. Not the five
+this section listed while it was a plan. Each reads a
+**measured corpus**, and a benchmark whose corpus is absent refuses and names
+the command that fetches it — it never falls back to generated data, because a
+synthetic substitute produces numbers that look like results and are not.
+
+| Agent | Corpus | Where its reference method stands |
+|---|---|---|
+| **low-dose CT** | TCIA `LDCT-and-Projection-data`, real paired dose | passes — and a higher-PSNR blur *fails*, which is the benchmark working |
+| **computational imaging** | CAVE hyperspectral scenes, CASSI measurement simulated | passes, after a sign error in the reference solver was found and fixed |
+| **medical physics** | OpenKBP, 8 real head-and-neck plans | **2 of 4 slices pass** — one is unreachable by these beams, one is reachable and the planner falls 3.4 Gy short |
+| **pill camera** | Kvasir-Capsule, 4,443 frames | passes, after its own night loop found the fix |
+| **drug design** | DUD-E, 15,288 molecules, 6 targets | passes on a series-disjoint split |
+| **cancer** | TCGA via the GDC API, 978 cases | passes internally; **0.577 across histologies, reported not graded** |
+| **reverse aging** | GEO GSE40279, 656 methylation samples | **13 of 28** on seed-varied splits; `outcome_link` unmeasured |
+| **longevity** | NHANES + CDC linked mortality — **not fetched** | **not built** — design, scope and roster only, added 2026-08-06 |
+
+> **Longevity is the eighth, and it arrived by fission rather than by
+> decision.** `reverse-aging` could not answer its own most important question:
+> its benchmark has **chronological age as the answer key**, so *is this person
+> ageing faster* and *did this intervention help* are not hard in it, they are
+> **unscoreable** — settling them would mean changing the answer key, and the
+> answer key is the one thing that may not change. By the test in
+> `research-agents/lifecycle.md` that makes it a different field, and **fission
+> is the good ending rather than a failure**. Its scope then closes on the one
+> thing it cannot do — *conduct an in-vivo survival study* — because claiming
+> otherwise would assert an absent capability at the exact point the field's
+> evidence comes from.
+>
+> It is also the first live test of a claim §27 makes and nothing had exercised:
+> that a field which outgrows its own principle **splits** rather than quietly
+> widening. It split on paper, and the record says which agent could not hold
+> the question and why.
+
+> **That two of the built ones fail is the point.** Each failure is a statement about the
+> method rather than a defect in the benchmark, and each was a **pass on
+> synthetic data that real data overturned** — generated by the same hand that
+> wrote the design the result was going to agree with. It is the sharpest
+> available argument for the corpus rule two paragraphs up.
 
 Each has its own design — charter, self-model dimensions, the substrates it may
-improve and the three it may never touch, and the budget its autonomous function
-runs under: [`research-agents/`](research-agents/README.md).
+improve and the ones it may never touch, the problem ladder, and the budget its
+autonomous function runs under: [`research-agents/`](research-agents/README.md).
+
+**They are also where the PWM comes from.** When a user brings their own key and
+needs PWM for the treasury share (§13), the exchange node puts their capacity to
+work on *these* agents' research, and the PWM earned is theirs. The currency is
+downstream of output that exists — a node minting for no work is inflation with
+extra steps, and the difference is whether anything is left afterwards a person
+would want.
+
+> **A user's own research agent is a normal listing.** Anyone may write one,
+> upload it, and run it autonomously on their own machine and budget. The one
+> thing they cannot do is have it **mint**: minting is the exchange node's, the
+> node runs the governor's agents, and that is the whole of the boundary. An
+> agent that minted the currency would let its author write their own reward.
 
 > **They are agents, not exceptions.** Governor-authored means reviewed by the
 > same acceptance, installed by the same screen, bounded by the same ceiling, and
