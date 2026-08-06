@@ -109,6 +109,16 @@ The machinery shared by all seven — the five stages, functional self-awareness
 recursive improvement and its boundary, and the fission test — is written once
 in **[`lifecycle.md`](lifecycle.md)** rather than seven times.
 
+> **Two pages per field, and they are not the same document.** What is in this
+> directory is the **design page** — charter, self-model dimensions, what may be
+> improved, what a night costs — written for whoever maintains or audits the
+> agent. The **field page** on the public site is for anyone at all: the four
+> layers, the problem ladder, and the record split by source. The spec is
+> explicit that the field page should be *generated from the registry rather
+> than written beside it*, because a hand-maintained page and a registry
+> disagree within a month and the page is the one people read. **Today it is
+> hand-maintained.** That is a known gap, not a design.
+
 > **All seven are at stage 1 of five.** They propose; a person signs. Stages 2
 > and 3 need verifier agents independent of the proposer, and those are **not
 > built**. Everything written about them is marked as such, in the future tense,

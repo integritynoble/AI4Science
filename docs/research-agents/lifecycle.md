@@ -435,6 +435,26 @@ The **teacher** is a member, not a formatting step. Its deliverable is the
 owner's own check, and its refusal is the sharp one: *it refuses to report a
 pass it cannot hand the owner a way to re-run.*
 
+### The tools, and why two of them are named to the version
+
+Sub-agents *do or judge*; tools are what must be present to run. A tool that is
+absent is refused **by name**, never worked around.
+
+| tool | for |
+|---|---|
+| the field's own solvers | the reconstructions, screens, plans or clocks the field is about |
+| **dataset clients** | TCIA, DUD-E, GDC, OpenKBP, Kvasir, CAVE, GEO — each **named, versioned and checksummed**, because a corpus that changed underneath a result silently invalidates it |
+| **GPU lease** | runs this machine cannot hold, with the platform and capability declared *before* leasing rather than probed after |
+| **registry client** | publishing and querying the four layers |
+| plotting / TeX | figures and papers as artifacts, not as screenshots |
+| the market | installing another author's tool when the field needs one |
+
+> The row with teeth is the corpus client. An agent whose data is missing must
+> **refuse and say how to get it**. Generating stand-in data and proceeding is
+> how a field fills with results nobody can reproduce — and this is not
+> hypothetical: it fired the first time these benchmarks met a machine with no
+> corpora, and the refusal named the fetch command.
+
 ### The rules a body forces
 
 > **An embodied act is irreversible, and is treated as irreversible by default.**
@@ -501,6 +521,21 @@ of itself with five parts, all of them already built:
 | **field map** | what it has **not** measured, and what kind of gap each one is | `FieldMap` |
 | **budget** | what it has spent and what remains | `Budget` |
 | **ledgers** | who asked for each piece of work | `Ledgers` |
+
+**The self-model is written by observation, never by assertion.** Its lines come
+from outcomes — verdicts, benchmark results, refusals — recorded by the part of
+the system that judges, not by the part that benefits. An agent that could write
+its own self-model would be writing its own reference. It is also **one file
+read by both functions**: two would give the agent a private record beside the
+one the owner reads, and the first thing to diverge would be the part that
+flatters it.
+
+> **"Unmeasured" has to stay expensive to write.** The moment it costs nothing
+> to declare, everything hard becomes unmeasured and the queue empties itself.
+> So an unmeasured dimension carries **what measurement would settle it** — the
+> same entry fee a ladder rung pays — and a self-model with unmeasured lines and
+> no paths to measurement is a finding about the agent rather than about the
+> field.
 
 **The field map is the part that matters, and it is the part usually missing.**
 An agent that knows what it has measured will optimise that. An agent that knows
