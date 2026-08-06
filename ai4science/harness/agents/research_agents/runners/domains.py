@@ -784,10 +784,30 @@ METHYLAGE = DomainBenchmark(
         # arithmetic from a seed that did nothing; that result was refused and
         # this one earned.
         #
-        # NOTE: the winner sits at the FLOOR of the declared range, which
-        # usually means the optimum is outside the space. Worth widening before
-        # trusting this as the best available rather than merely better.
-        Parameter("ridge", 1.0, 5000.0, 1.0,
+        # The winner sat at the FLOOR, so the floor was opened 1.0 -> 0.0001 and
+        # the space measured, 6 seeds per point. The optimum IS outside the old
+        # range, and it is worth almost nothing:
+        #
+        #   ridge   0.0001   0.01    0.1     1.0     10      100
+        #   MAE      9.649   9.650   9.654   9.730   10.272  12.998
+        #   bulk     0.456   0.455   0.452   0.436   0.414   0.554
+        #
+        # MAE is flat below ~0.01: dropping from the adopted 1.0 to 0.0001 buys
+        # 0.081 years — about a month — and moves bulk_structure_share the WRONG
+        # way, 0.436 -> 0.456. That is the trade this guardrail exists to catch:
+        # a weaker penalty lets the clock lean harder on cell composition, which
+        # is the failure mode, so the search would be buying a month of apparent
+        # accuracy with the thing we say we care about.
+        #
+        # So the range is widened and the adopted value STAYS 1.0. The floor was
+        # hiding a flat region, not a better clock.
+        #
+        # Above 1.0 the error rises monotonically and 100 already fails 4 of 6
+        # seeds, so the 5000 ceiling is mostly dead search space. Left in place:
+        # 4 points on 6 seeds is thinner evidence than the floor case, and
+        # narrowing a declared range on thin evidence is how a space gets shaped
+        # to flatter a result.
+        Parameter("ridge", 0.0001, 5000.0, 1.0,
                   means="shrinkage; with 20k probes and a few hundred samples "
                         "this is what stops the clock memorising the fit"),
         Parameter("n_pcs_removed", 1, 20, 5, integer=True,

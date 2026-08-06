@@ -29,6 +29,28 @@ that was 90% bulk structure fails.
 > the same candidate then earned its place on six real institutional splits at
 > p = 0.014.
 
+## The optimum was outside the declared range, and it was worth a month
+
+The adopted `ridge = 1.0` sat exactly at the floor of its declared range, which
+normally means the search was stopped by the wall rather than by the data. The
+floor was opened to 0.0001 and the space measured on six seeds per point:
+
+| ridge | 0.0001 | 0.01 | 0.1 | **1.0** | 10 | 100 |
+|---|---|---|---|---|---|---|
+| median error (years) | 9.649 | 9.650 | 9.654 | **9.730** | 10.272 | 12.998 |
+| bulk structure share | 0.456 | 0.455 | 0.452 | **0.436** | 0.414 | 0.554 |
+
+The wall was real: error keeps falling below 1.0. It is also nearly flat there —
+going all the way to 0.0001 buys **0.081 years, about a month** — and it pushes
+`bulk_structure_share` the wrong way, 0.436 → 0.456. A weaker penalty lets the
+clock lean harder on cell composition, which is precisely the failure this
+benchmark exists to see.
+
+**So the range was widened and the adopted value stayed at 1.0.** A floor that
+hides a flat region is still a measurement defect worth fixing, but the thing it
+was hiding is not a better clock. Had only the error been reported, this would
+have looked like a free improvement.
+
 Only four institutions exist in this cohort, so distinct site-disjoint splits
 are few and statistical power is bounded by the corpus rather than by the loop.
 
