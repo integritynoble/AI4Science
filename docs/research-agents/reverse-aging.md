@@ -224,3 +224,83 @@ It has not reversed ageing in anything. It has not run an experiment. It holds a
 charter, a self-model with an honest limits line, and a field map of four
 untried claims — which is the beginning of a research programme and not a
 result.
+
+---
+
+## The problem queue — in the order they must be solved
+
+| # | problem | why it must come first | state |
+|---|---|---|---|
+| 1 | **Institution-disjoint validation, with the sites chosen by seed** | a clock validated on a fixed pair of held-out sites is validated against one arrangement of batch effects. Choosing the held-out institutions from the seed is a harder test, and the reference method's pass rate fell from "passes" to 13 of 28 when it was applied — which is the point | **done** |
+| 2 | **Bulk structure share as a scored guardrail** | in whole blood the methylome's leading components are dominated by cell-type proportions, which themselves shift with age. A clock riding on that is a blood-count detector with a birthday attached, and it will look excellent | **done** — 55% of the gain disappears when leading components are projected out, and lower is better for this number |
+| 3 | **A seed that actually varies the data** | it did not, for a while. Every seed produced byte-identical data, a paired comparison had zero spread by construction, and the loop reported `p = 0` — one measurement wearing four hats, which outranked a genuine `p = 0.0088` from another agent and nearly got signed | **done** — refused, repaired, re-earned at p = 0.014 |
+| 4 | **Outcome linkage** | chronological age is not the quantity of interest. A clock that predicts age well and predicts nothing about health has measured a calendar. This is the single largest gap on this page | **blocked** — needs a cohort with follow-up, and an agreement only the owner can sign |
+| 5 | **Multi-tissue and cross-platform transport** | a whole-blood clock is a whole-blood claim. Transport to another tissue or array platform is a separate question and is currently untested | open |
+| 6 | **Intervention response** | does the clock move when something changes? Requires longitudinal sampling, and cannot be answered by any cross-sectional cohort however large | open |
+| 7 | **Rate of ageing, as opposed to age** | the claim everyone actually wants, and the one this agent is forbidden to make until 4 and 6 hold | forbidden by charter |
+
+> **Only four institutions exist in this cohort.** Distinct site-disjoint splits
+> are therefore few, and statistical power is bounded by the corpus rather than
+> by the loop. More compute buys nothing here; more cohorts do.
+
+## The four layers
+
+| layer | this field's instance |
+|---|---|
+| **Principle** | A clock that rides on cell composition is a blood-count detector with a birthday attached. Chronological age only — no claim about rate of ageing, and no outcome examined |
+| **Digital twin** | The methylome model — institutional batch structure and cell-type composition as the two axes that decide whether a clock is real. Leading principal components computed on training betas only, because computing them on both cohorts lets the held-out sites influence the basis they are scored in |
+| **Benchmark** | GEO GSE40279, 656 whole-blood samples aged 19–101, four institutions, seed-chosen site-disjoint splits, median error against predicting the training mean, with bulk-structure share and internal error as guardrails |
+| **Solution** | A dual-form ridge clock with `ridge` (walked multiplicatively across 7.7 decades) and `n_pcs_removed` declared |
+
+## Sub-agents and tools
+
+| Needs | For |
+|---|---|
+| streamed corpus access | GEO series matrices are hundreds of MB of text; probes are reservoir-sampled rather than loaded |
+| a **composition verifier** | Houseman-style cell-type estimation, to say how much of a clock is blood count |
+| a **batch verifier** | institution and platform effects, independent of the split that was used |
+| linkage to outcome data | **not available.** The gap in row 4 above; no tool substitutes for the agreement |
+| a **domain verifier** | error, bulk-structure share and internal error judged together, never one alone |
+
+## At AGI and ASI
+
+**On demand.** "Fit a clock on this cohort and tell me how much of it is cell
+composition." The second number is refused-if-missing, not optional.
+
+**Autonomous.** It re-fits published clocks under institution-disjoint splits
+and reports their bulk-structure share. Very few have ever been reported with
+one.
+
+**How a person verifies.** Ask what fraction of the accuracy survives projecting
+out the leading components. Then ask which institutions were held out, and
+whether they were chosen before the method was selected. Then ask what happens
+to anyone whose predicted age is wrong — and if the answer is "nothing, we never
+looked", the clock has not been shown to matter.
+
+**How sub-agents verify.** A *composition* verifier estimating cell proportions
+independently, a *split* verifier confirming the held-out institutions
+contributed nothing to fitting or selection, and a *degeneracy* verifier whose
+whole job is to check that the seed changes the data — the check that would have
+caught `p = 0` before it reached a signature.
+
+**How a person is taught to check it.** The `p = 0` episode is the teaching
+artifact, and it is uncomfortable on purpose: the *best-looking* number in a
+night's results was the broken one, and it looked better than a genuine result
+from another agent. Anyone who learns to treat an impossibly good p-value as a
+symptom rather than a triumph has learned the most valuable habit in this
+directory.
+
+## When this field collapses — and what it becomes
+
+**By indifference, if row 4 is never answered.** A field of clocks that predict
+chronological age ever more precisely, and never connect to health, is a field
+solving a problem nobody needed solved — age is already known from a birth
+certificate. That is the honest risk and it should be stated plainly.
+
+**Candidate fission: rate of ageing, and intervention response.** The moment the
+question becomes "is this person ageing faster" or "did this intervention slow
+it", the benchmark cannot score it — its answer key is chronological age, and
+the new question's answer key does not exist at fitting time at all. It needs
+longitudinal data, outcomes, and a twin that models trajectories rather than
+cross-sections. By the [`lifecycle.md`](lifecycle.md) test that is unambiguously
+a different field, and it is where all of this field's value actually lives.

@@ -65,6 +65,28 @@ python3 -m ai4science.harness.agents.research_agents.runners.fetch tcga-survival
 Corpora live under `~/.ai4science/data`, or wherever `AI4SCIENCE_DATA` points —
 outside the package, because data is not source.
 
+## 0c. Every agent, five questions
+
+Each field document now answers the same five, after its field-specific
+material. They are asked in this order because each depends on the one before.
+
+| question | where |
+|---|---|
+| **What must this field solve, and in what order?** | *The problem queue* — ordered by dependency, with the state of each marked. Not a wish list: a problem is placed by what it blocks, so the most interesting item is rarely first |
+| **What are the four layers?** | *The four layers* — principle, digital twin, benchmark, solution. A solution means nothing without the benchmark beneath it, and so on down |
+| **What does it look like at AGI and ASI?** | *At AGI and ASI* — the two functions, how a person verifies, how sub-agents verify, and how the agent teaches a person to check it |
+| **What are its sub-agents and tools?** | *Sub-agents and tools* |
+| **How does the field end?** | *When this field collapses* — by saturation or by indifference, and which sub-region earns a new field and a new agent |
+
+The machinery shared by all seven — the five stages, functional self-awareness,
+recursive improvement and its boundary, and the fission test — is written once
+in **[`lifecycle.md`](lifecycle.md)** rather than seven times.
+
+> **All seven are at stage 1 of five.** They propose; a person signs. Stages 2
+> and 3 need verifier agents independent of the proposer, and those are **not
+> built**. Everything written about them is marked as such, in the future tense,
+> because an architecture described in the present tense is a claim.
+
 ## 1. The goal is the field, not the score
 
 An agent that improves its own number on one benchmark has done nothing for

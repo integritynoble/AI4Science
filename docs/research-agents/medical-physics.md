@@ -218,3 +218,78 @@ outward gate covers acts that leave the machine; it does not confer regulatory
 clearance, institutional review, or clinical validation. The agent refuses to
 describe any output as clinically validated, cleared, or ready for use on
 patients — including when the owner asks it to.
+
+---
+
+## The problem queue — in the order they must be solved
+
+| # | problem | why it must come first | state |
+|---|---|---|---|
+| 1 | **3D volumetric dose** | nine beams on one axial plane cannot spare an organ sitting above or below the target, and a cord that abuts the PTV in 3D looks adjacent-or-absent depending on which slice was picked. Every other number on this page is provisional until this holds | open — scoped in [`medical-physics-3d-plan.md`](medical-physics-3d-plan.md) |
+| 2 | **Achievability measured before the planner is blamed** | "the model achieved X" is unreadable without knowing what was reachable. An infeasible constraint set and a weak optimiser produce identical evidence. This is the one genuinely novel thing here | **done in 2D** — one case has a D99 ceiling of 62.6 against a 66.5 floor; must be re-measured in 3D before it is repeated |
+| 3 | **The full DVH metric set** | D95/D99/D2, V95/V107, homogeneity and conformity indices, gEUD. This is the language the field reviews in; reporting anything else reads as an outsider and, worse, hides the trade being made | open |
+| 4 | **Deliverability** | MLC and aperture constraints. A fluence map no linac can deliver is not a plan, and the gap between the two is where optimiser gains usually evaporate | open |
+| 5 | **Protocol templates** (RTOG / NRG goal sheets) | the judge should encode a real clinical goal sheet rather than limits chosen by whoever wrote the benchmark | open |
+| 6 | **Comparison against the delivered clinical plan** | per structure, differences named. A single score cannot say whether a plan is better or merely different | open |
+| 7 | **Adaptive replanning and setup robustness** | last, because it presumes every one of the above | open |
+
+> **2 must be re-measured, not carried.** The finding that one case is
+> unreachable is a **2D** result. Nine coplanar beams are a far weaker delivery
+> system than nine beams in 3D, so the ceiling will rise and the case may become
+> feasible. Carrying that conclusion into a 3D planner would be exactly the
+> error this agent keeps making: a property of the measurement reported as a
+> property of the world.
+
+## The four layers
+
+| layer | this field's instance |
+|---|---|
+| **Principle** | A plan is a constraint set and a delivery system. Before an optimiser is called weak, what the geometry permits must be measured |
+| **Digital twin** | The beamlet dose kernel — exponential depth attenuation along the ray with a lateral Gaussian for penumbra — fixed, shared between generation and scoring, and unreachable by the agent. Not a Monte Carlo engine, and the docs must never imply otherwise |
+| **Benchmark** | OpenKBP head-and-neck plans, real contours, DVH criteria, with the achievability bound reported beside every verdict |
+| **Solution** | A gradient-descent fluence optimiser with backtracking line search; `under_weight`, `oar_weight`, `hot_weight`, `cold_weight`, `step`, `iters`, `tuning_rounds` declared |
+
+## At AGI and ASI
+
+**On demand.** "Plan this patient." The answer is a plan, the achievability
+bound for every constraint, and an explicit statement of which constraints are
+in tension — plus a refusal when coverage was only obtainable by breaching an
+organ limit.
+
+**Autonomous.** It measures ceilings across a cohort and reports which published
+"the model achieved X" claims were made against infeasible constraint sets. That
+is a contribution the field cannot easily make about itself.
+
+**How a person verifies.** A physicist reads the DVH, checks deliverability, and
+re-runs the corner sweep that establishes the bound. **The plan is never
+approved by the agent** — at every stage, including stage 4, a plan that treats
+a patient carries a human signature. This is the one place in these seven where
+the regulatory line does not move with the technology.
+
+**How sub-agents verify.** A *geometry* verifier that recomputes structure
+overlaps directly from the masks — the check that would have caught a wrong
+array axis reporting parotid overlap as 21% when it was 56%; a *feasibility*
+verifier that drives the declared space to the corner favouring the failing
+metric; and a *guardrail* verifier that re-derives every organ constraint from
+the DVH rather than from the optimiser's own objective.
+
+**How a person is taught to check it.** Three wrong diagnoses preceded the real
+one: impossible constraints, step-size collapse, nested targets — and the actual
+cause was a NaN that silently disabled the optimiser because one mask guard was
+missing. The teaching artifact is the habit of asking *what is the ceiling* before
+theorising about the gap. A reader who takes only that away can refute most
+auto-planning claims in the literature.
+
+## When this field collapses — and what it becomes
+
+**Not soon, and not by saturation.** Delivery hardware keeps changing, and each
+change reopens the whole problem. What will collapse is the *human-verification
+rate for routine plans* — a saturated field where standard cases are planned and
+checked by machines and only the difficult ones reach a person. The signature
+requirement survives the collapse; the review time does not.
+
+**Candidate fission: biologically adaptive dose.** Dose that responds to
+mid-course tumour response — where the target is not a fixed contour but a
+trajectory — cannot be scored by a benchmark whose answer key is a static DVH on
+a static geometry. Changing the benchmark to accommodate it would destroy what
+makes it a benchmark. New field, new twin, new agent.

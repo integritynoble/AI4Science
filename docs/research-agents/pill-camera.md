@@ -194,3 +194,64 @@ A classifier's AUC is not a diagnostic performance claim, and nothing here
 constitutes clinical validation. The agent refuses to describe a result as
 diagnostic, and its limits line says a reader study with gastroenterologists is
 what would settle it, and that it has no path to one.
+
+---
+
+## The problem queue — in the order they must be solved
+
+| # | problem | why it must come first | state |
+|---|---|---|---|
+| 1 | **Video-disjoint splits** | consecutive capsule frames are near-duplicates. A random frame split puts the same anatomy on both sides and measures nothing; a patient-disjoint split is the minimum unit of independence | **done** — sampled per video, split by video |
+| 2 | **Seed variance separated from improvement** | with 46 videos, the spread between seeds is comparable to the effect sizes being claimed. Without a paired comparison across seeds, every result is a coin flip with a narrative | **done** — the standing rule of this agent |
+| 3 | **Pooled positives, honestly labelled** | the positive classes were pooled because each alone spans too few videos to split. That is a limitation of the corpus, and it is written into the benchmark rather than hidden in it | **done** — recorded in the bundle metadata |
+| 4 | **Per-finding classes as data allows** | pooling costs clinical meaning: "an abnormality" is not a finding a report can carry. Unlocking this needs more videos, not a better model | blocked — corpus-bound |
+| 5 | **Sequence, not a bag of frames** | a capsule study is a trajectory through the gut. Treating frames independently discards the strongest available signal, and it is the field's most common shortcut | open |
+| 6 | **Localisation along the tract** | a finding without a location is not actionable; the clinician has to know where to go back to | open |
+| 7 | **Miss rate at a fixed review time** | the real clinical quantity. A reader has minutes, not hours, and a model that improves accuracy while lengthening review has not helped | open |
+
+## The four layers
+
+| layer | this field's instance |
+|---|---|
+| **Principle** | Seed variance is not an improvement, and a video is not a bag of frames |
+| **Digital twin** | The study model — frames sampled per video rather than per archive, so class balance reflects videos and not whichever tar entries came first. A global cap silently makes the corpus a sample of the first few videos |
+| **Benchmark** | Kvasir-Capsule, 4,443 frames from 46 videos, video-disjoint split, pooled vascular positives declared in the metadata |
+| **Solution** | A percentile-pooled frame classifier with `percentile` declared — improved once by the agent's own night loop, 0.614 → 0.624, and signed |
+
+## At AGI and ASI
+
+**On demand.** "Read this study and tell me where to look." A ranked set of
+timestamps with a location and a confidence, and an explicit statement of what
+fraction of the study was uninterpretable — bubbles, debris, motion.
+
+**Autonomous.** It re-evaluates published capsule classifiers under
+video-disjoint splits and reports which ones were reading duplicate frames.
+
+**How a person verifies.** Ask whether any frame from a test video appeared in
+training, in any form, including as a near-duplicate neighbour. Then ask for the
+per-video result: 46 videos means the mean is fragile, and one video can carry
+the whole difference.
+
+**How sub-agents verify.** A *split* verifier checking video identity across the
+partition, a *variance* verifier re-running across seeds to establish the spread
+before any delta is believed, and a *sampling* verifier confirming frames were
+drawn per video rather than per archive.
+
+**How a person is taught to check it.** This agent's own night loop produced a
+real improvement — 0.614 → 0.624 — and the thing worth teaching is why that
+number is credible: it was paired across seeds, validated on seeds not used to
+select it, and it is small. A reader who learns to distrust large deltas on
+small corpora has learned the most useful thing this field has to offer.
+
+## When this field collapses — and what it becomes
+
+**By indifference in one direction and saturation in the other.** Frame
+classification on capsule video is a narrow problem that will be finished; what
+it feeds — whether the study changes management — is a clinical question that
+this benchmark never asked.
+
+**Candidate fission: the capsule that acts.** A device that samples, marks, or
+delivers at a located finding is not scored by any frame-classification metric —
+the answer key would have to describe an intervention and its outcome, which
+this benchmark cannot express. New twin (a device with actuation), new benchmark
+(outcome, not label), new agent.

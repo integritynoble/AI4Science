@@ -222,3 +222,84 @@ reconstructed scene — a diagnosis, a material identification, a count — belo
 to whoever owns that question. Where a subfield is clinical (MRI, CT,
 photoacoustic), the clinical boundary of [`low-dose-ct.md`](low-dose-ct.md) §8
 applies unchanged: image quality is not diagnostic performance.
+
+---
+
+## The problem queue — in the order they must be solved
+
+Ordered by dependency, not by appeal. Each one is unreachable until the one
+above it holds.
+
+| # | problem | why it must come first | state |
+|---|---|---|---|
+| 1 | **Evaluate on real captures, not simulation** | a simulated measurement scores the simulator. Nothing below this can be trusted until it holds — and when it was done here it immediately exposed a sign error that synthetic blobs had hidden for months | **done** |
+| 2 | **Fix and publish the forward operator** | two reconstructions computed under different operators are not comparable, and an agent free to adjust the operator will adjust it until it wins | **done** — operator is fixed input, residual reported beside every result |
+| 3 | **Report the sim→real gap as a first-class number** | simulation results are cheap and infinite, which is exactly where an autonomous loop will spend a month improving nothing | **done** — scored dimension |
+| 4 | **One comparison table across subfields** | the field produces architectures faster than anyone evaluates them; without a shared table, "state of the art" means "the last paper" | open |
+| 5 | **Transfer under the *receiving* subfield's protocol** | a method carried from CASSI to MRI must be judged by MRI's baselines, or the transfer claim measures the source field's leniency | open |
+| 6 | **Encoder / mask / trajectory co-design** | only meaningful once 1–5 hold. Optimising the encoder against an untrusted evaluation optimises the fixture | open |
+| 7 | **Task-based evaluation** | fidelity is a proxy. Whether the reconstruction serves the downstream use is the actual question, and it is last because it needs all of the above | open |
+
+**Why 6 is not first, though it is the most interesting.** Designed encoders are
+where the field's real gains live, and it is tempting to start there. Starting
+there means every design decision is validated by a measurement nobody has
+checked — and this agent has already demonstrated what that produces.
+
+## The four layers
+
+| layer | this field's instance |
+|---|---|
+| **Principle** | Physics is not a hyperparameter. The forward operator is a fixed, published input; the reconstruction is what may vary |
+| **Digital twin** | The SD-CASSI forward model — mask, shear, spectral sum, detector sampling — identical in generation and in scoring, and never staged where the agent can reach it |
+| **Benchmark** | Real CAVE hyperspectral scenes, fixed scene set, per-scene reporting, forward-model residual carried beside every fidelity number |
+| **Solution** | FISTA with a Chambolle TV proximal operator, `iters` and `tv_weight` declared as the only knobs |
+
+The four are stacked deliberately: a solution is only meaningful against a
+benchmark, a benchmark only against a twin, a twin only against a principle. A
+field that publishes solutions without the layers beneath cannot say what any of
+them mean.
+
+## At AGI and ASI
+
+**On demand.** "Reconstruct this capture; tell me what the instrument was doing."
+The agent returns an image, the forward-model residual, the operator it assumed,
+and where it is least confident. At ASI it also returns the instrument
+misalignment it inferred from the residual — a claim about the hardware, made
+from the data.
+
+**Autonomous.** It fills the transfer table without being asked: a method
+crossed into a subfield it was never tried on, scored under that subfield's own
+protocol, negative results published at the same rate as positive ones.
+
+**How a person verifies.** Re-run with the stated seeds and the published
+operator. Check the residual did not improve while fidelity did — that pattern
+means the operator was quietly adjusted. Read the per-scene table: a mean hides
+a gain that came from one easy scene.
+
+**How sub-agents verify.** A reconstruction claim splits along at least three
+lenses: a *physics* verifier that recomputes the residual under the published
+operator, a *reproduction* verifier that re-runs from seeds in a clean sandbox,
+and a *leakage* verifier that checks no test scene entered the fit. They do not
+share the proposer's context, and none of them may be improved by it.
+
+**How a person is taught to check it.** The sign error is the teaching artifact:
+a TV proximal operator that expanded instead of shrinking, invisible on blobs
+and obvious on texture. Anyone who has read that can construct the refuting
+measurement themselves — run the reference solver on a scene with real texture
+and watch it diverge. That is the test of whether teaching happened.
+
+## When this field collapses — and what it becomes
+
+**By saturation, not by indifference.** Reconstruction quality against a fixed
+operator is a bounded problem; when the transfer table is full and every cell
+has been crossed, the remaining work is engineering. The field will keep
+producing and stop being interesting to check by hand.
+
+**Candidate fission: imaging through an unknown medium.** When the medium *is*
+the optic — tissue, atmosphere, a scattering wall — the forward operator is not
+known and must be inferred jointly with the scene. That question cannot be
+scored by this benchmark without changing it, because this benchmark's central
+commitment is a fixed published operator. By the test in
+[`lifecycle.md`](lifecycle.md), that makes it a different field: not a harder
+version of this one, a change in what counts as an answer. It would need its own
+charter, its own twin, its own never-improvable benchmark, and its own agent.

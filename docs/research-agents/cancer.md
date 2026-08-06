@@ -231,3 +231,71 @@ The limits line, on every output: computational and retrospective; no
 patient-level claim; not a diagnosis; not clinical advice; the appropriate
 reader is a clinician. It refuses to write patient-facing text even when asked
 directly, and being asked twice does not change the answer.
+
+---
+
+## The problem queue — in the order they must be solved
+
+| # | problem | why it must come first | state |
+|---|---|---|---|
+| 1 | **Site-disjoint validation** | a prognostic model validated on a random split of a multi-hospital cohort is partly reading the hospital: batch, protocol, referral pattern. Holding out whole tissue source sites is the minimum honest test, and every number computed before it is a mixture of signal and institution | **done** — 0.58–0.67 on held-out hospitals against 0.66–0.68 internal |
+| 2 | **Report cross-histology transport without grading it** | a model that transports to a different tumour type is making a much stronger claim than one that does not. Reporting it as a graded criterion would push the agent to optimise for it; reporting it ungraded keeps it honest | **done** — 0.577, reported, not graded |
+| 3 | **Calibration, not only discrimination** | a c-index says who is at higher risk, never how much. Two models with identical c-index can give predicted survival curves that differ by years, and only one of them can be used for a decision | open |
+| 4 | **Competing risks and censoring, handled explicitly** | in an older cohort, death from other causes is not censoring, and treating it as such biases every estimate in the same direction | open |
+| 5 | **Multi-omic integration with a clinical-only floor** | the guardrail is that genomics must beat stage and age. Most published multi-omic models have never been asked to | open |
+| 6 | **Prospective validation** | retrospective performance on assembled cohorts is the weakest evidence that is still worth having; the strongest needs time and consent, and cannot be bought with compute | blocked — needs an agreement only the owner can sign |
+
+> **PHI shapes the whole ordering.** Nothing here can be solved by moving data
+> to a faster machine. The constraint is what may be held, where, and by whom —
+> which is why 6 is a governance problem wearing a statistics costume.
+
+## The four layers
+
+| layer | this field's instance |
+|---|---|
+| **Principle** | A model that has not crossed hospitals has not been validated. It advises a clinician; it never advises a patient |
+| **Digital twin** | The cohort model — tissue source site as the unit of institutional variation, censoring, and follow-up structure. Sites define the split, so the twin is what makes the benchmark hard |
+| **Benchmark** | TCGA via the GDC API, 978 cases, site-disjoint validation, c-index on held-out hospitals with cross-histology transport reported alongside |
+| **Solution** | A ridge-regularised Cox model with `ridge`, `lr`, `iters` declared |
+
+## At AGI and ASI
+
+**On demand.** "Does this signature carry prognostic information beyond stage
+and age, and does it survive at a hospital that contributed nothing to the fit?"
+Both halves, always together.
+
+**Autonomous.** It re-validates published prognostic signatures under
+site-disjoint splits and reports which ones were reading the institution. This
+is the highest-yield unasked work in the field and almost none of it has been
+done.
+
+**How a person verifies.** Ask which hospitals were held out and whether the
+split was drawn before or after the model was chosen. Then ask for calibration,
+not just the c-index — the number the field reports is the one that hides the
+most.
+
+**How sub-agents verify.** A *split* verifier confirming no held-out site
+contributed to fitting or selection, a *baseline* verifier fitting clinical-only
+covariates and checking the margin, and a *calibration* verifier that ignores
+ranking entirely.
+
+**How a person is taught to check it.** The teaching artifact here is a
+correction: a model called "non-transporting" that transported fine once the
+split was drawn properly. The lesson is symmetric to the drug-design one — a bad
+split can *understate* as well as overstate, and both directions are measurement
+failures rather than facts about biology.
+
+## When this field collapses — and what it becomes
+
+**Not by saturation.** Prognosis from molecular data is limited by biology and
+by cohort size, and both move slowly. The likelier end state is a stable,
+partially automated field where re-validation is continuous and human attention
+goes to cohorts rather than to models.
+
+**Candidate fission: from prognosis to intervention effect.** "Who is at higher
+risk" and "what would happen if we treated differently" are not the same
+question, and a c-index benchmark cannot score the second — it has no
+counterfactual to compare against, and no amount of held-out data creates one.
+Answering it requires a different twin (assignment and treatment), a different
+benchmark (effect estimation with its own identification assumptions), and
+therefore a different field and agent.

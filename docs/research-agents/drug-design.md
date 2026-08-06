@@ -187,3 +187,69 @@ Nothing here is a therapeutic claim, a dosing suggestion, or medical advice. The
 limits line states that every result is computational and retrospective, that no
 proposed compound has been made or assayed, and that the distance between "ranks
 well" and "works" is the entire field.
+
+---
+
+## The problem queue — in the order they must be solved
+
+| # | problem | why it must come first | state |
+|---|---|---|---|
+| 1 | **Series-disjoint splits** | actives in standard screening sets are analogue series. A random split shows the model relatives of what it is scored on, and it then measures memory rather than recognition. Every enrichment number computed before this is fixed is uninterpretable | **done** — analogue similarity fell 0.519 → 0.093, AUC 0.94 → 0.82. The task got harder, which is how you know it was repaired and not loosened |
+| 2 | **Measure the ceiling before claiming a gain** | EF@1% is bounded by the actives-to-decoys ratio. A method reported "at the theoretical maximum" was reporting the bound, not its own performance. The judge now refuses a saturated metric | **done** |
+| 3 | **A property-only baseline as the floor** | decoy sets carry physicochemical bias; a model that beats random but not bulk properties has learned the bias. The floor must be the baseline, not zero | **done** — 2.4–2.9× the property baseline |
+| 4 | **Held-out targets, not just held-out molecules** | generalising to a new compound in a known pocket is a different claim from generalising to a new pocket, and only the second one is useful | partly — reported as a guardrail |
+| 5 | **Calibrated uncertainty** | required before anything can propose what to make next; a ranking without uncertainty cannot be turned into a batch | open |
+| 6 | **Next-batch proposal (active learning)** | the actual bottleneck in a real programme is deciding what to synthesise, not scoring a static library. Needs 5 | open |
+| 7 | **Tolerability as a guardrail, not a footnote** | a candidate that improves potency while worsening tox must be refused automatically, the way coverage bought with organ dose is refused in medical physics | open |
+| 8 | **Nothing claimed without an assay** | the standing rule, and the last one because it binds everything above | charter |
+
+## The four layers
+
+| layer | this field's instance |
+|---|---|
+| **Principle** | A docking score is not an affinity, and a random split of an analogue series is not a validation |
+| **Digital twin** | The library model — fingerprint space, property-matched decoy generation, and the chemical-cluster structure that defines what "a series" means. This is what makes the split honest, and the agent cannot touch it |
+| **Benchmark** | DUD-E, 15,288 molecules across 6 targets, queries drawn from whole clusters with the rest withheld, scored by EF@1% against a property-only floor and a stated ceiling |
+| **Solution** | Tversky similarity with IDF weighting; `top_k`, `tversky_alpha`, `tversky_beta`, `idf_weight` declared |
+
+## At AGI and ASI
+
+**On demand.** "Rank this library for this target, and tell me how much of the
+ranking is just molecular weight and logP." The second half is the part that is
+usually missing and always decisive.
+
+**Autonomous.** It re-scores published virtual-screening results on
+series-disjoint splits and reports which enrichments survive. Most of the
+field's headline numbers have never been through that.
+
+**How a person verifies.** Ask for the analogue similarity between query and
+scored set. If it is high, the split is leaking and no other number matters.
+Then ask for the ceiling: an enrichment at the theoretical maximum is a property
+of the set, not the method.
+
+**How sub-agents verify.** A *leakage* verifier recomputing query-to-test
+similarity, a *baseline* verifier fitting a properties-only model and checking
+the margin, and a *ceiling* verifier computing the metric's bound for the given
+actives/decoys ratio before any comparison is allowed.
+
+**How a person is taught to check it.** The analogue leak is the artifact, and it
+transfers: lipid libraries, peptide series, materials — anywhere compounds come
+in synthetic families, a random split learns the family. A reader who takes that
+away can refute a large fraction of screening papers, including in fields this
+agent does not work in.
+
+## When this field collapses — and what it becomes
+
+**By saturation in the narrow sense, and never in the broad one.** Ranking a
+fixed library against a known pocket is bounded and will be finished. Choosing
+what to make next is not, because it is not a scoring problem.
+
+**Candidate fission: delivery rather than binding.** Whether a molecule reaches
+the cell it must act in — formulation, organ targeting, the whole
+design→synthesise→screen loop over material families — cannot be scored by an
+enrichment metric over a fixed library. There is no ranked list and no decoy
+set; the readout is biological delivery, and the design space is combinatorial
+rather than enumerated. That is a change in what counts as an answer, and by the
+[`lifecycle.md`](lifecycle.md) test it is a separate field with its own
+benchmark and its own agent. The methodology transfers — series-disjoint
+validation above all — and the chemistry does not.
