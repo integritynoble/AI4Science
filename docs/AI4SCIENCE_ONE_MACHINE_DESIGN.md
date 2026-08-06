@@ -1085,6 +1085,61 @@ page *is* the problem list: the open problems in order, what tier each sits at,
 what is solved, and by whom. A page that showed only finished work would be a
 brochure; the value is that a reader can see what is next and take it.
 
+#### The scope, and the experts who set it
+
+A research agent needs a **scope** — what is in this field and what is not — and
+the scope is not the agent's to decide. It is set by **experts in that field**,
+and it may be fixed or may evolve as the field does.
+
+This is not an extra layer of approval. It is the thing that makes every other
+rule in this section mean something:
+
+* the **ordered problem list** is a list of problems *in a scope*. Without one
+  the ordering rule ranks a set nobody agreed on, and "solve what unblocks the
+  most" becomes "solve what unblocks the most of whatever I happened to write
+  down."
+* the **verifier** judges against criteria written inside a scope. A verdict on
+  a problem outside it is a correct answer to a question the field did not ask.
+* the **field split** in §27 is a scope decision — *this sub-scope has more
+  energy than the field around it* — and it is exactly the judgement an agent
+  is worst placed to make about itself.
+
+So the design gains a role it did not have, and it is a **human** one:
+
+> **An expert guides the agent by owning its scope.** They say what belongs in
+> the field, they change it when the field changes, and the agent works inside
+> it. The agent may **propose** a change to its scope, with its reason and its
+> evidence, and may not adopt one.
+
+That is the propose/hold/sign shape again — the same one that governs house
+rules, plan adoption and RSI — and it is here for the same reason: *an agent
+that can widen its own boundary has no boundary.*
+
+| | who | what they may do |
+|---|---|---|
+| **the owner** | runs the machine | grants, releases, sets the ceiling and the budget |
+| **the expert** | knows the field | owns the scope; signs a change to it; is the human in §24's verification chain |
+| **the agent** | works | proposes a scope change with evidence; works inside the scope it has |
+
+**The owner and the expert are not the same person, and the design should stop
+assuming they are.** The owner of this machine can grant a write and cannot tell
+whether a somatic-variant classifier is asking the right question. §24 said a
+criterion the owner cannot check is one they are accepting on faith — the expert
+is the answer to that, and naming them as a role is what makes the sentence
+actionable rather than a warning.
+
+**A scope that evolves is recorded, not edited.** When an expert widens or
+narrows it, the change is an entry with a date, a reason and a signature —
+because a scope silently rewritten makes every past verdict unreadable: nobody
+can tell whether a result was in scope when it was produced. Same reasoning as
+the plan-drift rule, one level up.
+
+**And an agent with no expert says so.** Not a hidden state: its page carries
+who owns its scope and when they last touched it, alongside the line §27 already
+requires about when a person last checked a result. A field whose scope nobody
+maintains and whose results nobody verifies is not a research programme; it is a
+budget being spent, and the page should let a reader see that in one look.
+
 ### The two functions, and who verifies what (Point 24)
 
 Every research agent has exactly two, and the difference between them is who
