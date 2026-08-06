@@ -17,7 +17,8 @@ from ai4science.harness.agents.research_agents.dual import (
     BENCHMARK, Ledgers, OWNER_SET, SELF_DIRECTED, autonomous_loop,
     autonomous_round, run_user_task,
 )
-from ai4science.harness.agents.research_agents.runners import benchmark_for
+from .conftest import bench_or_skip as benchmark_for  # skips, not fails, when a corpus
+# is absent — see conftest for why the two test files used to disagree about that.
 
 
 class Sim:

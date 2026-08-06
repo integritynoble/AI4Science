@@ -52,15 +52,10 @@ class Sim:
                 "stdout": p.stdout, "stderr": p.stderr}
 
 
-def _needs_corpus(bench):
-    """Skip, do not fail, when the real data is not on this machine. A dataset
-    someone has to accept terms for is not a broken build."""
-    if not bench.real:
-        return
-    from ai4science.harness.agents.research_agents.runners import corpus
-    c = corpus.ALL[bench.corpus]
-    if not c.present():
-        pytest.skip("%s not fetched on this machine (%s)" % (c.key, c.fetch))
+# The skip rule now lives in conftest, because this file had it and
+# test_dual_function did not, and on a machine with no corpora the two
+# disagreed: polite skips here, eight CorpusMissing failures there.
+from .conftest import needs_corpus as _needs_corpus
 
 
 def _run(bench, tmp_path, override="", seed=42):
