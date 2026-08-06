@@ -214,6 +214,32 @@ well" and "works" is the entire field.
 
 ---
 
+## Scope, and the experts who set it
+
+**Current scope.** Ligand-based virtual screening on **series-disjoint** splits, scored against a property-only floor with the metric's ceiling stated.
+
+**Out of scope today:** anything claimed without an assay, and delivery rather than binding — which is the fission candidate, and a different field.
+
+**Scope is set by experts in the field — not by this agent, and not by the owner
+alone.** It is expected to move: a scope change is signed like an adoption, with
+who changed it, on what evidence, and what it invalidates. The mechanism, the
+guards against a panel that only ever widens, and the recusal rule are in
+[`lifecycle.md`](lifecycle.md).
+
+| expert role | what they decide here |
+|---|---|
+| **a medicinal chemist** | what counts as a chemical series, which is the single decision this benchmark's honesty rests on |
+| **a computational chemist / cheminformatician** | fingerprints, decoy construction, and when a benchmark set has been exhausted |
+| **an assay biologist** | what a readout can and cannot support, and which claims need an experiment before they are made |
+| **a lab safety officer** | what the synthesis and assay robots may run unattended, and what needs a per-act grant |
+
+> **They may also retire the benchmark.** The agent may never change what judges
+> it; the field's experts may, and when they do it re-bases the history rather
+> than improving on it. Every comparison made before a revision stops being
+> comparable, and the record says so.
+
+**No individual is named in this repository.** These are roles.
+
 ## The group — who does what, and which of them have bodies
 
 This agent is not one model. It is a **group** with three kinds of member,

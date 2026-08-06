@@ -220,6 +220,32 @@ what would settle it, and that it has no path to one.
 
 ---
 
+## Scope, and the experts who set it
+
+**Current scope.** Frame and sequence classification on capsule endoscopy video, split by **video**, with per-video results reported.
+
+**Out of scope:** any use on a person, and any device modification intended for clinical use.
+
+**Scope is set by experts in the field — not by this agent, and not by the owner
+alone.** It is expected to move: a scope change is signed like an adoption, with
+who changed it, on what evidence, and what it invalidates. The mechanism, the
+guards against a panel that only ever widens, and the recusal rule are in
+[`lifecycle.md`](lifecycle.md).
+
+| expert role | what they decide here |
+|---|---|
+| **a gastroenterologist who reads capsule studies** | what a finding must look like to be actionable, and what miss rate at what review time is acceptable |
+| **a capsule device engineer** | illumination, frame rate and what the hardware could capture instead — the co-design questions |
+| **a clinical data steward** | which studies may be used, and what pooling of findings is defensible |
+| **a biomedical safety engineer** | what the bench rig may do, and the ingestion-safety boundary |
+
+> **They may also retire the benchmark.** The agent may never change what judges
+> it; the field's experts may, and when they do it re-bases the history rather
+> than improving on it. Every comparison made before a revision stops being
+> comparable, and the record says so.
+
+**No individual is named in this repository.** These are roles.
+
 ## The group — who does what, and which of them have bodies
 
 This agent is not one model. It is a **group** with three kinds of member,

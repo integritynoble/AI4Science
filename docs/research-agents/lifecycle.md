@@ -200,6 +200,78 @@ guesses and are labelled as such.
 
 ---
 
+## Scope, and the experts who set it
+
+A charter says what an agent may never touch. **Scope** is a different thing: it
+is which part of the field this agent actually works on, and unlike the charter
+it is *expected to move*.
+
+**Scope is set by experts in the field. Not by the agent, and not by the owner
+alone.** The owner signs adoptions because the owner pays; the experts set scope
+because scope is a claim about what the field needs next, and that is a
+judgement about the field rather than about the run. An agent that chose its own
+scope would be choosing which questions count — which is the same failure as
+choosing its own benchmark, one level up.
+
+Each field document names **which kinds of expert** it needs. Roles, not people:
+this is a public repository and no individual is named in it.
+
+### What the experts decide, and what they do not
+
+| they decide | they do not decide |
+|---|---|
+| what part of the field is in scope, and what is deliberately out | whether a particular run passed — that is the verifier's job |
+| which problems are on the queue, and in what order | which parameter setting wins |
+| when the benchmark no longer represents the field | anything inside a night's search |
+| whether the field is finished, or has split | how the agent spends its compute grant |
+
+### The part this corrects: never-improvable is about the agent
+
+The benchmark, the metric and the verifier are never improvable **by the
+agent**. That was always the rule and it is what makes recursive improvement
+mean anything. But a benchmark that no human may ever revise does not stay
+honest — it ossifies, and the field grows past it while the scores keep looking
+fine.
+
+So the full rule has two halves, and both are needed:
+
+> **The agent may never change what judges it. The field's experts may — and
+> when they do, it is a declared act that re-bases the history.**
+
+A benchmark revision is not an improvement and is never reported as one. It
+invalidates comparison with everything measured before it, and the record says
+so. That is the price of keeping it current, and it is why revisions should be
+rare, argued, and signed.
+
+### Guards, because an expert panel is a governance surface
+
+- **Experts must be able to narrow scope, not only widen it** — and to declare a
+  field finished. A panel that only ever expands is not a check, it is an
+  appetite.
+- **The agent does not choose its experts.** An agent that selected who reviews
+  it has selected its own verdict by a slower route.
+- **Recusal is recorded.** An expert whose own method is in the comparison does
+  not adjudicate that comparison, and the record names the recusal rather than
+  quietly routing around it.
+- **A scope change is signed like an adoption**: who, what changed, on what
+  evidence, and what it invalidates.
+
+### Scope is the last human function to go
+
+At stage 3 the verification is delegated. At stage 4 a person may check nothing
+at all. **Scope-setting does not follow that curve**, because "is this worth
+researching" is not a measurement — no verifier answers it, and no amount of
+agent-only verification produces it.
+
+That is also what makes collapse-by-indifference legible rather than mysterious:
+a field where nobody cares is a field whose experts stopped setting scope. The
+page should be able to say when that happened.
+
+And at fission, the new field needs **its own** experts. They are usually not
+the old field's: classical physicists were not automatically quantum experts,
+and a panel carried over intact is how a new field inherits the assumption it
+was supposed to escape.
+
 ## The agent is a group, and some of it has a body
 
 Nothing in this directory is one model. A research agent is a **group**: a

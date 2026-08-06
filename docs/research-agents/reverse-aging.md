@@ -264,6 +264,32 @@ result.
 
 ---
 
+## Scope, and the experts who set it
+
+**Current scope.** Chronological-age prediction from whole-blood methylation, validated on **institutions chosen by seed**, with bulk-structure share reported as a guardrail.
+
+**Out of scope, and forbidden by charter:** rate-of-ageing claims and any outcome claim, until outcome linkage exists. That is the fission candidate and it is where the field's value lives.
+
+**Scope is set by experts in the field — not by this agent, and not by the owner
+alone.** It is expected to move: a scope change is signed like an adoption, with
+who changed it, on what evidence, and what it invalidates. The mechanism, the
+guards against a panel that only ever widens, and the recusal rule are in
+[`lifecycle.md`](lifecycle.md).
+
+| expert role | what they decide here |
+|---|---|
+| **an epigenetics / ageing biologist** | what a clock may legitimately claim, and when composition confounding has been handled rather than described |
+| **a biostatistician** | the split design, the guardrail thresholds, and what statistical power four institutions can actually support |
+| **a cohort / biobank scientist** | which cohorts exist with follow-up, and what it would take to link outcomes — the blocked problem |
+| **a consent and data-use officer** | what may be linked to what, which is the binding constraint rather than method |
+
+> **They may also retire the benchmark.** The agent may never change what judges
+> it; the field's experts may, and when they do it re-bases the history rather
+> than improving on it. Every comparison made before a revision stops being
+> comparable, and the record says so.
+
+**No individual is named in this repository.** These are roles.
+
 ## The group — who does what, and which of them have bodies
 
 This agent is not one model. It is a **group** with three kinds of member,

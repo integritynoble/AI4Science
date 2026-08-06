@@ -205,6 +205,32 @@ of the wrong quantity.
 
 ---
 
+## Scope, and the experts who set it
+
+**Current scope.** Denoising and reconstruction of **paired full/low-dose CT**, judged by lesion detectability rather than fidelity, on phantom and retrospective clinical data.
+
+**Out of scope:** anything involving a live patient, and any modality without a full-dose reference to pair against.
+
+**Scope is set by experts in the field — not by this agent, and not by the owner
+alone.** It is expected to move: a scope change is signed like an adoption, with
+who changed it, on what evidence, and what it invalidates. The mechanism, the
+guards against a panel that only ever widens, and the recusal rule are in
+[`lifecycle.md`](lifecycle.md).
+
+| expert role | what they decide here |
+|---|---|
+| **a diagnostic radiologist** | whether detectability is still tracking what a reader actually sees — the only person who can retire that proxy |
+| **a CT physicist** | the dose-reduction model, the reconstruction kernels in scope, and which scanners must be represented |
+| **a clinical protocol owner** | which dose points matter, and where on the curve the clinical question actually sits |
+| **a radiation safety officer** | what the embodied protocol operator may run, and under what interlock |
+
+> **They may also retire the benchmark.** The agent may never change what judges
+> it; the field's experts may, and when they do it re-bases the history rather
+> than improving on it. Every comparison made before a revision stops being
+> comparable, and the record says so.
+
+**No individual is named in this repository.** These are roles.
+
 ## The group — who does what, and which of them have bodies
 
 This agent is not one model. It is a **group** with three kinds of member,

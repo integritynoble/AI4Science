@@ -260,6 +260,32 @@ directly, and being asked twice does not change the answer.
 
 ---
 
+## Scope, and the experts who set it
+
+**Current scope.** Prognostic modelling from molecular data, validated across **tissue source sites**, reported against a clinical-only floor.
+
+**Out of scope:** treatment assignment and counterfactual effect — the fission candidate — and anything that advises a patient rather than a clinician.
+
+**Scope is set by experts in the field — not by this agent, and not by the owner
+alone.** It is expected to move: a scope change is signed like an adoption, with
+who changed it, on what evidence, and what it invalidates. The mechanism, the
+guards against a panel that only ever widens, and the recusal rule are in
+[`lifecycle.md`](lifecycle.md).
+
+| expert role | what they decide here |
+|---|---|
+| **a clinical oncologist** | which endpoints matter, and whether a model's discrimination is clinically actionable at all |
+| **a biostatistician / epidemiologist** | censoring, competing risks and calibration — the three the field most often gets wrong |
+| **a genomics platform scientist** | batch structure, which assays are comparable, and what a site effect actually is |
+| **a data governance / ethics officer** | consent scope and PHI custody, which are the binding constraints here rather than compute |
+
+> **They may also retire the benchmark.** The agent may never change what judges
+> it; the field's experts may, and when they do it re-bases the history rather
+> than improving on it. Every comparison made before a revision stops being
+> comparable, and the record says so.
+
+**No individual is named in this repository.** These are roles.
+
 ## The group — who does what, and which of them have bodies
 
 This agent is not one model. It is a **group** with three kinds of member,

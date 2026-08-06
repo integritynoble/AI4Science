@@ -261,6 +261,32 @@ them mean.
 
 ---
 
+## Scope, and the experts who set it
+
+**Current scope.** Reconstruction from a **known, published** forward operator, on real captures, across subfields that share that shape — CASSI, MRI, CT, single-pixel, lensless.
+
+**Out of scope by decision, not by accident:** anything where the operator must be inferred jointly with the scene. That is the fission candidate below, and holding the line is what keeps this benchmark meaningful.
+
+**Scope is set by experts in the field — not by this agent, and not by the owner
+alone.** It is expected to move: a scope change is signed like an adoption, with
+who changed it, on what evidence, and what it invalidates. The mechanism, the
+guards against a panel that only ever widens, and the recusal rule are in
+[`lifecycle.md`](lifecycle.md).
+
+| expert role | what they decide here |
+|---|---|
+| **an optical / instrument physicist** | whether the published forward operator matches the instrument as built, and when a calibration result should re-base it |
+| **a reconstruction methodologist** | which subfields belong in the same comparison table, and which crossings are worth the instrument time |
+| **a downstream user of the images** | whether fidelity is still standing in for something they care about — the person who says when task-based evaluation must be promoted |
+| **an instrument custodian** | what the bench may be asked to do, and what needs a per-act grant |
+
+> **They may also retire the benchmark.** The agent may never change what judges
+> it; the field's experts may, and when they do it re-bases the history rather
+> than improving on it. Every comparison made before a revision stops being
+> comparable, and the record says so.
+
+**No individual is named in this repository.** These are roles.
+
 ## The group — who does what, and which of them have bodies
 
 This agent is not one model. It is a **group** with three kinds of member,

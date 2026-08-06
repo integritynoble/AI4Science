@@ -251,6 +251,32 @@ patients — including when the owner asks it to.
 
 ---
 
+## Scope, and the experts who set it
+
+**Current scope.** Inverse treatment planning for external-beam radiotherapy, judged on DVH criteria **with an achievability bound reported beside every verdict**.
+
+**Out of scope:** auto-segmentation, dose-engine development, and any claim of clinical readiness. A plan that treats a patient carries a human signature at every stage.
+
+**Scope is set by experts in the field — not by this agent, and not by the owner
+alone.** It is expected to move: a scope change is signed like an adoption, with
+who changed it, on what evidence, and what it invalidates. The mechanism, the
+guards against a panel that only ever widens, and the recusal rule are in
+[`lifecycle.md`](lifecycle.md).
+
+| expert role | what they decide here |
+|---|---|
+| **a clinical medical physicist** | the goal sheets in scope, what counts as deliverable, and whether a plan is comparable to the delivered clinical one |
+| **a radiation oncologist** | which constraints are real trades and which are absolute — the judgement no optimiser encodes |
+| **a QA / regulatory specialist** | what the QA robot may do, what must be measured on the machine, and where the signature line sits |
+| **a planning-systems engineer** | whether a fluence map corresponds to something a linac can actually deliver |
+
+> **They may also retire the benchmark.** The agent may never change what judges
+> it; the field's experts may, and when they do it re-bases the history rather
+> than improving on it. Every comparison made before a revision stops being
+> comparable, and the record says so.
+
+**No individual is named in this repository.** These are roles.
+
 ## The group — who does what, and which of them have bodies
 
 This agent is not one model. It is a **group** with three kinds of member,
