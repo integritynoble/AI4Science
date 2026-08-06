@@ -1,0 +1,196 @@
+{
+  "$comment": "The roster of spec §13f, per field. The nine core roles are a floor: a field may add and may not remove. This field adds one, and it is admitted only because a ladder rung has no core owner.",
+  "agent": "drug-design",
+  "version": 3,
+  "set_on": "2026-08-06",
+  "sub_agents": [
+    {
+      "name": "literature",
+      "does": "finds and reads prior work; produces claims with citations",
+      "core": true,
+      "embodied": false,
+      "why_separate": "reading and doing must not share a context, or the agent finds what it set out to find",
+      "kind": "reasoning"
+    },
+    {
+      "name": "twin",
+      "does": "maintains the forward model — the L2 digital twin",
+      "core": true,
+      "embodied": false,
+      "why_separate": "the twin is what a method is graded against; the method's author may not own it",
+      "kind": "reasoning"
+    },
+    {
+      "name": "corpus",
+      "does": "fetches and validates real data; refuses when absent",
+      "core": true,
+      "embodied": false,
+      "why_separate": "a benchmark that silently substitutes synthetic data produces numbers that are not results",
+      "kind": "reasoning"
+    },
+    {
+      "name": "method",
+      "does": "proposes and implements candidate solutions",
+      "core": true,
+      "embodied": false,
+      "why_separate": "the only role that writes the thing being judged",
+      "owns_rungs": [
+        "6.1"
+      ],
+      "kind": "reasoning"
+    },
+    {
+      "name": "runner",
+      "does": "executes runs, on leased compute when needed",
+      "core": true,
+      "embodied": false,
+      "why_separate": "keeps cost and placement out of the method's hands",
+      "owns_rungs": [
+        "6.3",
+        "6.4"
+      ],
+      "kind": "reasoning"
+    },
+    {
+      "name": "verifier",
+      "does": "judges a claim against the criterion written before it",
+      "core": true,
+      "embodied": false,
+      "why_separate": "independence is temporal and authorial, not informational (§13i)",
+      "owns_rungs": [
+        "6.5"
+      ],
+      "kind": "judging"
+    },
+    {
+      "name": "reproducer",
+      "does": "re-runs a published result from its artifacts alone",
+      "core": true,
+      "embodied": false,
+      "why_separate": "catches the result that only exists on the machine that made it",
+      "kind": "judging"
+    },
+    {
+      "name": "teacher",
+      "does": "derives the curriculum from the evidence chain",
+      "core": true,
+      "embodied": false,
+      "why_separate": "teaching is a product and must be checkable like one",
+      "kind": "judging"
+    },
+    {
+      "name": "writer",
+      "does": "assembles the field page and the paper",
+      "core": true,
+      "embodied": false,
+      "why_separate": "writing last, from the record, not from intent",
+      "kind": "judging"
+    },
+    {
+      "name": "synthesis-planner",
+      "does": "decides whether a proposal can be made, and how, before it is scored highly",
+      "core": false,
+      "embodied": false,
+      "why_separate": "retrosynthesis is in scope and is not a scoring question. Without it a generative model proposes unmakeable molecules and the embodied loop discovers this by consuming reagents — which is the expensive way to learn it",
+      "admitted_for_rung": 6,
+      "owns_rungs": [
+        "6.2"
+      ],
+      "kind": "reasoning"
+    },
+    {
+      "name": "synthesis platform",
+      "does": "making the batch (rung 6.3)",
+      "core": false,
+      "embodied": true,
+      "kind": "embodied",
+      "why_separate": "an embodied act is irreversible, so it is a member of its own with its own refusal and its own grant — not a mode of a member that also does something undoable",
+      "admitted_for_rung": 6,
+      "refusal": "refuses any compound outside the declared envelope, every time"
+    },
+    {
+      "name": "assay platform",
+      "does": "testing it, with controls (rung 6.4)",
+      "core": false,
+      "embodied": true,
+      "kind": "embodied",
+      "why_separate": "an embodied act is irreversible, so it is a member of its own with its own refusal and its own grant — not a mode of a member that also does something undoable",
+      "admitted_for_rung": 6,
+      "refusal": "refuses a plate without its positive and negative controls"
+    }
+  ],
+  "tools": [
+    {
+      "tool": "docking",
+      "for": "the cheap approximation",
+      "source": "built-in",
+      "cost": "seconds-minutes",
+      "needs_envelope": false
+    },
+    {
+      "tool": "FEP/MD",
+      "for": "the twin, where physics is computed",
+      "source": "built-in",
+      "cost": "hours-days",
+      "needs_envelope": false
+    },
+    {
+      "tool": "preparation suite",
+      "for": "protonation, tautomers, conformers — rung 3",
+      "source": "built-in",
+      "cost": "minutes",
+      "needs_envelope": false
+    },
+    {
+      "tool": "generative chemistry",
+      "for": "proposal",
+      "source": "built-in",
+      "cost": "minutes",
+      "needs_envelope": false
+    },
+    {
+      "tool": "ADMET models",
+      "for": "properties beyond binding",
+      "source": "built-in",
+      "cost": "seconds",
+      "needs_envelope": false
+    },
+    {
+      "tool": "GPU lease",
+      "for": "FEP and generative training",
+      "source": "market",
+      "cost": "$$/hour",
+      "needs_envelope": false
+    },
+    {
+      "tool": "dataset clients (DUD-E, ChEMBL)",
+      "for": "screening libraries and actives",
+      "source": "built-in",
+      "cost": "download",
+      "needs_envelope": false
+    },
+    {
+      "tool": "synthesis platform",
+      "for": "making it — rung 6",
+      "source": "instrument",
+      "cost": "per-compound + reagents",
+      "needs_envelope": true
+    },
+    {
+      "tool": "assay platform",
+      "for": "testing it — rung 6",
+      "source": "instrument",
+      "cost": "per-plate",
+      "needs_envelope": true
+    },
+    {
+      "tool": "registry client",
+      "for": "publishing and querying L1-L4",
+      "source": "built-in",
+      "cost": "free",
+      "needs_envelope": false
+    }
+  ],
+  "$envelope_comment": "needs_envelope: a physical act (§13i). The owner declares what it may move, how far, with what, and what it must never touch; anything outside stops at GRT.",
+  "$revision": "embodiment corrected against the canonical set: it is a KIND of member (reasoning / judging / embodied), not a flag on corpus, runner or reproducer. An embodied corpus could never issue its own refusal, and an embodied reproducer puts hands on a JUDGING member — the same error as an embodied verifier."
+}

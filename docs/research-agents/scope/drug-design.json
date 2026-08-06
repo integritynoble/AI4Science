@@ -1,0 +1,101 @@
+{
+  "$comment": "The scope object of spec §13j. Set by the field's experts, not by the agent and not by the owner. Versioned: a change here is a change to what the agent may work on.",
+  "agent": "drug-design",
+  "agent_id": "drug-design",
+  "field": "drug design",
+  "principle": "binding is a free-energy difference and structure determines it; every score is an approximation to one computable quantity",
+  "version": 1,
+  "set_on": "2026-08-06",
+  "set_by": {
+    "roles": [
+      "medicinal chemist",
+      "structural biologist",
+      "computational chemist",
+      "synthesis and assay lead"
+    ],
+    "named": null,
+    "$comment": "roles, never names — naming a person in a design document commits them to something they have not agreed to. `named` is filled when a panel exists."
+  },
+  "in": [
+    {
+      "subfield": "target identification",
+      "boundary": "which target, argued from biology supplied by the adjacent field"
+    },
+    {
+      "subfield": "structure prediction",
+      "boundary": "the receptor as an input to everything else"
+    },
+    {
+      "subfield": "docking",
+      "boundary": "the cheap approximation, reported with its ceiling and baseline"
+    },
+    {
+      "subfield": "FEP/MD",
+      "boundary": "the twin — where physics is computed rather than approximated"
+    },
+    {
+      "subfield": "generative chemistry",
+      "boundary": "proposal, always downstream of an evaluation that does not leak"
+    },
+    {
+      "subfield": "ADMET",
+      "boundary": "properties beyond binding"
+    },
+    {
+      "subfield": "retrosynthesis",
+      "boundary": "whether a proposal can be made"
+    },
+    {
+      "subfield": "closed-loop experimentation",
+      "boundary": "synthesise and assay — rung 6, and only with a body"
+    }
+  ],
+  "out": [
+    {
+      "question": "whether a compound should be given to anyone",
+      "why": "not a chemistry question",
+      "goes_to": "clinical development"
+    },
+    {
+      "question": "clinical development",
+      "why": "trials, dosing, safety in humans",
+      "goes_to": "the sponsor and regulator"
+    },
+    {
+      "question": "regulatory strategy",
+      "why": "outside the field entirely",
+      "goes_to": "the sponsor"
+    },
+    {
+      "question": "the claim that a binder is a drug",
+      "why": "the field's oldest overreach",
+      "goes_to": "prospective evidence, rung 6 onward"
+    }
+  ],
+  "adjacent": [
+    {
+      "field": "cancer",
+      "relation": "target biology — whether the thing bound is the thing that matters"
+    },
+    {
+      "field": "structural biology (no agent yet)",
+      "relation": "receptor conformation"
+    },
+    {
+      "field": "process chemistry (no agent yet)",
+      "relation": "making it at scale"
+    }
+  ],
+  "claims_allowed": [
+    "enrichment with its ceiling and property baseline on a series-disjoint split",
+    "preparation sensitivity",
+    "prospective hit rate when measured, including when worse"
+  ],
+  "claims_forbidden": [
+    "any claim about a named individual",
+    "any statement that a result is clinically actionable without the endpoint role's sign-off"
+  ],
+  "would_move_the_boundary": "rung 6 becoming routine — the question turns into what to make next under an experimental budget, which is search under cost, not structure-determines-affinity",
+  "watch_rung": 6,
+  "$watch_comment": "if this rung stays blocked by a dependency the scope put out of bounds, the boundary is in the wrong place (§13j)"
+}

@@ -1,0 +1,152 @@
+{
+  "$comment": "The roster of spec §13f, per field. The nine core roles are a floor: a field may add and may not remove. This field adds one, and it is admitted only because a ladder rung has no core owner.",
+  "agent": "longevity",
+  "version": 2,
+  "set_on": "2026-08-06",
+  "sub_agents": [
+    {
+      "name": "literature",
+      "does": "finds and reads prior work; produces claims with citations",
+      "core": true,
+      "embodied": false,
+      "why_separate": "reading and doing must not share a context, or the agent finds what it set out to find",
+      "kind": "reasoning"
+    },
+    {
+      "name": "twin",
+      "does": "maintains the cohort-in-time model — enrolment, weighting, follow-up, censoring, competing risks",
+      "core": true,
+      "embodied": false,
+      "why_separate": "the model a claim is graded against may not be owned by the claim's author, and this twin stops being valid outside the survey's sampling frame — a national survey does not transport to a clinic",
+      "kind": "reasoning"
+    },
+    {
+      "name": "corpus",
+      "does": "fetches and validates NHANES + the CDC linked mortality file; refuses when the linkage is absent",
+      "core": true,
+      "embodied": false,
+      "why_separate": "never substitutes simulated follow-up: survival data is the easiest of all to simulate convincingly, and a benchmark that did it would produce numbers that are not results",
+      "kind": "reasoning"
+    },
+    {
+      "name": "method",
+      "does": "proposes candidate interventions and analyses",
+      "core": true,
+      "embodied": false,
+      "why_separate": "the only role that writes the thing being judged",
+      "kind": "reasoning"
+    },
+    {
+      "name": "runner",
+      "does": "executes analyses, on leased compute when needed",
+      "core": true,
+      "embodied": false,
+      "why_separate": "keeps cost and placement out of the method's hands",
+      "kind": "reasoning"
+    },
+    {
+      "name": "verifier",
+      "does": "judges a claim against the criterion written before it",
+      "core": true,
+      "embodied": false,
+      "why_separate": "independence is temporal and authorial (§13i) — and here it refuses any result not reported beside the age-and-sex floor",
+      "kind": "judging"
+    },
+    {
+      "name": "reproducer",
+      "does": "re-runs a published survival result from its artifacts alone",
+      "core": true,
+      "embodied": false,
+      "why_separate": "catches the result that only exists on the machine that made it — and in this field, the one whose censoring rule was never written down",
+      "kind": "judging"
+    },
+    {
+      "name": "teacher",
+      "does": "derives the curriculum from the evidence chain",
+      "core": true,
+      "embodied": false,
+      "why_separate": "teaching is a product and must be checkable like one; this one refuses to report a hazard ratio without the absolute risk difference beside it",
+      "kind": "judging"
+    },
+    {
+      "name": "writer",
+      "does": "assembles the field page and the paper",
+      "core": true,
+      "embodied": false,
+      "why_separate": "writing last, from the record, not from intent",
+      "kind": "judging"
+    },
+    {
+      "name": "floor",
+      "does": "fits the age-and-sex-only model independently, before any candidate is scored",
+      "core": false,
+      "embodied": false,
+      "why_separate": "rung 2 is the field's whole question and no core role owns it. Fitted by `method` it would be a floor set by the party that has to clear it — and most published risk scores have never been asked to clear one at all",
+      "admitted_for_rung": 2,
+      "owns_rungs": [
+        "2"
+      ],
+      "$owns_comment": "rung 3's cycle disjointness is the twin's and the experts'; the floor consumes the split and may not choose it",
+      "kind": "reasoning"
+    },
+    {
+      "name": "collection-robot",
+      "does": "draws and processes samples within a consented protocol",
+      "core": false,
+      "embodied": true,
+      "why_separate": "the only member here whose acts reach the world and cannot be undone, so it carries the §13i envelope: it refuses every act without a grant naming that act, refuses to collect outside consented scope, and reports what it moved rather than what it intended",
+      "admitted_for_rung": 1,
+      "owns_rungs": [],
+      "$owns_comment": "owns no rung, and that is the point of listing it. It can make a corpus arrive faster and cannot advance a single rung on its own — see the envelope comment",
+      "kind": "embodied",
+      "refusal": "refuses any collection without a grant naming the sample and the consent it was taken under; reports what it collected, never what it intended  [drafted by the console session to satisfy the rule that an embodied member states a refusal — confirm or replace]"
+    }
+  ],
+  "tools": [
+    {
+      "tool": "survival analysis",
+      "for": "hazard models, competing risk, censoring",
+      "source": "built-in",
+      "cost": "seconds-minutes",
+      "needs_envelope": false
+    },
+    {
+      "tool": "meta-analysis",
+      "for": "pooling across sites and studies, with heterogeneity reported",
+      "source": "built-in",
+      "cost": "minutes",
+      "needs_envelope": false
+    },
+    {
+      "tool": "cohort clients (NHANES + CDC linked mortality file)",
+      "for": "clinical, laboratory and questionnaire markers with real follow-up",
+      "source": "built-in",
+      "cost": "application + download",
+      "needs_envelope": false,
+      "$comment": "access is granted to a person under a data-use agreement, not to an agent. The owner holds the agreement; the agent reads what the owner already has, and refuses rather than applying on anyone's behalf"
+    },
+    {
+      "tool": "registry client",
+      "for": "publishing and querying L1-L4",
+      "source": "built-in",
+      "cost": "free",
+      "needs_envelope": false
+    },
+    {
+      "tool": "calibration and competing-risk analysis",
+      "for": "predicted-against-observed, and the estimate's change when competing risks are modelled — rungs 4 and 5",
+      "source": "built-in",
+      "cost": "minutes",
+      "needs_envelope": false
+    },
+    {
+      "tool": "sample collection and processing",
+      "for": "adding to a cohort under a consented protocol — rung 1",
+      "source": "instrument",
+      "cost": "instrument-hours",
+      "needs_envelope": true
+    }
+  ],
+  "$envelope_comment": "needs_envelope: a physical act (§13i). One tool here needs one, and the field's central fact is what it still cannot buy — longevity is gated on FOLLOW-UP TIME. A collection robot can draw and process samples faster; it cannot make anyone older, and it cannot shorten a cohort's follow-up by a single day. This is the clearest case in the programme of a field where throughput is not the constraint, and a roster that omitted the body would have hidden the reason.",
+  "$revision": "brought to the corrected embodiment model (spec §13i): `kind` on every member, and corpus/runner/reproducer un-flagged — embodiment is a kind of member, not a flag, and an embodied `reproducer` puts hands on a JUDGING member. The embodied row is `collection-robot`, which was already here."
+}

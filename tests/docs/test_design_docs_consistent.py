@@ -28,11 +28,8 @@ def test_every_documented_agent_has_a_scope_and_a_roster_object():
     cannot be violated, because there is nothing to violate."""
     pages = chk.agent_pages(chk.RA)
     assert pages, "no agent pages found at all"
-    if not SINGULARITY.exists():
-        pytest.skip("scope and roster objects live in the singularity checkout")
-    spec = SINGULARITY / "docs/specs/research-agents"
-    scope = {p.stem for p in (spec / "scope").glob("*.json")}
-    roster = {p.stem for p in (spec / "roster").glob("*.json")}
+    scope = {p.stem for p in (chk.RA / "scope").glob("*.json")}
+    roster = {p.stem for p in (chk.RA / "roster").glob("*.json")}
     assert pages <= scope, "no scope object: %s" % sorted(pages - scope)
     assert pages <= roster, "no roster object: %s" % sorted(pages - roster)
 
@@ -68,18 +65,51 @@ def test_the_alias_between_code_and_docs_is_declared_not_discovered():
 
 
 @pytest.mark.skipif(not SINGULARITY.exists(), reason="no singularity checkout")
-def test_there_is_one_copy_of_each_agent_page_not_two_that_disagree():
+def test_there_is_one_tree_and_the_other_place_only_points_at_it():
+    """It was two trees. They forked in both directions, were converged by hand,
+    and then diverged again *within minutes* because two sessions were editing
+    them. Syncing two copies is not a mechanism, it is a habit — and a habit is
+    what stops holding on the day it matters."""
     spec = SINGULARITY / "docs/specs/research-agents"
+    strays = sorted(p.name for p in spec.glob("*.md") if p.name != "README.md")
+    assert not strays, ("a second copy is not a spare, it is a coin to flip: %s"
+                        % strays)
+    for sub in ("scope", "roster"):
+        assert (chk.RA / sub).is_dir(), "%s objects must live beside the pages" % sub
+        assert not (spec / sub).exists(), "%s objects duplicated in the specs tree" % sub
+
+
+@pytest.mark.skipif(not SINGULARITY.exists(), reason="no singularity checkout")
+def test_and_the_pointer_says_where_the_pages_went():
+    """A stub that does not name its replacement is worse than no stub: it tells
+    a reader the thing is gone and not where to look."""
+    spec = SINGULARITY / "docs/specs/research-agents/README.md"
+    assert "AI4Science/docs/research-agents" in spec.read_text()
+
+
+def test_the_pages_outbound_links_resolve_from_where_the_pages_actually_are():
+    """The class that actually broke. Every page linked `../2026-08-04-*.md` —
+    filenames that exist in the specs tree, from a directory that is not it. The
+    links resolved in the copy and not in the original, so following one from
+    the canonical page gave nothing."""
+    import re
     bad = []
-    for p in sorted(chk.RA.glob("*.md")):
-        q = spec / p.name
-        if not q.exists():
-            bad.append("%s missing from the specs tree" % p.name)
-        elif p.read_text() != q.read_text():
-            bad.append("%s differs (%d vs %d lines)"
-                       % (p.name, len(p.read_text().splitlines()),
-                          len(q.read_text().splitlines())))
-    assert not bad, "one of each pair is stale and a reader cannot tell which:\n" + "\n".join(bad)
+    for page in sorted(chk.RA.glob("*.md")):
+        for link in sorted(set(re.findall(r"\]\((\.\./[^)#]+)\)", page.read_text()))):
+            if not (page.parent / link).exists():
+                bad.append("%s -> %s" % (page.name, link))
+    assert not bad, "a link is a claim that the target says something:\n" + "\n".join(bad)
+
+
+def test_the_scope_objects_still_validate_where_they_now_live():
+    """Moving them moved their validator and schema too, or the move quietly
+    turned a checked directory into an unchecked one."""
+    assert (chk.RA / "scope/validate.py").exists()
+    assert (chk.RA / "agent-manifest.schema.json").exists()
+    import subprocess, sys as _s
+    out = subprocess.run([_s.executable, "scope/validate.py"], cwd=str(chk.RA),
+                         capture_output=True, text=True)
+    assert "valid" in out.stdout, out.stdout[-800:] + out.stderr[-800:]
 
 
 @pytest.mark.skipif(not SINGULARITY.exists(), reason="no singularity checkout")

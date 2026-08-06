@@ -1,0 +1,99 @@
+{
+  "$comment": "The scope object of spec §13j. Set by the field's experts, not by the agent and not by the owner. Versioned: a change here is a change to what the agent may work on.",
+  "agent": "computational-imaging",
+  "agent_id": "imaging",
+  "field": "computational imaging",
+  "principle": "a known forward operator plus a learned prior; a measurement is invertible because the operator is known",
+  "version": 2,
+  "set_on": "2026-08-06",
+  "set_by": {
+    "roles": [
+      "optical engineer / physicist",
+      "reconstruction methodologist",
+      "bench operator",
+      "imaging systems / hardware engineer"
+    ],
+    "named": null,
+    "$comment": "roles, never names — naming a person in a design document commits them to something they have not agreed to. `named` is filled when a panel exists."
+  },
+  "in": [
+    {
+      "subfield": "hardware system design",
+      "boundary": "the imaging SYSTEM as the designed object — sensor choice, illumination, optics, timing and readout — co-designed with the reconstruction. Not the element alone: the pair that determines the result is the system and the method"
+    },
+    {
+      "subfield": "CT / MRI reconstruction",
+      "boundary": "the reconstruction problem only; the clinical endpoint is low-dose CT's or the clinician's"
+    },
+    {
+      "subfield": "single-pixel, SCI/CASSI",
+      "boundary": "snapshot compressive imaging, including the mask convention this project measured"
+    },
+    {
+      "subfield": "lensless, ptychography, holography",
+      "boundary": "phase and coherent imaging under a known operator"
+    },
+    {
+      "subfield": "light-field, ToF, event",
+      "boundary": "computational capture where the operator is geometric or temporal"
+    },
+    {
+      "subfield": "phase retrieval",
+      "boundary": "the inverse problem, not the instrument"
+    },
+    {
+      "subfield": "astronomical imaging",
+      "boundary": "deconvolution and aperture synthesis as an operator-plus-prior problem"
+    },
+    {
+      "subfield": "optics design",
+      "boundary": "element and aperture design within a system, evaluated in simulation and — with a body — fabricated"
+    }
+  ],
+  "out": [
+    {
+      "question": "what is in a reconstructed scene",
+      "why": "diagnosis, material identification, counting",
+      "goes_to": "the field that owns that question — low-dose CT for clinical CT, the user otherwise"
+    },
+    {
+      "question": "semiconductor process and foundry engineering",
+      "why": "it designs systems and selects sensors; it does not develop the processes that make them",
+      "goes_to": "the fabrication facility"
+    },
+    {
+      "question": "clinical endpoints",
+      "why": "image quality is not diagnostic performance",
+      "goes_to": "low-dose CT §16, or the relevant clinical field"
+    }
+  ],
+  "adjacent": [
+    {
+      "field": "low-dose-ct",
+      "relation": "shares operator-plus-prior; owns the clinical endpoint"
+    },
+    {
+      "field": "medical-physics",
+      "relation": "consumes the images"
+    },
+    {
+      "field": "pill-camera",
+      "relation": "an imaging problem this agent does not own"
+    }
+  ],
+  "claims_allowed": [
+    "reconstruction quality under a stated operator and metric",
+    "measurement-consistency residuals",
+    "cost at stated hardware",
+    "transfer between subfields when measured on real data"
+  ],
+  "claims_forbidden": [
+    "any claim about a named individual",
+    "any statement that a result is clinically actionable without the endpoint role's sign-off"
+  ],
+  "would_move_the_boundary": "rung 5 failing — if transfer is superficial, this is not one field and the scope contracts to the subfields that do share the structure",
+  "watch_rung": 5,
+  "$watch_comment": "if this rung stays blocked by a dependency the scope put out of bounds, the boundary is in the wrong place (§13j)",
+  "$revision": "v2: hardware system design admitted. The field's rung 6 was already about the element-and-method PAIR; the object that determines a result is the whole system, so the scope now says so and the foundry boundary is stated more precisely than 'sensor process engineering' did.",
+  "$agent_id_comment": "the page is `computational-imaging` and the code is `imaging` — research_agents.registry.NAMES and the registry row. The names differ, so the join has to be written down."
+}

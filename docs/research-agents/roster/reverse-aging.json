@@ -1,0 +1,172 @@
+{
+  "$comment": "The roster of spec §13f, per field. The nine core roles are a floor: a field may add and may not remove. This field adds one, and it is admitted only because a ladder rung has no core owner.",
+  "agent": "reverse-aging",
+  "version": 3,
+  "set_on": "2026-08-06",
+  "sub_agents": [
+    {
+      "name": "literature",
+      "does": "finds and reads prior work; produces claims with citations",
+      "core": true,
+      "embodied": false,
+      "why_separate": "reading and doing must not share a context, or the agent finds what it set out to find",
+      "kind": "reasoning"
+    },
+    {
+      "name": "twin",
+      "does": "maintains the forward model — the L2 digital twin",
+      "core": true,
+      "embodied": false,
+      "why_separate": "the twin is what a method is graded against; the method's author may not own it",
+      "kind": "reasoning"
+    },
+    {
+      "name": "corpus",
+      "does": "fetches and validates real data; refuses when absent",
+      "core": true,
+      "embodied": false,
+      "why_separate": "a benchmark that silently substitutes synthetic data produces numbers that are not results",
+      "owns_rungs": [
+        "3.1",
+        "3.2"
+      ],
+      "kind": "reasoning"
+    },
+    {
+      "name": "method",
+      "does": "proposes and implements candidate solutions",
+      "core": true,
+      "embodied": false,
+      "why_separate": "the only role that writes the thing being judged",
+      "owns_rungs": [
+        "3.3"
+      ],
+      "kind": "reasoning"
+    },
+    {
+      "name": "runner",
+      "does": "executes runs, on leased compute when needed",
+      "core": true,
+      "embodied": false,
+      "why_separate": "keeps cost and placement out of the method's hands",
+      "kind": "reasoning"
+    },
+    {
+      "name": "verifier",
+      "does": "judges a claim against the criterion written before it",
+      "core": true,
+      "embodied": false,
+      "why_separate": "independence is temporal and authorial, not informational (§13i)",
+      "owns_rungs": [
+        "3.4"
+      ],
+      "kind": "judging"
+    },
+    {
+      "name": "reproducer",
+      "does": "re-runs a published result from its artifacts alone",
+      "core": true,
+      "embodied": false,
+      "why_separate": "catches the result that only exists on the machine that made it",
+      "kind": "judging"
+    },
+    {
+      "name": "teacher",
+      "does": "derives the curriculum from the evidence chain",
+      "core": true,
+      "embodied": false,
+      "why_separate": "teaching is a product and must be checkable like one",
+      "kind": "judging"
+    },
+    {
+      "name": "writer",
+      "does": "assembles the field page and the paper",
+      "core": true,
+      "embodied": false,
+      "why_separate": "writing last, from the record, not from intent",
+      "kind": "judging"
+    },
+    {
+      "name": "null-registrar",
+      "does": "records interventions and clocks that did nothing, with their pre-registered endpoints",
+      "core": false,
+      "embodied": false,
+      "why_separate": "the field's published effect sizes are the surviving tail of a distribution nobody sees. Reporting a null is against the interest of whoever ran it, so the duty is given to a role that has no result to protect",
+      "admitted_for_rung": 5,
+      "owns_rungs": [
+        "3.5"
+      ],
+      "kind": "reasoning"
+    },
+    {
+      "name": "methylation assay platform",
+      "does": "sample preparation and arrays (rungs 1-2)",
+      "core": false,
+      "embodied": true,
+      "kind": "embodied",
+      "why_separate": "an embodied act is irreversible, so it is a member of its own with its own refusal and its own grant — not a mode of a member that also does something undoable",
+      "admitted_for_rung": 1,
+      "refusal": "refuses a run it cannot tie to a pre-registered analysis"
+    }
+  ],
+  "tools": [
+    {
+      "tool": "clock fitting stack",
+      "for": "construction and evaluation",
+      "source": "built-in",
+      "cost": "minutes",
+      "needs_envelope": false
+    },
+    {
+      "tool": "deconvolution",
+      "for": "cell composition — rung 1, where 55% went",
+      "source": "built-in",
+      "cost": "seconds",
+      "needs_envelope": false
+    },
+    {
+      "tool": "split harness",
+      "for": "institutional and seed-varied — rung 2",
+      "source": "built-in",
+      "cost": "minutes",
+      "needs_envelope": false
+    },
+    {
+      "tool": "survival / outcome linkage",
+      "for": "rung 3, the unmeasured one",
+      "source": "built-in",
+      "cost": "minutes",
+      "needs_envelope": false
+    },
+    {
+      "tool": "GPU lease",
+      "for": "large cohort models",
+      "source": "market",
+      "cost": "$/hour",
+      "needs_envelope": false
+    },
+    {
+      "tool": "dataset clients (GEO)",
+      "for": "656 whole-blood samples",
+      "source": "built-in",
+      "cost": "download",
+      "needs_envelope": false
+    },
+    {
+      "tool": "methylation assay platform",
+      "for": "sample throughput",
+      "source": "instrument",
+      "cost": "per-array",
+      "needs_envelope": true
+    },
+    {
+      "tool": "registry client",
+      "for": "publishing and querying L1-L4",
+      "source": "built-in",
+      "cost": "free",
+      "needs_envelope": false
+    }
+  ],
+  "$envelope_comment": "needs_envelope: a physical act (§13i). The owner declares what it may move, how far, with what, and what it must never touch; anything outside stops at GRT.",
+  "$revision": "embodiment corrected against the canonical set: it is a KIND of member (reasoning / judging / embodied), not a flag on corpus, runner or reproducer. An embodied corpus could never issue its own refusal, and an embodied reproducer puts hands on a JUDGING member — the same error as an embodied verifier."
+}

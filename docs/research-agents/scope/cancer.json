@@ -1,0 +1,109 @@
+{
+  "$comment": "The scope object of spec §13j. Set by the field's experts, not by the agent and not by the owner. Versioned: a change here is a change to what the agent may work on.",
+  "agent": "cancer",
+  "agent_id": "cancer",
+  "field": "cancer",
+  "principle": "somatic evolution under selection; heterogeneity and resistance are consequences of one process",
+  "version": 1,
+  "set_on": "2026-08-06",
+  "set_by": {
+    "roles": [
+      "oncologist",
+      "cancer geneticist / bioinformatician",
+      "biostatistician / epidemiologist"
+    ],
+    "named": null,
+    "$comment": "roles, never names — naming a person in a design document commits them to something they have not agreed to. `named` is filled when a panel exists."
+  },
+  "in": [
+    {
+      "subfield": "genomics",
+      "boundary": "variants and their calling, including pipeline disagreement"
+    },
+    {
+      "subfield": "multi-omics",
+      "boundary": "integration across layers"
+    },
+    {
+      "subfield": "tumour evolution",
+      "boundary": "clonal dynamics — the principle's core"
+    },
+    {
+      "subfield": "immuno-oncology",
+      "boundary": "in scope today; a fission candidate, see `moves`"
+    },
+    {
+      "subfield": "liquid biopsy",
+      "boundary": "in scope today; the other fission candidate"
+    },
+    {
+      "subfield": "digital pathology",
+      "boundary": "image-derived features with external validation"
+    },
+    {
+      "subfield": "radiomics",
+      "boundary": "the same, from radiology images"
+    },
+    {
+      "subfield": "trial methodology",
+      "boundary": "design and analysis — not the conduct of trials"
+    }
+  ],
+  "out": [
+    {
+      "question": "advice to a patient",
+      "why": "this agent advises a clinician and never a patient",
+      "goes_to": "the treating oncologist"
+    },
+    {
+      "question": "treatment decisions",
+      "why": "a decision is a clinical act",
+      "goes_to": "the oncologist"
+    },
+    {
+      "question": "an individual's prognosis",
+      "why": "population models are not individual claims",
+      "goes_to": "the clinician, with calibration in hand"
+    },
+    {
+      "question": "conduct of trials",
+      "why": "patients, sites and years",
+      "goes_to": "the trial sponsor"
+    }
+  ],
+  "adjacent": [
+    {
+      "field": "drug-design",
+      "relation": "what to give"
+    },
+    {
+      "field": "medical-physics",
+      "relation": "how to deliver it"
+    },
+    {
+      "field": "reverse-aging",
+      "relation": "shares methylation data, cohorts and confounders"
+    },
+    {
+      "field": "epidemiology (no agent yet)",
+      "relation": "owns the cohorts"
+    },
+    {
+      "field": "pill-camera",
+      "relation": "GI findings and their oncological significance"
+    }
+  ],
+  "claims_allowed": [
+    "discrimination WITH calibration, internal and site-disjoint",
+    "cohort composition against intended use",
+    "pipeline disagreement rates",
+    "evidence staleness"
+  ],
+  "claims_forbidden": [
+    "any claim about a named individual",
+    "any statement that a result is clinically actionable without the endpoint role's sign-off"
+  ],
+  "would_move_the_boundary": "the scope should probably contract — early detection is detection theory at low prevalence and immuno-oncology is two co-evolving populations; neither is stated by clonal evolution alone",
+  "watch_rung": 6,
+  "$watch_comment": "if this rung stays blocked by a dependency the scope put out of bounds, the boundary is in the wrong place (§13j)"
+}

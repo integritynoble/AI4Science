@@ -20,8 +20,8 @@ Each covers a **field**, not a project. This page is what they share.
 
 | Question | Document |
 |---|---|
-| What is a research agent, in the product? | [`../2026-08-04-ai4science-one-machine-design.md`](../2026-08-04-ai4science-one-machine-design.md) §11b |
-| Where does the PWM come from? | [`../2026-08-04-sarsi-agent-market-and-pwm-design.md`](../2026-08-04-sarsi-agent-market-and-pwm-design.md) §13b |
+| What is a research agent, in the product? | [`../AI4SCIENCE_ONE_MACHINE_DESIGN.md`](../AI4SCIENCE_ONE_MACHINE_DESIGN.md) §11b |
+| Where does the PWM come from? | `singularity/docs/specs/2026-08-04-sarsi-agent-market-and-pwm-design.md` §13b |
 | What is the self-awareness contract? | `sarsi_intelligence_level/` — *Functional Self-Awareness for SARSI Agents* |
 
 ---
@@ -386,7 +386,7 @@ pwm-agent-<name>/
 ## 11. What every agent page must carry — the 2026-08-06 points
 
 Points 23–27 and the requirement given with them
-([spec §§13c–13h](../2026-08-04-sarsi-agent-market-and-pwm-design.md#13c-the-problem-ladder--what-a-field-needs-solved-and-in-what-order))
+(`singularity/docs/specs/2026-08-04-sarsi-agent-market-and-pwm-design.md` §13c)
 add five sections to this template. They are listed here as a contract so a
 page that is missing one is visible rather than merely shorter.
 
@@ -397,8 +397,8 @@ page that is missing one is visible rather than merely shorter.
 | **14** | **At AGI and ASI** | what this agent's two functions look like when autonomous work is the default, and which of the four verifications carry this field | **all seven** |
 | **15** | **The teacher** | how a non-specialist is brought to the point of checking one result of this field, derived from the evidence chain | **all seven** |
 | **16** | **Collapse conditions** | what saturation, irrelevance and fission would look like **for this field**, stated before they are near | **all seven** |
-| **17** | **The group, and which of it has a body** | one workspace, one voice; which sub-agents are embodied and what they do with it ([spec §13i](../2026-08-04-sarsi-agent-market-and-pwm-design.md#13i-a-research-agent-is-a-group-and-some-of-it-has-a-body-point-28)) | **all seven** |
-| **18** | **Scope, and the experts who set it** | `in` / `out` / `adjacent`, the expert panel **by role**, and what would move the boundary ([spec §13j](../2026-08-04-sarsi-agent-market-and-pwm-design.md#13j-scope-and-the-experts-who-set-it-point-29)) | **all seven** |
+| **17** | **The group, and which of it has a body** | one workspace, one voice; which sub-agents are embodied and what they do with it (`singularity/docs/specs/2026-08-04-sarsi-agent-market-and-pwm-design.md` §13i) | **all seven** |
+| **18** | **Scope, and the experts who set it** | `in` / `out` / `adjacent`, the expert panel **by role**, and what would move the boundary (`singularity/docs/specs/2026-08-04-sarsi-agent-market-and-pwm-design.md` §13j) | **all seven** |
 
 **All six sections are now written for all seven agents.** What each one says
 about its own field is worth reading against the others, because the answers are
@@ -439,7 +439,7 @@ ladder being closed.
 ## 12. The scope objects
 
 Seven of them, in [`scope/`](scope/), one per agent — the form
-[spec §13j](../2026-08-04-sarsi-agent-market-and-pwm-design.md#13j-scope-and-the-experts-who-set-it-point-29)
+`singularity/docs/specs/2026-08-04-sarsi-agent-market-and-pwm-design.md` §13j
 says `agent.json` will carry:
 
 | Field | in | out | adjacent | watches |

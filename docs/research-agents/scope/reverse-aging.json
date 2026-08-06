@@ -1,0 +1,88 @@
+{
+  "$comment": "The scope object of spec §13j. Set by the field's experts, not by the agent and not by the owner. Versioned: a change here is a change to what the agent may work on.",
+  "agent": "reverse-aging",
+  "agent_id": "reverse-aging",
+  "field": "reverse aging",
+  "principle": "ageing is a progressive change in cell state that leaves a readable trace — a claim that has never been separately tested",
+  "version": 1,
+  "set_on": "2026-08-06",
+  "set_by": {
+    "roles": [
+      "epigeneticist",
+      "biostatistician",
+      "cohort epidemiologist"
+    ],
+    "named": null,
+    "$comment": "roles, never names — naming a person in a design document commits them to something they have not agreed to. `named` is filled when a panel exists."
+  },
+  "in": [
+    {
+      "subfield": "epigenetic clocks",
+      "boundary": "construction and evaluation, always net of composition"
+    },
+    {
+      "subfield": "cell-composition deconvolution",
+      "boundary": "rung 1 — the field's first correction"
+    },
+    {
+      "subfield": "longitudinal cohort methodology",
+      "boundary": "separating rate from cohort effect"
+    },
+    {
+      "subfield": "intervention evaluation",
+      "boundary": "method only; not the intervention"
+    },
+    {
+      "subfield": "reporting of nulls",
+      "boundary": "explicitly in scope, because the field's literature is a surviving tail"
+    }
+  ],
+  "out": [
+    {
+      "question": "any recommendation to an individual",
+      "why": "the adjacent commercial space sells exactly this",
+      "goes_to": "nobody — it is not offered"
+    },
+    {
+      "question": "supplements and protocols",
+      "why": "not a research question",
+      "goes_to": "out of scope entirely"
+    },
+    {
+      "question": "clinical practice",
+      "why": "no clinical claim is available from a biomarker",
+      "goes_to": "clinicians, given evidence the field does not have"
+    },
+    {
+      "question": "the claim that a moved biomarker is a health outcome",
+      "why": "rung 3 is unmeasured",
+      "goes_to": "rung 3, when it is measured"
+    }
+  ],
+  "adjacent": [
+    {
+      "field": "cancer",
+      "relation": "shares methylation data, cohorts and confounders"
+    },
+    {
+      "field": "epidemiology (no agent yet)",
+      "relation": "owns the cohorts"
+    },
+    {
+      "field": "cell biology (no agent yet)",
+      "relation": "owns mechanism"
+    }
+  ],
+  "claims_allowed": [
+    "clock accuracy before AND after deconvolution",
+    "performance across institutional and seed-varied splits",
+    "outcome links when measured — and their absence when not"
+  ],
+  "claims_forbidden": [
+    "any claim about a named individual",
+    "any statement that a result is clinically actionable without the endpoint role's sign-off"
+  ],
+  "would_move_the_boundary": "rung 3 returning null — if clocks do not predict outcomes net of age and composition, the scope is wrong at its centre and the response is contraction or closure, not a better clock",
+  "watch_rung": 3,
+  "$watch_comment": "if this rung stays blocked by a dependency the scope put out of bounds, the boundary is in the wrong place (§13j)"
+}

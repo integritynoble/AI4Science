@@ -1,0 +1,433 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://physicsworldmodel.org/schema/agent-manifest.json",
+  "title": "agent.json — the scope and roster blocks",
+  "$comment": "Spec §3 makes an agent an installable thing with a manifest; §13j gives it a scope and §13f a roster. This schema is what turns those two from documents into a contract. It defines the BLOCKS: a manifest embeds them as `scope` and `roster`. Today they live as separate files under scope/ and roster/ and are validated with the same definitions, so the move into agent.json is a relocation rather than a rewrite. Canonical for what a research agent IS remains the AI4Science design set; this describes only the declared form.",
+  "type": "object",
+  "properties": {
+    "scope": {
+      "$ref": "#/$defs/scope"
+    },
+    "roster": {
+      "$ref": "#/$defs/roster"
+    }
+  },
+  "$defs": {
+    "scope": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "agent",
+        "agent_id",
+        "field",
+        "principle",
+        "version",
+        "set_on",
+        "set_by",
+        "in",
+        "out",
+        "adjacent",
+        "claims_allowed",
+        "claims_forbidden",
+        "would_move_the_boundary",
+        "watch_rung"
+      ],
+      "properties": {
+        "agent": {
+          "type": "string",
+          "$comment": "the page slug under research-agents/"
+        },
+        "agent_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "$comment": "the id the CODE uses — research_agents.registry.NAMES and the registry row. These differ: the page is `computational-imaging`, the code is `imaging`. NULL is a real state, not a gap: a field may be declared before an agent exists for it, and the console reports those as drafts rather than hiding them."
+        },
+        "field": {
+          "type": "string",
+          "minLength": 3
+        },
+        "principle": {
+          "type": "string",
+          "minLength": 20
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "set_on": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "set_by": {
+          "type": "object",
+          "required": [
+            "roles",
+            "named"
+          ],
+          "properties": {
+            "roles": {
+              "type": "array",
+              "minItems": 2,
+              "items": {
+                "type": "string"
+              },
+              "$comment": "at least two — a single expert is a single point of view holding an unusually strong instrument (§13j)"
+            },
+            "named": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "$comment": "null until a panel exists. Naming people in a design document commits them to something they have not agreed to."
+            }
+          }
+        },
+        "in": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "subfield",
+              "boundary"
+            ],
+            "properties": {
+              "subfield": {
+                "type": "string",
+                "minLength": 2
+              },
+              "boundary": {
+                "type": "string",
+                "minLength": 20
+              }
+            }
+          }
+        },
+        "out": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "question",
+              "why",
+              "goes_to"
+            ],
+            "properties": {
+              "question": {
+                "type": "string",
+                "minLength": 3
+              },
+              "why": {
+                "type": "string",
+                "minLength": 10
+              },
+              "goes_to": {
+                "type": "string",
+                "minLength": 3,
+                "$comment": "a boundary that says 'not ours' and nowhere else is a refusal, not a handoff — it leaves whoever asked still holding the question"
+              }
+            }
+          }
+        },
+        "adjacent": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "field",
+              "relation"
+            ],
+            "properties": {
+              "field": {
+                "type": "string"
+              },
+              "relation": {
+                "type": "string",
+                "minLength": 5
+              }
+            }
+          }
+        },
+        "claims_allowed": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "claims_forbidden": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "would_move_the_boundary": {
+          "type": "string",
+          "minLength": 20
+        },
+        "watch_rung": {
+          "type": [
+            "integer",
+            "string",
+            "null"
+          ],
+          "$comment": "null while the field has no ladder yet"
+        }
+      }
+    },
+    "roster": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "agent",
+        "version",
+        "set_on",
+        "sub_agents",
+        "tools"
+      ],
+      "properties": {
+        "agent": {
+          "type": "string"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "set_on": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "sub_agents": {
+          "type": "array",
+          "minItems": 9,
+          "$comment": "the nine of §13f are a floor: a field may add and may not remove. An agent.json without `verifier` or `twin` is not a research agent with fewer parts — it is a method with a scoreboard.",
+          "items": {
+            "$ref": "#/$defs/member"
+          }
+        },
+        "tools": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "tool",
+              "for",
+              "source",
+              "cost",
+              "needs_envelope"
+            ],
+            "properties": {
+              "tool": {
+                "type": "string"
+              },
+              "for": {
+                "type": "string",
+                "minLength": 5
+              },
+              "source": {
+                "enum": [
+                  "built-in",
+                  "market",
+                  "instrument"
+                ]
+              },
+              "cost": {
+                "type": "string"
+              },
+              "needs_envelope": {
+                "type": "boolean"
+              }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "needs_envelope": {
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "needs_envelope"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "source": {
+                      "const": "instrument"
+                    }
+                  },
+                  "$comment": "only an instrument acts physically (§13i)"
+                }
+              }
+            ]
+          }
+        },
+        "human_owned_rungs": {
+          "type": "array",
+          "$comment": "a rung no member owns must say who does. Left blank, 'a person holds this' and 'we forgot' look identical, and only one of those is acceptable.",
+          "items": {
+            "type": "object",
+            "required": [
+              "rung",
+              "held_by",
+              "why"
+            ],
+            "properties": {
+              "rung": {
+                "type": "string"
+              },
+              "held_by": {
+                "type": "string"
+              },
+              "why": {
+                "type": "string",
+                "minLength": 20
+              }
+            }
+          }
+        }
+      }
+    },
+    "member": {
+      "type": "object",
+      "required": [
+        "name",
+        "does",
+        "core",
+        "embodied",
+        "kind",
+        "why_separate"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "does": {
+          "type": "string",
+          "minLength": 10
+        },
+        "core": {
+          "type": "boolean"
+        },
+        "embodied": {
+          "type": "boolean"
+        },
+        "kind": {
+          "enum": [
+            "reasoning",
+            "judging",
+            "embodied"
+          ],
+          "$comment": "§13i: defined by what a member's acts REACH — a file, a verdict, or the world"
+        },
+        "why_separate": {
+          "type": "string",
+          "minLength": 20
+        },
+        "admitted_for_rung": {
+          "type": [
+            "integer",
+            "string"
+          ]
+        },
+        "owns_rungs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "refusal": {
+          "type": "string"
+        }
+      },
+      "allOf": [
+        {
+          "$comment": "a non-core member names the rung that admitted it, so a roster cannot grow by preference",
+          "if": {
+            "properties": {
+              "core": {
+                "const": false
+              }
+            },
+            "required": [
+              "core"
+            ]
+          },
+          "then": {
+            "required": [
+              "admitted_for_rung"
+            ]
+          }
+        },
+        {
+          "$comment": "NO JUDGING MEMBER IS EVER EMBODIED. Something that can make things happen is the wrong thing to ask whether they happened — and stating that for the verifier alone was the gap that let an embodied reproducer through.",
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "judging"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "embodied": {
+                "const": false
+              }
+            }
+          }
+        },
+        {
+          "$comment": "kind and flag agree, in both directions",
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "embodied"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "embodied": {
+                "const": true
+              }
+            },
+            "required": [
+              "refusal"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "embodied": {
+                "const": true
+              }
+            },
+            "required": [
+              "embodied"
+            ]
+          },
+          "then": {
+            "properties": {
+              "kind": {
+                "const": "embodied"
+              }
+            },
+            "$comment": "embodiment is a KIND of member, not a flag on a reasoning one"
+          }
+        }
+      ]
+    }
+  }
+}

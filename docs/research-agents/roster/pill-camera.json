@@ -1,0 +1,161 @@
+{
+  "$comment": "The roster of spec §13f, per field. The nine core roles are a floor: a field may add and may not remove. This field adds one, and it is admitted only because a ladder rung has no core owner.",
+  "agent": "pill-camera",
+  "version": 3,
+  "set_on": "2026-08-06",
+  "sub_agents": [
+    {
+      "name": "literature",
+      "does": "finds and reads prior work; produces claims with citations",
+      "core": true,
+      "embodied": false,
+      "why_separate": "reading and doing must not share a context, or the agent finds what it set out to find",
+      "kind": "reasoning"
+    },
+    {
+      "name": "twin",
+      "does": "maintains the forward model — the L2 digital twin",
+      "core": true,
+      "embodied": false,
+      "why_separate": "the twin is what a method is graded against; the method's author may not own it",
+      "kind": "reasoning"
+    },
+    {
+      "name": "corpus",
+      "does": "fetches and validates real data; refuses when absent",
+      "core": true,
+      "embodied": false,
+      "why_separate": "a benchmark that silently substitutes synthetic data produces numbers that are not results",
+      "kind": "reasoning"
+    },
+    {
+      "name": "method",
+      "does": "proposes and implements candidate solutions",
+      "core": true,
+      "embodied": false,
+      "why_separate": "the only role that writes the thing being judged",
+      "kind": "reasoning"
+    },
+    {
+      "name": "runner",
+      "does": "executes runs, on leased compute when needed",
+      "core": true,
+      "embodied": false,
+      "why_separate": "keeps cost and placement out of the method's hands",
+      "kind": "reasoning"
+    },
+    {
+      "name": "verifier",
+      "does": "judges a claim against the criterion written before it",
+      "core": true,
+      "embodied": false,
+      "why_separate": "independence is temporal and authorial, not informational (§13i)",
+      "kind": "judging"
+    },
+    {
+      "name": "reproducer",
+      "does": "re-runs a published result from its artifacts alone",
+      "core": true,
+      "embodied": false,
+      "why_separate": "catches the result that only exists on the machine that made it",
+      "kind": "judging"
+    },
+    {
+      "name": "teacher",
+      "does": "derives the curriculum from the evidence chain",
+      "core": true,
+      "embodied": false,
+      "why_separate": "teaching is a product and must be checkable like one",
+      "kind": "judging"
+    },
+    {
+      "name": "writer",
+      "does": "assembles the field page and the paper",
+      "core": true,
+      "embodied": false,
+      "why_separate": "writing last, from the record, not from intent",
+      "owns_rungs": [
+        "2.5"
+      ],
+      "kind": "judging"
+    },
+    {
+      "name": "statistician",
+      "does": "owns splits, seed variance and the noise floor every claim is read against",
+      "core": false,
+      "embodied": false,
+      "why_separate": "this field's real effects are near its noise — 0.624 against 0.614 — and the agent has already been on the wrong side of that once. A noise floor computed by whoever wants the gain is not a noise floor",
+      "admitted_for_rung": 2,
+      "owns_rungs": [
+        "2.1",
+        "2.2",
+        "2.3",
+        "2.4"
+      ],
+      "kind": "reasoning"
+    },
+    {
+      "name": "capsule rig",
+      "does": "bench and ex-vivo capture across vendors (rung 4)",
+      "core": false,
+      "embodied": true,
+      "kind": "embodied",
+      "why_separate": "an embodied act is irreversible, so it is a member of its own with its own refusal and its own grant — not a mode of a member that also does something undoable",
+      "admitted_for_rung": 4,
+      "refusal": "refuses to present bench capture as clinical data"
+    }
+  ],
+  "tools": [
+    {
+      "tool": "video reading models",
+      "for": "detection and classification",
+      "source": "built-in",
+      "cost": "minutes-hours",
+      "needs_envelope": false
+    },
+    {
+      "tool": "split + variance harness",
+      "for": "patient-disjoint, seed-varied — rungs 1 and 2",
+      "source": "built-in",
+      "cost": "minutes",
+      "needs_envelope": false
+    },
+    {
+      "tool": "prevalence model",
+      "for": "the missing half of the twin",
+      "source": "built-in",
+      "cost": "seconds",
+      "needs_envelope": false
+    },
+    {
+      "tool": "GPU lease",
+      "for": "training",
+      "source": "market",
+      "cost": "$/hour",
+      "needs_envelope": false
+    },
+    {
+      "tool": "dataset clients (Kvasir-Capsule)",
+      "for": "4,443 frames, 46 videos",
+      "source": "built-in",
+      "cost": "download",
+      "needs_envelope": false
+    },
+    {
+      "tool": "capsule bench rig",
+      "for": "cross-vendor capture — rung 4",
+      "source": "instrument",
+      "cost": "rig-hours",
+      "needs_envelope": true
+    },
+    {
+      "tool": "registry client",
+      "for": "publishing and querying L1-L4",
+      "source": "built-in",
+      "cost": "free",
+      "needs_envelope": false
+    }
+  ],
+  "$envelope_comment": "needs_envelope: a physical act (§13i). The owner declares what it may move, how far, with what, and what it must never touch; anything outside stops at GRT.",
+  "$revision": "embodiment corrected against the canonical set: it is a KIND of member (reasoning / judging / embodied), not a flag on corpus, runner or reproducer. An embodied corpus could never issue its own refusal, and an embodied reproducer puts hands on a JUDGING member — the same error as an embodied verifier."
+}

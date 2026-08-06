@@ -339,7 +339,7 @@ dependency order, with 6.5 closing rung 6 itself.**
 They are numbered inside rung 6 rather than added to the main ladder because
 they are not the field's problems — they are one rung's, and a subfield that
 needs five steps is a subfield, not a field
-([§13c](../2026-08-04-sarsi-agent-market-and-pwm-design.md#13c-the-problem-ladder--what-a-field-needs-solved-and-in-what-order)).
+(`singularity/docs/specs/2026-08-04-sarsi-agent-market-and-pwm-design.md` §13c).
 If they ever stop being expressible as rung 6, that is the fission condition
 §16 already names.
 
@@ -420,7 +420,7 @@ until one exists and is measured.
 | **what would reorder it** | nothing moves it earlier — it is last because it is the only one that requires the thing to exist |
 
 > **This is the physical-labour wall, and §13i is what removes it**
-> ([spec §13i](../2026-08-04-sarsi-agent-market-and-pwm-design.md#13i-a-research-agent-is-a-group-and-some-of-it-has-a-body-point-28)):
+> (`singularity/docs/specs/2026-08-04-sarsi-agent-market-and-pwm-design.md` §13i):
 > an embodied `runner` fabricates and assembles, an embodied `corpus` measures,
 > and an embodied `reproducer` builds a second unit — which is the check that
 > matters most here, because **a system that works in one build is not a design**.
@@ -549,7 +549,7 @@ reasoning and judging members. See [`lifecycle.md`](lifecycle.md).
 
 The L1→L4 chain for this field is published on **physicsworldmodel.org** and is
 the example the other six are built to match
-([spec §13d](../2026-08-04-sarsi-agent-market-and-pwm-design.md#13d-principles-digital-twins-benchmarks-solutions--one-per-field-one-page-each-point-23)):
+(`singularity/docs/specs/2026-08-04-sarsi-agent-market-and-pwm-design.md` §13d):
 **L1** the imaging principle, **L2** the forward model as the digital twin,
 **L3** the benchmarks with their corpora, **L4** the solutions that meet them.
 

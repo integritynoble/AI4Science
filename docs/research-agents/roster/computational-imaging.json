@@ -1,0 +1,227 @@
+{
+  "$comment": "The roster of spec §13f, per field. The nine core roles are a floor: a field may add and may not remove. This field adds one, and it is admitted only because a ladder rung has no core owner.",
+  "agent": "computational-imaging",
+  "version": 4,
+  "set_on": "2026-08-06",
+  "sub_agents": [
+    {
+      "name": "literature",
+      "does": "finds and reads prior work; produces claims with citations",
+      "core": true,
+      "embodied": false,
+      "why_separate": "reading and doing must not share a context, or the agent finds what it set out to find",
+      "kind": "reasoning"
+    },
+    {
+      "name": "twin",
+      "does": "maintains the forward model — the L2 digital twin",
+      "core": true,
+      "embodied": false,
+      "why_separate": "the twin is what a method is graded against; the method's author may not own it",
+      "kind": "reasoning"
+    },
+    {
+      "name": "corpus",
+      "does": "fetches and validates real data; refuses when absent",
+      "core": true,
+      "embodied": false,
+      "why_separate": "a benchmark that silently substitutes synthetic data produces numbers that are not results",
+      "owns_rungs": [
+        "6.5 (measure)"
+      ],
+      "kind": "reasoning"
+    },
+    {
+      "name": "method",
+      "does": "proposes and implements candidate solutions",
+      "core": true,
+      "embodied": false,
+      "why_separate": "the only role that writes the thing being judged",
+      "kind": "reasoning"
+    },
+    {
+      "name": "runner",
+      "does": "executes runs, on leased compute when needed",
+      "core": true,
+      "embodied": false,
+      "why_separate": "keeps cost and placement out of the method's hands",
+      "owns_rungs": [
+        "6.5 (build and assemble)"
+      ],
+      "kind": "reasoning"
+    },
+    {
+      "name": "verifier",
+      "does": "judges a claim against the criterion written before it",
+      "core": true,
+      "embodied": false,
+      "why_separate": "independence is temporal and authorial, not informational (§13i)",
+      "kind": "judging"
+    },
+    {
+      "name": "reproducer",
+      "does": "re-runs a published result from its artifacts alone",
+      "core": true,
+      "embodied": false,
+      "why_separate": "catches the result that only exists on the machine that made it",
+      "kind": "judging"
+    },
+    {
+      "name": "teacher",
+      "does": "derives the curriculum from the evidence chain",
+      "core": true,
+      "embodied": false,
+      "why_separate": "teaching is a product and must be checkable like one",
+      "kind": "judging"
+    },
+    {
+      "name": "writer",
+      "does": "assembles the field page and the paper",
+      "core": true,
+      "embodied": false,
+      "why_separate": "writing last, from the record, not from intent",
+      "kind": "judging"
+    },
+    {
+      "name": "system-designer",
+      "does": "proposes the imaging SYSTEM — sensor, illumination, optics, timing and readout — as a design, not as code",
+      "core": false,
+      "embodied": false,
+      "why_separate": "rung 6 grades a system-and-method PAIR, and a system proposed by `method` would be optimised against the same twin that grades it. The design is a separate artifact with a separate author, and — with a body — a buildable one. It is a system rather than an element because the element alone does not determine the result",
+      "admitted_for_rung": 6,
+      "owns_rungs": [
+        "6.1",
+        "6.2",
+        "6.3",
+        "6.4"
+      ],
+      "$owns_comment": "6.5 is the `runner`'s and the `corpus`'s — building and measuring are not the designer's, for the same reason the verifier is not the method's",
+      "kind": "reasoning"
+    },
+    {
+      "name": "optical bench",
+      "does": "mask, stage, camera — real capture (rung 3)",
+      "core": false,
+      "embodied": true,
+      "kind": "embodied",
+      "why_separate": "an embodied act is irreversible, so it is a member of its own with its own refusal and its own grant — not a mode of a member that also does something undoable",
+      "admitted_for_rung": 3,
+      "refusal": "refuses every act without a grant naming it; reports what it moved, never what it intended"
+    },
+    {
+      "name": "calibration rig",
+      "does": "the instrument as built",
+      "core": false,
+      "embodied": true,
+      "kind": "embodied",
+      "why_separate": "an embodied act is irreversible, so it is a member of its own with its own refusal and its own grant — not a mode of a member that also does something undoable",
+      "admitted_for_rung": 2,
+      "refusal": "refuses to write a measured operator into scoring without a person confirming it"
+    },
+    {
+      "name": "fabrication path",
+      "does": "masks, DOEs, printed optics (rung 6.5)",
+      "core": false,
+      "embodied": true,
+      "kind": "embodied",
+      "why_separate": "an embodied act is irreversible, so it is a member of its own with its own refusal and its own grant — not a mode of a member that also does something undoable",
+      "admitted_for_rung": 6,
+      "refusal": "refuses a design it cannot state a tolerance for; reports the element as measured, never as designed"
+    }
+  ],
+  "tools": [
+    {
+      "tool": "field solvers",
+      "for": "reconstruction across subfields",
+      "source": "built-in",
+      "cost": "minutes-hours",
+      "needs_envelope": false
+    },
+    {
+      "tool": "matlab",
+      "for": "optics and legacy reconstruction code",
+      "source": "built-in",
+      "cost": "minutes",
+      "needs_envelope": false
+    },
+    {
+      "tool": "optical simulation",
+      "for": "propagation, ray and wave models",
+      "source": "built-in",
+      "cost": "minutes",
+      "needs_envelope": false
+    },
+    {
+      "tool": "GPU lease",
+      "for": "training and large reconstructions",
+      "source": "market",
+      "cost": "$/hour",
+      "needs_envelope": false
+    },
+    {
+      "tool": "dataset clients (CAVE, KAIST)",
+      "for": "real hyperspectral scenes",
+      "source": "built-in",
+      "cost": "download",
+      "needs_envelope": false
+    },
+    {
+      "tool": "optical bench",
+      "for": "real capture — rung 3",
+      "source": "instrument",
+      "cost": "instrument-hours",
+      "needs_envelope": true
+    },
+    {
+      "tool": "fabrication line",
+      "for": "making a designed element — rung 6",
+      "source": "instrument",
+      "cost": "per-run + materials",
+      "needs_envelope": true
+    },
+    {
+      "tool": "registry client",
+      "for": "publishing and querying L1-L4",
+      "source": "built-in",
+      "cost": "free",
+      "needs_envelope": false
+    },
+    {
+      "tool": "system simulation (sensor, illumination, readout)",
+      "for": "the system as the designed object — rung 6",
+      "source": "built-in",
+      "cost": "minutes",
+      "needs_envelope": false
+    },
+    {
+      "tool": "assembly and alignment bench",
+      "for": "building and integrating a designed system",
+      "source": "instrument",
+      "cost": "instrument-hours",
+      "needs_envelope": true
+    },
+    {
+      "tool": "component database (parts, cost, lead time)",
+      "for": "a design space made of things that can be bought — rung 6.2",
+      "source": "built-in",
+      "cost": "polling",
+      "needs_envelope": false
+    },
+    {
+      "tool": "tolerance and sensitivity analysis",
+      "for": "performance under a stated tolerance distribution — rung 6.3",
+      "source": "built-in",
+      "cost": "minutes",
+      "needs_envelope": false
+    },
+    {
+      "tool": "metrology",
+      "for": "measuring a built system against what the twin predicted — rung 6.5",
+      "source": "instrument",
+      "cost": "instrument-hours",
+      "needs_envelope": true
+    }
+  ],
+  "$envelope_comment": "needs_envelope: a physical act (§13i). The owner declares what it may move, how far, with what, and what it must never touch; anything outside stops at GRT.",
+  "$revision": "embodiment corrected against the canonical set: it is a KIND of member (reasoning / judging / embodied), not a flag on corpus, runner or reproducer. An embodied corpus could never issue its own refusal, and an embodied reproducer puts hands on a JUDGING member — the same error as an embodied verifier."
+}

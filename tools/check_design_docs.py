@@ -21,10 +21,14 @@ here, where they can fail:
   A. one roster — the pages, the scope objects, the roster objects and the code
      name the same agents, allowing for a **documented alias** and for pages
      that say plainly that nothing is built yet.
-  B. the two copies of a page are byte-identical, or one of them is stale and
-     nobody can tell which.
+  B. there is ONE tree. It was two, and they forked in both directions; then,
+     freshly converged with a checker reporting zero differences, they diverged
+     again within minutes because two sessions were editing them. A second copy
+     is not a spare, it is a coin to flip.
   C. the record and its mirror agree section by section.
-  D. every `research-agents/...` link resolves from the file that makes it.
+  D. every link resolves from the file that makes it — including the pages'
+     own outbound links, which is the class that actually broke: they named the
+     specs tree's filenames from a directory that is not it.
 
 Run it: `python3 tools/check_design_docs.py [--singularity <dir>]`
 """
@@ -77,8 +81,8 @@ def check(singularity: Path | None) -> int:
 
     print("\nA. one roster")
     pages = agent_pages(RA)
-    scope = {p.stem for p in (ra_sd / "scope").glob("*.json")} if ra_sd else None
-    roster = {p.stem for p in (ra_sd / "roster").glob("*.json")} if ra_sd else None
+    scope = {p.stem for p in (RA / "scope").glob("*.json")}
+    roster = {p.stem for p in (RA / "roster").glob("*.json")}
     try:
         sys.path.insert(0, str(REPO))
         from ai4science.harness.agents import research_agents as ra_mod
@@ -87,12 +91,12 @@ def check(singularity: Path | None) -> int:
         code = None
         print("        (code not importable: %s)" % e)
 
-    if scope is not None:
+    if True:
         r("every page has a scope object", pages <= scope,
           "missing: %s" % sorted(pages - scope))
         r("every scope object has a page", scope <= pages,
           "orphaned: %s" % sorted(scope - pages))
-    if roster is not None:
+    if True:
         r("every page has a roster object", pages <= roster,
           "missing: %s" % sorted(pages - roster))
     if code is not None:
@@ -111,14 +115,18 @@ def check(singularity: Path | None) -> int:
         return 1 if r.failures else 0
 
     print("\nB. one copy of each page")
-    for p in sorted(RA.glob("*.md")):
-        q = ra_sd / p.name
-        if q.exists():
-            r("%s identical" % p.name, p.read_text() == q.read_text(),
-              "%d vs %d lines — one of these is stale and the reader cannot tell which"
-              % (len(p.read_text().splitlines()), len(q.read_text().splitlines())))
-        else:
-            r("%s exists in both trees" % p.name, False, "missing from %s" % ra_sd)
+    strays = sorted(p.name for p in ra_sd.glob("*.md") if p.name != "README.md")
+    r("the specs tree holds no second copy", not strays,
+      "a second copy is not a spare, it is a coin to flip: %s" % strays)
+    for sub in ("scope", "roster"):
+        r("%s objects live beside the pages" % sub, (RA / sub).is_dir(),
+          "expected %s" % (RA / sub))
+        r("%s objects are not duplicated in the specs tree" % sub,
+          not (ra_sd / sub).exists())
+    pointer = (ra_sd / "README.md").read_text() if (ra_sd / "README.md").exists() else ""
+    r("the specs tree points at the one that is real",
+      "AI4Science/docs/research-agents" in pointer,
+      "a stub that does not say where the pages went is worse than no stub")
 
     print("\nC. the record and its mirror")
     mirror = sd / "2026-08-04-ai4science-one-machine-design.md"
@@ -141,6 +149,14 @@ def check(singularity: Path | None) -> int:
             continue
         for link in sorted(set(re.findall(r"\]\((research-agents/[^)#]+)\)", path.read_text()))):
             r("%s -> %s" % (path.name[:34], link), (base / link).exists())
+
+    # And the pages' own outbound links, which is the class that actually broke.
+    # They named the specs tree's filenames from a directory that is not it, so
+    # they resolved in the copy and not in the original.
+    for page in sorted(RA.glob("*.md")):
+        for link in sorted(set(re.findall(r"\]\((\.\./[^)#]+)\)", page.read_text()))):
+            r("%s -> %s" % (page.name, link), (page.parent / link).exists(),
+              "a link is a claim that the target says something")
 
     print("\n%d failed" % len(r.failures))
     return 1 if r.failures else 0

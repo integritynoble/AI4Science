@@ -1,0 +1,96 @@
+{
+  "$comment": "The scope object of spec §13j. Set by the field's experts, not by the agent and not by the owner. Versioned: a change here is a change to what the agent may work on. This agent exists by FISSION from reverse-aging, whose benchmark has chronological age as its answer key and therefore cannot score whether anyone lived longer — see longevity.md.",
+  "agent": "longevity",
+  "agent_id": null,
+  "$agent_id_comment": "null: no agent exists for this field yet — research_agents.registry knows seven names and longevity is not one. A field declared ahead of its agent is a draft, and the console shows it as one.",
+  "field": "longevity",
+  "principle": "predicting death is easy and mostly redundant; the only interesting quantity is what a marker adds OVER AGE AND SEX — stated so it can be wrong, and it can",
+  "version": 1,
+  "set_on": "2026-08-06",
+  "set_by": {
+    "roles": [
+      "epidemiologist",
+      "biostatistician of survival data",
+      "geriatrician or clinician",
+      "consent and data-use officer"
+    ],
+    "named": null,
+    "$comment": "roles, never names — naming a person in a design document commits them to something they have not agreed to. `named` is filled when a panel exists."
+  },
+  "in": [
+    {
+      "subfield": "mortality prediction from clinical, laboratory and questionnaire markers",
+      "boundary": "in a cohort with real follow-up, always reported beside an age-and-sex-only model"
+    },
+    {
+      "subfield": "healthspan endpoints",
+      "boundary": "disability and morbidity predicted and reported SEPARATELY from death — conflating them is how this field flatters itself"
+    },
+    {
+      "subfield": "cycle-disjoint validation",
+      "boundary": "performance on survey cycles that contributed nothing to fitting or selection; a random split reads the era"
+    },
+    {
+      "subfield": "competing risks, censoring and calibration",
+      "boundary": "the three this field most often gets wrong; in an older cohort a death from another cause is not censoring"
+    },
+    {
+      "subfield": "re-validation of published scores",
+      "boundary": "existing longevity and biological-age scores against the age-and-sex floor — very few have been asked"
+    }
+  ],
+  "out": [
+    {
+      "question": "any recommendation to an individual",
+      "why": "this agent may say what predicts; it may never say what to do about it, and that line is what keeps the field from becoming marketing",
+      "goes_to": "nobody here"
+    },
+    {
+      "question": "any intervention claim, supplement, protocol or product",
+      "why": "an observational benchmark cannot score whether changing a marker changes the outcome",
+      "goes_to": "nobody here — and see `would_move_the_boundary`, which names it as the next fission rather than a widening"
+    },
+    {
+      "question": "construction of epigenetic clocks and other ageing biomarkers",
+      "why": "a field that both builds a surrogate and rules on whether it works has replaced validation with authorship",
+      "goes_to": "reverse-aging"
+    },
+    {
+      "question": "mechanism — why a marker predicts",
+      "why": "no observational benchmark can score it; it needs a different twin and a different answer key",
+      "goes_to": "cell biology (no agent yet)"
+    },
+    {
+      "question": "conducting the follow-up itself",
+      "why": "follow-up time is the binding constraint and cannot be compressed — a body can draw samples faster and cannot make anyone older",
+      "goes_to": "the cohorts and their custodians"
+    }
+  ],
+  "adjacent": [
+    {
+      "field": "reverse-aging",
+      "relation": "the field this one split from; owns the clocks, and hands over every question whose answer key is an outcome rather than chronological age"
+    },
+    {
+      "field": "cancer",
+      "relation": "competing risk: a marker that trades mortality between causes is not predicting longevity, and neither field sees that alone"
+    },
+    {
+      "field": "epidemiology (no agent yet)",
+      "relation": "owns the cohorts, the survey design and the weighting"
+    }
+  ],
+  "claims_allowed": [
+    "what a marker set adds over an age-and-sex-only model, on cycles it was not fitted on",
+    "calibration alongside discrimination — predicted against observed, plotted, not summarised",
+    "that a marker set adds nothing, which is the expected answer most of the time"
+  ],
+  "claims_forbidden": [
+    "any claim about a named individual",
+    "any statement of what a person should do",
+    "a hazard ratio reported without the absolute risk difference beside it"
+  ],
+  "would_move_the_boundary": "the question becoming WHY a marker predicts, and whether changing it changes the outcome — no observational benchmark can score that, so it is a different twin and a different answer key. The response is fission again, not a wider scope",
+  "watch_rung": null,
+  "$watch_comment": "if the age-and-sex floor stays unbeaten across every candidate marker set, the field's own principle has been confirmed in its least useful direction, and the experts decide whether that is a finding or a closure (§13j)."
+}
