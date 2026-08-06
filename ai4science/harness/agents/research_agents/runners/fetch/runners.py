@@ -450,6 +450,19 @@ def kvasir_capsule(argv=()) -> str:
             "videos -> %s" % (c.key, len(y), sum(y), len(pos_v), len(neg_v), d))
 
 
+# Restored 2026-08-06. Both this constant and the helper below were deleted by
+# accident in 731a6e3, when the Kvasir fetcher was written over them. Nothing
+# caught it: every machine that runs the tests already had ldct on disk, so the
+# only code path that touches these names is the one nobody re-ran. It surfaced
+# the first time the corpus was fetched onto a second machine.
+_TCIA = "https://services.cancerimagingarchive.net/nbia-api/services/v1/%s"
+
+
+def _tcia(endpoint: str, **params) -> Any:
+    q = urllib.parse.urlencode(params)
+    return json.loads(_get("%s?%s" % (_TCIA % endpoint, q), timeout=180))
+
+
 def ldct(argv=()) -> str:
     """Real paired full-dose and low-dose CT from TCIA.
 
