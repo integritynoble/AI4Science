@@ -8,21 +8,6 @@
 
 > **The finding this page is built around.** EF@1% was sitting at the theoretical maximum, which was the giveaway: the query set was drawn at random from each target's actives, and DUD-E actives are analogue series — so the model was being shown relatives of what it was scored on. The repaired benchmark is *harder*, which is how you know it was repaired and not loosened.
 
-
-**Status: built and running on real data, 2026-08-04.** The benchmark reads
-**DUD-E** — 15,288 molecules across six targets at ~2% active, which is the
-ratio that matters: capping decoys instead of actives once left the library 40%
-active and EF@1% saturated at 2.5, where ranking by molecular weight scored
-exactly what fingerprint similarity scored.
-
-Set up as ligand-based virtual screening actually works: ten actives per target
-are staged as the query set, and enrichment is measured only on molecules the
-solver was never given. Morgan-fingerprint similarity reaches **EF@1% 66.8
-(63.5 on targets held out entirely), AUC 0.943** and passes. The bar is not
-"beats random" but **1.5x what molecular weight alone achieves on the same
-library** — DUD-E's decoys carry 0.56 SD of residual property bias, and weight
-alone enriches at EF 20.
-
 ## How experts guide this into a self-aware, self-improving agent — and then into collapse
 
 The whole arc, in one place, because the sections that follow only make sense
@@ -79,6 +64,20 @@ benchmark and its own agent. The methodology transfers — series-disjoint
 validation above all — and the chemistry does not.
 
 **Retired from research, not from service.** The screening tools stay installable and get plugged into other fields' agents — which is how the series-disjoint discipline reaches places this agent never worked.
+
+**Status: built and running on real data, 2026-08-04.** The benchmark reads
+**DUD-E** — 15,288 molecules across six targets at ~2% active, which is the
+ratio that matters: capping decoys instead of actives once left the library 40%
+active and EF@1% saturated at 2.5, where ranking by molecular weight scored
+exactly what fingerprint similarity scored.
+
+Set up as ligand-based virtual screening actually works: ten actives per target
+are staged as the query set, and enrichment is measured only on molecules the
+solver was never given. Morgan-fingerprint similarity reaches **EF@1% 66.8
+(63.5 on targets held out entirely), AUC 0.943** and passes. The bar is not
+"beats random" but **1.5x what molecular weight alone achieves on the same
+library** — DUD-E's decoys carry 0.56 SD of residual property bias, and weight
+alone enriches at EF 20.
 
 ## 1. The field
 

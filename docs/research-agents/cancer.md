@@ -8,32 +8,6 @@
 
 > **The finding this page is built around.** A model called "non-transporting" transported fine once the split was drawn properly. A bad split can understate as easily as overstate, and both are measurement failures rather than facts about biology.
 
-
-**Status: built on real data; external cohort corrected 2026-08-05.** Charter,
-self-model, budget, field map and both functions are implemented in
-`ai4science/harness/agents/research_agents/`. The benchmark reads **TCGA
-clinical survival** through the GDC API, and validates on **held-out tissue
-source sites** — hospitals that contributed nothing to the fit.
-
-**It used to validate LUAD against LUSC and call the result a transport
-failure. That reading was wrong, and this is the correction.** A Cox model on
-age, sex, stage and prior malignancy reaches C-index **0.66–0.68 internally and
-0.58–0.67 on held-out institutions**, with monotone Kaplan-Meier calibration.
-
-The old conclusion did not survive being checked in both directions. Fitted on
-LUAD the model scores 0.667 internally and 0.579 on LUSC; fitted on **LUSC** it
-scores **0.577 on its own cohort and 0.646 on LUAD** — better on the "external"
-set than the one it was fitted on. The score follows the cohort being *scored*,
-not the cohort that was fitted, and stage alone gives 0.658 in adenocarcinoma
-against 0.565 in squamous. Squamous cell is a population where these covariates
-carry little prognostic signal; the coefficients transport fine.
-
-So the benchmark was measuring the difficulty of a cohort and reporting it as a
-property of the model. External validation now means what the field means by it
-— a different institution, same disease — and the cross-histology number is
-still computed and reported beside it, because it is a real finding. It just is
-not the pass criterion.
-
 ## How experts guide this into a self-aware, self-improving agent — and then into collapse
 
 The whole arc, in one place, because the sections that follow only make sense
@@ -89,6 +63,31 @@ benchmark (effect estimation with its own identification assumptions), and
 therefore a different field and agent.
 
 **Retired from research, not from service.** A validated prognostic model keeps advising clinicians whether or not anyone is still publishing on it.
+
+**Status: built on real data; external cohort corrected 2026-08-05.** Charter,
+self-model, budget, field map and both functions are implemented in
+`ai4science/harness/agents/research_agents/`. The benchmark reads **TCGA
+clinical survival** through the GDC API, and validates on **held-out tissue
+source sites** — hospitals that contributed nothing to the fit.
+
+**It used to validate LUAD against LUSC and call the result a transport
+failure. That reading was wrong, and this is the correction.** A Cox model on
+age, sex, stage and prior malignancy reaches C-index **0.66–0.68 internally and
+0.58–0.67 on held-out institutions**, with monotone Kaplan-Meier calibration.
+
+The old conclusion did not survive being checked in both directions. Fitted on
+LUAD the model scores 0.667 internally and 0.579 on LUSC; fitted on **LUSC** it
+scores **0.577 on its own cohort and 0.646 on LUAD** — better on the "external"
+set than the one it was fitted on. The score follows the cohort being *scored*,
+not the cohort that was fitted, and stage alone gives 0.658 in adenocarcinoma
+against 0.565 in squamous. Squamous cell is a population where these covariates
+carry little prognostic signal; the coefficients transport fine.
+
+So the benchmark was measuring the difficulty of a cohort and reporting it as a
+property of the model. External validation now means what the field means by it
+— a different institution, same disease — and the cross-histology number is
+still computed and reported beside it, because it is a real finding. It just is
+not the pass criterion.
 
 ## 1. The field
 

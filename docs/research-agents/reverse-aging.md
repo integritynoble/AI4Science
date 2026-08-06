@@ -8,36 +8,6 @@
 
 > **The finding this page is built around.** The benchmark accepted a seed and ignored it, so every seed produced identical data — a paired comparison with zero spread by construction, reporting **p = 0**. One measurement wearing four hats. It looked *better* than a genuine p = 0.0088 from another agent, which is how it nearly got signed.
 
-
-**Status: built and running on real data, 2026-08-05.** Charter, self-model,
-field map, corpus and benchmark are implemented. The benchmark reads **GEO
-GSE40279** — 656 whole-blood Illumina 450k samples, ages 19–101, from four
-institutions — and validates on **held-out sites**.
-
-**Its reference method passes on some splits and not others, and that is new
-information.** The held-out institutions used to be hardcoded, and on that one
-fixed split a ridge clock reached **5.78 years** median error against 10.14 for
-predicting the training mean. The seed now chooses which institutions are held
-out, and across seed-varied splits the same method passes **13 of 28** runs.
-Holding out different hospitals is a harder test than always holding out the
-same two, so the agent looks worse and is more honest.
-
-**The number that matters is still the second one.** Project the methylome's
-leading components out and a large part of the clock's advantage disappears —
-55% on the original split. In whole blood those components are dominated by
-cell-type proportions, which themselves shift with age, so much of this clock is
-reading what the blood is made of rather than how old the person is. A clock
-that was 90% bulk structure fails.
-
-> **The seed used to do nothing, and that nearly cost an adoption.** The
-> benchmark accepted a seed argument and never used it, so every seed produced
-> byte-identical data. A paired comparison then had zero spread by construction
-> and the night reported **p = 0** — one measurement wearing four hats. That
-> number looked *better* than a genuine p = 0.0088 from another agent, which is
-> how it nearly got signed. The result was refused, the benchmark repaired, and
-> the same candidate then earned its place on six real institutional splits at
-> p = 0.014.
-
 ## How experts guide this into a self-aware, self-improving agent — and then into collapse
 
 The whole arc, in one place, because the sections that follow only make sense
@@ -93,6 +63,35 @@ cross-sections. By the [`lifecycle.md`](lifecycle.md) test that is unambiguously
 a different field, and it is where all of this field's value actually lives.
 
 **And if it collapses by indifference, little survives** — which is the honest asymmetry. A clock with no outcome link has no service half to retire into. That is what makes problem 4 the one that decides the field.
+
+**Status: built and running on real data, 2026-08-05.** Charter, self-model,
+field map, corpus and benchmark are implemented. The benchmark reads **GEO
+GSE40279** — 656 whole-blood Illumina 450k samples, ages 19–101, from four
+institutions — and validates on **held-out sites**.
+
+**Its reference method passes on some splits and not others, and that is new
+information.** The held-out institutions used to be hardcoded, and on that one
+fixed split a ridge clock reached **5.78 years** median error against 10.14 for
+predicting the training mean. The seed now chooses which institutions are held
+out, and across seed-varied splits the same method passes **13 of 28** runs.
+Holding out different hospitals is a harder test than always holding out the
+same two, so the agent looks worse and is more honest.
+
+**The number that matters is still the second one.** Project the methylome's
+leading components out and a large part of the clock's advantage disappears —
+55% on the original split. In whole blood those components are dominated by
+cell-type proportions, which themselves shift with age, so much of this clock is
+reading what the blood is made of rather than how old the person is. A clock
+that was 90% bulk structure fails.
+
+> **The seed used to do nothing, and that nearly cost an adoption.** The
+> benchmark accepted a seed argument and never used it, so every seed produced
+> byte-identical data. A paired comparison then had zero spread by construction
+> and the night reported **p = 0** — one measurement wearing four hats. That
+> number looked *better* than a genuine p = 0.0088 from another agent, which is
+> how it nearly got signed. The result was refused, the benchmark repaired, and
+> the same candidate then earned its place on six real institutional splits at
+> p = 0.014.
 
 ## The optimum was outside the declared range, and it was worth a month
 

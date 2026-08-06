@@ -8,23 +8,6 @@
 
 > **The finding this page is built around.** Real scenes exposed a sign error in the reference solver's TV proximal operator — it *expanded* where a prox must contract. Synthetic blobs had hidden it for months, because blobs have no texture to diverge on. Its own search could never have found the fix: the parameter floor excluded the working value.
 
-
-**Status: built, 2026-08-04.** This agent had a runner before the others:
-`ai4science/harness/agents/imaging/` seeds a CASSI benchmark, runs GAP-TV in a
-sandboxed workspace and is gated by the real physics judge, with the answer key
-withheld. It is reached through its own `AgentSpec` RUNNER rather than the
-shared `BENCHMARKS` registry, so that one agent does not have two ways to be
-scored.
-
-**Since 2026-08-05 it reads a measured corpus like the other five.** The scene
-is a real hyperspectral cube from **CAVE** (64×64×8, nine scenes, adjacent-band
-correlation 0.93), and only the *measurement* is simulated — the SD-CASSI
-forward model is applied to a scene nobody synthesised. The forward model is
-still shared between generation and reconstruction, which is what makes this a
-physics check rather than evidence about a real instrument; what changed is that
-the thing being reconstructed is no longer drawn from the prior the solver
-assumes. That distinction turned out to matter more than expected — see §3b.
-
 ## How experts guide this into a self-aware, self-improving agent — and then into collapse
 
 The whole arc, in one place, because the sections that follow only make sense
@@ -81,6 +64,22 @@ version of this one, a change in what counts as an answer. It would need its own
 charter, its own twin, its own never-improvable benchmark, and its own agent.
 
 **Retired from research, not from service.** When the transfer table is full, the reconstruction solutions stay installable and keep working — a method that denoises a real capture is worth the same on the day its field stops publishing as it was the day before.
+
+**Status: built, 2026-08-04.** This agent had a runner before the others:
+`ai4science/harness/agents/imaging/` seeds a CASSI benchmark, runs GAP-TV in a
+sandboxed workspace and is gated by the real physics judge, with the answer key
+withheld. It is reached through its own `AgentSpec` RUNNER rather than the
+shared `BENCHMARKS` registry, so that one agent does not have two ways to be
+scored.
+
+**Since 2026-08-05 it reads a measured corpus like the other five.** The scene
+is a real hyperspectral cube from **CAVE** (64×64×8, nine scenes, adjacent-band
+correlation 0.93), and only the *measurement* is simulated — the SD-CASSI
+forward model is applied to a scene nobody synthesised. The forward model is
+still shared between generation and reconstruction, which is what makes this a
+physics check rather than evidence about a real instrument; what changed is that
+the thing being reconstructed is no longer drawn from the prior the solver
+assumes. That distinction turned out to matter more than expected — see §3b.
 
 ## 1. The field
 

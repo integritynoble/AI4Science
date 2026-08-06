@@ -8,20 +8,6 @@
 
 > **The finding this page is built around.** The benchmark once inserted its lesion into a lung and measured "noise" over anatomy. Both flattered the method, and both were found by noticing physically impossible numbers rather than by reading the code.
 
-
-**Status: built and running on real data, 2026-08-04.** The benchmark reads
-**TCIA's `LDCT-and-Projection-data`** — the same patient reconstructed at full
-dose and at reduced dose, four patients, paired by `ImagePositionPatient`. No
-simulated noise. The full-dose scan is the answer key and never enters the
-sandbox.
-
-**This is where the agent's central refusal became a measurement.** A light
-Gaussian (sigma 1.0) scores the highest PSNR of anything tried — **27.99
-against the intended method's 27.28** — and *fails*, because the lesion lands
-at CNR 2.14, below the Rose criterion of 3 for reliable detection. Heavy
-smoothing fails the other way. The guided bilateral passes between them at
-PSNR 27.28, CNR 6.04, 62% of the inserted contrast retained.
-
 ## How experts guide this into a self-aware, self-improving agent — and then into collapse
 
 The whole arc, in one place, because the sections that follow only make sense
@@ -75,6 +61,19 @@ entirely. That is a change in what counts as an answer, not a harder version of
 this problem, and it earns its own field and agent.
 
 **Retired from research, not from service.** A denoiser that survives the detectability test keeps running in clinics long after the frontier closes, and its author keeps earning from it.
+
+**Status: built and running on real data, 2026-08-04.** The benchmark reads
+**TCIA's `LDCT-and-Projection-data`** — the same patient reconstructed at full
+dose and at reduced dose, four patients, paired by `ImagePositionPatient`. No
+simulated noise. The full-dose scan is the answer key and never enters the
+sandbox.
+
+**This is where the agent's central refusal became a measurement.** A light
+Gaussian (sigma 1.0) scores the highest PSNR of anything tried — **27.99
+against the intended method's 27.28** — and *fails*, because the lesion lands
+at CNR 2.14, below the Rose criterion of 3 for reliable detection. Heavy
+smoothing fails the other way. The guided bilateral passes between them at
+PSNR 27.28, CNR 6.04, 62% of the inserted contrast retained.
 
 ## 1. The field
 

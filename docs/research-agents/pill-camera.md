@@ -8,43 +8,6 @@
 
 > **The finding this page is built around.** The improvement is small on purpose, and that is why it is credible: paired across seeds, validated on seeds not used to select it. With 46 videos the spread between seeds is comparable to the effects people claim, so a large delta here is a symptom rather than a result.
 
-
-**Status: built, on real data, and improved by its own night loop, 2026-08-05.**
-The benchmark reads **Kvasir-Capsule** — 4,443 frames from 9 positive and 37
-negative videos, split by video and verified patient-disjoint in code.
-
-**Real frames first refuted this agent's premise, and then a search recovered
-it — narrowly.** At the hand-picked 95th percentile the analytic haemoglobin
-prior *lost* to plain green intensity, 0.598 against 0.614. The synthetic
-version of this benchmark had claimed the opposite by construction: it gave each
-patient a lognormal illumination gain precisely so a channel ratio would win.
-
-The autonomous loop then found 99.5 — **+0.029 AUC across six held-out seeds,
-paired, corrected p 0.044** — and refused it for having no mechanism. The
-mechanism was supplied and *tested*: a lesion covers a small share of a frame
-and the prior map is elevated only over it, so a quantile summary works better
-the more it isolates the lesion's own pixels. The account predicts its own
-limit, and the prediction holds — effect size runs 0.833 (q=99) → 0.863 (99.5)
-→ 0.219 (99.8) → 0.058 (99.9), with the pure maximum no better than noise.
-
-Adopted on that basis. At the adopted setting the prior beats intensity, 0.624
-against 0.614 — a narrow margin on one split, resting on the six-seed result
-rather than on that gap.
-
-**Real frames refuted what the synthetic ones asserted.** The analytic
-haemoglobin prior reaches **AUC 0.598 against 0.614 for plain green
-intensity** — it loses. The synthetic version of this benchmark claimed the
-opposite *by construction*: it gave each patient a lognormal illumination gain
-precisely so an absolute intensity would carry it and a channel ratio would
-cancel it. That matches the literature rather than contradicting it — the
-published work feeds the prior to a learned model as a training channel for
-0.760 -> 0.783, and never claimed it stands alone.
-
-The dataset's shape drove the design. `Blood - fresh` is 446 frames from **two**
-videos, so the positive class is the red vascular findings pooled, and the judge
-refuses any run with fewer than three test patients whatever the frame count
-says.
-
 ## How experts guide this into a self-aware, self-improving agent — and then into collapse
 
 The whole arc, in one place, because the sections that follow only make sense
@@ -98,6 +61,42 @@ this benchmark cannot express. New twin (a device with actuation), new benchmark
 (outcome, not label), new agent.
 
 **Retired from research, not from service.** A reader that shortens review time is worth the same after the frontier closes.
+
+**Status: built, on real data, and improved by its own night loop, 2026-08-05.**
+The benchmark reads **Kvasir-Capsule** — 4,443 frames from 9 positive and 37
+negative videos, split by video and verified patient-disjoint in code.
+
+**Real frames first refuted this agent's premise, and then a search recovered
+it — narrowly.** At the hand-picked 95th percentile the analytic haemoglobin
+prior *lost* to plain green intensity, 0.598 against 0.614. The synthetic
+version of this benchmark had claimed the opposite by construction: it gave each
+patient a lognormal illumination gain precisely so a channel ratio would win.
+
+The autonomous loop then found 99.5 — **+0.029 AUC across six held-out seeds,
+paired, corrected p 0.044** — and refused it for having no mechanism. The
+mechanism was supplied and *tested*: a lesion covers a small share of a frame
+and the prior map is elevated only over it, so a quantile summary works better
+the more it isolates the lesion's own pixels. The account predicts its own
+limit, and the prediction holds — effect size runs 0.833 (q=99) → 0.863 (99.5)
+→ 0.219 (99.8) → 0.058 (99.9), with the pure maximum no better than noise.
+
+Adopted on that basis. At the adopted setting the prior beats intensity, 0.624
+against 0.614 — a narrow margin on one split, resting on the six-seed result
+rather than on that gap.
+
+**Real frames refuted what the synthetic ones asserted.** The analytic
+haemoglobin prior reaches **AUC 0.598 against 0.614 for plain green
+intensity** — it loses. The synthetic version of this benchmark claimed the
+opposite *by construction*: it gave each patient a lognormal illumination gain
+precisely so an absolute intensity would carry it and a channel ratio would
+cancel it. That matches the literature rather than contradicting it — the
+published work feeds the prior to a learned model as a training channel for
+0.760 -> 0.783, and never claimed it stands alone.
+
+The dataset's shape drove the design. `Blood - fresh` is 446 frames from **two**
+videos, so the positive class is the red vascular findings pooled, and the judge
+refuses any run with fewer than three test patients whatever the frame count
+says.
 
 ## 1. The field
 

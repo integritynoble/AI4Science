@@ -16,13 +16,6 @@
 > [`lifecycle.md`](lifecycle.md) that makes this a **different field**, and
 > fission is the good ending rather than a failure.
 
-**Status: design. Nothing is built.** No corpus fetcher, no benchmark, no
-reference method, and it is not in the agent registry. Everything below is
-written in the conditional because that is what it is. An architecture
-described in the present tense is a claim.
-
----
-
 ## How experts guide this into a self-aware, self-improving agent — and then into collapse
 
 The whole arc, in one place, because the sections that follow only make sense
@@ -76,6 +69,13 @@ becomes *why* a marker predicts — and whether changing it changes the outcome 
 no observational benchmark can score it. That needs an interventional design,
 which is a different twin, a different answer key, and therefore a different
 field again.
+
+**Status: design. Nothing is built.** No corpus fetcher, no benchmark, no
+reference method, and it is not in the agent registry. Everything below is
+written in the conditional because that is what it is. An architecture
+described in the present tense is a claim.
+
+---
 
 ## Why it is a separate agent and not a bigger reverse-aging
 
