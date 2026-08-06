@@ -14,7 +14,9 @@ medicinal chemist actually has on day one of a project.
 Morgan fingerprints are computed here rather than shipped, so the descriptor set
 can change without re-downloading four thousand molecules.
 """
+import hashlib
 import argparse, json, os, sys
+from pathlib import Path
 import numpy as np
 
 KNOWN_PER_TARGET = 10           # actives handed to the solver as the query set
@@ -61,6 +63,68 @@ def _leader_clusters(F, cutoff):
     return assign
 
 
+#: Fingerprints and clusters depend on the corpus and the fingerprint settings —
+#: never on the seed. Only WHICH clusters become the query is seeded. Computing
+#: them per seed cost 19.2s a time, which a search pays once per candidate.
+_FP_CACHE = Path(os.environ.get(
+    "AI4SCIENCE_SEED_CACHE",
+    str(Path.home() / ".ai4science" / "cache" / "seed"))) / "screening-fp"
+
+
+def _fp_key(rows, radius, fpsize, cutoff):
+    """Keyed on the molecules themselves and the settings that shape them.
+
+    Not on a version string: change the cutoff or the fingerprint size and the
+    key changes, so a stale clustering cannot be served to code that would have
+    produced a different one."""
+    h = hashlib.sha256()
+    h.update(("r%d|s%d|c%.4f|" % (radius, fpsize, cutoff)).encode())
+    for r in rows:
+        h.update(("%s|%d;" % (r["smiles"], r["y"])).encode())
+    return h.hexdigest()[:24]
+
+
+def _fingerprints_and_clusters(rows, gen, Chem, radius, fpsize, cutoff):
+    """(kept row indices, fingerprints, cluster assignment over the actives).
+
+    A cache miss is slower, never wrong: on any failure this recomputes.
+    """
+    key = _fp_key(rows, radius, fpsize, cutoff)
+    f = _FP_CACHE / (key + ".npz")
+    if f.exists():
+        try:
+            z = np.load(f)
+            return z["kept"], z["fps"], z["assign"]
+        except Exception:
+            pass                      # corrupt or truncated: recompute
+    kept, fps = [], []
+    for i, r in enumerate(rows):
+        m = Chem.MolFromSmiles(r["smiles"])
+        if m is None:
+            continue
+        kept.append(i)
+        fps.append(gen.GetFingerprintAsNumPy(m).astype(np.uint8))
+    kept = np.asarray(kept, np.int64)
+    fps = np.asarray(fps, np.uint8)
+    act = np.flatnonzero(np.array([rows[i]["y"] for i in kept]) == 1)
+    assign = _leader_clusters(fps[act].astype(bool), cutoff)
+    try:
+        _FP_CACHE.mkdir(parents=True, exist_ok=True)
+        # The temp name must END in .npz: savez_compressed appends the extension
+        # if it is missing, so the rename then targets a path that was never
+        # written and the cache silently never lands. It did exactly that, and
+        # the swallowed exception below turned a 100% miss rate into "the cache
+        # does not help" — which is a much harder thing to notice.
+        tmp = f.with_name("%s.tmp%d.npz" % (f.stem, os.getpid()))
+        # Uncompressed on purpose: compressing 15k x 1024 fingerprint
+        # arrays cost more time than the clustering it was saving.
+        np.savez(tmp, kept=kept, fps=fps, assign=assign)
+        tmp.replace(f)                # atomic
+    except Exception:
+        pass                          # a cache miss is slower, never wrong
+    return kept, fps, assign
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--workspace", default="."); ap.add_argument("--seed", type=int, default=42)
@@ -83,16 +147,10 @@ def main():
         rows = targets[t]
         # Fingerprints first: the split is decided on them, so they cannot be
         # computed inside the emit loop any more.
-        parsed = []
-        for r in rows:
-            m = Chem.MolFromSmiles(r["smiles"])
-            if m is None:
-                continue
-            parsed.append((r, gen.GetFingerprintAsNumPy(m).astype(np.uint8)))
-
+        kept, fps, assign = _fingerprints_and_clusters(rows, gen, Chem, 2, 1024,
+                                                       CLUSTER_CUTOFF)
+        parsed = [(rows[i], fps[k]) for k, i in enumerate(kept)]
         act_pos = [k for k, (r, _) in enumerate(parsed) if r["y"] == 1]
-        assign = _leader_clusters(np.array([parsed[k][1] for k in act_pos], bool),
-                                  CLUSTER_CUTOFF)
         pool = []
         for c in rng.permutation(np.unique(assign)):
             pool += [act_pos[k] for k in np.flatnonzero(assign == c)]
