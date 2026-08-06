@@ -22,6 +22,8 @@ would quietly make them one.
 """
 from __future__ import annotations
 
+import hashlib
+import shutil
 import json
 import os
 import subprocess
@@ -214,6 +216,27 @@ def child_env(base: Optional[Dict[str, str]] = None) -> Dict[str, str]:
     return env
 
 
+#: Generated benchmarks are cached here, keyed by agent, seed and generator
+#: source. Outside the repo, because data is not source.
+_CACHE_ROOT = Path(os.environ.get(
+    "AI4SCIENCE_SEED_CACHE",
+    str(Path.home() / ".ai4science" / "cache" / "seed")))
+
+
+def _seed_key(bench: DomainBenchmark, seed: int) -> str:
+    """What the generated data depends on: the seed and the generator's source.
+
+    Hashing the source rather than a version string means nobody has to remember
+    to bump anything — editing a generator invalidates its cache by definition.
+    """
+    h = hashlib.sha256()
+    h.update(("%s|%d|" % (bench.agent, seed)).encode())
+    for f in sorted(bench.files(), key=lambda q: q.name):
+        h.update(f.name.encode())
+        h.update(f.read_bytes())
+    return h.hexdigest()[:24]
+
+
 def seed_workspace(bench: DomainBenchmark, ws: Path, *, seed: int,
                    params: Optional[Dict[str, float]] = None) -> Dict[str, Any]:
     """Generate the problem, deterministically, including the answer key.
@@ -239,6 +262,23 @@ def seed_workspace(bench: DomainBenchmark, ws: Path, *, seed: int,
             % (bench.agent, sorted(params)))
     for p in bench.files():
         (ws / "code" / p.name).write_bytes(p.read_bytes())
+
+    # Generation is deterministic in the seed and does NOT read params, so every
+    # candidate in a search regenerates byte-identical data. Measured: 19.2s per
+    # generation for screening, 4.3s for LDCT — about an hour of a full night
+    # spent re-deriving what it already had.
+    #
+    # The key is what the data actually depends on: the agent, the seed, and the
+    # SOURCE of every generator file. Change a generator and the key changes, so
+    # a stale cache cannot serve data the current code would not produce. That
+    # matters more than the speed: a benchmark quietly served from an older
+    # generator is the exact failure this system is built to refuse.
+    key = _seed_key(bench, seed)
+    hit = _CACHE_ROOT / bench.agent / key
+    if (hit / "meta.json").exists():
+        shutil.copytree(hit / "data", ws / "data", dirs_exist_ok=True)
+        return json.loads((hit / "meta.json").read_text())
+
     out = subprocess.run([sys.executable, "code/generate.py", "--workspace", ".",
                           "--seed", str(seed)],
                          cwd=str(ws), capture_output=True, text=True,
@@ -246,7 +286,19 @@ def seed_workspace(bench: DomainBenchmark, ws: Path, *, seed: int,
     if out.returncode:
         raise RuntimeError("%s: benchmark generation failed:\n%s"
                            % (bench.agent, out.stderr[-2000:]))
-    return json.loads(out.stdout or "{}")
+    meta = json.loads(out.stdout or "{}")
+    if os.environ.get("AI4SCIENCE_NO_SEED_CACHE") != "1" and (ws / "data").is_dir():
+        try:
+            tmp = hit.with_name(hit.name + ".tmp%d" % os.getpid())
+            if tmp.exists():
+                shutil.rmtree(tmp, ignore_errors=True)
+            tmp.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(ws / "data", tmp / "data")
+            (tmp / "meta.json").write_text(json.dumps(meta))
+            tmp.replace(hit)          # atomic: a reader never sees a half-copy
+        except Exception:
+            shutil.rmtree(tmp, ignore_errors=True)   # a cache miss is not an error
+    return meta
 
 
 def run_domain_task(bench: DomainBenchmark, *, client, workspace: Path,
