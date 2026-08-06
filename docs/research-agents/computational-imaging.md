@@ -310,6 +310,14 @@ where the field's real gains live, and it is tempting to start there. Starting
 there means every design decision is validated by a measurement nobody has
 checked — and this agent has already demonstrated what that produces.
 
+> **Blocked by, and unblocks.** The order *is* the dependency graph: each rung
+> is blocked by the ones above it and unblocks the ones below. They are not
+> itemised per rung yet, which is a gap against the spec rather than a claim
+> that the graph is a chain.
+>
+> **Evidence that would reorder it.** a subfield whose protocol cannot be expressed in the shared table would move rung 4 behind rung 5; a fabrication result that contradicts the twin would move rung 6 in front of rung 4. A ladder nobody can argue with is a
+> ladder nobody checked.
+
 > **"Solved when" is the entry fee.** A problem with no measurement that would
 > settle it is a research *interest*, and interests belong in the charter. The
 > ladder is the part this agent can be wrong about in public.
@@ -322,13 +330,131 @@ checked — and this agent has already demonstrated what that produces.
 > Given a free hand the cheapest defensible night is the easy rung, and a year
 > of easy rungs looks like a year of progress.
 
+## 12b. Rung 6 decomposed — the hardware system design sub-ladder
+
+Rung 6 is one line describing a five-step problem, and stating it as one line
+is how "joint design" stays a slogan. These are its rungs: **6.1–6.5, in
+dependency order, with 6.5 closing rung 6 itself.**
+
+They are numbered inside rung 6 rather than added to the main ladder because
+they are not the field's problems — they are one rung's, and a subfield that
+needs five steps is a subfield, not a field
+([§13c](../2026-08-04-sarsi-agent-market-and-pwm-design.md#13c-the-problem-ladder--what-a-field-needs-solved-and-in-what-order)).
+If they ever stop being expressible as rung 6, that is the fission condition
+§16 already names.
+
+### 6.1 · A twin that models the system, not the operator
+
+**The problem.** The L2 twin models a forward operator. A system is a sensor
+with a noise model, an illumination with a spectrum, an optic with tolerances,
+a timing scheme and a readout — and none of it is in the operator. **Every
+other rung here is blocked on this**, because designing against a twin that
+does not model the thing being designed optimises the twin's silence.
+
+| | |
+|---|---|
+| **solved when** | the twin predicts a **measured** capture from a **real, known** system to within a stated tolerance — sensor noise, illumination spectrum and readout included, not only geometry |
+| **blocked by** | main rung 2. A twin whose operator half is unchecked cannot have its sensor half trusted |
+| **unblocks** | 6.2–6.5. This is the sub-ladder's floor and the field's largest single piece of unbuilt L2 |
+| **what would reorder it** | nothing. It is the rung that turns "joint design" from a simulation exercise into a claim about hardware |
+
+> **This is more than any other rung asks of the twin**, and it is the honest
+> cost of widening the scope to systems. A field that wants to design hardware
+> has to model hardware.
+
+### 6.2 · A design space made of things that can be bought
+
+**The problem.** A design expressed over continuous parameters produces an
+optimum that does not exist: a sensor with that well depth and that pixel pitch
+and that frame rate is not for sale, and the nearest one that is changes the
+answer.
+
+| | |
+|---|---|
+| **solved when** | designs are stated over a parameterised space of **obtainable components**, each with part number, cost and lead time, and the optimiser searches that space rather than a continuous relaxation of it |
+| **blocked by** | nothing — a second floor, independent of 6.1 |
+| **unblocks** | 6.3 and 6.5. Tolerances are properties of real parts, and nothing can be built from a design that names none |
+| **what would reorder it** | nothing; it is unglamorous and it is what separates a design from a figure |
+
+### 6.3 · Tolerance and calibration inside the objective
+
+**The problem.** A system optimal at nominal alignment is not a system. Real
+assembly has misalignment, real sensors vary between units, and a design whose
+advantage disappears at manufacturing tolerance never had one.
+
+| | |
+|---|---|
+| **solved when** | every reported system carries its performance under a **stated tolerance distribution**, and one that wins at nominal and loses under tolerance is reported as a trade rather than as a win. The per-unit calibration a built system would need is part of the design, not a later surprise |
+| **blocked by** | 6.1 and 6.2 — tolerances need a twin that models them and parts that have them |
+| **unblocks** | 6.5. This is the difference between a system that works and a system that worked once, on the bench where it was aligned |
+| **what would reorder it** | a subfield where alignment is trivially controlled would let that subfield defer it — which is a claim to be made and measured, not assumed |
+
+### 6.4 · The pair optimised jointly, in simulation
+
+**The problem.** The system and the reconstruction are still chosen
+separately, one by an engineer and one by a methodologist, and the pair is what
+determines the result.
+
+| | |
+|---|---|
+| **solved when** | system and method are optimised against one objective that includes main rung 4's cost, and the jointly designed pair beats the best separately designed pair **in simulation**, on a main-rung-1 benchmark with main-rung-2 consistency |
+| **blocked by** | 6.1, 6.3, and main rung 4. Optimising jointly against a twin that omits the sensor optimises nothing about the sensor; optimising without cost yields a system nobody would build |
+| **unblocks** | 6.5, and it is the last rung that can be reached without a body |
+| **what would reorder it** | nothing. This is the rung the literature is already on, which is exactly why the three below it matter |
+
+> **The field's existing "deep optics" work lives here, and mostly skips 6.1–6.3.**
+> That is the honest reading of why its results have been hard to build on: the
+> optimisation is sound and the twin, the parts and the tolerances underneath it
+> often are not.
+
+### 6.5 · Build it, measure it, and report the gap
+
+**The problem.** Everything above is simulation. A designed system is a claim
+until one exists and is measured.
+
+| | |
+|---|---|
+| **solved when** | the system is **built and measured**, its performance is reported against what 6.1's twin predicted, and **the gap is named** — as a number, not as a limitation paragraph. Closing this closes main rung 6 |
+| **blocked by** | 6.2, 6.3, 6.4, and main rung 3 (the sim→real reporting discipline this field already owes) |
+| **unblocks** | main rung 6, and with it the field's hardware direction |
+| **what would reorder it** | nothing moves it earlier — it is last because it is the only one that requires the thing to exist |
+
+> **This is the physical-labour wall, and §13i is what removes it**
+> ([spec §13i](../2026-08-04-sarsi-agent-market-and-pwm-design.md#13i-a-research-agent-is-a-group-and-some-of-it-has-a-body-point-28)):
+> an embodied `runner` fabricates and assembles, an embodied `corpus` measures,
+> and an embodied `reproducer` builds a second unit — which is the check that
+> matters most here, because **a system that works in one build is not a design**.
+> A body does not remove the lead time on a part, or the cost of getting it
+> wrong: 6.2 lists lead times for the same reason 6.3 exists.
+
+### The order, and what it says
+
+```
+6.1 system-level twin ─┬─> 6.3 tolerance ─┬─> 6.4 joint optimisation ─> 6.5 build & measure
+6.2 buyable parts ─────┴──────────────────┘                              (a body)
+                                                                   └─> closes main rung 6
+```
+
+**Two of the five floors are not research** — a twin that models hardware, and
+a parts list — and the rung the field is already working on is 6.4, three
+rungs up. That gap is the sub-ladder's whole claim: joint design is not
+short of optimisation, it is short of a twin that models what is being
+designed and a design space made of things that exist.
+
+> **And it is the fission tripwire.** Main rung 6's L1 assumes a *fixed*
+> operator with a learned prior. Every rung here treats the operator as
+> something being **chosen** — 6.2 chooses parts, 6.3 chooses tolerance,
+> 6.4 chooses the pair. If this sub-ladder closes, the field's principle has
+> already been outgrown by its own best result, which is precisely the
+> condition §16 names for a new field and a new agent.
+
 ## The four layers
 
 | layer | this field's instance |
 |---|---|
 | **Principle** | Physics is not a hyperparameter. The forward operator is a fixed, published input; the reconstruction is what may vary |
 | **Digital twin** | The SD-CASSI forward model — mask, shear, spectral sum, detector sampling — identical in generation and in scoring, never staged where the agent can reach it, and carrying **where it stops being valid**: it assumes a thin, aligned, dispersion-linear system, and a fabricated element that violates that is outside the twin |
-| **Benchmark** | Real CAVE hyperspectral scenes, fixed scene set, per-scene reporting, forward-model residual carried beside every fidelity number |
+| **Benchmark** | Real CAVE hyperspectral scenes, fixed scene set, per-scene reporting, forward-model residual carried beside every fidelity number  — and its reference method is allowed to fail — it did, on a real scene, until a sign error was found |
 | **Solution** | FISTA with a Chambolle TV proximal operator, `iters` and `tv_weight` declared as the only knobs |
 
 The four are stacked deliberately: a solution is only meaningful against a
@@ -418,6 +544,30 @@ bench is listed separately rather than as another tool:
 reasoning and judging members. See [`lifecycle.md`](lifecycle.md).
 
 > **What the bodies do not fix.** Instrument time is finite and bookable, and a robot does not create more of it. The transfer table stays open because it needs many instruments, not faster hands.
+
+## 13. The field page
+
+The L1→L4 chain for this field is published on **physicsworldmodel.org** and is
+the example the other six are built to match
+([spec §13d](../2026-08-04-sarsi-agent-market-and-pwm-design.md#13d-principles-digital-twins-benchmarks-solutions--one-per-field-one-page-each-point-23)):
+**L1** the imaging principle, **L2** the forward model as the digital twin,
+**L3** the benchmarks with their corpora, **L4** the solutions that meet them.
+
+**What is not built:** the page is not generated from the registry, and §12's
+ladder is not on it. Until it is, the ladder here and the chain there can
+disagree — and the one people read is the one on the site.
+
+## 15. The teacher
+
+The path from "knows some linear algebra" to checking one result:
+**L1** why a coded measurement is invertible at all → **L2** run the forward
+model on a known scene and see the measurement it predicts → **L3** run the
+benchmark's reference method and get its published number → **L4** run the
+method under test and compare, with the residual and the cost beside it.
+
+**The test is that the learner gets the same number**, not that they report
+having understood. This field is a good place to build the teacher first: the
+whole chain runs on one machine in minutes, and the number is unambiguous.
 
 ## At AGI and ASI
 

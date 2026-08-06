@@ -256,6 +256,14 @@ metric does not accumulate; it drifts, confidently. Fixing the corpus (2) or the
 lesion model (3) while still ranking by PSNR would produce a cleaner measurement
 of the wrong quantity.
 
+> **Blocked by, and unblocks.** The order *is* the dependency graph: each rung
+> is blocked by the ones above it and unblocks the ones below. They are not
+> itemised per rung yet, which is a gap against the spec rather than a claim
+> that the graph is a chain.
+>
+> **Evidence that would reorder it.** a reader study showing detectability does NOT track readers would move rung 5 to the front and invalidate the ordering below it. A ladder nobody can argue with is a
+> ladder nobody checked.
+
 > **"Solved when" is the entry fee.** A problem with no measurement that would
 > settle it is a research *interest*, and interests belong in the charter. The
 > ladder is the part this agent can be wrong about in public.
@@ -268,13 +276,112 @@ of the wrong quantity.
 > Given a free hand the cheapest defensible night is the easy rung, and a year
 > of easy rungs looks like a year of progress.
 
+## 12b. Rung 1 decomposed — the detectability pipeline
+
+**Rung 1 is decomposed and not another, because it is the floor and it is a
+program.** "A task-based detectability score beside every fidelity number" is
+one line covering a task definition, an observer, a calibration and a
+deployment — and each of the four can be got wrong in a way that leaves the
+score looking fine. Everything else on the ladder is graded by this rung, so a
+quiet error here is an error in every number the field publishes afterwards.
+
+Owned by **`observer`** (1.1–1.3) and **`corpus`** (1.4); 1.5 is nobody's on
+this machine — see below.
+
+### 1.1 · The task, stated before the observer exists
+
+**The problem.** "Detectability" is not a quantity until someone says
+detectability *of what*: lesion size, contrast, location known or not,
+background type. Papers reporting task-based metrics frequently omit the task.
+
+| | |
+|---|---|
+| **solved when** | every benchmark case carries an explicit task specification — signal, contrast, size, and whether location is known — and two groups computing "the" detectability on the same data get the same number |
+| **blocked by** | nothing. It is the floor of the floor |
+| **unblocks** | 1.2–1.5; an observer is a function of a task and cannot be chosen before one |
+| **what would reorder it** | nothing. A task written after the observer is a task chosen to suit it |
+
+### 1.2 · An observer that is stated, not implied
+
+**The problem.** Model observers differ — non-prewhitening, channelised
+Hotelling, and several channel sets — and they disagree. An unstated observer
+turns a metric into a preference.
+
+| | |
+|---|---|
+| **solved when** | the observer, its channels and its internal-noise parameters are published with the benchmark, and swapping to a second stated observer changes rankings by a reported amount rather than an unknown one |
+| **blocked by** | 1.1 |
+| **unblocks** | 1.3, 1.4 |
+| **what would reorder it** | nothing; it costs a paragraph and an artifact |
+
+### 1.3 · The blur test, as a standing regression
+
+**The problem.** The field's central failure — a smoothing that raises PSNR and
+destroys the signal — has been demonstrated once. Demonstrated once is an
+anecdote; the value is in it being a permanent tripwire.
+
+| | |
+|---|---|
+| **solved when** | a family of degradations that *raise* fidelity while destroying detectability runs on every benchmark execution, and a metric change that stops catching them **fails the build** |
+| **blocked by** | 1.1 and 1.2 |
+| **unblocks** | 1.4. There is no point making a metric routine before it is known to catch the thing it exists to catch |
+| **what would reorder it** | nothing. This is the cheapest rung in the field and the one that keeps the other five honest |
+
+> **This is the rung that turns a result into a guarantee.** The blur that fails
+> is already in the benchmark; what 1.3 adds is that it stays there, and that a
+> future change which quietly stops detecting it cannot pass unnoticed.
+
+### 1.4 · Routine — every result, every dose, every vendor
+
+**The problem.** One corpus at one dose is not a metric, it is a demonstration.
+A field's metric has to be cheap enough that nobody is tempted to skip it.
+
+| | |
+|---|---|
+| **solved when** | the detectability score is computed automatically for every submitted result at every dose level and on every available scanner, at a cost small enough not to be argued about, and a result without one is not published |
+| **blocked by** | 1.2, 1.3, and main rung 2 — "every dose" needs dose to be a defined quantity |
+| **unblocks** | main rungs 3, 4 and 5, all of which compare detectability across conditions |
+| **what would reorder it** | nothing |
+
+### 1.5 · The observer validated against readers
+
+**The problem.** 1.1–1.4 replace a bad proxy with a better one. It is still a
+proxy until it is shown to track radiologists. This is **main rung 6**, and it
+appears here as the sub-ladder's terminal rung because it is what the pipeline
+is ultimately for.
+
+| | |
+|---|---|
+| **solved when** | a reader study shows the observer's ranking agrees with radiologists' on a stated case set, with the disagreements characterised — closing main rung 6 |
+| **blocked by** | 1.4 |
+| **unblocks** | clinical claims, which nothing above licenses |
+| **what would reorder it** | nothing |
+
+> **No body closes this one** (§13i). The endpoint is defined as what a
+> radiologist sees, so this is human judgment as the endpoint — not physical
+> labour. The agent's whole contribution is to make the study cheap: the case
+> set prepared, the observer already computed, the comparison pre-registered.
+
+### The order, and what it says
+
+```
+1.1 task ─> 1.2 observer ─> 1.3 blur regression ─> 1.4 routine ─> 1.5 readers
+                                                    (needs main rung 2)   (a person)
+```
+
+**Four of the five rungs are specification and plumbing.** The field's central
+problem is not that a better metric is unknown — it is that the known one is
+unstated, unguarded and not routine. The single result this field already has,
+a blur that beats PSNR and fails detectability, becomes a guarantee at 1.3 and
+an instrument at 1.4.
+
 ## The four layers
 
 | layer | this field's instance |
 |---|---|
 | **Principle** | A smoother image is not a better one. Detectability is measured, never inferred from fidelity |
 | **Digital twin** | The dose-reduction model — photon statistics applied to real full-dose reconstructions, so the low-dose image is generated by a stated physical process rather than by adding convenient noise |
-| **Benchmark** | TCIA `LDCT-and-Projection-data`, real paired full/low dose, position-matched slices, lesion CNR against a tissue-only noise ROI |
+| **Benchmark** | TCIA `LDCT-and-Projection-data`, real paired full/low dose, position-matched slices, lesion CNR against a tissue-only noise ROI  — and its reference method is allowed to fail — the blur does, on purpose, and stays in the suite |
 | **Solution** | An edge-preserving denoiser with `sigma_s`, `sigma_r_scale`, `radius` and `iters` declared, and a blur that scores better on PSNR kept in the suite as a permanent trap |
 
 ---
@@ -352,6 +459,40 @@ bench is listed separately rather than as another tool:
 reasoning and judging members. See [`lifecycle.md`](lifecycle.md).
 
 > **What the bodies do not fix.** The dose-detectability curve gets cheaper; the reader study does not. Whether detectability tracks a human radiologist needs radiologists, and no robot supplies them.
+
+## 13. The field page
+
+| Layer | This field |
+|---|---|
+| **L1 · principle** | a projection is a line integral of attenuation, and the noise in it is photon statistics. Dose *is* photon count, so "less dose" and "more noise" are one statement, and reconstruction is inversion under a noise level you chose |
+| **L2 · spec — the digital twin** | the acquisition forward model: scanner geometry, polychromatic beam, detector response, and the dose model that maps mAs to photon count to a noise realisation. **Where it stops:** scatter, beam hardening and motion are approximated, and a result that depends on those is outside what the twin can grade |
+| **L3 · benchmark** | TCIA `LDCT-and-Projection-data` — real paired full- and low-dose, with fidelity **and** a task-based detectability score (rung 1) |
+| **L4 · solution** | a reconstruction that meets both. The reference method passes; **a blur with a higher PSNR fails**, which is the benchmark's whole reason for existing |
+
+**The twin is what makes the dose axis real.** Without it "50% dose" is a vendor
+setting; with it, it is a photon count, and rung 2 becomes a computation rather
+than a negotiation.
+
+**Not built:** no page on physicsworldmodel.org, and the ladder is not published
+with the benchmark. Until it is, the chain lives in this file and in the code.
+
+## 15. The teacher
+
+The path from "has seen an X-ray" to checking one result:
+
+1. **L1** — why a projection is a line integral, and why halving the dose
+   quarters nothing and doubles the noise variance. One equation.
+2. **L2** — run the twin: take a known phantom, generate its projections at two
+   dose levels, and look at the two sinograms.
+3. **L3** — run the reference reconstruction on the low-dose data. Read its PSNR
+   and its detectability score.
+4. **L4** — run a Gaussian blur on the same data. **Watch its PSNR go up and its
+   detectability go down.**
+
+**Step 4 is the lesson**, and it is why this field is the best of the seven to
+teach with: the learner does not have to be told the field's central problem,
+they produce it in about a minute. The test is that they get the same two
+numbers, in the same directions.
 
 ## At AGI and ASI
 

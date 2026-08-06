@@ -268,6 +268,14 @@ well" and "works" is the entire field.
 | 7 | **Tolerability as a guardrail, not a footnote** | `a candidate improving potency while worsening tox is refused automatically, in the log` | a candidate that improves potency while worsening tox must be refused automatically, the way coverage bought with organ dose is refused in medical physics | open |
 | 8 | **Nothing claimed without an assay** | `no claim reaches the page without an assay result behind it, checked by the writer` | the standing rule, and the last one because it binds everything above | charter |
 
+> **Blocked by, and unblocks.** The order *is* the dependency graph: each rung
+> is blocked by the ones above it and unblocks the ones below. They are not
+> itemised per rung yet, which is a gap against the spec rather than a claim
+> that the graph is a chain.
+>
+> **Evidence that would reorder it.** evidence that held-out targets, not held-out series, are the binding generalisation gap would move rung 4 above rung 1. A ladder nobody can argue with is a
+> ladder nobody checked.
+
 > **"Solved when" is the entry fee.** A problem with no measurement that would
 > settle it is a research *interest*, and interests belong in the charter. The
 > ladder is the part this agent can be wrong about in public.
@@ -280,13 +288,123 @@ well" and "works" is the entire field.
 > Given a free hand the cheapest defensible night is the easy rung, and a year
 > of easy rungs looks like a year of progress.
 
+## 12b. Rung 6 decomposed — the closed make-test loop
+
+**Rung 6 is decomposed because it is the field's defining gap and because it is
+the one rung here that consumes matter.** "Compounds proposed by the method are
+synthesised and assayed, and the prospective hit rate is reported" is one line
+covering selection, makeability, synthesis, assay and feedback — five steps, of
+which two are physical and irreversible.
+
+This is also where this field's hazard is concentrated. Its cheap metrics do
+not predict its expensive outcomes, so an optimiser that is excellent at the
+metric will produce confident nonsense — and with hands, the nonsense is
+synthesised. **Rungs 1–5 are the precondition for using the hands at all**, and
+the sub-ladder below assumes them closed.
+
+Owned by **`method`** (6.1), **`synthesis-planner`** (6.2, embodied),
+**`runner`** (6.3–6.4, embodied) and **`verifier`** (6.5).
+
+### 6.1 · A selection rule stated before anything is made
+
+**The problem.** "Make the top-scoring compounds" is not a rule: it selects for
+whatever the scoring function is wrong about, which is precisely the quantity
+rung 5 says has not improved in decades.
+
+| | |
+|---|---|
+| **solved when** | the selection rule is published before a batch — how many, chosen how, with what diversity and what deliberate coverage of *uncertain* predictions rather than confident ones — and the batch's composition can be checked against it afterwards |
+| **blocked by** | main rungs 1–5. Selecting from a leaked, unscaled, irreproducible pipeline spends chemistry on noise |
+| **unblocks** | everything below. A batch with no stated rule cannot produce an interpretable hit rate, only an anecdote |
+| **what would reorder it** | nothing. This is the rung that makes the loop an experiment rather than a shopping list |
+
+> **Deliberately include the uncertain.** A batch of only confident predictions
+> confirms what the model already believes and teaches it nothing; the
+> informative compounds are the ones the model cannot call.
+
+### 6.2 · Makeability decided before cost is committed
+
+**The problem.** A generative model proposes molecules that cannot be made.
+Discovering that on the bench is the expensive way to learn it, and reagents
+do not come back.
+
+| | |
+|---|---|
+| **solved when** | every selected compound has a retrosynthetic route with stated steps, availability and cost, and compounds without one are excluded **before** the batch is committed, with the exclusion rate reported as a property of the generator |
+| **blocked by** | 6.1 |
+| **unblocks** | 6.3 |
+| **what would reorder it** | nothing. The exclusion rate is itself one of the most useful numbers a generative method can be given |
+
+### 6.3 · Synthesis, inside an envelope
+
+**The problem.** The first irreversible step. A wrong file is reverted; a
+consumed reagent is not, and an instrument can be damaged by a plan that looked
+fine.
+
+| | |
+|---|---|
+| **solved when** | the batch is synthesised on a platform under a declared **physical envelope** (§13i) — what may be handled, in what quantities, at what temperatures, and what must never be attempted — with yields and failures recorded as data rather than as setbacks |
+| **blocked by** | 6.2 |
+| **unblocks** | 6.4 |
+| **what would reorder it** | nothing |
+
+> **The envelope is the owner's and is signed by the synthesis and assay lead**
+> — the fourth panel role, which exists only because this group has hands
+> (§13j). An agent may not widen it, propose a wider one, or treat a successful
+> run as an argument for a larger one.
+
+### 6.4 · Assay, with its own controls
+
+**The problem.** An assay result is a measurement with its own error, and a
+loop that treats it as ground truth will chase assay noise as though it were
+chemistry.
+
+| | |
+|---|---|
+| **solved when** | every batch carries positive and negative controls and replicate measurements, the assay's own variability is reported, and a difference smaller than it is not treated as a difference |
+| **blocked by** | 6.3 |
+| **unblocks** | 6.5 |
+| **what would reorder it** | nothing. This is pill camera's rung 2 wearing different clothes, and the same failure — believing effects inside the noise — is available here at much greater cost |
+
+### 6.5 · The prospective number, reported against the prediction
+
+**The problem.** The whole point. A method that wins retrospectively has not
+been shown to find anything, and the comparison is only worth something if it
+is published when it is unflattering.
+
+| | |
+|---|---|
+| **solved when** | the prospective hit rate is reported against what the retrospective evaluation predicted, **including and especially when it is worse**, and the negatives enter the corpus of main rung 4 rather than being discarded |
+| **blocked by** | 6.4 |
+| **unblocks** | the only claim the field cares about, and — by feeding negatives back — main rung 5 |
+| **what would reorder it** | nothing |
+
+> **The loop closes here or it is not a loop.** Compounds that did not bind are
+> the data main rung 4 says the field lacks; a make-test cycle that publishes
+> only its successes recreates the censored literature it was built to escape,
+> at the cost of real reagents.
+
+### The order, and what it says
+
+```
+6.1 selection rule ─> 6.2 makeability ─> 6.3 synthesis ─> 6.4 assay + controls ─> 6.5 the number
+   (needs main 1-5)                        (a body,          (a body)              (fed back
+                                            envelope)                               to main 4)
+```
+
+**Two of the five are physical and irreversible, and the three around them are
+what make those two safe.** The sub-ladder is arranged so that the expensive
+steps are entered with a stated rule, a route, an envelope and controls — and
+so that the loop's output is a number the field does not currently have, plus
+the negatives it has never published.
+
 ## The four layers
 
 | layer | this field's instance |
 |---|---|
 | **Principle** | A docking score is not an affinity, and a random split of an analogue series is not a validation |
 | **Digital twin** | The library model — fingerprint space, property-matched decoy generation, and the chemical-cluster structure that defines what "a series" means. This is what makes the split honest, and the agent cannot touch it |
-| **Benchmark** | DUD-E, 15,288 molecules across 6 targets, queries drawn from whole clusters with the rest withheld, scored by EF@1% against a property-only floor and a stated ceiling |
+| **Benchmark** | DUD-E, 15,288 molecules across 6 targets, queries drawn from whole clusters with the rest withheld, scored by EF@1% against a property-only floor and a stated ceiling  — and its reference method is allowed to fail — it did, once the analogue leak was closed and the task got harder |
 | **Solution** | Tversky similarity with IDF weighting; `top_k`, `tversky_alpha`, `tversky_beta`, `idf_weight` declared |
 
 ---
@@ -364,6 +482,42 @@ bench is listed separately rather than as another tool:
 reasoning and judging members. See [`lifecycle.md`](lifecycle.md).
 
 > **What the bodies do not fix.** A closed loop makes wrong answers faster too. Every compound synthesised on a leaked split is real money spent on a ranking that measured memory.
+
+## 13. The field page
+
+| Layer | This field |
+|---|---|
+| **L1 · principle** | binding is a free-energy difference, and structure determines it. Every scoring function in the field is an approximation to one quantity that is, in principle, computable |
+| **L2 · spec — the digital twin** | the physics-based free-energy model (FEP/MD), with docking as its cheap approximation. **Where it stops:** protein flexibility, explicit water, entropy and protonation — and it stops there expensively, because those are exactly the terms that decide the cases people care about |
+| **L3 · benchmark** | DUD-E, 15,288 molecules across 6 targets, **series-disjoint** with property-matched decoys (rung 1), reported as enrichment **with its ceiling and its property-only baseline** (rung 2) |
+| **L4 · solution** | EF@1% of **41–56 — 51–77% of the achievable ceiling and 2.4–2.9× the property baseline.** Three numbers because the first one alone would have been unreadable |
+
+**This field has the best-specified twin of the seven and the widest gap between
+the twin and the benchmark.** Free energy is computable and too expensive to
+compute at library scale, so the whole field lives in the approximation — and
+rung 5, the scoring-function ceiling, is that gap stated as a problem.
+
+**Not built:** no page on physicsworldmodel.org. The ceiling and baseline
+computations exist in the benchmark and are not published as reusable artifacts,
+which is what would let other people's numbers be read on the same scale.
+
+## 15. The teacher
+
+The path from "knows what a molecule is" to checking one result:
+
+1. **L1** — why binding is a free-energy difference, and why a score is an
+   approximation rather than a measurement.
+2. **L2** — dock one known ligand into one known target. Then change its
+   protonation and dock it again. Watch the score move.
+3. **L3** — run the benchmark with a random split, then with the series-disjoint
+   split. **Watch the enrichment collapse.**
+4. **L4** — read **41–56** against its ceiling and against the property-only
+   baseline, and find the published methods that do not beat the baseline.
+
+**Steps 2 and 3 are two different lessons and both are load-bearing**: the
+preparation lesson is why results are irreproducible, and the split lesson is
+why the literature's numbers are too good. A learner who has produced both can
+read a paper in this field usefully, and that is a large return on an afternoon.
 
 ## At AGI and ASI
 

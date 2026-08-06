@@ -313,6 +313,14 @@ directly, and being asked twice does not change the answer.
 > to a faster machine. The constraint is what may be held, where, and by whom —
 > which is why 6 is a governance problem wearing a statistics costume.
 
+> **Blocked by, and unblocks.** The order *is* the dependency graph: each rung
+> is blocked by the ones above it and unblocks the ones below. They are not
+> itemised per rung yet, which is a gap against the spec rather than a claim
+> that the graph is a chain.
+>
+> **Evidence that would reorder it.** a cohort where calibration and discrimination disagree in direction would move rung 3 above rung 2. A ladder nobody can argue with is a
+> ladder nobody checked.
+
 > **"Solved when" is the entry fee.** A problem with no measurement that would
 > settle it is a research *interest*, and interests belong in the charter. The
 > ladder is the part this agent can be wrong about in public.
@@ -325,13 +333,109 @@ directly, and being asked twice does not change the answer.
 > Given a free hand the cheapest defensible night is the easy rung, and a year
 > of easy rungs looks like a year of progress.
 
+## 12b. Rung 5 decomposed — evidence currency
+
+**Rung 5 is decomposed and not the floor, because it is the only rung in this
+field whose duty is continuous.** "Every model carries the date of the evidence
+it encodes, and a staleness measure that says what has changed underneath it —
+automatically" is one line covering what to watch, how to detect a change, how
+to date a model against it, what to do when it is stale, and how to prove the
+refresh did not break anything.
+
+It is also the clearest case in all seven fields of work that is valuable,
+unbounded in time, and that nobody is promoted for doing — which is the
+argument for pointing an agent at this field at all.
+
+Owned by **`currency`** (5.1–5.3), **`method`** (5.4) and **`verifier`** (5.5).
+
+### 5.1 · The sources, named and versioned
+
+**The problem.** "Guidelines change" is not a monitorable statement. Which
+guidelines, which actionability database, which registry, at which version, is.
+
+| | |
+|---|---|
+| **solved when** | every model declares the external sources it depends on, each pinned to a version and a date, so "what has changed underneath this model" is a computable question rather than a literature review |
+| **blocked by** | nothing — the floor |
+| **unblocks** | everything below. Nothing can be watched that has not been named |
+| **what would reorder it** | nothing |
+
+### 5.2 · Change detected, and classified
+
+**The problem.** Most changes to a guideline do not affect a given model, and
+an alert on every change is an alert nobody reads. A system that cries wolf
+monthly is worse than none, because it teaches people to ignore it.
+
+| | |
+|---|---|
+| **solved when** | changes are detected automatically and classified as **irrelevant**, **relevant**, or **invalidating** for each model, with the classification rule published and its false-alarm rate measured |
+| **blocked by** | 5.1 |
+| **unblocks** | 5.3 |
+| **what would reorder it** | nothing. The classification is the hard part; the detection is plumbing |
+
+### 5.3 · A staleness figure on the model's face
+
+**The problem.** A model's age is invisible at the point of use. Anyone reading
+its output sees a number, not the year its evidence was assembled.
+
+| | |
+|---|---|
+| **solved when** | every model reports, wherever its output is read, the date of its evidence and the count of relevant and invalidating changes since — so that using a stale model is a decision rather than an accident |
+| **blocked by** | 5.2 |
+| **unblocks** | 5.4 |
+| **what would reorder it** | nothing, and it is cheap |
+
+### 5.4 · Refresh as a first-class operation
+
+**The problem.** Refreshing a model is treated as maintenance, which means it
+is done irregularly and evaluated less carefully than the original fit — on the
+assumption that a newer model is a better one.
+
+| | |
+|---|---|
+| **solved when** | a refresh runs the **full** main-ladder evaluation — site-disjoint external validation and calibration (main rungs 1 and 2) — and a refreshed model that is worse externally is not adopted, regardless of being newer |
+| **blocked by** | 5.3, and main rungs 1 and 2 |
+| **unblocks** | 5.5 |
+| **what would reorder it** | nothing. This is where "keeping it current" quietly becomes "changing it without checking" |
+
+### 5.5 · Drift measured against outcomes, not against itself
+
+**The problem.** A model can remain consistent with its own past predictions
+while the world moves. Agreement with yesterday's output is not evidence of
+correctness; it is evidence of nothing at all.
+
+| | |
+|---|---|
+| **solved when** | model performance is re-measured against **new outcome data** on a stated cadence, and a decline is reported as a decline — separating "the evidence underneath changed" (5.2) from "the model got worse on reality" |
+| **blocked by** | 5.4 |
+| **unblocks** | the only honest claim that a maintained model is still working |
+| **what would reorder it** | nothing |
+
+> **This is where the missing L2 hurts most.** With no forward model, a decline
+> cannot be attributed to a mechanism — the field can see that a model got
+> worse and not say why. 5.5 is what makes the decline visible; nothing in this
+> field currently makes it explicable.
+
+### The order, and what it says
+
+```
+5.1 sources named ─> 5.2 change classified ─> 5.3 staleness shown ─> 5.4 refresh evaluated ─> 5.5 drift vs outcomes
+```
+
+**Purely linear, and every rung is upkeep.** That is the point rather than a
+weakness: this field's shortage is validation and maintenance, not modelling,
+and a sub-ladder made entirely of unglamorous continuous duties is exactly what
+an agent that does not get bored is for. The rung that will be skipped is 5.4 —
+refreshing without re-validating is the fastest path to a model that is current
+and wrong.
+
 ## The four layers
 
 | layer | this field's instance |
 |---|---|
 | **Principle** | A model that has not crossed hospitals has not been validated. It advises a clinician; it never advises a patient |
 | **Digital twin** | The cohort model — tissue source site as the unit of institutional variation, censoring, and follow-up structure. Sites define the split, so the twin is what makes the benchmark hard |
-| **Benchmark** | TCGA via the GDC API, 978 cases, site-disjoint validation, c-index on held-out hospitals with cross-histology transport reported alongside |
+| **Benchmark** | TCGA via the GDC API, 978 cases, site-disjoint validation, c-index on held-out hospitals with cross-histology transport reported alongside  — and its reference method is allowed to fail — it does, on the histologies it does not transport to |
 | **Solution** | A ridge-regularised Cox model with `ridge`, `lr`, `iters` declared |
 
 ---
@@ -409,6 +513,42 @@ bench is listed separately rather than as another tool:
 reasoning and judging members. See [`lifecycle.md`](lifecycle.md).
 
 > **What the bodies do not fix.** Prospective validation stays blocked. It needs time and consent; robots supply neither. A faster biobank produces the same evidence sooner and no stronger evidence.
+
+## 13. The field page
+
+| Layer | This field |
+|---|---|
+| **L1 · principle** | cancer is somatic evolution under selection. Heterogeneity, clonal dynamics and treatment resistance are consequences of one process, and that is the field's only genuinely unifying statement |
+| **L2 · spec — the digital twin** | a model taking genotype and context to phenotype and outcome. **This is the field's weakest layer by a distance**: what exists is statistical association, not a forward model. There is no simulator that says what a given tumour *should* do, so a prognostic model cannot be checked against anything except more data. **Where it stops:** essentially everywhere a mechanism is required |
+| **L3 · benchmark** | TCGA via the GDC API, 978 cases, **site-disjoint** (rung 1) with calibration reported (rung 2) |
+| **L4 · solution** | models reported as they behave: **0.66–0.68 internally, 0.58–0.67 on held-out hospitals, 0.577 across histologies** — the last stated and *not graded*, because grading it would imply the field knows what an acceptable value is |
+
+> **The missing twin is the field's central diagnosis, and this page states it as
+> one.** A field with L1, L3 and L4 and almost no L2 can measure that its models
+> fail externally and cannot say why. Every rung on the ladder is a way of
+> living honestly without a twin; none of them is a substitute for having one.
+
+**Not built:** no page on physicsworldmodel.org, and no L2 to publish if there
+were.
+
+## 15. The teacher
+
+The path from "knows cancer is genetic" to checking one result:
+
+1. **L1** — why somatic evolution implies heterogeneity, and why heterogeneity
+   implies a model fitted here may not work there.
+2. **L2** — there is no twin to run, and the learner should be told that
+   plainly. What they run instead is a null: shuffle the labels and see what
+   apparent performance survives.
+3. **L3** — fit one model and evaluate it internally (**0.66–0.68**), then on
+   held-out hospitals (**0.58–0.67**).
+4. **L4** — evaluate across histologies (**0.577**) and read the calibration
+   curve beside the discrimination.
+
+**Step 2 is unusual and is the honest version**: a field with no forward model
+teaches by teaching what cannot be checked. Step 3 is the lesson — a number that
+does not travel — and a learner who has watched 0.68 become 0.58 on their own
+machine will never again read an internal AUC as a claim about the world.
 
 ## At AGI and ASI
 

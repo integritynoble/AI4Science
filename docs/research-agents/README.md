@@ -372,3 +372,160 @@ pwm-agent-<name>/
 | [**pill camera**](pill-camera.md) | capsule hardware, localisation, video reading, GI endoscopy AI, datasets, clinical validation | seed variance is not an improvement |
 | [**drug design**](drug-design.md) | target ID, structure prediction, docking, FEP/MD, generative chemistry, ADMET, retrosynthesis, closed-loop | a docking score is not an affinity |
 | [**cancer**](cancer.md) | genomics, multi-omics, tumour evolution, immuno-oncology, liquid biopsy, digital pathology, radiomics, trials | it advises a clinician, never a patient |
+
+## 11. What every agent page must carry — the 2026-08-06 points
+
+Points 23–27 and the requirement given with them
+([spec §§13c–13h](../2026-08-04-sarsi-agent-market-and-pwm-design.md#13c-the-problem-ladder--what-a-field-needs-solved-and-in-what-order))
+add five sections to this template. They are listed here as a contract so a
+page that is missing one is visible rather than merely shorter.
+
+| § | Section | What it must contain | State |
+|---|---|---|---|
+| **12** | **The problem ladder** | the field's open problems in **dependency order**, each with *solved when* / *blocked by* / *unblocks* / *what would reorder it* | **all seven** |
+| **13** | **The field page** | the L1→L4 chain published on physicsworldmodel.org, and a link to it | **all seven** (written; **none published**) |
+| **14** | **At AGI and ASI** | what this agent's two functions look like when autonomous work is the default, and which of the four verifications carry this field | **all seven** |
+| **15** | **The teacher** | how a non-specialist is brought to the point of checking one result of this field, derived from the evidence chain | **all seven** |
+| **16** | **Collapse conditions** | what saturation, irrelevance and fission would look like **for this field**, stated before they are near | **all seven** |
+| **17** | **The group, and which of it has a body** | one workspace, one voice; which sub-agents are embodied and what they do with it ([spec §13i](../2026-08-04-sarsi-agent-market-and-pwm-design.md#13i-a-research-agent-is-a-group-and-some-of-it-has-a-body-point-28)) | **all seven** |
+| **18** | **Scope, and the experts who set it** | `in` / `out` / `adjacent`, the expert panel **by role**, and what would move the boundary ([spec §13j](../2026-08-04-sarsi-agent-market-and-pwm-design.md#13j-scope-and-the-experts-who-set-it-point-29)) | **all seven** |
+
+**All six sections are now written for all seven agents.** What each one says
+about its own field is worth reading against the others, because the answers are
+not uniform and the differences are the content:
+
+| | the sharpest finding |
+|---|---|
+| **L2, the digital twin** | **cancer has almost none** — it has L1, L3 and L4 and no forward model, which is why it can measure that its models fail externally and cannot say why. Medical physics has the strongest twin and the narrowest principle: dose is computable, what dose *does* is not |
+| **verification at ASI** | low-dose CT and computational imaging can check a result against its own measurement and will need people last; **drug design cannot be verified retrospectively at all**, so its verifier is the embodied make-test loop; pill camera is thinnest, and leans on cross-vendor recapture |
+| **the teacher** | each field's lesson is a single run that overturns the field's own habit — the blur that beats PSNR and fails detectability; 62.6 against 66.5; the split that collapses enrichment; 0.68 becoming 0.58; 55% composition |
+| **collapse** | **fission candidates named early, while there is nothing to gain from naming them**: task-based image assessment (low-dose CT), **biological dose and FLASH** (medical physics — the cleanest, since its L1 computes energy and its open question is biology), active capsules (pill camera), closed-loop experimentation (drug design), early detection (cancer), mechanism reversal (reverse aging), joint optics-algorithm design (computational imaging) |
+| **scope, and who sets it** | drug design needs **four** panel roles, the largest — the fourth exists only because the group has hands, and an envelope for a synthesis platform is a safety document. Medical physics seats a **radiobiologist** precisely because its principle cannot carry a biological claim. Cancer's scope is the widest and the page says it should probably **contract** |
+| **irrelevance** | only two fields can plausibly reach it: **pill camera** (a small field with small margins and one corpus) and **reverse aging** (if rung 3 returns null, the instrument does not measure the subject — and producing that answer would be the agent's most valuable result) |
+
+**The ladder was written first**, because the other four depend on it: a
+field page without it has nothing to show state against, the AGI form is a
+statement about who works the ladder, and collapse is defined in terms of the
+ladder being closed.
+
+> **All seven ladders are written; six of them are drafts for the governor to
+> correct.** I said first that writing a dependency order from outside a field
+> produces a plausible list that is wrong in the way hardest to detect — it
+> reads like expertise — and that risk is unchanged by having written them. What
+> reduces it: **every rung is derived from that page's own §2 and from what its
+> benchmark actually measured**, not from general knowledge of the field. The
+> 55% composition figure, the 13-of-28 splits, the 62.6-against-66.5 infeasible
+> target, the higher-PSNR blur that fails, the 0.624-against-0.614 margin, the
+> 51–77%-of-ceiling enrichment — each is a rung, because each is a place the
+> field's own measurement already disagrees with its own practice.
+>
+> **Read them as claims to be refuted, and refute them in the `blocked by`
+> lines** — that is where a wrong ladder is wrong (§13c: the order is computed
+> from dependencies, so an argument about order is an argument about one
+> dependency, which is checkable). Computational imaging is the one I have
+> standing in: this project measured the CASSI convention and found and fixed
+> the reference-solver sign error.
+
+## 12. The scope objects
+
+Seven of them, in [`scope/`](scope/), one per agent — the form
+[spec §13j](../2026-08-04-sarsi-agent-market-and-pwm-design.md#13j-scope-and-the-experts-who-set-it-point-29)
+says `agent.json` will carry:
+
+| Field | in | out | adjacent | watches |
+|---|---|---|---|---|
+| [computational imaging](scope/computational-imaging.json) | 8 subfields (**v2** — hardware system design) | 3 | 3 | rung 5 |
+| [low-dose CT](scope/low-dose-ct.json) | 6 | 3 | 2 | rung 5 |
+| [medical physics](scope/medical-physics.json) | 8 | 4 | 3 | rung 6 |
+| [pill camera](scope/pill-camera.json) | 6 | 3 | 3 | rung 4 |
+| [drug design](scope/drug-design.json) | 8 | 4 | 3 | rung 6 |
+| [cancer](scope/cancer.json) | 8 | 4 | 5 | rung 6 |
+| [reverse aging](scope/reverse-aging.json) | 5 | 4 | 3 | rung 3 |
+
+**Every `out` entry names where the question goes instead.** A boundary that
+says "not ours" and nowhere else is a refusal rather than a handoff, and it
+leaves whoever asked still holding the question. [`scope/validate.py`](scope/validate.py)
+enforces that, along with: adjacent fields must be real agents or be marked
+`(no agent yet)`; the watched rung must exist in that field's ladder; and
+`set_by.named` stays null until a panel actually exists.
+
+**`watches` is the check §13j describes.** If that rung stays blocked by a
+dependency the scope put out of bounds, the boundary is in the wrong place —
+and because §13c requires `blocked by` to be stated, it is visible in the
+artifact rather than in an argument.
+
+> **Writing them down changed two of them.** `low-dose CT → pill camera` was a
+> resemblance rather than a handoff and is gone; `cancer → pill camera` was a
+> real relation missing its reciprocal and is now there. Neither would have
+> surfaced from prose — one-way adjacency is only visible once the boundary is
+> an object something can read.
+>
+> **They are version 1 and unreviewed by any expert.** §13j says scope is the
+> experts', so what is in `scope/` is a proposal in the correct format,
+> waiting for the only people who can settle it.
+
+## 13. The rosters
+
+Seven more objects, in [`roster/`](roster/) — §13f's nine sub-agents made
+concrete per field, with §13i's bodies marked.
+
+| Field | reasoning + judging | embodied members | tools | envelope | its tenth, and the rung that admitted it |
+|---|---|---|---|---|---|
+| [computational imaging](roster/computational-imaging.json) | 10 | 3 | 13 | 4 | **system-designer** — rung 6 (owns 6.1–6.4) |
+| [low-dose CT](roster/low-dose-ct.json) | 10 | 2 | 7 | 1 | **observer** — rung 1 |
+| [medical physics](roster/medical-physics.json) | 10 | 2 | 9 | 2 | **feasibility** — rung 1 |
+| [pill camera](roster/pill-camera.json) | 10 | 1 | 7 | 1 | **statistician** — rung 2 |
+| [drug design](roster/drug-design.json) | 10 | 2 | 10 | 2 | **synthesis-planner** — rung 6 |
+| [cancer](roster/cancer.json) | 10 | 1 | 9 | 1 | **currency** — rung 5 |
+| [reverse aging](roster/reverse-aging.json) | 10 | 1 | 8 | 1 | **null-registrar** — rung 5 |
+
+### Every field has one rung that is really five
+
+A rung stated as one line stays a slogan: nothing about it can be blocked,
+ordered, or shown to be skipped. So each field decomposes **the rung whose one
+line hides a programme** — not the same rung in each, and the choice is stated
+on each page.
+
+| Field | decomposed | why that one | its floor |
+|---|---|---|---|
+| [computational imaging](computational-imaging.md#12b-rung-6-decomposed--the-hardware-system-design-sub-ladder) | 6 · joint hardware-algorithm design | designing hardware is five steps and the field is already on the fourth | a twin that models the **system**, not the operator |
+| [low-dose CT](low-dose-ct.md#12b-rung-1-decomposed--the-detectability-pipeline) | 1 · the detectability pipeline | it is the floor **and** a programme; every later number is graded by it | the **task**, stated before the observer exists |
+| [medical physics](medical-physics.md#12b-rung-5-decomposed--automated-qa-that-scales) | 5 · automated QA that scales | the field's defining constraint, and where the safety argument lives | a failure catalogue derived from **incident data**, not intuition |
+| [pill camera](pill-camera.md#12b-rung-2-decomposed--the-variance-protocol) | 2 · the variance protocol | the field's failure mode lives inside it | enumerate the sources of variation — seed is not the largest |
+| [drug design](drug-design.md#12b-rung-6-decomposed--the-closed-make-test-loop) | 6 · the closed make-test loop | the defining gap, and the only rung that **consumes matter** | a selection rule stated before anything is made |
+| [cancer](cancer.md#12b-rung-5-decomposed--evidence-currency) | 5 · evidence currency | the only rung whose duty is **continuous** | the external sources, named and versioned |
+| [reverse aging](reverse-aging.md#12b-rung-3-decomposed--the-outcome-link) | 3 · the outcome link | the field rests on it and it has **never been attempted** | the outcome, pre-registered before the analysis |
+
+**Read the floors together.** Four of the seven are a specification written
+before any work starts — a task, a catalogue, a source list, a pre-registration
+— and none of the seven is a method. That is the same finding the main ladders
+gave, one level down: what these fields are short of is not ideas.
+
+> **Three sub-ladders contain a rung the agent may not settle alone**
+> (§13j): pill camera's *smallest worthwhile effect* and reverse aging's *what
+> association would matter* are clinical judgments, and low-dose CT's reader
+> validation is human judgment as the endpoint. Each is marked in place.
+
+**The nine are a floor and each field adds exactly one** — admitted only
+because a ladder rung has no core owner, and named with that rung. The
+validator enforces both, so a roster cannot grow by preference.
+
+> **Every one of the seven additions is something that must not belong to
+> `method`**, which is the same reason the twin and the verifier are separate
+> in the first place. A detectability score owned by the method is an
+> optimisation target; a feasibility ceiling computed by the planner is the
+> planner's own limit wearing the word "infeasible"; a noise floor computed by
+> whoever wants the gain is not a noise floor. **`null-registrar` is the
+> sharpest case**: reporting a null is against the interest of whoever ran the
+> experiment, so the duty goes to a role with no result to protect.
+
+**No JUDGING member is ever embodied** — verifier, reproducer, teacher, writer —
+and the validator fails if one is. Something that can make things happen is the
+wrong thing to ask whether they happened, and stating that rule for the verifier
+alone was the gap that let an embodied `reproducer` through an earlier draft.
+
+**Embodiment is a kind of member, not a flag.** Each embodied member is a row of
+its own with its own refusal and its own grant, which is what makes the envelope
+enforceable — a physical act belongs to a member whose whole purpose is that
+act, rather than being one mode of a member that also does something undoable.
+

@@ -303,6 +303,14 @@ patients — including when the owner asks it to.
 > error this agent keeps making: a property of the measurement reported as a
 > property of the world.
 
+> **Blocked by, and unblocks.** The order *is* the dependency graph: each rung
+> is blocked by the ones above it and unblocks the ones below. They are not
+> itemised per rung yet, which is a gap against the spec rather than a claim
+> that the graph is a chain.
+>
+> **Evidence that would reorder it.** a 3D achievability sweep showing the unreachable case is reachable would reopen rung 2 and change what rung 1 was for. A ladder nobody can argue with is a
+> ladder nobody checked.
+
 > **"Solved when" is the entry fee.** A problem with no measurement that would
 > settle it is a research *interest*, and interests belong in the charter. The
 > ladder is the part this agent can be wrong about in public.
@@ -315,13 +323,123 @@ patients — including when the owner asks it to.
 > Given a free hand the cheapest defensible night is the easy rung, and a year
 > of easy rungs looks like a year of progress.
 
+## 12b. Rung 5 decomposed — automated QA that scales
+
+**Rung 5 is decomposed and not the floor, because it is the rung that is a
+programme rather than a measurement.** "An automated check flags the plans a
+physicist would flag, at a stated sensitivity, with its misses characterised"
+is one line covering what to check, what threshold, measured against what, and
+what happens when it is wrong — and it is the field's defining constraint,
+since adaptive RT is limited by how fast a plan can be checked while a patient
+waits.
+
+It is also the rung where this design's warning bites hardest: **the checking
+is what stands between a plan and a person.** Every sub-rung below is written
+so that automation makes the physicist's signature *fast*, never optional.
+
+Owned by **`feasibility`** (5.1), **`verifier`** (5.2–5.3) and **`runner`**
+(5.4); 5.5 is the physicist's.
+
+### 5.1 · The catalogue of what can go wrong
+
+**The problem.** "QA" is not a check until someone enumerates the failures it
+is checking for. A large incident-learning corpus exists and is under-analysed,
+and an automated check built without it will look for what its author imagined.
+
+| | |
+|---|---|
+| **solved when** | a published failure catalogue, derived from incident data rather than from intuition, states each failure mode, how it presents in a plan, and how often it has actually occurred |
+| **blocked by** | nothing — the floor |
+| **unblocks** | everything below. A sensitivity figure is meaningless without a stated population of failures to be sensitive to |
+| **what would reorder it** | nothing. It is unglamorous, it is derivable from data the field already holds, and nothing above it is interpretable without it |
+
+### 5.2 · A check per failure mode, with its own criterion
+
+**The problem.** One aggregate "plan quality" score is not a QA system: it
+cannot say *what* is wrong, and a physicist cannot act on it.
+
+| | |
+|---|---|
+| **solved when** | each catalogue entry has a check with a criterion written before any plan is scored, and each check reports pass, fail, or *cannot tell* — the third being mandatory and the one usually missing |
+| **blocked by** | 5.1, and main rung 1 — a check that flags an infeasible target is flagging the geometry |
+| **unblocks** | 5.3 |
+| **what would reorder it** | nothing |
+
+> **"Cannot tell" is a required verdict.** A check forced to choose between pass
+> and fail on a plan it cannot assess will produce a pass, because passes are
+> cheap and false alarms are expensive to the person reading them.
+
+### 5.3 · Thresholds set against human spread, not against an ideal
+
+**The problem.** A threshold chosen from a model's confidence is a statement
+about the model. The useful question is whether the plan is outside what
+competent planners produce.
+
+| | |
+|---|---|
+| **solved when** | every check's threshold is expressed relative to main rung 3's inter-planner spread, and its sensitivity and false-alarm rate are reported at that threshold, with the **misses characterised** rather than only counted |
+| **blocked by** | 5.2, main rung 3 (the spread) and main rung 4 (intervals) |
+| **unblocks** | 5.4 |
+| **what would reorder it** | evidence that the spread differs so much between institutions that a common threshold is meaningless — which would be a rung-3 finding and would change this rung's shape rather than its position |
+
+### 5.4 · Measured against delivery, not only against calculation
+
+**The problem.** A check that compares a plan to a dose calculation shares the
+calculation's errors. The plan is delivered by a machine, and machines differ
+from their models.
+
+| | |
+|---|---|
+| **solved when** | the automated checks are validated against **measured** delivery on a phantom, across machines, and the disagreement between calculated and delivered is reported per check |
+| **blocked by** | 5.3 |
+| **unblocks** | 5.5, and any claim that automated QA is safe to rely on |
+| **what would reorder it** | nothing |
+
+> **This is the physical-labour rung, and §13i is what reaches it**: an embodied
+> `runner` delivers to a phantom and an embodied `corpus` measures. **Every
+> embodied act in this field is on a phantom** — that is in the scope, so
+> removing it is a visible change rather than an efficiency.
+
+### 5.5 · In the clinic, with the signature intact
+
+**The problem.** A validated check that nobody uses has changed nothing; a
+check that replaces the physicist has changed too much.
+
+| | |
+|---|---|
+| **solved when** | the checks run in a clinical workflow, the time from plan to signature is measured and reported as reduced, and **every plan is still signed** — with the count of checks the physicist overrode published, because that number is how anyone learns the automation is drifting |
+| **blocked by** | 5.4 |
+| **unblocks** | adaptive RT at the throughput it needs |
+| **what would reorder it** | nothing |
+
+> **The override count is the safety instrument.** A QA system whose overrides
+> fall to zero is either perfect or no longer being read, and those two look
+> identical from the outside unless the number is published.
+
+### The order, and what it says
+
+```
+5.1 failure catalogue ─> 5.2 per-mode checks ─> 5.3 thresholds vs human spread ─┐
+                              (needs main 1)        (needs main 3, 4)           │
+                                                                                ▼
+                                              5.4 measured delivery ─> 5.5 clinic
+                                                    (a body, on a phantom)   (a signature)
+```
+
+**The floor is a reading of incident data, and the ceiling is a signature that
+does not move.** Between them the work is unglamorous: enumerate, threshold,
+measure, deploy. That is the correct shape for a field whose shortage is
+throughput of trustworthy checking rather than novelty — and it is why an
+autonomous agent is both the obvious thing to point at it and the thing that
+must never be left holding the pen.
+
 ## The four layers
 
 | layer | this field's instance |
 |---|---|
 | **Principle** | A plan is a constraint set and a delivery system. Before an optimiser is called weak, what the geometry permits must be measured |
 | **Digital twin** | The beamlet dose kernel — exponential depth attenuation along the ray with a lateral Gaussian for penumbra — fixed, shared between generation and scoring, and unreachable by the agent. Not a Monte Carlo engine, and the docs must never imply otherwise |
-| **Benchmark** | OpenKBP head-and-neck plans, real contours, DVH criteria, with the achievability bound reported beside every verdict |
+| **Benchmark** | OpenKBP head-and-neck plans, real contours, DVH criteria, with the achievability bound reported beside every verdict  — and its reference method is allowed to fail — it fails 2 of 4 cases, and one of those is provably unreachable |
 | **Solution** | A gradient-descent fluence optimiser with backtracking line search; `under_weight`, `oar_weight`, `hot_weight`, `cold_weight`, `step`, `iters`, `tuning_rounds` declared |
 
 ---
@@ -399,6 +517,41 @@ bench is listed separately rather than as another tool:
 reasoning and judging members. See [`lifecycle.md`](lifecycle.md).
 
 > **What the bodies do not fix.** Nothing about a body shortens a clinical trial, and nothing about it makes a 2D planner 3D. Problem 1 on the queue is arithmetic, not labour.
+
+## 13. The field page
+
+| Layer | This field |
+|---|---|
+| **L1 · principle** | dose deposition is physics: energy transferred from a beam to tissue is computable from first principles. Planning is constrained optimisation against that computation — and **what the principle does not contain is what the dose does to the patient** |
+| **L2 · spec — the digital twin** | the dose engine (Monte Carlo or convolution-superposition) plus the machine model and the patient geometry. **Where it stops:** heterogeneity approximations, motion, and — importantly — biology. The twin predicts *dose*, never *outcome*, and rung 6 exists because of that boundary |
+| **L3 · benchmark** | OpenKBP, with a **computed feasibility ceiling per case** (rung 1). 2 of 4 slices pass: one target is unreachable by these beams at all (D99 ceiling 62.6 Gy against a 66.5 Gy floor) and one is reachable with the planner 3.4 Gy short |
+| **L4 · solution** | a planner meeting the reachable objectives, reported only on cases the geometry allows |
+
+**This field's twin is the strongest of the seven and its L1 is the narrowest.**
+Dose can be computed to a few percent; what that dose does cannot be computed at
+all. Every rung above 4 is an attempt to connect a precise physical model to a
+biological question it cannot express.
+
+**Not built:** no page on physicsworldmodel.org; the feasibility ceilings are
+computed in the benchmark and are not published as an artifact others can use.
+
+## 15. The teacher
+
+The path from "knows what radiotherapy is" to checking one result:
+
+1. **L1** — why a beam deposits dose where it does; why a target behind a
+   critical structure is a geometry problem before it is a planning problem.
+2. **L2** — run the dose engine on one phantom case and look at the
+   distribution.
+3. **L3** — compute the feasibility ceiling for the hard case and read
+   **62.6 Gy against a 66.5 Gy floor**.
+4. **L4** — run the planner on both cases and see it fall **3.4 Gy short** on
+   the reachable one.
+
+**The lesson is step 3 into step 4**: two failures that look identical in a
+score and mean opposite things. A learner who can tell "the planner is weak
+here" from "nothing could do this" can read the field's literature properly,
+and that is a short path to a real skill.
 
 ## At AGI and ASI
 

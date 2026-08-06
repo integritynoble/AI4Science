@@ -271,6 +271,14 @@ what would settle it, and that it has no path to one.
 | 6 | **Localisation along the tract** | `a predicted location matches the ground-truth segment of the tract` | a finding without a location is not actionable; the clinician has to know where to go back to | open |
 | 7 | **Miss rate at a fixed review time** | `miss rate is reported at a fixed review-time budget, not at unlimited time` | the real clinical quantity. A reader has minutes, not hours, and a model that improves accuracy while lengthening review has not helped | open |
 
+> **Blocked by, and unblocks.** The order *is* the dependency graph: each rung
+> is blocked by the ones above it and unblocks the ones below. They are not
+> itemised per rung yet, which is a gap against the spec rather than a claim
+> that the graph is a chain.
+>
+> **Evidence that would reorder it.** a corpus with enough videos per finding would unblock rung 4 and move it above rung 5. A ladder nobody can argue with is a
+> ladder nobody checked.
+
 > **"Solved when" is the entry fee.** A problem with no measurement that would
 > settle it is a research *interest*, and interests belong in the charter. The
 > ladder is the part this agent can be wrong about in public.
@@ -283,13 +291,114 @@ what would settle it, and that it has no path to one.
 > Given a free hand the cheapest defensible night is the easy rung, and a year
 > of easy rungs looks like a year of progress.
 
+## 12b. Rung 2 decomposed — the variance protocol
+
+**Rung 2 is decomposed and not another, because this field's failure mode lives
+inside it.** "Every claim carries the spread across seeds and splits" is one
+line covering *which* spread, over how many runs, at what power, and what
+sentence a small gain earns. Get any of those wrong and the field's real
+effects — **0.624 against 0.614** — are indistinguishable from its noise, which
+is where the literature already is.
+
+It is also the rung this agent has personally been on the wrong side of: the
+night loop found its own frame summary taking the wrong quantile, tested the
+mechanism rather than asserting it, and the owner signed the adoption. The
+protocol below is that experience written down so it does not depend on a
+lucky night.
+
+Owned by **`statistician`** (2.1–2.4) and **`writer`** (2.5).
+
+### 2.1 · Enumerate the sources of variation
+
+**The problem.** "Seed variance" is one source and not the largest. Split
+choice, patient composition, class balance, vendor and preprocessing all move
+the number, and a spread computed over seeds alone understates the real one
+while looking rigorous.
+
+| | |
+|---|---|
+| **solved when** | the benchmark declares its sources of variation — seed, split, patient sample, class balance, vendor — and reports the spread contributed by **each**, not a single pooled figure |
+| **blocked by** | main rung 1. A spread computed over leaking splits measures the duplication |
+| **unblocks** | 2.2–2.5 |
+| **what would reorder it** | nothing. Which source dominates is itself a finding, and a field that does not know is a field guessing |
+
+### 2.2 · How many runs, decided before the result
+
+**The problem.** Run count chosen after seeing the spread is a choice about the
+answer. Run count chosen for cost is a choice not to know.
+
+| | |
+|---|---|
+| **solved when** | the benchmark states a minimum number of runs per reported claim, derived from 2.1's spreads and a stated smallest effect worth detecting, and the number is fixed before a method is run |
+| **blocked by** | 2.1 |
+| **unblocks** | 2.3 |
+| **what would reorder it** | a cheaper evaluation making a larger count free, which would raise power rather than reorder anything |
+
+### 2.3 · A stated smallest effect worth detecting
+
+**The problem.** Without one, every gain is reportable and the field fills with
+0.01s. With one, a 0.01 is either above the line or is *not demonstrated* — and
+which of those it is stops being a matter of tone.
+
+| | |
+|---|---|
+| **solved when** | the field states, with clinical input, the smallest improvement that would change anything for a reader — and the benchmark reports every claim against it |
+| **blocked by** | 2.1 and 2.2 |
+| **unblocks** | 2.5, and every comparison in main rungs 3–5 |
+| **what would reorder it** | nothing, and it is the one rung here that **cannot be set by the agent**: what would change a reader's behaviour is the gastroenterologist's to say (§13j) |
+
+### 2.4 · The wrong-quantile class of bug, as a standing check
+
+**The problem.** The agent's own frame summary took the wrong quantile and the
+result looked plausible. A summary statistic over a video is exactly where an
+error hides, because nothing downstream looks wrong.
+
+| | |
+|---|---|
+| **solved when** | summary statistics are property-tested against synthetic videos with known answers, on every run, so a summarisation bug fails the build rather than being found by a good night |
+| **blocked by** | nothing — it is independent, and it is cheap |
+| **unblocks** | trust in everything above. This is the rung that makes the other four's numbers worth computing |
+| **what would reorder it** | nothing. It would sit at the very bottom if it were not orthogonal to the rest |
+
+> **This rung exists because of a real event, not a hypothetical.** The fix was
+> proposed by the agent against its own previous result, the mechanism was
+> tested rather than asserted, and the owner signed it. What 2.4 adds is that
+> the next one does not need a night loop to be lucky.
+
+### 2.5 · The sentence a result earns
+
+**The problem.** A gain inside the noise is currently reported as a smaller
+gain. It is not a smaller gain; it is not a gain.
+
+| | |
+|---|---|
+| **solved when** | reporting language is mechanical — above the smallest worthwhile effect and outside the spread is *demonstrated*; inside either is **not demonstrated**; and the benchmark emits the sentence rather than leaving it to whoever is writing |
+| **blocked by** | 2.1–2.3 |
+| **unblocks** | main rungs 3, 4 and 5, whose comparisons are only as honest as the sentences attached to them |
+| **what would reorder it** | nothing |
+
+### The order, and what it says
+
+```
+2.4 summary-stat property tests ──────────────┐  (independent, cheap, first)
+2.1 sources of variation ─> 2.2 run count ─> 2.3 smallest worthwhile effect ─> 2.5 the sentence
+      (needs main rung 1)                          (the clinician's to set)
+```
+
+**Nothing here is a method and nothing here is expensive.** The whole
+sub-ladder is a protocol, and the field needs it more than most: its data is
+duplicative, its effects are small, and both push the same way — toward
+believing gains that are not there. The one rung the agent may not set alone is
+2.3, because how much improvement matters is a clinical judgment and not a
+statistical one.
+
 ## The four layers
 
 | layer | this field's instance |
 |---|---|
 | **Principle** | Seed variance is not an improvement, and a video is not a bag of frames |
 | **Digital twin** | The study model — frames sampled per video rather than per archive, so class balance reflects videos and not whichever tar entries came first. A global cap silently makes the corpus a sample of the first few videos |
-| **Benchmark** | Kvasir-Capsule, 4,443 frames from 46 videos, video-disjoint split, pooled vascular positives declared in the metadata |
+| **Benchmark** | Kvasir-Capsule, 4,443 frames from 46 videos, video-disjoint split, pooled vascular positives declared in the metadata  — and its reference method is allowed to fail — the analytic prior loses to plain intensity at the hand-picked setting |
 | **Solution** | A percentile-pooled frame classifier with `percentile` declared — improved once by the agent's own night loop, 0.614 → 0.624, and signed |
 
 ---
@@ -367,6 +476,42 @@ bench is listed separately rather than as another tool:
 reasoning and judging members. See [`lifecycle.md`](lifecycle.md).
 
 > **What the bodies do not fix.** More videos is the binding constraint on per-finding classes, and a bench rig produces phantom footage, not patients.
+
+## 13. The field page
+
+| Layer | This field |
+|---|---|
+| **L1 · principle** | a passive capsule images the lumen under uncontrolled motion and illumination, and the findings that matter are **rare in time**. Everything hard here follows from those two facts: consecutive frames are near-duplicates, and the interesting ones are a handful in a video of tens of thousands |
+| **L2 · spec — the digital twin** | the capture model — illumination falloff, motion blur, occlusion by luminal content, frame rate against transit time — plus a **prevalence model**: how often a finding appears per patient-video. The prevalence half is the part usually missing, and it is what makes an accuracy number interpretable. **Where it stops:** mucosal appearance varies more than the model does, and vendor optics differ in ways it does not capture |
+| **L3 · benchmark** | Kvasir-Capsule, 4,443 frames across 46 videos, **patient-disjoint** (rung 1), with seed and split spread reported (rung 2) |
+| **L4 · solution** | a reader whose gain exceeds that spread. Currently **0.624 against a 0.614 reference** — a real result with a margin small enough that the spread has to be printed next to it |
+
+**This field's twin is its weakest layer and its most valuable missing piece.**
+Without a prevalence model, "94% accurate" on a corpus says nothing about a
+patient, because the corpus's class balance is an artifact of how it was built.
+
+**Not built:** no page on physicsworldmodel.org, and no published prevalence
+model — the L2 above is a specification of what is needed, not a description of
+what exists.
+
+## 15. The teacher
+
+The path from "has never seen a capsule video" to checking one result:
+
+1. **L1** — watch thirty seconds of a capsule video. Notice that consecutive
+   frames are nearly identical, and that nothing of interest happens. Both facts
+   are the field.
+2. **L2** — compute how many frames a finding occupies in a full video, and what
+   accuracy a model gets by answering "normal" to everything.
+3. **L3** — evaluate one model twice: with a frame-level split, then
+   patient-disjoint. **Watch the number fall.**
+4. **L4** — read **0.624 against 0.614** with the seed spread beside it, and
+   decide whether it is a result.
+
+**Step 4 is the point, and it is a judgment rather than a calculation** — which
+is what makes this field a good teacher of statistical literacy and a bad one to
+teach with numbers alone. The test is still that the learner gets the same
+numbers, and then says the same thing about them.
 
 ## At AGI and ASI
 

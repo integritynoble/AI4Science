@@ -307,6 +307,14 @@ result.
 > are therefore few, and statistical power is bounded by the corpus rather than
 > by the loop. More compute buys nothing here; more cohorts do.
 
+> **Blocked by, and unblocks.** The order *is* the dependency graph: each rung
+> is blocked by the ones above it and unblocks the ones below. They are not
+> itemised per rung yet, which is a gap against the spec rather than a claim
+> that the graph is a chain.
+>
+> **Evidence that would reorder it.** an outcome-linked cohort becoming available would move rung 4 to the front, and everything above it exists only because it is not. A ladder nobody can argue with is a
+> ladder nobody checked.
+
 > **"Solved when" is the entry fee.** A problem with no measurement that would
 > settle it is a research *interest*, and interests belong in the charter. The
 > ladder is the part this agent can be wrong about in public.
@@ -319,13 +327,118 @@ result.
 > Given a free hand the cheapest defensible night is the easy rung, and a year
 > of easy rungs looks like a year of progress.
 
+## 12b. Rung 3 decomposed — the outcome link
+
+**Rung 3 is decomposed because it is the rung the whole field rests on and the
+one that has never been attempted here.** `outcome_link` is *unmeasured*, and
+"a clock's residual predicts a hard outcome net of composition and
+chronological age" is one line covering which outcome, which cohort, which
+residual, at what power, and what happens when the answer is no.
+
+It is also this field's scope watch (§18) and its irrelevance condition (§16).
+**If this sub-ladder closes with a null, the field's instrument does not measure
+its subject** — and producing that answer would be the most valuable thing this
+agent ever does.
+
+Owned by **`corpus`** (3.1–3.2), **`method`** (3.3), **`verifier`** (3.4) and
+**`null-registrar`** (3.5).
+
+### 3.1 · The outcome, chosen before the analysis
+
+**The problem.** "Predicts health" is not an endpoint. Mortality, incident
+disease, hospitalisation and self-rated health are different questions with
+different confounders, and choosing among them after seeing results is how a
+null becomes a finding.
+
+| | |
+|---|---|
+| **solved when** | a pre-registered primary outcome exists with its definition and follow-up window, secondaries are listed as secondaries, and the registration predates the analysis |
+| **blocked by** | nothing — the floor |
+| **unblocks** | everything below |
+| **what would reorder it** | nothing. This rung is entirely about the order things are done in, which is why it cannot be done later |
+
+### 3.2 · A cohort that can answer it
+
+**The problem.** The field's workhorse corpora are cross-sectional and
+blood-only. An outcome link needs methylation **and** follow-up on the same
+people, which most public data does not have.
+
+| | |
+|---|---|
+| **solved when** | a cohort is identified with baseline methylation and recorded outcomes, its access path is documented, and its size and event count are stated **against 3.4's power requirement** before any analysis |
+| **blocked by** | 3.1 |
+| **unblocks** | 3.3 |
+| **what would reorder it** | a large linked cohort becoming available, which would move this rung from hard to routine — this is blocked by data, not by method |
+
+> **A body shortens the assay queue and not the follow-up** (§13i). If baseline
+> samples exist and are unassayed, an embodied `corpus` closes that gap in
+> weeks. If the follow-up has not happened, nothing does.
+
+### 3.3 · The residual, defined so it cannot flatter
+
+**The problem.** "Age acceleration" has several definitions and they disagree.
+A residual taken from a clock that is 55% cell composition is a residual of the
+composition, and it will predict outcomes for reasons that have nothing to do
+with ageing.
+
+| | |
+|---|---|
+| **solved when** | the residual is specified as net of chronological age **and** of the cell composition of main rung 1, its construction is published, and the outcome association is reported for the deconvolved and non-deconvolved versions side by side |
+| **blocked by** | 3.2, and main rungs 1 and 2 |
+| **unblocks** | 3.4. Everything about this rung is the difference between measuring ageing and measuring blood counts |
+| **what would reorder it** | nothing |
+
+### 3.4 · Powered, and pre-committed to what would count
+
+**The problem.** A weak association in a small cohort is publishable in either
+direction. Without a stated effect size that would matter and the power to
+detect it, both outcomes are uninformative and only one gets written up.
+
+| | |
+|---|---|
+| **solved when** | the smallest association worth claiming is stated with clinical input, the analysis is powered for it, and the interpretation of *both* outcomes is written down before the analysis runs |
+| **blocked by** | 3.1 and 3.3 |
+| **unblocks** | 3.5, and the credibility of anything the rung produces |
+| **what would reorder it** | nothing, and this rung **cannot be set by the agent alone** — what association would matter is the cohort epidemiologist's (§13j) |
+
+### 3.5 · The answer published, in whichever direction
+
+**The problem.** The field's effect sizes are the surviving tail of a
+distribution nobody sees. A null here is the most informative result available
+and the least likely to be written up.
+
+| | |
+|---|---|
+| **solved when** | the result is published with its pre-registration, its power, and its confidence interval — and a null enters main rung 5's registry as a first-class result rather than as an absence |
+| **blocked by** | 3.4 |
+| **unblocks** | either the field's central claim, or its irrelevance condition (§16) |
+| **what would reorder it** | nothing |
+
+> **The agent cannot declare what this rung implies.** If the answer is null,
+> the conclusion — that the instrument does not measure the subject — is a
+> judgment about what the field is, which is the experts' (§13j), and ending
+> the field would end the agent's own budget. The agent measures and publishes;
+> the panel decides what it means.
+
+### The order, and what it says
+
+```
+3.1 pre-registered outcome ─> 3.2 linked cohort ─> 3.3 residual net of composition ─> 3.4 power ─> 3.5 publish either way
+                              (data, not method)      (needs main 1 and 2)      (the epidemiologist's)
+```
+
+**Four of the five rungs are about doing things in the right order**, and that
+is the correct diagnosis of a field whose literature is a censored tail. There
+is no new method here. The rung asks the field to commit to an answer before it
+knows it — which is the only way the null, if it comes, will be believed.
+
 ## The four layers
 
 | layer | this field's instance |
 |---|---|
 | **Principle** | A clock that rides on cell composition is a blood-count detector with a birthday attached. Chronological age only — no claim about rate of ageing, and no outcome examined |
 | **Digital twin** | The methylome model — institutional batch structure and cell-type composition as the two axes that decide whether a clock is real. Leading principal components computed on training betas only, because computing them on both cohorts lets the held-out sites influence the basis they are scored in |
-| **Benchmark** | GEO GSE40279, 656 whole-blood samples aged 19–101, four institutions, seed-chosen site-disjoint splits, median error against predicting the training mean, with bulk-structure share and internal error as guardrails |
+| **Benchmark** | GEO GSE40279, 656 whole-blood samples aged 19–101, four institutions, seed-chosen site-disjoint splits, median error against predicting the training mean, with bulk-structure share and internal error as guardrails  — and its reference method is allowed to fail — it fails 15 of 28 seed-varied splits |
 | **Solution** | A dual-form ridge clock with `ridge` (walked multiplicatively across 7.7 decades) and `n_pcs_removed` declared |
 
 ## Sub-agents and tools
@@ -413,6 +526,42 @@ bench is listed separately rather than as another tool:
 reasoning and judging members. See [`lifecycle.md`](lifecycle.md).
 
 > **What the bodies do not fix.** Outcome linkage stays blocked, and it is the item that decides whether this field is worth anything. A collection robot can draw samples faster; it cannot make anyone older, and it cannot sign the agreement.
+
+## 13. The field page
+
+| Layer | This field |
+|---|---|
+| **L1 · principle** | ageing is a progressive change in cell state that leaves a readable trace, and methylation is the trace the field has chosen. **The principle contains a claim that has never been separately tested**: that the trace tracks the process rather than accompanying it |
+| **L2 · spec — the digital twin** | a model taking cell-type composition **and** within-cell state to a measured methylation profile to an age estimate. **The 55% figure is this twin's first calibration** — better than half of a blood clock's gain is bulk composition rather than ageing within cells. **Where it stops:** other tissues, other platforms, other ancestries, all of which it currently gets wrong by unknown amounts |
+| **L3 · benchmark** | GEO `GSE40279`, 656 whole-blood samples aged 19–101, on **seed-varied institutional splits** (rung 2), reported net of composition (rung 1) |
+| **L4 · solution** | clocks that hold across those splits. Currently **13 of 28**, with `outcome_link` **unmeasured** — the field's central instrument passing under half of its own tests, and its link to anything that matters not yet measured at all |
+
+> **This is the weakest chain of the seven and the page says so first.** The
+> useful thing this agent has produced is not a better clock; it is three
+> numbers saying the field's instrument may not measure what the field says it
+> measures.
+
+**Not built:** no page on physicsworldmodel.org. The deconvolution and the
+split protocol exist in the benchmark and are not published as artifacts anyone
+else can run against their own clock.
+
+## 15. The teacher
+
+The path from "has heard of biological age" to checking one result:
+
+1. **L1** — what a clock is: a regression from methylation to chronological age,
+   and why "predicts age well" is a weaker statement than it sounds.
+2. **L2** — run the deconvolution. **Watch 55% of the clock's gain turn out to
+   be cell composition.**
+3. **L3** — refit across institutional splits with varied seeds and read
+   **13 of 28**.
+4. **L4** — ask the clock to predict an outcome and find that `outcome_link` has
+   never been measured.
+
+**Step 2 is the lesson and it is a fast one**: the learner produces the field's
+central confound themselves, in one run. Step 4 is the more uncomfortable one —
+the thing that would make the instrument matter has not been done — and a
+teacher that hides it would be teaching the field's own habit.
 
 ## At AGI and ASI
 

@@ -135,6 +135,14 @@ what**, with cost breaking ties.
 | 7 | **Marker sets that add over a blood panel** | `a candidate marker set beats a standard clinical panel on held-out cycles, or is reported as not adding` | the commercial claim in this field is that a new measurement adds information. It is rarely tested against the cheap one | open |
 | 8 | **Intervention response** | `a repeated measure moves in the predicted direction after a change, in a design that could have shown it did not` | the question everyone wants and the one that needs longitudinal data plus a design that can be wrong | blocked |
 
+> **Blocked by, and unblocks.** The order *is* the dependency graph: each rung
+> is blocked by the ones above it and unblocks the ones below. They are not
+> itemised per rung yet, which is a gap against the spec rather than a claim
+> that the graph is a chain.
+>
+> **Evidence that would reorder it.** a cohort where age and sex are unavailable would move rung 3 above rung 2; evidence that cycle drift is negligible would demote rung 3. A ladder nobody can argue with is a
+> ladder nobody checked.
+
 > **"Solved when" is the entry fee.** A problem with no measurement that would
 > settle it is a research interest, and interests belong in the charter.
 >
