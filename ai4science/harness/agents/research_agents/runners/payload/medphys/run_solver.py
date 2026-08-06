@@ -256,7 +256,7 @@ def main():
                "cold": float(pr.get("cold_weight", 25.0))}
     best_w = best_dose = None
     best_score = None
-    for round_no in range(int(round(float(pr.get("tuning_rounds", 8))))):
+    for round_no in range(int(round(float(pr.get("tuning_rounds", 2))))):
         w = optimise(weights)
         d, viol = evaluate(w)
         # Rank on total relative violation first, coverage second.

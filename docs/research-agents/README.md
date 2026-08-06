@@ -41,7 +41,7 @@ are not.
 | [medical physics](medical-physics.md) | OpenKBP — 8 real head-and-neck plans | **2 of 4 slices pass**; one is unreachable by these beams (D99 ceiling 62.6 vs a 66.5 floor), one is reachable and the planner falls 3.4 Gy short |
 | [pill camera](pill-camera.md) | Kvasir-Capsule — 4,443 frames, 46 videos | **passes**, after its own night loop found the fix — 0.624 against 0.614 |
 | [computational imaging](computational-imaging.md) | CAVE — real hyperspectral scenes, CASSI measurement simulated | **passes** — after a sign error in the reference solver was found and fixed |
-| [reverse aging](reverse-aging.md) | GEO GSE40279 — 656 whole-blood methylation samples, ages 19–101 | **passes** — 5.78y median error on held-out institutions vs 10.14 for the mean; 55% of the gain is bulk structure |
+| [reverse aging](reverse-aging.md) | GEO GSE40279 — 656 whole-blood methylation samples, ages 19–101 | **13 of 28** on seed-varied institutional splits; 55% of the clock's gain is bulk structure, and `outcome_link` is unmeasured |
 
 > **One of those failures has since been repaired by the agent itself.** The
 > night loop found that pill-camera's frame summary was taking the wrong

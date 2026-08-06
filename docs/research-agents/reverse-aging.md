@@ -5,17 +5,32 @@ field map, corpus and benchmark are implemented. The benchmark reads **GEO
 GSE40279** — 656 whole-blood Illumina 450k samples, ages 19–101, from four
 institutions — and validates on **held-out sites**.
 
-**Its reference method passes, and the number that matters is the second one.**
-A ridge clock reaches a median error of **5.78 years** on institutions that
-contributed nothing to the fit, against **10.14** for predicting the training
-cohort's mean age. Then: project the methylome's leading components out and
-error goes to **8.20 years** — **55% of the clock's advantage disappears**. In
-whole blood those components are dominated by cell-type proportions, which
-themselves shift with age. So more than half of this clock is reading what the
-blood is made of.
+**Its reference method passes on some splits and not others, and that is new
+information.** The held-out institutions used to be hardcoded, and on that one
+fixed split a ridge clock reached **5.78 years** median error against 10.14 for
+predicting the training mean. The seed now chooses which institutions are held
+out, and across seed-varied splits the same method passes **13 of 28** runs.
+Holding out different hospitals is a harder test than always holding out the
+same two, so the agent looks worse and is more honest.
 
-It passes because the bar is 75%, not because 55% is comfortable. A clock that
-was 90% bulk structure would fail, and that is the point of measuring it.
+**The number that matters is still the second one.** Project the methylome's
+leading components out and a large part of the clock's advantage disappears —
+55% on the original split. In whole blood those components are dominated by
+cell-type proportions, which themselves shift with age, so much of this clock is
+reading what the blood is made of rather than how old the person is. A clock
+that was 90% bulk structure fails.
+
+> **The seed used to do nothing, and that nearly cost an adoption.** The
+> benchmark accepted a seed argument and never used it, so every seed produced
+> byte-identical data. A paired comparison then had zero spread by construction
+> and the night reported **p = 0** — one measurement wearing four hats. That
+> number looked *better* than a genuine p = 0.0088 from another agent, which is
+> how it nearly got signed. The result was refused, the benchmark repaired, and
+> the same candidate then earned its place on six real institutional splits at
+> p = 0.014.
+
+Only four institutions exist in this cohort, so distinct site-disjoint splits
+are few and statistical power is bounded by the corpus rather than by the loop.
 
 **`outcome_link` remains unmeasured.** GSE40279 carries no survival or function
 endpoint, and public methylation-with-outcome sits behind an agreement only a

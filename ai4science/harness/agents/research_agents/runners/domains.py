@@ -300,7 +300,15 @@ MEDPHYS = DomainBenchmark(
                         "criterion is a dose-volume one, and a mean of squared "
                         "residuals barely sees the coldest percent — which is "
                         "the percent the verdict turns on"),
-        Parameter("tuning_rounds", 1, 12, 8, integer=True,
+        # Default 2, not 8. Per-patient tuning makes ONE plan better and made the
+        # night impossible: each candidate evaluation runs a full optimisation
+        # per round, the loop already sweeps ~19 candidates x 6 seeds, and
+        # medical-physics timed out at 30 minutes without completing a single
+        # round. An agent that cannot finish a night produces nothing at all,
+        # which is worse than a slightly weaker single plan. The ceiling stays
+        # at 12 so the search can buy more rounds where they are worth it —
+        # that is what the parameter is for.
+        Parameter("tuning_rounds", 1, 12, 2, integer=True,
                   means="how many times the planner may read its own DVH "
                         "against the protocol and re-balance. 1 is the old "
                         "behaviour: one global weight set for every patient"),
