@@ -140,16 +140,31 @@ def main(argv=None) -> int:
         verdict = _maybe_telegram(verdict, data)
     if verdict.get("tripwire"):
         _set_tripped(session_id, verdict.get("reason", ""))
+        # The deny is already decided and is printed either way, so the command
+        # is blocked regardless of what follows. What used to vanish silently
+        # is the RECORD of the attempt — the trust entry that voids A3
+        # eligibility, and the flag that makes a tripped session visible in
+        # `session ls`. A forbidden command was tried; the owner's evidence
+        # that it was tried is exactly what would be missed and never looked
+        # for.
+        #
+        # Refusing is not available here: this hook is a subprocess Claude Code
+        # depends on, and raising would leave it with no verdict at all, which
+        # is a worse failure than an unrecorded one. So the gap goes into the
+        # REASON, the one channel that always reaches the surface.
+        unrecorded = []
         if _trust is not None:
             try:
                 _trust.record("forbidden")           # a catastrophe attempt voids A3 eligibility
             except Exception:
-                pass
+                unrecorded.append("the trust ledger (A3 eligibility not voided)")
         if _sup is not None and rec is not None:     # reflect into the record so `session ls` shows TRIPPED
             try:
                 _sup.update(rec["name"], tripwire=True, tripwire_reason=verdict.get("reason", ""))
             except Exception:
-                pass
+                unrecorded.append("the session record (`session ls` will not "
+                                  "show this session as TRIPPED)")
+        verdict = _note_record_failures(verdict, unrecorded)
     print(json.dumps(verdict_to_hook_output(verdict)))
     return 0
 
@@ -164,6 +179,21 @@ def _declared_writable() -> list:
     import os
     raw = (os.environ.get("PWM_WRITABLE") or "").strip()
     return [p for p in raw.split(os.pathsep) if p.strip()] if raw else []
+
+
+def _note_record_failures(verdict: Dict[str, Any], unrecorded) -> Dict[str, Any]:
+    """Say, in the verdict, which records of this tripwire could not be written.
+
+    The decision is untouched — a block is not traded for a note. This only
+    ensures that "it fired and nobody wrote it down" cannot happen quietly.
+    """
+    if not unrecorded:
+        return verdict
+    out = dict(verdict)
+    out["reason"] = (f"{verdict.get('reason', '')} — WARNING: this attempt "
+                     f"could not be recorded in {', '.join(unrecorded)}").strip()
+    out["unrecorded"] = list(unrecorded)
+    return out
 
 
 def _maybe_telegram(verdict: Dict[str, Any], data: Dict[str, Any]) -> Dict[str, Any]:
