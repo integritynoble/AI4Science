@@ -1632,3 +1632,28 @@ def market_publish(path: str = typer.Argument(..., help="The package directory")
     console.print(f"  digest {listing.digest}", markup=False, highlight=False)
     console.print(f"  waiting for review in {box}", markup=False,
                   highlight=False)
+
+
+@app.command("earned", help="What each run owes, and to whom. Records only.")
+def earned_cmd() -> None:
+    from ai4science.harness.agents.sarsi import earnings as ern
+    config = _load()
+    total = ern.total(config)
+    if not total.runs and not total.unmeasured:
+        console.print("nothing recorded yet — a run owes something once it has "
+                      "been metered", markup=False, highlight=False)
+        return
+    console.print(f"treasury {total.treasury:g} · authors {total.author:g} · "
+                  f"provider {total.provider:g}  (over {total.runs} run(s))",
+                  markup=False, highlight=False)
+    for handle, amount in sorted(ern.by_author(config).items()):
+        console.print(f"  {handle}: {amount:g}", markup=False, highlight=False)
+    if total.unmeasured:
+        # The rule the whole module is built on, said where it is read: a total
+        # that quietly omitted the unmeasured runs would look complete.
+        console.print(f"  {total.unmeasured} run(s) could not be measured, so "
+                      f"this is what was seen and not what was spent",
+                      markup=False, highlight=False)
+    console.print("  this records what is owed and moves nothing — settling is "
+                  "the platform's, never this machine's", markup=False,
+                  highlight=False)

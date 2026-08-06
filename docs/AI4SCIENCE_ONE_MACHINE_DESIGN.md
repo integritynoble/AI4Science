@@ -680,7 +680,7 @@ nothing else installed*:
 | | |
 |---|---|
 | **built** | the package format; `pack` · `review` · `accept` · `publish` · `install` · `list` · `remove`; the acceptance questions asked **at install, by the machine doing the installing**; the digest that ties what was reviewed to what is installed; the signature that carries a governor's judgement; the roster entry, the empty workspace and task list it creates; the author list shown before the owner commits |
-| **not built** | the PWM reward and the 5% slice — §13, which needs the token economy, not a server |
+| **not built** | nothing of §11. The 5% slice is computed and recorded per run — see §13 |
 
 **The server is a transport detail, not the trust.** Uploading needs somewhere
 to upload *to*; acceptance does not. `review` asks the acceptance questions
@@ -1069,6 +1069,33 @@ itself.
 | **10%** | the PWM treasury pool |
 | **0–5%** | the agent's author, at the fraction of the slice they chose |
 | the rest | the LLM provider |
+
+> **Built, as an accounting.** `sarsi earned` reports what each run owes and
+> to whom, from the metered cost — treasury, author, provider — with the
+> author's share taken **out of the provider's**, not the treasury's and not
+> added on top: the user pays the same either way and what changes is who the
+> rest of it reaches. `price_share` is a fraction OF the 5%, so 1.0 is five per
+> cent of the run and not all of it, and it is clamped here as well as refused
+> at install because this arithmetic should not depend on a different program
+> having run.
+>
+> **It moves nothing, and there is no function in it that could.** The line is
+> the one the compute design already drew — *the CLI attributes, the platform
+> settles* — and it is right for the same reason: a machine that works out what
+> is owed is safe to leave running unattended; one that can move balances
+> unattended is a different risk. A test asserts the module has no `transfer`,
+> `pay`, `settle`, `mint` or `sell`.
+>
+> Two rules do the load-bearing work. **The shares are exhaustive** — the
+> provider takes the *remainder*, not a fourth percentage, because
+> independently-rounded shares do not add up and the gap goes somewhere every
+> run. And **unknown is not zero**: a run whose cost could not be metered
+> records *nothing*, never a `0` row, because a fee ledger writing zero would
+> quietly assert *this owed nothing*. The unmeasured runs are counted and
+> reported, so a total is never mistaken for complete.
+>
+> **Not built:** the non-exchangeable starting balance and the exchange node
+> below. Both hold a balance, which is the thing this deliberately does not do.
 
 **A run on ai4science pays no platform share.** That is the difference this
 product is: the app adds a manager and a front door and charges for them, and
