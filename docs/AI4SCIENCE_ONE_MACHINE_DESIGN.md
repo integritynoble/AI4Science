@@ -1333,12 +1333,57 @@ opposites:
 | who verifies | other AI agents; no human in the loop | nobody, because nobody is asking |
 | the tell | the page's problem list keeps clearing and nobody reads the results | the problem list stops moving and nobody adds to it |
 | the risk | a closed verification loop nobody outside has checked | a live agent spending a budget on nothing |
+| **what it becomes** | **RSI takes over** — the loop is the field | **the frontier closes; the toolbox does not** |
+
+**Saturation is not a terminus, it is a handover.** A field being solved faster
+than people can follow *is* the condition recursive self-improvement runs under:
+the agent's next problem comes from its own self-model, its verification comes
+from other agents, and the loop closes. §27 above is what that looks like. So
+the two collapses are not two endings — one is where RSI begins, and the other
+is where research stops. Only the second is an ending, and even it is not the
+ending it sounds like:
+
+#### A field's research ends. Its usefulness does not.
+
+**Classical physics is not worth researching and is holding up every bridge.**
+That is the normal fate of a finished field, not a sad one, and a design that
+retired a field's *solutions* along with its *frontier* would be throwing away
+the only thing the research was for.
+
+So when a field collapses either way, three things survive it, and the machine
+already has the shape for each:
+
+| what survives | how | why it must |
+|---|---|---|
+| **its solutions** | the L4 entries stay in the registry, installable and runnable | a method that works does not stop working because nobody is publishing about it |
+| **its tools** | the market listings stay installable, and other fields' agents plug them in | a tool everyone's agents use is worth as much as an agent — that is why §11 pays for tools at all |
+| **its author's share** | the 5% slice keeps paying on every run that uses it | the author did the work of writing it, and a field going quiet is not them being unwritten |
+
+And the agent goes **out of research routing while staying usable** — which is
+exactly `retired`, the thing this machine already does to an agent it no longer
+hands new work: *out of routing, still readable, and its folder is the record of
+what it did.* A collapsed field's agent is retired from **research**, not from
+**service**. It still answers, still runs its solutions, still earns for its
+author; it just stops being asked what to solve next.
+
+> **The daily-life half is the point.** The reason to build a field's solutions
+> as installable listings rather than as papers is that a finished field's
+> output should reach someone who has a problem, without them caring that the
+> frontier closed. A reconstruction that denoises a scan is worth the same on
+> the day its field stops publishing as it was the day before.
+
 
 The honest handling is the same for both: **a field that no human verifies is a
 field whose page says so.** Not a hidden state — the agent's public page carries
 the last time a person checked one of its results, and how long the chain of
 agent-only verification has run since. A reader deciding whether to trust the
 field can then see the one thing that decides it.
+
+That page carries one more line once a field has collapsed: **what of it is
+still in service.** A reader who does not care about the frontier still needs to
+know whether the solution they are about to install is maintained, or is a
+finished thing that works and will not change again. Both are fine answers; not
+saying which is not.
 
 **And a field ends by splitting, which is the good ending.** When a small
 sub-scope keeps producing results with more energy and meaning than the field
