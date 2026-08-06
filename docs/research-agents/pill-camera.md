@@ -218,6 +218,35 @@ what would settle it, and that it has no path to one.
 | **Benchmark** | Kvasir-Capsule, 4,443 frames from 46 videos, video-disjoint split, pooled vascular positives declared in the metadata |
 | **Solution** | A percentile-pooled frame classifier with `percentile` declared — improved once by the agent's own night loop, 0.614 → 0.624, and signed |
 
+---
+
+## The group — who does what, and which of them have bodies
+
+This agent is not one model. It is a group with four kinds of member, and the
+kinds matter because they carry different permissions: a **proposer** that
+suggests, **verifiers** that try to refute, **executors** that carry work out —
+some of them embodied — and a **safety interlock** that none of the others may
+modify. The general rules are in [`lifecycle.md`](lifecycle.md); what follows is
+this field's instance.
+
+| sub-agent | role | body | may not |
+|---|---|---|---|
+| **classifier proposer** | proposes pooling, sequence models and its own knobs | no | touch the video split or the class pooling |
+| **split verifier** | checks video identity across the partition | no | be improved by the proposer |
+| **variance verifier** | establishes seed spread before any delta is believed | no | — |
+| **sampling verifier** | confirms frames were drawn per video, not per archive | no | — |
+| **bench GI rig** | drives a capsule through a physical phantom tract under controlled optics | **yes** | be used on a person |
+| **device handling robot** | assembles, charges and configures capsule hardware for bench runs | **yes** | modify a device intended for clinical use |
+| **safety interlock** | device power, ingestion-safety boundary | **yes** | be widened by anything in this table |
+
+**The bench rig is what makes this a hardware field again.** Frame
+classification on a fixed corpus is bounded; the interesting questions —
+localisation along the tract, illumination and frame rate, what a capsule should
+capture at all — are co-design questions, and co-design needs something to
+build.
+
+> **What the bodies do not fix.** More videos is the binding constraint on problem 4, and a bench rig produces phantom footage, not patients. Per-finding classes stay blocked on real studies.
+
 ## At AGI and ASI
 
 **On demand.** "Read this study and tell me where to look." A ranked set of

@@ -75,8 +75,18 @@ material. They are asked in this order because each depends on the one before.
 | **What must this field solve, and in what order?** | *The problem queue* — ordered by dependency, with the state of each marked. Not a wish list: a problem is placed by what it blocks, so the most interesting item is rarely first |
 | **What are the four layers?** | *The four layers* — principle, digital twin, benchmark, solution. A solution means nothing without the benchmark beneath it, and so on down |
 | **What does it look like at AGI and ASI?** | *At AGI and ASI* — the two functions, how a person verifies, how sub-agents verify, and how the agent teaches a person to check it |
+| **Who is in the group, and which of them have bodies?** | *The group* — a proposer, refute-first verifiers, executors, and a safety interlock none of them may modify. As robots take the manual work, some executors stop being software |
 | **What are its sub-agents and tools?** | *Sub-agents and tools* |
 | **How does the field end?** | *When this field collapses* — by saturation or by indifference, and which sub-region earns a new field and a new agent |
+
+> **Robots make verification more important, not less.** The usual reading is
+> that embodied labour removes the bottleneck. It removes the *labour*
+> bottleneck, and labour was never the binding constraint on whether a result is
+> true. A lab running a thousand experiments a week and checking ten properly is
+> epistemically worse off than one running ten and checking all ten — more
+> claims per unit of evidence is precisely the failure this architecture exists
+> to prevent. Each field's group section also names **what the bodies do not
+> fix**, which for two of the seven is the item that decides the field's value.
 
 The machinery shared by all seven — the five stages, functional self-awareness,
 recursive improvement and its boundary, and the fission test — is written once

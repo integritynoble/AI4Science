@@ -258,6 +258,34 @@ directly, and being asked twice does not change the answer.
 | **Benchmark** | TCGA via the GDC API, 978 cases, site-disjoint validation, c-index on held-out hospitals with cross-histology transport reported alongside |
 | **Solution** | A ridge-regularised Cox model with `ridge`, `lr`, `iters` declared |
 
+---
+
+## The group — who does what, and which of them have bodies
+
+This agent is not one model. It is a group with four kinds of member, and the
+kinds matter because they carry different permissions: a **proposer** that
+suggests, **verifiers** that try to refute, **executors** that carry work out —
+some of them embodied — and a **safety interlock** that none of the others may
+modify. The general rules are in [`lifecycle.md`](lifecycle.md); what follows is
+this field's instance.
+
+| sub-agent | role | body | may not |
+|---|---|---|---|
+| **model proposer** | proposes regularisation, features and its own knobs | no | touch the split, the sites, or the outcome definition |
+| **split verifier** | confirms no held-out site contributed to fitting or selection | no | be improved by the proposer |
+| **clinical baseline fitter** | fits stage and age as the floor genomics must clear | no | — |
+| **calibration verifier** | compares predicted with observed survival, ignoring ranking | no | — |
+| **sample handling robot** | accessions, aliquots and tracks specimens | **yes** | move a specimen outside its consented scope |
+| **sequencing automation** | library prep and run execution, with provenance captured per specimen | **yes** | re-run a sample without recording that the first run happened |
+| **governance gate** | consent scope, PHI boundary, data-use terms | **yes**, in the sense that it binds physical custody | be satisfied by any agent in this table |
+
+**Bodies help least here, and it is important to say so.** Sample handling is
+already largely automated in practice, and it was never the constraint. The
+constraint is consent, PHI custody and follow-up time — and those are governance
+and calendar, not labour.
+
+> **What the bodies do not fix.** Prospective validation stays blocked. It needs time and consent; robots supply neither. A faster biobank produces the same evidence sooner and no stronger evidence.
+
 ## At AGI and ASI
 
 **On demand.** "Does this signature carry prognostic information beyond stage

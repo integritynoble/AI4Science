@@ -249,6 +249,38 @@ patients — including when the owner asks it to.
 | **Benchmark** | OpenKBP head-and-neck plans, real contours, DVH criteria, with the achievability bound reported beside every verdict |
 | **Solution** | A gradient-descent fluence optimiser with backtracking line search; `under_weight`, `oar_weight`, `hot_weight`, `cold_weight`, `step`, `iters`, `tuning_rounds` declared |
 
+---
+
+## The group — who does what, and which of them have bodies
+
+This agent is not one model. It is a group with four kinds of member, and the
+kinds matter because they carry different permissions: a **proposer** that
+suggests, **verifiers** that try to refute, **executors** that carry work out —
+some of them embodied — and a **safety interlock** that none of the others may
+modify. The general rules are in [`lifecycle.md`](lifecycle.md); what follows is
+this field's instance.
+
+| sub-agent | role | body | may not |
+|---|---|---|---|
+| **plan proposer** | proposes objective weights, schedules and its own knobs | no | touch the dose kernel, the DVH criteria, or the constraint set |
+| **geometry verifier** | recomputes structure overlaps directly from the masks | no | be improved by the proposer |
+| **feasibility prober** | drives the declared space to the corner favouring the failing metric | no | report a ceiling it did not measure |
+| **guardrail verifier** | re-derives every organ constraint from the DVH | no | — |
+| **QA robot** | sets up phantoms, places detectors and film, runs machine QA | **yes** | be in the room during beam-on |
+| **delivery measurement robot** | measures what the linac actually delivered against what was planned | **yes** | adjust the plan to reduce the discrepancy it just measured |
+| **safety interlock** | beam, collision and room-state limits | **yes** | be widened by anything in this table |
+
+**The delivery measurement body closes the one gap this agent cannot close in
+software.** A fluence map is a plan; what the machine delivers is a fact, and the
+difference between them is where optimiser gains usually evaporate. Measuring it
+requires hardware in a room with a linac.
+
+**The signature does not move.** At every stage, including the last, a plan that
+treats a patient carries a human signature. Robots do the QA; a physicist still
+signs.
+
+> **What the bodies do not fix.** Nothing about a body shortens a clinical trial, and nothing about it makes a 2D planner 3D. Problem 1 on the queue is arithmetic, not labour.
+
 ## At AGI and ASI
 
 **On demand.** "Plan this patient." The answer is a plan, the achievability

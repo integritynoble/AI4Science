@@ -259,6 +259,36 @@ benchmark, a benchmark only against a twin, a twin only against a principle. A
 field that publishes solutions without the layers beneath cannot say what any of
 them mean.
 
+---
+
+## The group — who does what, and which of them have bodies
+
+This agent is not one model. It is a group with four kinds of member, and the
+kinds matter because they carry different permissions: a **proposer** that
+suggests, **verifiers** that try to refute, **executors** that carry work out —
+some of them embodied — and a **safety interlock** that none of the others may
+modify. The general rules are in [`lifecycle.md`](lifecycle.md); what follows is
+this field's instance.
+
+| sub-agent | role | body | may not |
+|---|---|---|---|
+| **reconstruction proposer** | proposes priors, unrolling depth, schedules, and its own knobs | no | touch the forward operator or the test scenes |
+| **physics verifier** | recomputes the forward-model residual under the published operator | no | be improved by the proposer |
+| **reproduction verifier** | re-runs from seeds in a clean sandbox | no | share the proposer's context |
+| **leakage verifier** | checks no test scene entered the fit | no | — |
+| **bench robot** | mounts optics, aligns the system, positions the sample, triggers capture | **yes** | move anything into a beam path without a signed act |
+| **calibration robot** | measures the *actual* mask, PSF and dispersion of the instrument as built | **yes** | write its result into the operator used for scoring without a person confirming it |
+| **safety interlock** | laser and stage limits | **yes** | be widened by anything in this table |
+
+**Why the calibration body matters more than the bench one.** This field's whole
+discipline is that the forward operator is fixed and published. That is only
+honest if the published operator matches the instrument that actually exists —
+and the gap between the designed optic and the built one is measured with
+hardware, not asserted. An embodied calibration sub-agent turns
+"physics is not a hyperparameter" from a rule into a measurement.
+
+> **What the bodies do not fix.** Instrument time is finite and bookable, and a robot does not create more of it. The transfer table stays open because it needs many instruments, not faster hands.
+
 ## At AGI and ASI
 
 **On demand.** "Reconstruct this capture; tell me what the instrument was doing."

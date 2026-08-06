@@ -158,6 +158,59 @@ guesses and are labelled as such.
 
 ---
 
+## The agent is a group, and some of it has a body
+
+Nothing in this directory is one model. A research agent is a **group**: a
+proposer that suggests, verifiers that try to refute, and executors that carry
+work out. Stage 2 is exactly the moment that group stops being a figure of
+speech.
+
+As robots take over manual laboratory work — and they will, sooner than the
+verification problem gets solved — some of those executors stop being software.
+An **embodied sub-agent** mounts the optic, positions the phantom, pipettes the
+plate, runs the synthesis, loads the sample. Each field document names which of
+its sub-agents get bodies.
+
+> **This makes verification more important, not less.** The usual reading is
+> that robots remove the bottleneck. They remove the *labour* bottleneck, and
+> labour was never the binding constraint on whether a result is true. A lab
+> that can run a thousand experiments a week and check ten of them properly is
+> in a worse epistemic position than one that runs ten and checks all ten — it
+> produces more claims per unit of evidence, which is precisely the failure this
+> whole architecture exists to prevent.
+
+### What a body changes, concretely
+
+| | compute sub-agent | embodied sub-agent |
+|---|---|---|
+| **an action is** | reversible — re-run it | **irreversible** — the sample is consumed, the reagent spent, the tissue used |
+| **verified by** | reproduction: run it again from the seed | **provenance**: record what was actually done, because it cannot be run again |
+| **a mistake costs** | compute | material, calendar time, and sometimes a sample that cannot be replaced |
+| **the gate is** | budget | budget **and** a physical-safety interlock that is not a scored quantity |
+
+The third row is why an embodied act cannot use the same permission as a compute
+act. A night's standing grant is a licence to spend compute. It is **not** a
+licence to consume a patient sample, book instrument time, order a synthesis, or
+move anything that can injure a person. Those stay owner-signed per act, at every
+stage including stage 4.
+
+### Three rules for embodied sub-agents
+
+1. **The proposer may never improve the executor's safety limits.** Same rule as
+   the verifier, same reason. An agent that can widen a physical interlock has
+   no interlock.
+2. **Provenance replaces reproduction.** Since the act cannot be repeated,
+   what happened must be captured at the time — instrument logs, actual volumes,
+   deviations, timestamps. A wet-lab result whose provenance was not recorded is
+   not a weak result; it is an unverifiable one.
+3. **A body does not unblock a governance problem.** This one is easy to get
+   wrong and expensive. Where a field document marks an item **blocked**, look at
+   *what* blocks it: several are blocked on consent, follow-up time, or a data
+   agreement — and no amount of robotic throughput touches any of those. Cancer's
+   prospective validation and reverse-aging's outcome linkage are both in this
+   category. Robots make the fast parts faster and leave the binding constraints
+   exactly where they were.
+
 ## Self-awareness, functionally
 
 "Self-aware" here means something narrow and checkable. The agent holds a model

@@ -212,6 +212,36 @@ well" and "works" is the entire field.
 | **Benchmark** | DUD-E, 15,288 molecules across 6 targets, queries drawn from whole clusters with the rest withheld, scored by EF@1% against a property-only floor and a stated ceiling |
 | **Solution** | Tversky similarity with IDF weighting; `top_k`, `tversky_alpha`, `tversky_beta`, `idf_weight` declared |
 
+---
+
+## The group — who does what, and which of them have bodies
+
+This agent is not one model. It is a group with four kinds of member, and the
+kinds matter because they carry different permissions: a **proposer** that
+suggests, **verifiers** that try to refute, **executors** that carry work out —
+some of them embodied — and a **safety interlock** that none of the others may
+modify. The general rules are in [`lifecycle.md`](lifecycle.md); what follows is
+this field's instance.
+
+| sub-agent | role | body | may not |
+|---|---|---|---|
+| **ranking proposer** | proposes similarity measures, weights and its own knobs | no | touch the split, the decoy set, or the property baseline |
+| **leakage verifier** | recomputes query-to-test similarity | no | be improved by the proposer |
+| **baseline verifier** | fits a properties-only model as the floor | no | — |
+| **ceiling verifier** | computes the metric's bound before any comparison is allowed | no | — |
+| **synthesis robot** | makes the compounds the batch proposer selected | **yes** | start a synthesis without a signed act — reagents are spent and some are hazardous |
+| **assay robot** | runs the biological readout, plates, reads, records provenance | **yes** | re-run a failed assay silently; a discarded plate is a recorded event |
+| **safety interlock** | reagent, containment and disposal limits | **yes** | be widened by anything in this table |
+
+**This is the field where bodies change the most.** The other six evaluate
+existing data; this one can close the loop — design, make, test, redesign —
+because the making and testing are robotic. That is why problems 5 and 6 on the
+queue (calibrated uncertainty, then next-batch proposal) are the ones that
+matter: a self-driving lab without calibrated uncertainty is a machine for
+generating expensive random samples.
+
+> **What the bodies do not fix.** A closed loop makes wrong answers faster too. Every compound synthesised on a leaked split is real money spent on a ranking that measured memory.
+
 ## At AGI and ASI
 
 **On demand.** "Rank this library for this target, and tell me how much of the
