@@ -72,9 +72,12 @@ def test_a_named_file_that_is_missing_is_reported_as_missing(folder):
 def test_missing_is_stated_not_silently_omitted(folder):
     """Silence would read as 'nothing to say about it', which is the opposite of
     what an absent required file means."""
-    quiet = ev.gather(folder, criteria=[], screen="")
+    # Asserted directly rather than by comparing total lengths. The length
+    # proxy held only while a criterion-less gather read nothing; now that one
+    # reads the work itself, "longer" stopped tracking "said so" — and the
+    # thing worth pinning was always the sentence, not the size.
     loud = ev.gather(folder, criteria=["summary.md exists"], screen="")
-    assert len(loud) > len(quiet)
+    assert "summary.md: NOT PRESENT" in loud
 
 
 # ── what it refuses ───────────────────────────────────────────────────

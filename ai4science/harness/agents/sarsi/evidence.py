@@ -89,9 +89,52 @@ def _from_root(root, criteria: Sequence[str]) -> List[str]:
         if listing:
             parts.append(f"FILES IN {root} (real listing):\n" + listing)
 
-    for name in named_files(criteria):
+    named = named_files(criteria)
+    for name in named:
         parts.append(_read(root, name))
+
+    # Nothing was NAMED, so nothing was read, and the verdict would rest on a
+    # listing. A verifier is right to refuse that — "the mere existence of a
+    # file named cassi_convention_report is a claim that work was done, not
+    # evidence of its content" — and it is the gatherer that is wrong: a task
+    # with no plan has no criteria, so a written deliverable could never pass
+    # however good it was. That is the whole of an attended agent's output.
+    if not named and root.is_dir():
+        parts.extend(_unnamed(root))
     return parts
+
+
+def _unnamed(root: Path) -> List[str]:
+    """Read the work itself when no criterion named it — newest first, capped.
+
+    Newest first because the thing just produced is the thing being judged.
+    Capped because a gatherer that pastes a whole working tree into a prompt has
+    replaced one failure with a more expensive one — and what the cap left out
+    is SAID, since evidence silently dropped reads as evidence that was absent.
+    """
+    try:
+        files = [p for p in root.iterdir()
+                 if p.is_file() and not p.name.startswith(".")
+                 and p.suffix.lower() in _TEXTISH]
+    except OSError:
+        return []
+    files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+
+    out: List[str] = []
+    used = 0
+    read = 0
+    for f in files:
+        if used >= MAX_TOTAL_CHARS:
+            break
+        piece = _read(root, f.name)
+        out.append(piece)
+        used += len(piece)
+        read += 1
+    if read < len(files):
+        out.append(f"[{len(files) - read} more text file(s) in {root} were NOT "
+                   f"read — the evidence budget was reached. Name one in a "
+                   f"criterion to have it read first.]")
+    return out
 
 
 def _with_pane(text: str, screen: str) -> str:

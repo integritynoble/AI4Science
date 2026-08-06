@@ -215,3 +215,57 @@ def test_the_verdict_records_that_a_person_drove_it(config):
     t = ses.verify(config, agent, t, verifier=_verifier(), engine="owner",
                    evidence="the report")
     assert (t.verdict or {}).get("engine") == "owner"
+
+
+# ── 4. evidence that is a listing is not evidence ─────────────────────
+
+def test_a_written_deliverable_is_read_not_just_listed(tmp_path):
+    """Found by following the fix above to its end: `check` on the real attended
+    task returned FAIL because the evidence gathered was a directory listing.
+
+    The verifier was right — "the mere existence of a file named
+    cassi_convention_report is a claim that work was done, not evidence of its
+    content" — and the gatherer was wrong. It reads files NAMED IN THE CRITERIA,
+    and a task with no plan has no criteria, so a report can never pass however
+    good it is.
+    """
+    from ai4science.harness.agents.sarsi import evidence as evd
+    (tmp_path / "report.md").write_text("mask: binary {0,1} — generate_data.py:51")
+    got = evd.gather(tmp_path, [])
+    assert "generate_data.py:51" in got, "the listing was gathered, not the work"
+
+
+def test_the_named_file_still_wins_when_a_criterion_names_one(tmp_path):
+    """The existing path is the precise one and stays first."""
+    from ai4science.harness.agents.sarsi import evidence as evd
+    (tmp_path / "wanted.md").write_text("THE ANSWER")
+    (tmp_path / "other.md").write_text("something else")
+    got = evd.gather(tmp_path, ["produces wanted.md with the answer"])
+    assert "THE ANSWER" in got
+
+
+def test_it_does_not_read_without_limit(tmp_path):
+    """A gatherer that pastes a whole working tree into a prompt has replaced
+    one failure with a more expensive one."""
+    from ai4science.harness.agents.sarsi import evidence as evd
+    for i in range(40):
+        (tmp_path / f"f{i}.md").write_text("x" * 20_000)
+    got = evd.gather(tmp_path, [])
+    assert len(got) < 200_000
+
+
+def test_and_says_what_it_left_out(tmp_path):
+    """Unknown is not zero. Evidence silently truncated reads as evidence that
+    was not there."""
+    from ai4science.harness.agents.sarsi import evidence as evd
+    for i in range(40):
+        (tmp_path / f"f{i}.md").write_text("x" * 20_000)
+    got = evd.gather(tmp_path, [])
+    assert "not read" in got.lower() or "omitted" in got.lower() or "truncat" in got.lower()
+
+
+def test_an_empty_folder_still_says_it_is_empty(tmp_path):
+    """The distinction the module already draws must survive the change."""
+    from ai4science.harness.agents.sarsi import evidence as evd
+    got = evd.gather(tmp_path, [])
+    assert got.strip(), "an empty folder is a fact, not an empty string"
