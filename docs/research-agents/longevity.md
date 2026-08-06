@@ -16,6 +16,21 @@
 > [`lifecycle.md`](lifecycle.md) that makes this a **different field**, and
 > fission is the good ending rather than a failure.
 
+## Useful, and accepted — where this actually stands
+
+The goal for every agent in this directory is to be **the best in its field:
+useful, and accepted by people who know the field**. Those are two different
+tests and this agent passes neither completely. Stating where it fails is not
+modesty — an agent that cannot say what would refute it is not evidence of
+anything.
+
+| | |
+|---|---|
+| **useful to whom, today** | Nobody. Nothing is built. |
+| **what blocks usefulness** | **Everything.** No corpus fetcher, no benchmark, no reference method. |
+| **what a field expert objects to first** | *"You have a document."* Correct. |
+| **the next action** | Fetch NHANES with the linked mortality file and get an age-and-sex-only model running. Until the floor exists, no number from this field means anything. |
+
 ## How experts guide this into a self-aware, self-improving agent — and then into collapse
 
 The whole arc, in one place, because the sections that follow only make sense

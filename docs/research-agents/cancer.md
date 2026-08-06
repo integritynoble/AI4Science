@@ -8,6 +8,21 @@
 
 > **The finding this page is built around.** A model called "non-transporting" transported fine once the split was drawn properly. A bad split can understate as easily as overstate, and both are measurement failures rather than facts about biology.
 
+## Useful, and accepted — where this actually stands
+
+The goal for every agent in this directory is to be **the best in its field:
+useful, and accepted by people who know the field**. Those are two different
+tests and this agent passes neither completely. Stating where it fails is not
+modesty — an agent that cannot say what would refute it is not evidence of
+anything.
+
+| | |
+|---|---|
+| **useful to whom, today** | Anyone with a prognostic signature: it validates on hospitals that contributed nothing to the fit, and reports cross-histology transport without grading it. |
+| **what blocks usefulness** | **It ranks but does not quantify.** A c-index says who is at higher risk, never how much, and a decision needs the magnitude. |
+| **what a field expert objects to first** | *"Show me calibration."* Two models with identical c-index can give survival curves years apart, and the number the field reports is the one that hides the most. |
+| **the next action** | A calibration curve beside every c-index — predicted against observed survival, plotted rather than summarised. It is cheap, and it is the first thing a biostatistician asks for. |
+
 ## How experts guide this into a self-aware, self-improving agent — and then into collapse
 
 The whole arc, in one place, because the sections that follow only make sense

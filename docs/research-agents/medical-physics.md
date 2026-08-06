@@ -8,6 +8,21 @@
 
 > **The finding this page is built around.** Three wrong diagnoses preceded the real one — impossible constraints, step-size collapse, nested targets — and the cause was a NaN that silently disabled the optimiser. One case is *provably unreachable by these beams*, which no optimiser fixes and which looks identical to a weak model unless someone measures the ceiling.
 
+## Useful, and accepted — where this actually stands
+
+The goal for every agent in this directory is to be **the best in its field:
+useful, and accepted by people who know the field**. Those are two different
+tests and this agent passes neither completely. Stating where it fails is not
+modesty — an agent that cannot say what would refute it is not evidence of
+anything.
+
+| | |
+|---|---|
+| **useful to whom, today** | Nobody yet, as a planner. As a **method** it is already useful: the achievability bound separates an infeasible constraint set from a weak optimiser, and that distinction is missing from the field's literature. |
+| **what blocks usefulness** | **It is 2D.** Nine beams on one plane cannot spare an organ above or below the target, so every plan it produces is a statement about one slice. |
+| **what a field expert objects to first** | *"This is a student project."* Said politely, and correctly, by anyone who runs a planning group — and there is no framing that hides it, because this is their own field at their own altitude. |
+| **the next action** | Finish and run the 3D planner, then **re-measure the achievability ceiling before looking at what the planner achieves**, so the bar is not set by the result. The 62.6 Gy ceiling is a 2D number and must not be quoted as anything else. |
+
 ## How experts guide this into a self-aware, self-improving agent — and then into collapse
 
 The whole arc, in one place, because the sections that follow only make sense

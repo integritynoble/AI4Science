@@ -8,6 +8,21 @@
 
 > **The finding this page is built around.** The benchmark once inserted its lesion into a lung and measured "noise" over anatomy. Both flattered the method, and both were found by noticing physically impossible numbers rather than by reading the code.
 
+## Useful, and accepted — where this actually stands
+
+The goal for every agent in this directory is to be **the best in its field:
+useful, and accepted by people who know the field**. Those are two different
+tests and this agent passes neither completely. Stating where it fails is not
+modesty — an agent that cannot say what would refute it is not evidence of
+anything.
+
+| | |
+|---|---|
+| **useful to whom, today** | Anyone choosing between denoisers: it will tell you which of them are blur in disguise, on real paired data, which the field's own metrics will not. |
+| **what blocks usefulness** | **One operating point.** "Works at 25% dose" is a claim about a single dose, and the clinical question is where the curve falls off. |
+| **what a field expert objects to first** | *"Detectability is your proxy, not a reader."* Until the ranking is shown to track human readers it is a better proxy, not the thing — and one scanner is a claim about one scanner. |
+| **the next action** | The dose-detectability curve at four or more dose levels, with the knee named. It needs no new data and it converts a point claim into a curve. |
+
 ## How experts guide this into a self-aware, self-improving agent — and then into collapse
 
 The whole arc, in one place, because the sections that follow only make sense

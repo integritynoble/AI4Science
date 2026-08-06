@@ -66,6 +66,31 @@ python3 -m ai4science.harness.agents.research_agents.runners.fetch tcga-survival
 Corpora live under `~/.ai4science/data`, or wherever `AI4SCIENCE_DATA` points —
 outside the package, because data is not source.
 
+## 0b. Useful, and accepted — the two tests, and where each agent fails them
+
+The goal is to build **the best SARSI agent in each field: useful, and accepted
+by people who know the field.** They are different tests. Useful means a
+practitioner would run it; accepted means someone who reviews papers for a
+living would not dismiss it. **No agent here passes both yet**, and each page
+says which test it fails and what the first objection would be.
+
+| agent | what a field expert objects to first | the next action |
+|---|---|---|
+| [computational imaging](computational-imaging.md) | "You have done one modality and called it a field" | fill two cells of the transfer table, under the receiving subfield's baselines |
+| [low-dose CT](low-dose-ct.md) | "Detectability is your proxy, not a reader" | the dose–detectability curve at four or more doses, knee named |
+| [medical physics](medical-physics.md) | "This is a student project" — correctly, at their altitude | run the 3D planner, then **re-measure the ceiling before** judging it |
+| [drug design](drug-design.md) | "Held-out molecules are not held-out targets" | held-out targets as a first-class number, then calibrated uncertainty |
+| [cancer](cancer.md) | "Show me calibration" | a calibration curve beside every c-index |
+| [pill camera](pill-camera.md) | "An abnormality is not a finding I can put in a report" | a sequence model on the same split, then localisation |
+| [reverse aging](reverse-aging.md) | "So what?" — and it is the correct question | outcome linkage, **blocked on an agreement, not on method** |
+| [longevity](longevity.md) | "You have a document" — correct | fetch the corpus and get an age-and-sex-only model running |
+
+> **Three of these are blocked on things compute cannot buy** — a data
+> agreement, a reader study, more videos. Naming which is which is the point of
+> the table: it stops the queue being reordered toward whatever happens to be
+> tractable, which is how a year of easy rungs comes to look like a year of
+> progress.
+
 ## 0c. Every agent, five questions
 
 Each field document now answers the same five, after its field-specific

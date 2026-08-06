@@ -8,6 +8,21 @@
 
 > **The finding this page is built around.** The improvement is small on purpose, and that is why it is credible: paired across seeds, validated on seeds not used to select it. With 46 videos the spread between seeds is comparable to the effects people claim, so a large delta here is a symptom rather than a result.
 
+## Useful, and accepted — where this actually stands
+
+The goal for every agent in this directory is to be **the best in its field:
+useful, and accepted by people who know the field**. Those are two different
+tests and this agent passes neither completely. Stating where it fails is not
+modesty — an agent that cannot say what would refute it is not evidence of
+anything.
+
+| | |
+|---|---|
+| **useful to whom, today** | Anyone evaluating a capsule classifier: video-disjoint splits and per-video results, plus a seed spread that says when a delta is noise. |
+| **what blocks usefulness** | **A study is a trajectory and this reads it as a bag of frames.** The strongest available signal is discarded, and a finding without a location is not actionable. |
+| **what a field expert objects to first** | *"An abnormality is not a finding I can put in a report."* The positive classes are pooled because the corpus cannot support splitting them, which is honest and still clinically thin. |
+| **the next action** | A sequence model on the same video-disjoint split, then localisation along the tract. Both are corpus-bound rather than method-bound, so say which is which. |
+
 ## How experts guide this into a self-aware, self-improving agent — and then into collapse
 
 The whole arc, in one place, because the sections that follow only make sense

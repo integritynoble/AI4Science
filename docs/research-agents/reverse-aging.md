@@ -8,6 +8,21 @@
 
 > **The finding this page is built around.** The benchmark accepted a seed and ignored it, so every seed produced identical data — a paired comparison with zero spread by construction, reporting **p = 0**. One measurement wearing four hats. It looked *better* than a genuine p = 0.0088 from another agent, which is how it nearly got signed.
 
+## Useful, and accepted — where this actually stands
+
+The goal for every agent in this directory is to be **the best in its field:
+useful, and accepted by people who know the field**. Those are two different
+tests and this agent passes neither completely. Stating where it fails is not
+modesty — an agent that cannot say what would refute it is not evidence of
+anything.
+
+| | |
+|---|---|
+| **useful to whom, today** | Anyone fitting a clock: it reports what fraction of the accuracy survives removing the methylome's leading components. Almost no published clock is reported with one. |
+| **what blocks usefulness** | **It predicts a number already on a birth certificate.** Nothing here connects a predicted age to anything that happens to anyone. |
+| **what a field expert objects to first** | *"So what?"* — and it is the correct question. A clock with no outcome link has measured a calendar, and no amount of accuracy fixes that. |
+| **the next action** | Outcome linkage, which is **blocked on a data agreement rather than on method**. Until it exists this agent is a well-measured answer to a question nobody asked, and the page should keep saying so. |
+
 ## How experts guide this into a self-aware, self-improving agent — and then into collapse
 
 The whole arc, in one place, because the sections that follow only make sense

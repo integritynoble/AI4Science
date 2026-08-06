@@ -8,6 +8,21 @@
 
 > **The finding this page is built around.** Real scenes exposed a sign error in the reference solver's TV proximal operator — it *expanded* where a prox must contract. Synthetic blobs had hidden it for months, because blobs have no texture to diverge on. Its own search could never have found the fix: the parameter floor excluded the working value.
 
+## Useful, and accepted — where this actually stands
+
+The goal for every agent in this directory is to be **the best in its field:
+useful, and accepted by people who know the field**. Those are two different
+tests and this agent passes neither completely. Stating where it fails is not
+modesty — an agent that cannot say what would refute it is not evidence of
+anything.
+
+| | |
+|---|---|
+| **useful to whom, today** | Someone with a real capture and a published operator: it reconstructs, and reports the forward-model residual beside the fidelity number — which is more than most released code does. |
+| **what blocks usefulness** | **Only one modality is real.** CASSI is on real scenes; MRI, CT, single-pixel and lensless are claims about a shared shape, not results. The transfer table is empty, and a table with no filled cells is a plan. |
+| **what a field expert objects to first** | *"You have done one modality and called it a field."* And they would be right today. The second objection is that the encoder-design half — where the field's real gains are — is rung 6 and untouched. |
+| **the next action** | Fill two cells of the transfer table: take the CASSI method into one other subfield and score it under **that** subfield's baselines, publishing the result even when it loses. |
+
 ## How experts guide this into a self-aware, self-improving agent — and then into collapse
 
 The whole arc, in one place, because the sections that follow only make sense

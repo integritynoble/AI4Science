@@ -8,6 +8,21 @@
 
 > **The finding this page is built around.** EF@1% was sitting at the theoretical maximum, which was the giveaway: the query set was drawn at random from each target's actives, and DUD-E actives are analogue series — so the model was being shown relatives of what it was scored on. The repaired benchmark is *harder*, which is how you know it was repaired and not loosened.
 
+## Useful, and accepted — where this actually stands
+
+The goal for every agent in this directory is to be **the best in its field:
+useful, and accepted by people who know the field**. Those are two different
+tests and this agent passes neither completely. Stating where it fails is not
+modesty — an agent that cannot say what would refute it is not evidence of
+anything.
+
+| | |
+|---|---|
+| **useful to whom, today** | Anyone with a published screening result: it re-scores on a series-disjoint split and says whether the enrichment survives. Most headline numbers have never been through that. |
+| **what blocks usefulness** | **It has never predicted a molecule anyone made.** It ranks a fixed library; the bottleneck in a real programme is deciding what to synthesise next, and that needs calibrated uncertainty first. |
+| **what a field expert objects to first** | *"Held-out molecules are not held-out targets."* Generalising inside a known pocket is a different claim from generalising to a new one, and only the second is useful. |
+| **the next action** | Report performance on targets absent from fitting as a first-class number, then calibrated uncertainty. Those two together are what turn a ranker into something that can propose a batch. |
+
 ## How experts guide this into a self-aware, self-improving agent — and then into collapse
 
 The whole arc, in one place, because the sections that follow only make sense
