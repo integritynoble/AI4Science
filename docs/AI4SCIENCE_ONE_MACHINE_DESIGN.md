@@ -3,8 +3,8 @@
 **Status: design, 2026-08-04.** The agent loop is built, tested, and exercised
 live on a second user account: tasks, plans, per-phase verdicts, the supervision
 loop, the vault, the outward gates, and the reporting around them —
-`attention`, `why`, `spend`, `decisions`, `blast`, `questions`, `board`. **§11's local half is
-built** — the package format, and installing one here with its acceptance
+`attention`, `why`, `spend`, `decisions`, `blast`, `questions`, `board`. **§11 and §13 are built** except
+where noted below; **§11's local half is built** — the package format, and installing one here with its acceptance
 questions asked by the machine doing the installing. **Uploading, the
 governor's acceptance and the PWM earning are not**, and neither is §13: those
 need a server, which is the app's half. See *What is built, and what is not* in
@@ -1113,10 +1113,28 @@ itself.
 >   started"* apart from *"started and stopped"* — the second has earnings
 >   behind it.
 >
-> **Not built:** the non-exchangeable starting balance. It holds a balance,
-> which is the thing this deliberately does not do — building it means deciding
-> where a balance lives and who may move it, and that is a question about
-> custody rather than a feature.
+> **The starting balance is built** — `sarsi balance` · `--grant`. It was held
+> back on the grounds that it *holds a balance*, and that reasoning was half
+> right. The half it got wrong is the design: **what made a balance dangerous
+> was that it could MOVE.** This one cannot. It is granted once, spent only
+> *down*, and only on a fee this machine already computes — so it is not money
+> in custody, it is a fee credit that can only be destroyed.
+>
+> * **no function moves it.** Not "not implemented" — absent, and a test fails
+>   if a `transfer`, `sell`, `withdraw`, `convert` or `redeem` ever appears.
+> * **granted once.** One that could be topped up on request is an infinite
+>   one, and every fee after the first would be free.
+> * **never negative.** Spending more than is there is refused, not overdrawn:
+>   an overdraft is a loan, and a loan is the custody question coming back in
+>   through the side.
+> * **a debit names its fee.** A spend with nothing behind it is this balance
+>   being used as money, which is the one thing it is not.
+> * **it does not erase the fee.** The treasury is owed exactly what it was
+>   owed; the two ledgers stay apart because they have to be able to disagree,
+>   or an unpaid fee and a paid one would read the same.
+>
+> Its kind is printed every time it is read, not only when granted — a figure
+> whose kind is stated once is a figure somebody later adds to another one.
 
 **A run on ai4science pays no platform share.** That is the difference this
 product is: the app adds a manager and a front door and charges for them, and

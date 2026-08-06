@@ -1690,3 +1690,29 @@ def exchange_stop() -> None:
     console.print(got.summary, markup=False, highlight=False)
     console.print("  what it supplied is kept — stopping it is a decision "
                   "about the future", markup=False, highlight=False)
+
+
+@app.command("balance", help="The non-exchangeable starting balance: fees only.")
+def balance_cmd(do_grant: bool = typer.Option(
+        False, "--grant", help="Take this machine's one starting balance.")) -> None:
+    from ai4science.harness.agents.sarsi import balance as bal
+    config = _load()
+    if do_grant:
+        try:
+            got = bal.grant(config)
+        except bal.Refused as e:
+            console.print(str(e), style="yellow", markup=False, highlight=False)
+            raise typer.Exit(code=1)
+        console.print(got.summary, markup=False, highlight=False)
+        return
+    got = bal.of(config)
+    console.print(got.summary, markup=False, highlight=False)
+    if got.granted:
+        # Said every time it is read, not only on the grant. A figure whose
+        # kind is only stated once is a figure somebody will later add to
+        # another one.
+        console.print("  it can only be spent down, on fees, and there is no "
+                      "way to move or sell it", markup=False, highlight=False)
+        for row in bal.history(config)[-5:]:
+            console.print(f"  {row.pwm:g} — fee for {row.fee_for}",
+                          markup=False, highlight=False)
