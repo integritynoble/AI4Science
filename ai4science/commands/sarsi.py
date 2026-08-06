@@ -1508,3 +1508,73 @@ def set_token(agent_id: str = typer.Argument(..., help="Agent id, e.g. sarsi-wor
         console.print(f"[red]{e}[/red]")
         raise typer.Exit(code=2)
     console.print(f"token set for [cyan]{agent_id}[/cyan]")     # never echoed back
+
+
+# ── §11, the half a single machine has ────────────────────────────────
+
+market_app = typer.Typer(help="Install and inspect market packages on this machine.")
+app.add_typer(market_app, name="market")
+
+
+@market_app.command("install", help="Install an agent package from a directory.")
+def market_install(path: str = typer.Argument(..., help="The package directory")) -> None:
+    from ai4science.harness.agents.sarsi import market as mk
+    config = _load()
+    try:
+        report = mk.install(config, path)
+    except mk.Refused as e:
+        # A refusal names what was asked for and why it was not given. "Could
+        # not install" would leave the author's request invisible.
+        console.print(str(e), style="yellow", markup=False, highlight=False)
+        raise typer.Exit(code=1)
+    console.print(f"installed {report.agent_id} {report.version}".rstrip(),
+                  markup=False, highlight=False)
+    if report.purpose:
+        console.print(f"  {report.purpose}", markup=False, highlight=False)
+    # Trust is not transitive: every author whose code came with it, and what
+    # each part touches. Printed on the way in, because this is the moment the
+    # owner is deciding.
+    console.print("  code by:", markup=False, highlight=False)
+    for a in report.authors:
+        touches = ", ".join(a.get("touches") or []) or "nothing declared"
+        console.print(f"    {a.get('handle', 'unknown')} — {a.get('part', '?')}"
+                      f" — touches {touches}", markup=False, highlight=False)
+    console.print(f"  it runs at {reg_everyday()}, with an empty workspace and "
+                  f"task list this machine made", markup=False, highlight=False)
+
+
+@market_app.command("list", help="What was installed from the market.")
+def market_list() -> None:
+    from ai4science.harness.agents.sarsi import market as mk
+    rows = mk.installed(_load())
+    if not rows:
+        console.print("nothing installed from the market — the seven shipped "
+                      "with this machine", markup=False, highlight=False)
+        return
+    for r in rows:
+        console.print(f"{r.agent_id} {r.version}".rstrip(), markup=False,
+                      highlight=False)
+        if r.purpose:
+            console.print(f"  {r.purpose}", markup=False, highlight=False)
+        who = ", ".join(sorted({a.get("handle", "unknown") for a in r.authors}))
+        console.print(f"  code by: {who}", markup=False, highlight=False)
+
+
+@market_app.command("remove", help="Take an installed package out of the roster.")
+def market_remove(agent_id: str = typer.Argument(..., help="Agent id")) -> None:
+    from ai4science.harness.agents.sarsi import market as mk
+    config = _load()
+    try:
+        report = mk.remove(config, agent_id)
+    except mk.Refused as e:
+        console.print(str(e), style="yellow", markup=False, highlight=False)
+        raise typer.Exit(code=1)
+    console.print(f"{report.agent_id} removed from the roster", markup=False,
+                  highlight=False)
+    console.print("  its folder is kept — the history of what it did is not "
+                  "an uninstall's to delete", markup=False, highlight=False)
+
+
+def reg_everyday() -> str:
+    from ai4science.harness.agents.sarsi.registry import EVERYDAY_CEILING
+    return EVERYDAY_CEILING

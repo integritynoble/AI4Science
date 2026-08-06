@@ -3,8 +3,12 @@
 **Status: design, 2026-08-04.** The agent loop is built, tested, and exercised
 live on a second user account: tasks, plans, per-phase verdicts, the supervision
 loop, the vault, the outward gates, and the reporting around them —
-`attention`, `why`, `spend`, `decisions`, `blast`, `questions`, `board`. **The
-market and the token economy are not built.** §11 and §13 are design.
+`attention`, `why`, `spend`, `decisions`, `blast`, `questions`, `board`. **§11's local half is
+built** — the package format, and installing one here with its acceptance
+questions asked by the machine doing the installing. **Uploading, the
+governor's acceptance and the PWM earning are not**, and neither is §13: those
+need a server, which is the app's half. See *What is built, and what is not* in
+§11.
 
 Where a row below says **built**, it means built in
 `AI4Science/ai4science/harness/agents/sarsi/`, which is the canonical
@@ -667,6 +671,48 @@ is worth as much as an agent, and paying only for agents would starve the socket
 **Trust is not transitive.** An agent may bring its own tools — one author, one
 review — or require ones from the market, and then the install screen names every
 author whose code comes with it and what each part may touch.
+
+### What is built, and what is not
+
+The split follows this page's governing property — *everything here works with
+nothing else installed*:
+
+| | |
+|---|---|
+| **built** | the package format; `sarsi market install / list / remove`; the acceptance questions asked **at install, by the machine doing the installing**; the roster entry, the empty workspace and task list it creates; the author list shown before the owner commits |
+| **not built** | uploading, the governor's acceptance, the PWM reward and the 5% slice. All four need a server and belong to the app |
+
+The point of putting acceptance at install rather than at upload is that it
+holds either way. A listing's own claims are what the **market** needs; they are
+not what the runtime trusts. So a package that arrives by any route — accepted,
+sideloaded, handed over on a disk — meets the same four refusals:
+
+  * **it may not ship a `workspace/` or a `tasks/`.** One arriving with tasks
+    files work the owner never asked for, past `CAP`, past the plan, past the
+    grant, and this install is the consent step it would walk through. One
+    arriving with a workspace is an author writing standing instructions where
+    the agent reads at plan time. Refused, and told — not stripped, because an
+    author who packed it asked for something.
+  * **the four reserved classes are refused**, in `agent.json` *and* in
+    `roster.json`. Both declare outward classes; checking one is checking
+    neither.
+  * **an agent does not set its own `ceiling`**, `standing_grants`, `retired`
+    or `digest`. Those are the owner's, and a manifest that could set one would
+    make installing an agent a way to grant one.
+  * **its `id` is checked as a directory name**, because that is what it is —
+    every folder and session store is keyed by it, so `../../etc` and a
+    collision with an installed agent are the same class of refusal.
+
+**Trust is not transitive, on the way in.** The install prints every author
+whose code comes with the package — the agent's, and each tool's — with what
+each part touches, before it is done. An installed agent runs at the everyday
+ceiling like everything else, with an empty workspace and task list this machine
+made.
+
+**Removing keeps the folder.** Same reasoning as retiring: a folder is the
+record of what an agent did, and an uninstall that deleted it would make the
+record of the work depend on still wanting the tool. The seven that shipped with
+the machine are not market listings and refuse to be uninstalled at all.
 
 ### What an agent package is
 
