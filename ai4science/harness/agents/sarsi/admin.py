@@ -42,6 +42,62 @@ def init(*, owner_id: str, bot_tokens: Optional[Dict[str, str]] = None,
     return config
 
 
+def reconcile(*, root: Optional[Path] = None) -> List[str]:
+    """Add roster agents a later release shipped. Returns the ids it added.
+
+    `init` refuses on an existing registry, which is right — a second init over
+    a live installation would discard what the agents had recorded. But that
+    left no other half: an agent added to `_ROSTER` in a release could not reach
+    a machine that had already been initialised, and the only route was the
+    owner hand-editing JSON. That is how `computational-imaging` reached grace.
+
+    **Additive, and only additive.** It never removes an entry, never rewrites
+    one, and never touches an agent the owner retired, renamed, re-ceilinged or
+    wrote themselves. A reconcile that "fixed" those would undo the owner's
+    decisions to match a default — silently, on upgrade, which is the worst
+    possible time to discover it. So the rule is the narrow one: an id in
+    `_ROSTER` and not in the file gets added, with the account and bindings
+    every other agent has, because an agent with no binding is unreachable and
+    an unreachable agent is what the registry's own startup refusal exists to
+    prevent.
+    """
+    root = Path(root) if root else state_dir()
+    path = reg.config_path(root)
+    try:
+        raw = json.loads(path.read_text())
+    except FileNotFoundError:
+        raise reg.ConfigError(f"no registry at {path}; run `sarsi init` first")
+
+    entries = raw.setdefault("agents", {}).setdefault("list", [])
+    have = {a.get("id") for a in entries}
+    missing = [a for a in reg._ROSTER if a["id"] not in have]
+    if not missing:
+        return []
+
+    accounts = (raw.setdefault("channels", {}).setdefault("telegram", {})
+                .setdefault("accounts", {}))
+    bindings = raw.setdefault("bindings", [])
+    for entry in missing:
+        agent_id = entry["id"]
+        # Placed where a fresh init would have put it, so the file keeps reading
+        # like one document rather than like a history of upgrades.
+        canon = [a["id"] for a in reg._ROSTER]
+        at = next((i for i, a in enumerate(entries)
+                   if a.get("id") in canon
+                   and canon.index(a["id"]) > canon.index(agent_id)), len(entries))
+        entries.insert(at, dict(entry))
+        accounts.setdefault(agent_id, {"botToken": ""})
+        for channel in ("telegram", "cli"):
+            b = {"agentId": agent_id,
+                 "match": {"channel": channel, "accountId": agent_id}}
+            if b not in bindings:
+                bindings.append(b)
+
+    _write_raw(raw, path)
+    reg.parse(raw, root=root, path=path).ensure_dirs()
+    return [a["id"] for a in missing]
+
+
 def set_bot_token(agent_id: str, token: str, *, root: Optional[Path] = None) -> None:
     """Set one agent's Telegram token in place, leaving the rest untouched."""
     root = Path(root) if root else state_dir()

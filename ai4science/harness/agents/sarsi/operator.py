@@ -135,10 +135,16 @@ def tick(config: Config, agent: Agent, task: tsk.Task, *, pane: Any,
     # and killed the session the loop was supervising.
     from ai4science.harness.agents.sarsi import session as _ses
     if not _ses.drivable(agent.spec):
+        # Naming the route matters as much as the refusal. Without it the owner
+        # is left with a loop that stopped and a task still reading `planning`
+        # while the work sits finished in the folder — which is exactly what
+        # happened on the first live run of an attended research agent.
         return Action("attended",
                       f"{agent.id} runs the {agent.spec!r} interface, which "
                       f"this loop cannot read — take the wheel yourself: "
-                      f"tmux attach -t {session}")
+                      f"tmux attach -t {session}\n"
+                      f"    when it is done, you judge it: "
+                      f"sarsi check {agent.id} {task.id}")
 
     # A task that has not been briefed yet cannot have done anything to judge.
     if task.kickoff_pending and not planning:
@@ -325,8 +331,15 @@ def run(config: Config, agent: Agent, task: tsk.Task, *, pane: Any,
         action = tick(config, agent, task, pane=pane, verifier=verifier,
                       model=model, engine=engine)
         seen.append(action)
+        # `attended` belongs here for a different reason than the rest: those
+        # are states the loop has finished with, this one is a fact about the
+        # AGENT that no amount of waiting changes. Left out, `supervise` spent
+        # twelve passes at twenty seconds re-deriving that it cannot read a
+        # session's interface — four minutes that read as a hang, which is how
+        # it was found. `over-budget` deliberately stays out: the owner can
+        # raise a budget from another terminal, so that one can change.
         if action.kind in ("no-session", "done", "paused", "verified",
-                           "awaiting-grant"):
+                           "awaiting-grant", "attended"):
             break
         if i + 1 < passes:
             sleep(interval)

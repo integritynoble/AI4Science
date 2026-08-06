@@ -27,9 +27,32 @@ def _load() -> reg.Config:
         raise typer.Exit(code=2)
 
 
-@app.command("init", help="Write the seven-agent registry and create each agent's directories.")
-def init(owner_id: str = typer.Option(..., "--owner-id",
-                                      help="Your Telegram user id — the only id whose messages are honored.")) -> None:
+@app.command("init", help="Write the registry and create each agent's directories.")
+def init(owner_id: str = typer.Option("", "--owner-id",
+                                      help="Your Telegram user id — the only id whose messages are honored."),
+         reconcile: bool = typer.Option(False, "--reconcile",
+                                        help="Add roster agents a later release shipped, leaving everything else alone.")) -> None:
+    if reconcile:
+        # The other half of init's refusal. It never rewrites what is there —
+        # an agent the owner retired or re-ceilinged is theirs — so this is
+        # safe to run after any upgrade.
+        try:
+            added = admin.reconcile()
+        except Exception as e:
+            console.print(f"[red]{e}[/red]")
+            raise typer.Exit(code=2)
+        if not added:
+            console.print("nothing to add — every roster agent is already here")
+            return
+        for agent_id in added:
+            console.print(f"added [cyan]{agent_id}[/cyan]")
+        console.print("their directories and bindings are in place; "
+                      "[cyan]ai4science sarsi agents[/cyan] shows them")
+        return
+    if not owner_id.strip():
+        console.print("[red]--owner-id is required to write a new registry "
+                      "(or pass --reconcile to top up an existing one)[/red]")
+        raise typer.Exit(code=2)
     try:
         config = admin.init(owner_id=owner_id)
     except admin.AlreadyInitialised as e:
