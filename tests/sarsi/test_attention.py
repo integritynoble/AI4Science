@@ -59,15 +59,20 @@ class FakeRuntime:
 
 
 class Pane:
-    """A pane that answers per session name, and knows which exist."""
+    """A pane that answers per session name, and knows which exist.
+
+    Returns **None** for a name it does not have, which is what the real
+    `TmuxPane.capture` does — it raised, so every test below that says "the
+    pane is simply gone" was in fact exercising the exception path, and the
+    gone path had no coverage at all. The two are different answers now:
+    None is gone, an exception is nobody could look.
+    """
 
     def __init__(self, screens=None):
         self.screens = screens or {}
 
     def capture(self, name):
-        if name not in self.screens:
-            raise RuntimeError(f"no session {name}")
-        return self.screens[name]
+        return self.screens.get(name)
 
     def send(self, name, text):
         pass
@@ -180,13 +185,17 @@ def test_a_record_pointing_at_a_dead_terminal_is_reported(config, agent):
 
 
 def test_an_unreadable_pane_is_never_reported_as_fine(config, agent):
+    """Still the point of this test, and still true. What changed is WHICH
+    thing it is reported as: `dead-session` claimed the terminal was gone, and
+    nobody had looked. `unreadable` says so."""
     class Broken:
         def capture(self, name):
             raise OSError("tmux is not running")
 
     t = _with_session(config, agent)
     got = att.needs(config, agent, pane=Broken())
-    assert got.items and got.items[0].kind == "dead-session"
+    assert got.items and got.items[0].kind == "unreadable"
+    assert "is not there" not in got.items[0].detail
 
 
 # ── ordering and shape ────────────────────────────────────────────────

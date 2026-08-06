@@ -55,6 +55,17 @@ class NotAsked(Exception):
     """No open question matches — answering one nobody asked helps nobody."""
 
 
+class NotConfirmed(Exception):
+    """It was typed, and nobody could look to see whether it landed.
+
+    A DIFFERENT answer from `NotDelivered`, and the owner would do something
+    different about each: that one says the session did not take the answer,
+    this one says the screen could not be read. Folding the second into the
+    first also meant retyping — up to `MAX_TRIES` — into a session that may
+    have had the answer the first time.
+    """
+
+
 class NotDelivered(Exception):
     """It was typed and never appeared. Typed is not delivered.
 
@@ -163,8 +174,15 @@ def answer(config: Config, agent: Agent, task: tsk.Task, question: str,
             break                     # nothing to read; recorded as sent
         try:
             screen = pane.capture(task.session["name"]) or ""
-        except Exception:
-            screen = ""
+        except Exception as e:
+            # NOT "" — that is what an empty screen gives, and it would send
+            # this round the retry loop typing the same answer again at a
+            # session nobody can see. Unknown is not "it did not land".
+            raise NotConfirmed(
+                f"the answer was typed into {task.session['name']} and its "
+                f"screen could not be read ({type(e).__name__}: {e}), so "
+                f"whether it landed is unknown — look yourself: "
+                f"tmux attach -t {task.session['name']}")
         if _landed(screen, body):
             break
     else:

@@ -359,8 +359,21 @@ def _from_pane(agent: Agent, task: tsk.Task, name: str, pane: Any) -> List[Item]
     ended = task.state in ENDED_STATES
     try:
         screen = pane.capture(name)
-    except Exception:
-        screen = None
+    except Exception as e:
+        # `capture` returns None when there is NO SUCH PANE. Folding an
+        # exception into that same None reported `dead-session` — "its record
+        # points at a session which is not there" — about a session nobody
+        # could look at. Not-observed is not not-there, and this is the one
+        # place that rule was missing.
+        #
+        # Reported on an ended task too: a gone pane there is silence because
+        # the record and the machine AGREE, and an unreadable one agrees about
+        # nothing.
+        return [Item("unreadable", task.id,
+                     f"its pane {name} could not be read "
+                     f"({type(e).__name__}: {e}), so whether it is working, "
+                     f"waiting or gone is unknown",
+                     action=f"tmux attach -t {name}")]
     if screen is None:
         if ended:
             # The task is over and so is its terminal: the record and the machine
