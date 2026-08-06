@@ -45,6 +45,60 @@ videos, so the positive class is the red vascular findings pooled, and the judge
 refuses any run with fewer than three test patients whatever the frame count
 says.
 
+## How experts guide this into a self-aware, self-improving agent — and then into collapse
+
+The whole arc, in one place, because the sections that follow only make sense
+inside it. The mechanism is shared and lives in [`lifecycle.md`](lifecycle.md);
+what changes between fields is what the experts had to decide, and what the
+agent is not allowed to buy improvement with.
+
+**1 · Experts write the criterion, before the agent exists.** The field's
+experts set the scope and decide that splits are by **video**, not by frame, and that a delta must exceed the measured seed spread. This is the load-bearing human
+act: the agent inherits what counts as an answer here and may never change it.
+An agent that could would be choosing its own benchmark.
+
+**2 · The agent becomes self-aware in the only sense that is checkable.** Not
+introspection — bookkeeping. It holds a measured record of what it has tested
+and, kept strictly apart, what it has **not**: which findings it has too few videos to score at all, and that pooled classes cost clinical meaning. Unmeasured reads as
+unmeasured, and it costs something to write, because a self-model where
+"unmeasured" is free empties its own queue. The gaps are the queue: where the
+evidence is thinnest is where the next self-directed night goes.
+
+**3 · It improves itself, bounded by something it cannot move.** Propose →
+measure → an authority signs → adopt. It may change its method, its plan and its
+own parameters; it may never change the benchmark, the metric or the verifier.
+In this field the binding guardrail is **the seed spread itself: on 46 videos, a large delta is a symptom rather than a result**. That boundary is the
+entire safety argument: an agent that can move what judges it does not improve,
+it drifts, and it reports success the whole way.
+
+**4 · Verification is handed over, in stages, and never all at once.** A person
+signs every adoption today. Later, independent verifiers judge against criteria
+fixed *before* the result existed — a per-video result table is recomputable from predictions and video ids — and a person audits a
+sample. Later still, other fields' agents reproduce claims, which is the
+strongest check available because agreement between two agents sharing a
+codebase is nearly free. Experts keep scope throughout: *"is this worth
+researching"* is not a measurement and no verifier answers it.
+
+**5 · The field collapses.** Human verification goes to zero — either because
+everything checkable has been checked and machines check faster than people can
+follow, or because nobody cares any more. Both look identical from inside. What
+tells them apart is whether anyone acts on the results.
+
+## When this field collapses — and what it becomes
+
+**By indifference in one direction and saturation in the other.** Frame
+classification on capsule video is a narrow problem that will be finished; what
+it feeds — whether the study changes management — is a clinical question that
+this benchmark never asked.
+
+**Candidate fission: the capsule that acts.** A device that samples, marks, or
+delivers at a located finding is not scored by any frame-classification metric —
+the answer key would have to describe an intervention and its outcome, which
+this benchmark cannot express. New twin (a device with actuation), new benchmark
+(outcome, not label), new agent.
+
+**Retired from research, not from service.** A reader that shortens review time is worth the same after the frontier closes.
+
 ## 1. The field
 
 Wireless capsule endoscopy — a swallowed camera imaging the gastrointestinal
@@ -339,18 +393,3 @@ real improvement — 0.614 → 0.624 — and the thing worth teaching is why tha
 number is credible: it was paired across seeds, validated on seeds not used to
 select it, and it is small. A reader who learns to distrust large deltas on
 small corpora has learned the most useful thing this field has to offer.
-
-## When this field collapses — and what it becomes
-
-**By indifference in one direction and saturation in the other.** Frame
-classification on capsule video is a narrow problem that will be finished; what
-it feeds — whether the study changes management — is a clinical question that
-this benchmark never asked.
-
-**Candidate fission: the capsule that acts.** A device that samples, marks, or
-delivers at a located finding is not scored by any frame-classification metric —
-the answer key would have to describe an intervention and its outcome, which
-this benchmark cannot express. New twin (a device with actuation), new benchmark
-(outcome, not label), new agent.
-
-**Retired from research, not from service.** A reader that shortens review time is worth the same after the frontier closes.

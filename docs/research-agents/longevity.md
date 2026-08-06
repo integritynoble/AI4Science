@@ -23,6 +23,60 @@ described in the present tense is a claim.
 
 ---
 
+## How experts guide this into a self-aware, self-improving agent — and then into collapse
+
+The whole arc, in one place, because the sections that follow only make sense
+inside it. The mechanism is shared and lives in [`lifecycle.md`](lifecycle.md);
+what changes between fields is what the experts had to decide, and what the
+agent is not allowed to buy improvement with.
+
+**1 · Experts write the criterion, before the agent exists.** The field's
+experts set the scope and decide that **age and sex are the floor**, not covariates, and that validation is across survey cycles. This is the load-bearing human
+act: the agent inherits what counts as an answer here and may never change it.
+An agent that could would be choosing its own benchmark.
+
+**2 · The agent becomes self-aware in the only sense that is checkable.** Not
+introspection — bookkeeping. It holds a measured record of what it has tested
+and, kept strictly apart, what it has **not**: that nothing is built yet, which is itself the honest first entry in its self-model. Unmeasured reads as
+unmeasured, and it costs something to write, because a self-model where
+"unmeasured" is free empties its own queue. The gaps are the queue: where the
+evidence is thinnest is where the next self-directed night goes.
+
+**3 · It improves itself, bounded by something it cannot move.** Propose →
+measure → an authority signs → adopt. It may change its method, its plan and its
+own parameters; it may never change the benchmark, the metric or the verifier.
+In this field the binding guardrail is **the age-and-sex floor: a mortality model that does not clear it has predicted that older people die sooner**. That boundary is the
+entire safety argument: an agent that can move what judges it does not improve,
+it drifts, and it reports success the whole way.
+
+**4 · Verification is handed over, in stages, and never all at once.** A person
+signs every adoption today. Later, independent verifiers judge against criteria
+fixed *before* the result existed — discrimination and calibration are recomputable from predictions and follow-up by anyone holding both — and a person audits a
+sample. Later still, other fields' agents reproduce claims, which is the
+strongest check available because agreement between two agents sharing a
+codebase is nearly free. Experts keep scope throughout: *"is this worth
+researching"* is not a measurement and no verifier answers it.
+
+**5 · The field collapses.** Human verification goes to zero — either because
+everything checkable has been checked and machines check faster than people can
+follow, or because nobody cares any more. Both look identical from inside. What
+tells them apart is whether anyone acts on the results.
+
+## How this field ends
+
+**By saturation, slowly, or not at all.** Follow-up time is the binding
+constraint and it cannot be compressed, so this field moves at the speed of
+cohorts rather than compute.
+
+**Retired from research, not from service.** A validated risk model keeps being
+useful to clinicians and actuaries long after the frontier closes.
+
+**Candidate fission: mechanism rather than prediction.** The moment the question
+becomes *why* a marker predicts — and whether changing it changes the outcome —
+no observational benchmark can score it. That needs an interventional design,
+which is a different twin, a different answer key, and therefore a different
+field again.
+
 ## Why it is a separate agent and not a bigger reverse-aging
 
 Reverse aging predicts a number already on a birth certificate. Its honest risk,
@@ -146,18 +200,3 @@ characteristic fatal error in outcome modelling.
 lesson is the one this field most needs: **a hazard ratio without an absolute
 risk difference is unreadable**, and a model that beats nothing but chance is
 routinely reported as though it beat medicine.
-
-## How this field ends
-
-**By saturation, slowly, or not at all.** Follow-up time is the binding
-constraint and it cannot be compressed, so this field moves at the speed of
-cohorts rather than compute.
-
-**Retired from research, not from service.** A validated risk model keeps being
-useful to clinicians and actuaries long after the frontier closes.
-
-**Candidate fission: mechanism rather than prediction.** The moment the question
-becomes *why* a marker predicts — and whether changing it changes the outcome —
-no observational benchmark can score it. That needs an interventional design,
-which is a different twin, a different answer key, and therefore a different
-field again.

@@ -34,6 +34,62 @@ property of the model. External validation now means what the field means by it
 still computed and reported beside it, because it is a real finding. It just is
 not the pass criterion.
 
+## How experts guide this into a self-aware, self-improving agent — and then into collapse
+
+The whole arc, in one place, because the sections that follow only make sense
+inside it. The mechanism is shared and lives in [`lifecycle.md`](lifecycle.md);
+what changes between fields is what the experts had to decide, and what the
+agent is not allowed to buy improvement with.
+
+**1 · Experts write the criterion, before the agent exists.** The field's
+experts set the scope and decide that validation is **site-disjoint** — held-out hospitals, not held-out patients — and that stage and age are the floor. This is the load-bearing human
+act: the agent inherits what counts as an answer here and may never change it.
+An agent that could would be choosing its own benchmark.
+
+**2 · The agent becomes self-aware in the only sense that is checkable.** Not
+introspection — bookkeeping. It holds a measured record of what it has tested
+and, kept strictly apart, what it has **not**: which histologies it transports to, and that it has never been tested prospectively. Unmeasured reads as
+unmeasured, and it costs something to write, because a self-model where
+"unmeasured" is free empties its own queue. The gaps are the queue: where the
+evidence is thinnest is where the next self-directed night goes.
+
+**3 · It improves itself, bounded by something it cannot move.** Propose →
+measure → an authority signs → adopt. It may change its method, its plan and its
+own parameters; it may never change the benchmark, the metric or the verifier.
+In this field the binding guardrail is **the clinical-only baseline: a genomic model that does not clear stage and age has added nothing**. That boundary is the
+entire safety argument: an agent that can move what judges it does not improve,
+it drifts, and it reports success the whole way.
+
+**4 · Verification is handed over, in stages, and never all at once.** A person
+signs every adoption today. Later, independent verifiers judge against criteria
+fixed *before* the result existed — a c-index and a calibration curve are recomputable from predictions and outcomes by anyone holding both — and a person audits a
+sample. Later still, other fields' agents reproduce claims, which is the
+strongest check available because agreement between two agents sharing a
+codebase is nearly free. Experts keep scope throughout: *"is this worth
+researching"* is not a measurement and no verifier answers it.
+
+**5 · The field collapses.** Human verification goes to zero — either because
+everything checkable has been checked and machines check faster than people can
+follow, or because nobody cares any more. Both look identical from inside. What
+tells them apart is whether anyone acts on the results.
+
+## When this field collapses — and what it becomes
+
+**Not by saturation.** Prognosis from molecular data is limited by biology and
+by cohort size, and both move slowly. The likelier end state is a stable,
+partially automated field where re-validation is continuous and human attention
+goes to cohorts rather than to models.
+
+**Candidate fission: from prognosis to intervention effect.** "Who is at higher
+risk" and "what would happen if we treated differently" are not the same
+question, and a c-index benchmark cannot score the second — it has no
+counterfactual to compare against, and no amount of held-out data creates one.
+Answering it requires a different twin (assignment and treatment), a different
+benchmark (effect estimation with its own identification assumptions), and
+therefore a different field and agent.
+
+**Retired from research, not from service.** A validated prognostic model keeps advising clinicians whether or not anyone is still publishing on it.
+
 ## 1. The field
 
 Computational cancer biology and oncology data science.
@@ -381,20 +437,3 @@ correction: a model called "non-transporting" that transported fine once the
 split was drawn properly. The lesson is symmetric to the drug-design one — a bad
 split can *understate* as well as overstate, and both directions are measurement
 failures rather than facts about biology.
-
-## When this field collapses — and what it becomes
-
-**Not by saturation.** Prognosis from molecular data is limited by biology and
-by cohort size, and both move slowly. The likelier end state is a stable,
-partially automated field where re-validation is continuous and human attention
-goes to cohorts rather than to models.
-
-**Candidate fission: from prognosis to intervention effect.** "Who is at higher
-risk" and "what would happen if we treated differently" are not the same
-question, and a c-index benchmark cannot score the second — it has no
-counterfactual to compare against, and no amount of held-out data creates one.
-Answering it requires a different twin (assignment and treatment), a different
-benchmark (effect estimation with its own identification assumptions), and
-therefore a different field and agent.
-
-**Retired from research, not from service.** A validated prognostic model keeps advising clinicians whether or not anyone is still publishing on it.

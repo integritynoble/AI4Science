@@ -38,6 +38,62 @@ that was 90% bulk structure fails.
 > the same candidate then earned its place on six real institutional splits at
 > p = 0.014.
 
+## How experts guide this into a self-aware, self-improving agent — and then into collapse
+
+The whole arc, in one place, because the sections that follow only make sense
+inside it. The mechanism is shared and lives in [`lifecycle.md`](lifecycle.md);
+what changes between fields is what the experts had to decide, and what the
+agent is not allowed to buy improvement with.
+
+**1 · Experts write the criterion, before the agent exists.** The field's
+experts set the scope and decide that held-out **institutions are drawn from the seed**, and that bulk-structure share is reported beside every error. This is the load-bearing human
+act: the agent inherits what counts as an answer here and may never change it.
+An agent that could would be choosing its own benchmark.
+
+**2 · The agent becomes self-aware in the only sense that is checkable.** Not
+introspection — bookkeeping. It holds a measured record of what it has tested
+and, kept strictly apart, what it has **not**: that its outcome link is unmeasured — the gap that decides whether the field is worth anything. Unmeasured reads as
+unmeasured, and it costs something to write, because a self-model where
+"unmeasured" is free empties its own queue. The gaps are the queue: where the
+evidence is thinnest is where the next self-directed night goes.
+
+**3 · It improves itself, bounded by something it cannot move.** Propose →
+measure → an authority signs → adopt. It may change its method, its plan and its
+own parameters; it may never change the benchmark, the metric or the verifier.
+In this field the binding guardrail is **bulk-structure share: an error improvement bought by leaning harder on cell composition is refused**. That boundary is the
+entire safety argument: an agent that can move what judges it does not improve,
+it drifts, and it reports success the whole way.
+
+**4 · Verification is handed over, in stages, and never all at once.** A person
+signs every adoption today. Later, independent verifiers judge against criteria
+fixed *before* the result existed — the composition share is recomputable by projecting out leading components, independently of the fit — and a person audits a
+sample. Later still, other fields' agents reproduce claims, which is the
+strongest check available because agreement between two agents sharing a
+codebase is nearly free. Experts keep scope throughout: *"is this worth
+researching"* is not a measurement and no verifier answers it.
+
+**5 · The field collapses.** Human verification goes to zero — either because
+everything checkable has been checked and machines check faster than people can
+follow, or because nobody cares any more. Both look identical from inside. What
+tells them apart is whether anyone acts on the results.
+
+## When this field collapses — and what it becomes
+
+**By indifference, if row 4 is never answered.** A field of clocks that predict
+chronological age ever more precisely, and never connect to health, is a field
+solving a problem nobody needed solved — age is already known from a birth
+certificate. That is the honest risk and it should be stated plainly.
+
+**Fission, and it now has a page: [`longevity.md`](longevity.md).** The moment the
+question becomes "is this person ageing faster" or "did this intervention slow
+it", the benchmark cannot score it — its answer key is chronological age, and
+the new question's answer key does not exist at fitting time at all. It needs
+longitudinal data, outcomes, and a twin that models trajectories rather than
+cross-sections. By the [`lifecycle.md`](lifecycle.md) test that is unambiguously
+a different field, and it is where all of this field's value actually lives.
+
+**And if it collapses by indifference, little survives** — which is the honest asymmetry. A clock with no outcome link has no service half to retire into. That is what makes problem 4 the one that decides the field.
+
 ## The optimum was outside the declared range, and it was worth a month
 
 The adopted `ridge = 1.0` sat exactly at the floor of its declared range, which
@@ -386,20 +442,3 @@ night's results was the broken one, and it looked better than a genuine result
 from another agent. Anyone who learns to treat an impossibly good p-value as a
 symptom rather than a triumph has learned the most valuable habit in this
 directory.
-
-## When this field collapses — and what it becomes
-
-**By indifference, if row 4 is never answered.** A field of clocks that predict
-chronological age ever more precisely, and never connect to health, is a field
-solving a problem nobody needed solved — age is already known from a birth
-certificate. That is the honest risk and it should be stated plainly.
-
-**Fission, and it now has a page: [`longevity.md`](longevity.md).** The moment the
-question becomes "is this person ageing faster" or "did this intervention slow
-it", the benchmark cannot score it — its answer key is chronological age, and
-the new question's answer key does not exist at fitting time at all. It needs
-longitudinal data, outcomes, and a twin that models trajectories rather than
-cross-sections. By the [`lifecycle.md`](lifecycle.md) test that is unambiguously
-a different field, and it is where all of this field's value actually lives.
-
-**And if it collapses by indifference, little survives** — which is the honest asymmetry. A clock with no outcome link has no service half to retire into. That is what makes problem 4 the one that decides the field.

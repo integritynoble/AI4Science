@@ -38,6 +38,61 @@ Sparing that cord takes full 3D modulation. Raising the penalties traded cord
 against hot spot and cleared neither, so the tuning stopped rather than
 continuing until something passed.
 
+## How experts guide this into a self-aware, self-improving agent — and then into collapse
+
+The whole arc, in one place, because the sections that follow only make sense
+inside it. The mechanism is shared and lives in [`lifecycle.md`](lifecycle.md);
+what changes between fields is what the experts had to decide, and what the
+agent is not allowed to buy improvement with.
+
+**1 · Experts write the criterion, before the agent exists.** The field's
+experts set the scope and decide the goal sheet — which constraints are absolute and which are trades — and that an **achievability bound** is reported beside every verdict. This is the load-bearing human
+act: the agent inherits what counts as an answer here and may never change it.
+An agent that could would be choosing its own benchmark.
+
+**2 · The agent becomes self-aware in the only sense that is checkable.** Not
+introspection — bookkeeping. It holds a measured record of what it has tested
+and, kept strictly apart, what it has **not**: that its bound was measured in 2D, and which geometries it has never planned. Unmeasured reads as
+unmeasured, and it costs something to write, because a self-model where
+"unmeasured" is free empties its own queue. The gaps are the queue: where the
+evidence is thinnest is where the next self-directed night goes.
+
+**3 · It improves itself, bounded by something it cannot move.** Propose →
+measure → an authority signs → adopt. It may change its method, its plan and its
+own parameters; it may never change the benchmark, the metric or the verifier.
+In this field the binding guardrail is **organ dose and hot spot: coverage bought with either is refused, naming the constraint and the amount**. That boundary is the
+entire safety argument: an agent that can move what judges it does not improve,
+it drifts, and it reports success the whole way.
+
+**4 · Verification is handed over, in stages, and never all at once.** A person
+signs every adoption today. Later, independent verifiers judge against criteria
+fixed *before* the result existed — a DVH is recomputable from a dose volume and a contour set by anyone holding both — and a person audits a
+sample. Later still, other fields' agents reproduce claims, which is the
+strongest check available because agreement between two agents sharing a
+codebase is nearly free. Experts keep scope throughout: *"is this worth
+researching"* is not a measurement and no verifier answers it.
+
+**5 · The field collapses.** Human verification goes to zero — either because
+everything checkable has been checked and machines check faster than people can
+follow, or because nobody cares any more. Both look identical from inside. What
+tells them apart is whether anyone acts on the results.
+
+## When this field collapses — and what it becomes
+
+**Not soon, and not by saturation.** Delivery hardware keeps changing, and each
+change reopens the whole problem. What will collapse is the *human-verification
+rate for routine plans* — a saturated field where standard cases are planned and
+checked by machines and only the difficult ones reach a person. The signature
+requirement survives the collapse; the review time does not.
+
+**Candidate fission: biologically adaptive dose.** Dose that responds to
+mid-course tumour response — where the target is not a fixed contour but a
+trajectory — cannot be scored by a benchmark whose answer key is a static DVH on
+a static geometry. Changing the benchmark to accommodate it would destroy what
+makes it a benchmark. New field, new twin, new agent.
+
+**Retired from research, not from service** — and here the service half is the whole point: planning tools outlive the papers about them, and a physicist still signs every plan either way.
+
 ## 0b. What the benchmark can and cannot ask of these beams
 
 **Measured before being argued about, which is the correction this section
@@ -376,19 +431,3 @@ cause was a NaN that silently disabled the optimiser because one mask guard was
 missing. The teaching artifact is the habit of asking *what is the ceiling* before
 theorising about the gap. A reader who takes only that away can refute most
 auto-planning claims in the literature.
-
-## When this field collapses — and what it becomes
-
-**Not soon, and not by saturation.** Delivery hardware keeps changing, and each
-change reopens the whole problem. What will collapse is the *human-verification
-rate for routine plans* — a saturated field where standard cases are planned and
-checked by machines and only the difficult ones reach a person. The signature
-requirement survives the collapse; the review time does not.
-
-**Candidate fission: biologically adaptive dose.** Dose that responds to
-mid-course tumour response — where the target is not a fixed contour but a
-trajectory — cannot be scored by a benchmark whose answer key is a static DVH on
-a static geometry. Changing the benchmark to accommodate it would destroy what
-makes it a benchmark. New field, new twin, new agent.
-
-**Retired from research, not from service** — and here the service half is the whole point: planning tools outlive the papers about them, and a physicist still signs every plan either way.

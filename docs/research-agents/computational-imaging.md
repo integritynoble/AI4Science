@@ -25,6 +25,63 @@ physics check rather than evidence about a real instrument; what changed is that
 the thing being reconstructed is no longer drawn from the prior the solver
 assumes. That distinction turned out to matter more than expected — see §3b.
 
+## How experts guide this into a self-aware, self-improving agent — and then into collapse
+
+The whole arc, in one place, because the sections that follow only make sense
+inside it. The mechanism is shared and lives in [`lifecycle.md`](lifecycle.md);
+what changes between fields is what the experts had to decide, and what the
+agent is not allowed to buy improvement with.
+
+**1 · Experts write the criterion, before the agent exists.** The field's
+experts set the scope and decide that a reconstruction is judged against a **published forward operator**, and that the residual is reported beside the fidelity number. This is the load-bearing human
+act: the agent inherits what counts as an answer here and may never change it.
+An agent that could would be choosing its own benchmark.
+
+**2 · The agent becomes self-aware in the only sense that is checkable.** Not
+introspection — bookkeeping. It holds a measured record of what it has tested
+and, kept strictly apart, what it has **not**: which subfields it has never crossed, and how far its simulated results sit from real captures. Unmeasured reads as
+unmeasured, and it costs something to write, because a self-model where
+"unmeasured" is free empties its own queue. The gaps are the queue: where the
+evidence is thinnest is where the next self-directed night goes.
+
+**3 · It improves itself, bounded by something it cannot move.** Propose →
+measure → an authority signs → adopt. It may change its method, its plan and its
+own parameters; it may never change the benchmark, the metric or the verifier.
+In this field the binding guardrail is **the forward-model residual — an agent that improves fidelity while drifting from its own measurement has found a pipeline bug, not a method**. That boundary is the
+entire safety argument: an agent that can move what judges it does not improve,
+it drifts, and it reports success the whole way.
+
+**4 · Verification is handed over, in stages, and never all at once.** A person
+signs every adoption today. Later, independent verifiers judge against criteria
+fixed *before* the result existed — a reconstruction is reproducible from seeds and an operator, so a verifier can recompute it exactly — and a person audits a
+sample. Later still, other fields' agents reproduce claims, which is the
+strongest check available because agreement between two agents sharing a
+codebase is nearly free. Experts keep scope throughout: *"is this worth
+researching"* is not a measurement and no verifier answers it.
+
+**5 · The field collapses.** Human verification goes to zero — either because
+everything checkable has been checked and machines check faster than people can
+follow, or because nobody cares any more. Both look identical from inside. What
+tells them apart is whether anyone acts on the results.
+
+## When this field collapses — and what it becomes
+
+**By saturation, not by indifference.** Reconstruction quality against a fixed
+operator is a bounded problem; when the transfer table is full and every cell
+has been crossed, the remaining work is engineering. The field will keep
+producing and stop being interesting to check by hand.
+
+**Candidate fission: imaging through an unknown medium.** When the medium *is*
+the optic — tissue, atmosphere, a scattering wall — the forward operator is not
+known and must be inferred jointly with the scene. That question cannot be
+scored by this benchmark without changing it, because this benchmark's central
+commitment is a fixed published operator. By the test in
+[`lifecycle.md`](lifecycle.md), that makes it a different field: not a harder
+version of this one, a change in what counts as an answer. It would need its own
+charter, its own twin, its own never-improvable benchmark, and its own agent.
+
+**Retired from research, not from service.** When the transfer table is full, the reconstruction solutions stay installable and keep working — a method that denoises a real capture is worth the same on the day its field stops publishing as it was the day before.
+
 ## 1. The field
 
 Everywhere the image is **computed** rather than captured — the sensor measures
@@ -391,21 +448,3 @@ a TV proximal operator that expanded instead of shrinking, invisible on blobs
 and obvious on texture. Anyone who has read that can construct the refuting
 measurement themselves — run the reference solver on a scene with real texture
 and watch it diverge. That is the test of whether teaching happened.
-
-## When this field collapses — and what it becomes
-
-**By saturation, not by indifference.** Reconstruction quality against a fixed
-operator is a bounded problem; when the transfer table is full and every cell
-has been crossed, the remaining work is engineering. The field will keep
-producing and stop being interesting to check by hand.
-
-**Candidate fission: imaging through an unknown medium.** When the medium *is*
-the optic — tissue, atmosphere, a scattering wall — the forward operator is not
-known and must be inferred jointly with the scene. That question cannot be
-scored by this benchmark without changing it, because this benchmark's central
-commitment is a fixed published operator. By the test in
-[`lifecycle.md`](lifecycle.md), that makes it a different field: not a harder
-version of this one, a change in what counts as an answer. It would need its own
-charter, its own twin, its own never-improvable benchmark, and its own agent.
-
-**Retired from research, not from service.** When the transfer table is full, the reconstruction solutions stay installable and keep working — a method that denoises a real capture is worth the same on the day its field stops publishing as it was the day before.

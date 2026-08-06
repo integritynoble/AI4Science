@@ -23,6 +23,63 @@ solver was never given. Morgan-fingerprint similarity reaches **EF@1% 66.8
 library** — DUD-E's decoys carry 0.56 SD of residual property bias, and weight
 alone enriches at EF 20.
 
+## How experts guide this into a self-aware, self-improving agent — and then into collapse
+
+The whole arc, in one place, because the sections that follow only make sense
+inside it. The mechanism is shared and lives in [`lifecycle.md`](lifecycle.md);
+what changes between fields is what the experts had to decide, and what the
+agent is not allowed to buy improvement with.
+
+**1 · Experts write the criterion, before the agent exists.** The field's
+experts set the scope and decide what counts as a **chemical series** — the single judgement this benchmark's honesty rests on — and that queries are drawn from whole clusters. This is the load-bearing human
+act: the agent inherits what counts as an answer here and may never change it.
+An agent that could would be choosing its own benchmark.
+
+**2 · The agent becomes self-aware in the only sense that is checkable.** Not
+introspection — bookkeeping. It holds a measured record of what it has tested
+and, kept strictly apart, what it has **not**: which targets it has never seen, and that it has never predicted a molecule anyone made. Unmeasured reads as
+unmeasured, and it costs something to write, because a self-model where
+"unmeasured" is free empties its own queue. The gaps are the queue: where the
+evidence is thinnest is where the next self-directed night goes.
+
+**3 · It improves itself, bounded by something it cannot move.** Propose →
+measure → an authority signs → adopt. It may change its method, its plan and its
+own parameters; it may never change the benchmark, the metric or the verifier.
+In this field the binding guardrail is **the property-only floor and the metric's ceiling: an enrichment that clears neither is refused**. That boundary is the
+entire safety argument: an agent that can move what judges it does not improve,
+it drifts, and it reports success the whole way.
+
+**4 · Verification is handed over, in stages, and never all at once.** A person
+signs every adoption today. Later, independent verifiers judge against criteria
+fixed *before* the result existed — analogue similarity and enrichment are recomputable from the published split alone — and a person audits a
+sample. Later still, other fields' agents reproduce claims, which is the
+strongest check available because agreement between two agents sharing a
+codebase is nearly free. Experts keep scope throughout: *"is this worth
+researching"* is not a measurement and no verifier answers it.
+
+**5 · The field collapses.** Human verification goes to zero — either because
+everything checkable has been checked and machines check faster than people can
+follow, or because nobody cares any more. Both look identical from inside. What
+tells them apart is whether anyone acts on the results.
+
+## When this field collapses — and what it becomes
+
+**By saturation in the narrow sense, and never in the broad one.** Ranking a
+fixed library against a known pocket is bounded and will be finished. Choosing
+what to make next is not, because it is not a scoring problem.
+
+**Candidate fission: delivery rather than binding.** Whether a molecule reaches
+the cell it must act in — formulation, organ targeting, the whole
+design→synthesise→screen loop over material families — cannot be scored by an
+enrichment metric over a fixed library. There is no ranked list and no decoy
+set; the readout is biological delivery, and the design space is combinatorial
+rather than enumerated. That is a change in what counts as an answer, and by the
+[`lifecycle.md`](lifecycle.md) test it is a separate field with its own
+benchmark and its own agent. The methodology transfers — series-disjoint
+validation above all — and the chemistry does not.
+
+**Retired from research, not from service.** The screening tools stay installable and get plugged into other fields' agents — which is how the series-disjoint discipline reaches places this agent never worked.
+
 ## 1. The field
 
 Getting from a disease to a molecule, computationally.
@@ -334,21 +391,3 @@ transfers: lipid libraries, peptide series, materials — anywhere compounds com
 in synthetic families, a random split learns the family. A reader who takes that
 away can refute a large fraction of screening papers, including in fields this
 agent does not work in.
-
-## When this field collapses — and what it becomes
-
-**By saturation in the narrow sense, and never in the broad one.** Ranking a
-fixed library against a known pocket is bounded and will be finished. Choosing
-what to make next is not, because it is not a scoring problem.
-
-**Candidate fission: delivery rather than binding.** Whether a molecule reaches
-the cell it must act in — formulation, organ targeting, the whole
-design→synthesise→screen loop over material families — cannot be scored by an
-enrichment metric over a fixed library. There is no ranked list and no decoy
-set; the readout is biological delivery, and the design space is combinatorial
-rather than enumerated. That is a change in what counts as an answer, and by the
-[`lifecycle.md`](lifecycle.md) test it is a separate field with its own
-benchmark and its own agent. The methodology transfers — series-disjoint
-validation above all — and the chemistry does not.
-
-**Retired from research, not from service.** The screening tools stay installable and get plugged into other fields' agents — which is how the series-disjoint discipline reaches places this agent never worked.
