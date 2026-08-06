@@ -42,6 +42,7 @@ are not.
 | [pill camera](pill-camera.md) | Kvasir-Capsule — 4,443 frames, 46 videos | **passes**, after its own night loop found the fix — 0.624 against 0.614 |
 | [computational imaging](computational-imaging.md) | CAVE — real hyperspectral scenes, CASSI measurement simulated | **passes** — after a sign error in the reference solver was found and fixed |
 | [reverse aging](reverse-aging.md) | GEO GSE40279 — 656 whole-blood methylation samples, ages 19–101 | **13 of 28** on seed-varied institutional splits; 55% of the clock's gain is bulk structure, and `outcome_link` is unmeasured |
+| [longevity](longevity.md) | NHANES + CDC linked mortality — **not fetched** | **design only, nothing built.** The fission of reverse aging: an answer key that is an outcome rather than chronological age, and a floor of age-and-sex that most published risk scores have never been asked to clear |
 
 > **One of those failures has since been repaired by the agent itself.** The
 > night loop found that pill-camera's frame summary was taking the wrong
@@ -79,6 +80,13 @@ material. They are asked in this order because each depends on the one before.
 | **Who is in the group, and which of them have bodies?** | *The group* — a proposer, refute-first verifiers, executors, and a safety interlock none of them may modify. As robots take the manual work, some executors stop being software |
 | **What are its sub-agents and tools?** | *Sub-agents and tools* |
 | **How does the field end?** | *When this field collapses* — by saturation or by indifference, and which sub-region earns a new field and a new agent |
+
+> **Fission has happened once, on paper.** [`longevity.md`](longevity.md) is the
+> new field that [`reverse-aging.md`](reverse-aging.md) could not contain: a
+> question whose answer key is an outcome, which a chronological-age benchmark
+> cannot score without being changed. It does **not** inherit the parent's
+> benchmark, because inheriting it would re-import the assumption that made the
+> question unscoreable. Nothing of it is built, and the page says so throughout.
 
 > **Never-improvable is a rule about the agent, not about the field.** The
 > benchmark, the metric and the verifier may never be changed *by the agent* —

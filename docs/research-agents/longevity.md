@@ -1,0 +1,163 @@
+# The longevity agent — how to design it
+
+| | |
+|---|---|
+| **corpus** | NHANES with the CDC public-use **linked mortality file** — clinical and laboratory markers with real follow-up |
+| **reference method** | **not built** |
+| **the number that matters** | whatever it adds over **age and sex**, which is the whole question |
+
+> **The finding this page is built around — and it is about the system, not the
+> biology.** This agent exists because [`reverse-aging.md`](reverse-aging.md)
+> could not answer its own most important question. That agent's benchmark has
+> chronological age as its answer key, so "is this person ageing faster" and
+> "did this intervention help" are unscoreable in it — not hard, *unscoreable*,
+> because settling them would require changing the answer key, and the answer
+> key is the one thing that may not change. By the test in
+> [`lifecycle.md`](lifecycle.md) that makes this a **different field**, and
+> fission is the good ending rather than a failure.
+
+**Status: design. Nothing is built.** No corpus fetcher, no benchmark, no
+reference method, and it is not in the agent registry. Everything below is
+written in the conditional because that is what it is. An architecture
+described in the present tense is a claim.
+
+---
+
+## Why it is a separate agent and not a bigger reverse-aging
+
+Reverse aging predicts a number already on a birth certificate. Its honest risk,
+stated on its own page, is collapse by indifference: *a field of clocks that
+predict chronological age ever more precisely and never connect to health is
+solving a problem nobody needed solved.*
+
+The escape is not a better clock. It is a different answer key.
+
+| | reverse aging | longevity |
+|---|---|---|
+| **answer key** | chronological age, known at fitting time | an **outcome**, which does not exist at fitting time and must be waited for |
+| **twin** | the methylome — batch and cell composition | the cohort in time — competing risks, censoring, survey design |
+| **what beating the baseline means** | beating the training mean age | beating **age and sex**, which is a far harder floor |
+| **failure it exists to catch** | a clock reading blood composition | a model reading *frailty already visible to a clinician* and calling it prediction |
+
+Neither inherits the other's benchmark. It may freely inherit methods, data
+handling and tools — and it should inherit the composition guardrail, because
+the same confound appears wherever bulk biology stands in for a person.
+
+## Scope, and the experts who set it
+
+**Current scope.** Prediction of mortality and healthspan from clinical,
+laboratory and questionnaire markers in a cohort with real follow-up, validated
+across survey cycles that the model was not fitted on.
+
+**Out of scope, and deliberately.** Any recommendation to an individual, any
+intervention claim, and any supplement, protocol or product. This agent may say
+what predicts; it may never say what to do about it. That line is not a
+limitation to be relaxed later — it is what keeps the field from becoming
+marketing.
+
+| expert role | what they decide here |
+|---|---|
+| **an epidemiologist** | the survey design, weighting, and what a cycle-disjoint split can and cannot support |
+| **a biostatistician of survival data** | competing risks, censoring, and calibration — the three this field most often gets wrong |
+| **a geriatrician or clinician** | what healthspan means operationally, and whether a marker is prediction or is simply visible frailty |
+| **a consent and data-use officer** | what linkage is permitted, which is the binding constraint rather than method |
+
+**No expert is currently assigned.** These are roles, not people, and this
+repository names no individual.
+
+## The problem ladder
+
+Ordered by dependency. **The order is the topological order of what blocks
+what**, with cost breaking ties.
+
+| # | problem | **solved when** | why it is placed here | state |
+|---|---|---|---|---|
+| 1 | **A corpus with real follow-up** | `mortality-linked records load, with follow-up time and status per person, from a source anyone can fetch` | everything here is unanswerable without an outcome. This is the exact thing reverse aging is blocked on, and it is rung 1 because nothing above it can be measured | open |
+| 2 | **Age and sex as the floor, not a covariate** | `every reported metric appears beside the same metric from an age-and-sex-only model` | a mortality model that does not beat age and sex has predicted that older people die sooner. Most published risk scores are never asked this | open |
+| 3 | **Cycle-disjoint validation** | `performance is reported on survey cycles that contributed nothing to fitting or selection` | assay methods, protocols and populations drift between cycles; a random split reads the era | open |
+| 4 | **Competing risks and censoring, explicitly** | `the estimate changes when competing risks are modelled, and the change is reported` | in an older cohort, death from another cause is not censoring, and treating it as such biases every estimate the same way | open |
+| 5 | **Calibration, not discrimination alone** | `predicted and observed survival agree within a stated tolerance, plotted, not summarised` | a c-index ranks; it never says how much. A decision needs the magnitude | open |
+| 6 | **Healthspan, not just lifespan** | `a disability or morbidity endpoint is predicted and reported separately from death` | living longer and living well are different outcomes, and conflating them is how this field flatters itself | open |
+| 7 | **Marker sets that add over a blood panel** | `a candidate marker set beats a standard clinical panel on held-out cycles, or is reported as not adding` | the commercial claim in this field is that a new measurement adds information. It is rarely tested against the cheap one | open |
+| 8 | **Intervention response** | `a repeated measure moves in the predicted direction after a change, in a design that could have shown it did not` | the question everyone wants and the one that needs longitudinal data plus a design that can be wrong | blocked |
+
+> **"Solved when" is the entry fee.** A problem with no measurement that would
+> settle it is a research interest, and interests belong in the charter.
+>
+> **The failure this ladder is built against is starting at rung 7.** Marker
+> panels are the fundable, publishable, sellable rung, and every one of them is
+> uninterpretable until rungs 2 and 3 hold.
+
+## The four layers
+
+| layer | this field's instance |
+|---|---|
+| **Principle** | Predicting death is easy and mostly redundant. The only interesting quantity is what a marker adds **over age and sex** — stated so it can be wrong, and it can: a marker set that adds nothing fails |
+| **Digital twin** | The cohort in time: enrolment, survey weighting, follow-up, censoring and competing risks. It stops being valid outside the sampled population — a national survey does not transport to a clinic, and the twin says so |
+| **Benchmark** | NHANES with the linked mortality file, cycle-disjoint splits, discrimination **and** calibration, against an age-and-sex floor, with a reference method that is **allowed to fail** |
+| **Solution** | A survival model over clinical and laboratory markers, with its shrinkage and marker set as the declared knobs |
+
+> **A reference method that cannot fail is not a benchmark.** This one should be
+> expected to fail rung 2 on its first honest attempt, because beating age and
+> sex is genuinely hard, and a first-try pass would be evidence the floor was
+> set too low.
+
+## The group
+
+The nine-member floor applies unchanged; only the field-specific parts are
+listed. The **twin** and the **verifier** are not the worker's, for the usual
+reason.
+
+| member | kind | acts on | its refusal |
+|---|---|---|---|
+| twin | reasoning | the cohort-in-time model | refuses to be graded on a population outside the survey's sampling frame |
+| corpus | reasoning | NHANES + linked mortality | refuses when the linkage is absent, **naming the fetch command**, and never substitutes simulated follow-up |
+| verifier | judging | the benchmark | refuses any result not reported beside the age-and-sex floor |
+| teacher | judging | the owner's own check | refuses to report a hazard ratio without the absolute risk difference beside it |
+| **collection robot** | **embodied** | donors and samples | refuses to collect outside consented scope |
+
+> **What a body does not fix, and here it is the whole field.** Longevity is
+> gated on *follow-up time*. A robot can draw and process samples faster; it
+> cannot make anyone older, and it cannot shorten a cohort's follow-up by a
+> single day. This is the clearest case in the programme of a field where
+> throughput is not the constraint.
+
+## At AGI and ASI
+
+**On demand.** "Does this marker set add anything over age and sex in a cohort
+it was not fitted on?" The expected answer, most of the time, is *no* — and an
+agent that cannot deliver that answer comfortably is not useful here.
+
+**Autonomous.** Re-validating published longevity and biological-age scores
+against an age-and-sex floor on cycle-disjoint splits. Very few have been.
+
+**How a person verifies.** Ask for the age-and-sex-only model's number. If it is
+absent, nothing else on the page can be interpreted. Then ask for calibration,
+then ask which cycles were held out and whether they were chosen before the
+model was.
+
+**How sub-agents would verify.** A *floor* verifier fitting age and sex
+independently; a *split* verifier confirming cycle disjointness; a *survival*
+verifier re-deriving the estimate under competing risks; and a *leakage*
+verifier checking that no post-outcome variable entered the features — the
+characteristic fatal error in outcome modelling.
+
+**How it teaches.** The curriculum is the evidence chain. The transferable
+lesson is the one this field most needs: **a hazard ratio without an absolute
+risk difference is unreadable**, and a model that beats nothing but chance is
+routinely reported as though it beat medicine.
+
+## How this field ends
+
+**By saturation, slowly, or not at all.** Follow-up time is the binding
+constraint and it cannot be compressed, so this field moves at the speed of
+cohorts rather than compute.
+
+**Retired from research, not from service.** A validated risk model keeps being
+useful to clinicians and actuaries long after the frontier closes.
+
+**Candidate fission: mechanism rather than prediction.** The moment the question
+becomes *why* a marker predicts — and whether changing it changes the outcome —
+no observational benchmark can score it. That needs an interventional design,
+which is a different twin, a different answer key, and therefore a different
+field again.

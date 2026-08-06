@@ -383,7 +383,7 @@ chronological age ever more precisely, and never connect to health, is a field
 solving a problem nobody needed solved — age is already known from a birth
 certificate. That is the honest risk and it should be stated plainly.
 
-**Candidate fission: rate of ageing, and intervention response.** The moment the
+**Fission, and it now has a page: [`longevity.md`](longevity.md).** The moment the
 question becomes "is this person ageing faster" or "did this intervention slow
 it", the benchmark cannot score it — its answer key is chronological age, and
 the new question's answer key does not exist at fitting time at all. It needs
