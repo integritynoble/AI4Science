@@ -154,16 +154,24 @@ def main():
     # up with it: target mean 101.9 Gy against a 70 Gy prescription. The plan
     # met D99 because D99 is the COLDEST percentile, which is exactly the
     # statistic that cannot see an overdose.
-    def grad_and_cost(w, wt):
+    def _terms(w, wt, want_grad):
+        """Cost, and the gradient only when it is asked for.
+
+        The line search needs the cost of a trial point and nothing else.
+        Computing the gradient there as well doubled the matvecs in the hottest
+        loop in the program — one wasted `Am @ vec` per structure per trial,
+        and a trial happens several times per iteration.
+        """
         w = np.asarray(w, np.float32)
-        g = np.zeros(K, np.float32)
+        g = np.zeros(K, np.float32) if want_grad else None
         cost = 0.0
         for n, Am in At.items():
             resid = (w @ Am) - np.float32(proto[n]["prescription"])
             # Asymmetric, as clinical objectives are: missing the tumour is
             # worse than a modest hot spot inside it.
             wgt = np.where(resid < 0, np.float32(wt["under"]), np.float32(1.0))
-            g += np.float32(2.0) * (Am @ (wgt * resid)) / max(Am.shape[1], 1)
+            if want_grad:
+                g += np.float32(2.0) * (Am @ (wgt * resid)) / max(Am.shape[1], 1)
             cost += float((wgt * resid ** 2).mean())
             # A cold-tail term, on the constraint as it is actually written. The
             # criterion is D99 >= floor: the coldest one percent. A mean of
@@ -173,17 +181,26 @@ def main():
             floor = proto[n].get("D99_min")
             if floor:
                 cold = np.clip(np.float32(floor) - (w @ Am), 0.0, None)
-                g -= np.float32(wt["cold"] * 2.0) * (Am @ cold) / max(Am.shape[1], 1)
+                if want_grad:
+                    g -= np.float32(wt["cold"] * 2.0) * (Am @ cold) / max(Am.shape[1], 1)
                 cost += wt["cold"] * float((cold ** 2).mean())
         for n, Am in Ao.items():
             lim = np.float32((proto[n].get("Dmax") or proto[n].get("Dmean")) * 0.85)
             over = np.clip((w @ Am) - lim, 0, None)
-            g += np.float32(wt["oar"] * 2.0) * (Am @ over) / max(Am.shape[1], 1)
+            if want_grad:
+                g += np.float32(wt["oar"] * 2.0) * (Am @ over) / max(Am.shape[1], 1)
             cost += wt["oar"] * float((over ** 2).mean())
         hot = np.clip((w @ A) - rx * np.float32(1.07), 0, None)
-        g += np.float32(wt["hot"] * 2.0) * (A @ hot) / max(A.shape[1], 1)
+        if want_grad:
+            g += np.float32(wt["hot"] * 2.0) * (A @ hot) / max(A.shape[1], 1)
         cost += wt["hot"] * float((hot ** 2).mean())
         return g, cost
+
+    def grad_and_cost(w, wt):
+        return _terms(w, wt, True)
+
+    def cost_only(w, wt):
+        return _terms(w, wt, False)[1]
 
     def optimise(weights):
         """One fluence optimisation at a fixed set of trade-off weights.
@@ -221,7 +238,7 @@ def main():
             s = step
             for _ in range(40):               # backtrack until it descends
                 trial = np.clip(w + np.float32(s) * d, 0.0, None)
-                _, tcost = grad_and_cost(trial, weights)
+                tcost = cost_only(trial, weights)
                 if tcost < cost:
                     break
                 s *= 0.5
