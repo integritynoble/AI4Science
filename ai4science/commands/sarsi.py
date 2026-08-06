@@ -1716,3 +1716,41 @@ def balance_cmd(do_grant: bool = typer.Option(
         for row in bal.history(config)[-5:]:
             console.print(f"  {row.pwm:g} — fee for {row.fee_for}",
                           markup=False, highlight=False)
+
+
+#: Fields whose problem list this machine ships. A field with no list is a
+#: refusal rather than an empty page — "nobody has written down what this field
+#: is trying to solve" is a fact about the field, and printing nothing would
+#: read as "there is nothing to solve".
+_FIELDS = {"computational-imaging": "COMPUTATIONAL_IMAGING"}
+
+
+@app.command("problems", help="A field's open problems, in the order they must be solved.")
+def problems_cmd(field: str = typer.Argument(..., help="e.g. computational-imaging")) -> None:
+    from ai4science.harness.agents.sarsi import problems as pr
+    name = _FIELDS.get(field)
+    if not name:
+        console.print(f"no problem list for {field!r} on this machine — a field "
+                      f"without one has nobody's account of what it is trying "
+                      f"to solve, which is not the same as having nothing to "
+                      f"solve.\n  known: " + ", ".join(sorted(_FIELDS)),
+                      markup=False, highlight=False)
+        raise typer.Exit(code=1)
+    listing = getattr(pr, name)
+    try:
+        ordered = pr.order(listing)
+    except pr.Unorderable as e:
+        console.print(str(e), style="yellow", markup=False, highlight=False)
+        raise typer.Exit(code=1)
+    for i, p in enumerate(ordered, 1):
+        mark = "done" if p.solved else "open"
+        # The id is printed, not only the title: a reader needs a handle to
+        # refer to a problem by, and a title is a sentence.
+        console.print(f"{i}. [{p.tier}] {p.id} — {p.title}  ({mark})",
+                      markup=False, highlight=False)
+        # The two lines that make it arguable rather than authoritative: what
+        # would settle it, and why it is here and not elsewhere.
+        console.print(f"     verified when: {p.verified_when}", markup=False,
+                      highlight=False)
+        console.print(f"     {p.why}. {p.because}", markup=False,
+                      highlight=False)

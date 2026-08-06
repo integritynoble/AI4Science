@@ -1059,6 +1059,26 @@ Note where L1 sits. A field's principle is often the **last** thing that can be
 verified, not the first — which is why "start from first principles" is bad
 advice for an agent that has to show its work.
 
+> **Built for computational imaging** — `sarsi problems computational-imaging`.
+> The order is **computed from the rule, not sorted by hand**: a hand-ordered
+> list is one person's judgement wearing an algorithm's clothes, and nobody can
+> later tell whether it moved because the field did or because somebody edited
+> it. The two clauses are applied in order, and that order is the design —
+> *can be verified now* is a **filter**, so a problem whose dependencies are
+> open is not a candidate however much it would unblock. Ranking the other way
+> puts the most valuable unverifiable thing at the top, which is where a field
+> goes to argue instead of measure. *Unblocks the most* then ranks what is
+> left, counted transitively.
+>
+> A cycle, a dependency that is not in the list, and a duplicate id are
+> **refused** rather than ordered anyway — an order produced from any of them
+> is an arbitrary one carrying an algorithm's authority. Each line says what
+> would settle it and why it sits where it does, so the list is arguable rather
+> than authoritative.
+>
+> The table above is the output, and a test asserts it: the rule applied to the
+> real problems has to reproduce it, or the rule is wrong or this document is.
+
 **Each research agent has its own page** on `physicsworldmodel.org`, and the
 page *is* the problem list: the open problems in order, what tier each sits at,
 what is solved, and by whom. A page that showed only finished work would be a
