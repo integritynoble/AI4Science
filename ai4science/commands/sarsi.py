@@ -1718,25 +1718,32 @@ def balance_cmd(do_grant: bool = typer.Option(
                           markup=False, highlight=False)
 
 
-#: Fields whose problem list this machine ships. A field with no list is a
-#: refusal rather than an empty page — "nobody has written down what this field
-#: is trying to solve" is a fact about the field, and printing nothing would
-#: read as "there is nothing to solve".
-_FIELDS = {"computational-imaging": "COMPUTATIONAL_IMAGING"}
-
-
 @app.command("problems", help="A field's open problems, in the order they must be solved.")
-def problems_cmd(field: str = typer.Argument(..., help="e.g. computational-imaging")) -> None:
+def problems_cmd(field: str = typer.Argument(
+        "", help="e.g. computational-imaging; omit to list the fields")) -> None:
     from ai4science.harness.agents.sarsi import problems as pr
-    name = _FIELDS.get(field)
-    if not name:
+    if not field:
+        console.print("fields with a problem list on this machine:",
+                      markup=False, highlight=False)
+        for name in sorted(pr.FIELDS):
+            listing = pr.for_field(name)
+            read = sum(1 for p in listing if not p.grounded)
+            note = (f"  ({len(listing)} problems, {read} from reading rather "
+                    f"than evidence held here)" if read else
+                    f"  ({len(listing)} problems, grounded in work done here)")
+            console.print(f"  {name}{note}", markup=False, highlight=False)
+        return
+    listing = pr.for_field(field)
+    if not listing:
+        # A refusal rather than an empty page: "nobody has written down what
+        # this field is trying to solve" is a fact about the field, and silence
+        # would read as "there is nothing to solve".
         console.print(f"no problem list for {field!r} on this machine — a field "
                       f"without one has nobody's account of what it is trying "
                       f"to solve, which is not the same as having nothing to "
-                      f"solve.\n  known: " + ", ".join(sorted(_FIELDS)),
+                      f"solve.\n  known: " + ", ".join(sorted(pr.FIELDS)),
                       markup=False, highlight=False)
         raise typer.Exit(code=1)
-    listing = getattr(pr, name)
     try:
         ordered = pr.order(listing)
     except pr.Unorderable as e:
@@ -1754,3 +1761,10 @@ def problems_cmd(field: str = typer.Argument(..., help="e.g. computational-imagi
                       highlight=False)
         console.print(f"     {p.why}. {p.because}", markup=False,
                       highlight=False)
+        if not p.grounded:
+            # Said per problem, because a field can be part evidence and part
+            # reading — low-dose CT is. A mark on the field alone would let the
+            # grounded problems borrow the doubt and the read ones borrow the
+            # authority.
+            console.print("     (a reading of the field — this machine holds "
+                          "no evidence for it)", markup=False, highlight=False)
