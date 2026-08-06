@@ -45,11 +45,13 @@ def _minimal():
 
 # ── the default roster ────────────────────────────────────────────────
 
-def test_default_config_has_one_manager_and_six_workers():
+def test_default_config_has_one_manager_and_the_rest_workers():
     cfg = reg.default_config()
     ids = [a["id"] for a in cfg["agents"]["list"]]
+    # Stated explicitly, because an agent appearing here by accident is a thing
+    # the owner should have to agree to.
     assert ids == ["sarsi-machine", "sarsi-worker", "work", "social",
-                   "funding", "jobs", "abraham"]
+                   "funding", "jobs", "computational-imaging", "abraham"]
     roles = {a["id"]: a.get("role") for a in cfg["agents"]["list"]}
     assert roles["sarsi-machine"] == "manager"
     assert all(roles[i] == "worker" for i in ids if i != "sarsi-machine")

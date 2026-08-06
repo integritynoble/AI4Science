@@ -299,6 +299,42 @@ _ROSTER = [
     {"id": "jobs", "role": WORKER_ROLE, "spec": "unified-LLM",
      "tools": ["browser", "documents"],
      "about": ["cv", "resume", "job", "vacancy", "interview", "recruiter"]},
+    # The first research agent the owner can address. Everything else about it
+    # already existed — the page, the scope object, the roster of nine
+    # sub-agents, the ordered problem list, the charter and a benchmark reading
+    # real CAVE scenes — and none of it was reachable from here, so
+    # `sarsi run computational-imaging` started nothing.
+    #
+    # It is `computational-imaging` and not `imaging` because that is what its
+    # page, its scope object and its roster object say. `imaging` remains the
+    # charter's name inside research_agents (it had a runner before that package
+    # existed), declared once in tools/check_design_docs.py — an alias with a
+    # stated reason is history; the same alias undeclared is one field with two
+    # names, and the roster is the worst place to introduce the second.
+    #
+    # Its spec launches `ai4science chat --mode computational-imaging`, which
+    # the supervision loop cannot read — its gate detection is Claude Code's.
+    # So it is ATTENDED: started, and reported as not drivable rather than
+    # quietly mis-driven.
+    #
+    # `about` is deliberately the field's own vocabulary and nothing wider. The
+    # general words — benchmark, experiment, data, analysis — stay with
+    # `sarsi-worker`: an agent for one field that answered to all of them would
+    # capture every ordinary request, and the failure would read as the router
+    # being clever rather than as a roster mistake.
+    {"id": "computational-imaging", "role": WORKER_ROLE,
+     "spec": "computational-imaging",
+     # `tools` feeds routing too, and the same argument applies to it as to
+     # `about`: `shell` and `editor` are `sarsi-worker`'s by convention because
+     # every worker has them, so declaring them here does not describe this
+     # agent — it ties with the general worker on every request that mentions
+     # one, and a tie makes the router answer "I cannot tell". Only what
+     # distinguishes the field: matlab, for its optics and legacy
+     # reconstruction code.
+     "tools": ["matlab"],
+     "about": ["cassi", "hyperspectral", "spectral", "reconstruction", "psnr",
+               "mask", "optic", "aperture", "snapshot", "forward model",
+               "imaging"]},
     # abraham: broadest scope, narrowest authority — no standing grants at all,
     # and built on `pocket`, the closed permission-tight spec.
     {"id": "abraham", "role": WORKER_ROLE, "spec": "pocket", "digest": True,

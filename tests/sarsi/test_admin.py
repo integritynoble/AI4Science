@@ -17,17 +17,20 @@ def isolated(tmp_path, monkeypatch):
     return tmp_path
 
 
-def test_init_writes_the_seven_agent_roster(isolated):
+def test_init_writes_the_whole_roster_and_nothing_else(isolated):
+    """Against `_ROSTER` rather than a number. A hard-coded count is a test that
+    has to be edited every time an agent is added, which measures willingness to
+    edit it; comparing the ids catches an entry that init silently drops."""
     admin.init(owner_id="7007143162")
     raw = json.loads((isolated / "sarsi.json").read_text())
-    assert len(raw["agents"]["list"]) == 7
+    assert [a["id"] for a in raw["agents"]["list"]] == [a["id"] for a in reg._ROSTER]
 
 
 def test_init_creates_isolated_directories_for_every_agent(isolated):
     admin.init(owner_id="7007143162")
     c = reg.load()
     dirs = {a.id: a.agent_dir for a in c.agents.values()}
-    assert len(set(dirs.values())) == 7                  # no two agents share one
+    assert len(set(dirs.values())) == len(dirs)          # no two agents share one
     assert all(d.is_dir() for d in dirs.values())
 
 
@@ -48,7 +51,7 @@ def test_init_requires_an_owner_id(isolated):
 def test_agent_rows_lists_every_agent_with_its_bindings(isolated):
     admin.init(owner_id="7007143162")
     rows = admin.agent_rows(reg.load())
-    assert len(rows) == 7
+    assert len(rows) == len(reg._ROSTER)
     work = next(r for r in rows if r["id"] == "work")
     assert set(work["bindings"]) == {"telegram:work", "cli:work"}
     assert work["role"] == "worker"
