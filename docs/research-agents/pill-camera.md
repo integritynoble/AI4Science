@@ -279,13 +279,24 @@ a thing, not a committee. The shared machinery is in
 
 | member | kind | acts on | its refusal |
 |---|---|---|---|
-| planner | reasoning | the seed plan | refuses a split that is not by video |
-| classifier runner | reasoning | the GPU, the workspace files | refuses when Kvasir-Capsule is absent, **naming the fetch command** |
-| variance verifier | judging | the seed spread | refuses a delta smaller than the spread it measured |
-| domain verifier | judging | the benchmark | refuses a pooled mean presented without per-video results |
+| literature | reasoning | prior work, with citations | refuses a claim it cannot cite, and never reads while the method is being written |
+| twin | reasoning | the study and sampling model | refuses to be graded outside the regime it declares valid |
+| corpus | reasoning | Kvasir-Capsule, 46 videos | refuses when the corpus is absent, **naming the fetch command** rather than substituting generated data |
+| method | reasoning | the candidate solution | the only member that writes the thing being judged |
+| runner | reasoning | compute | refuses a run whose cost or placement it cannot state |
+| verifier | judging | the benchmark | refuses to judge against a criterion written after the result; refuses a pooled mean presented without per-video results, or a delta smaller than the measured seed spread |
+| reproducer | judging | published artifacts alone | refuses a result it cannot re-run from what was published — catching the result that only exists on the machine that made it |
 | teacher | judging | the owner's own check | refuses to report an improvement without the seed spread beside it |
+| writer | judging | the field page and the paper | writes last, from the record, never from intent |
 | **bench GI rig** | **embodied** | a physical phantom tract | refuses to be used on a person |
 | **device handling robot** | **embodied** | capsule hardware | refuses to modify a device intended for clinical use |
+> **Nine members are the floor, not the design.** A field may add; it may not
+> remove. An agent whose manifest omits the **verifier** or the **twin** is not a
+> research agent with fewer parts — it is *a method with a scoreboard*. Those two
+> are deliberately not the worker's: they answer *"what should this produce"* and
+> *"did it"*, and an agent owning both can pass any benchmark it likes by moving
+> one of them.
+
 
 **Why a body, here.** The bench rig makes this a hardware field again. Frame classification on a fixed corpus is bounded; localisation, illumination and frame rate are co-design questions, and co-design needs something to build.
 

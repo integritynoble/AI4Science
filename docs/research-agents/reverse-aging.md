@@ -323,13 +323,24 @@ a thing, not a committee. The shared machinery is in
 
 | member | kind | acts on | its refusal |
 |---|---|---|---|
-| planner | reasoning | the seed plan | refuses a design whose held-out institutions are fixed rather than drawn |
-| clock runner | reasoning | the workspace files | refuses when GSE40279 is absent, **naming the fetch command** |
-| degeneracy verifier | judging | the generated data | refuses a comparison whose seeds produce identical data — the check that would have caught p = 0 |
-| domain verifier | judging | the benchmark | refuses an error improvement bought by raising bulk-structure share |
-| teacher | judging | the owner's own check | refuses to report a clock without the fraction of its accuracy that survives removing leading components |
-| **array processing robot** | **embodied** | plates, the array | refuses a plate layout in which institution aligns with plate — the batch confound is created at the bench, and nothing downstream undoes it |
-| **collection robot** | **embodied** | donors, samples | refuses to collect outside consented scope |
+| literature | reasoning | prior work, with citations | refuses a claim it cannot cite, and never reads while the method is being written |
+| twin | reasoning | the methylome, batch and composition model | refuses to be graded outside the regime it declares valid |
+| corpus | reasoning | GEO GSE40279 | refuses when the corpus is absent, **naming the fetch command** rather than substituting generated data |
+| method | reasoning | the candidate solution | the only member that writes the thing being judged |
+| runner | reasoning | compute | refuses a run whose cost or placement it cannot state |
+| verifier | judging | the benchmark | refuses to judge against a criterion written after the result; refuses an error improvement bought by raising bulk-structure share, and refuses a comparison whose seeds produce identical data |
+| reproducer | judging | published artifacts alone | refuses a result it cannot re-run from what was published — catching the result that only exists on the machine that made it |
+| teacher | judging | the owner's own check | refuses to report a clock without the fraction of accuracy surviving removal of leading components |
+| writer | judging | the field page and the paper | writes last, from the record, never from intent |
+| **array processing robot** | **embodied** | plates and the array | refuses a layout in which institution aligns with plate — the batch confound is created at the bench |
+| **collection robot** | **embodied** | donors and samples | refuses to collect outside consented scope |
+> **Nine members are the floor, not the design.** A field may add; it may not
+> remove. An agent whose manifest omits the **verifier** or the **twin** is not a
+> research agent with fewer parts — it is *a method with a scoreboard*. Those two
+> are deliberately not the worker's: they answer *"what should this produce"* and
+> *"did it"*, and an agent owning both can pass any benchmark it likes by moving
+> one of them.
+
 
 **Why a body, here.** The array robot has a job nobody thinks of as a job: plate layout. If institution and plate coincide, batch effect and biology are inseparable. That decision belongs to whatever physically loads the plate, which is why it needs a rule attached.
 

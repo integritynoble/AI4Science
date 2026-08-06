@@ -326,13 +326,25 @@ a thing, not a committee. The shared machinery is in
 
 | member | kind | acts on | its refusal |
 |---|---|---|---|
-| planner | reasoning | the seed plan | refuses a criterion no independent verifier can read |
-| reconstruction runner | reasoning | the GPU, the workspace files | refuses when the corpus is absent, **naming the fetch command** rather than generating stand-in scenes |
-| domain verifier | judging | the benchmark | refuses to judge a run that drifted from what was released; recomputes the residual under the published operator |
+| literature | reasoning | prior work, with citations | refuses a claim it cannot cite, and never reads while the method is being written |
+| twin | reasoning | the SD-CASSI forward model | refuses to be graded outside the regime it declares valid |
+| corpus | reasoning | real CAVE scenes | refuses when the corpus is absent, **naming the fetch command** rather than substituting generated data |
+| method | reasoning | the candidate solution | the only member that writes the thing being judged |
+| runner | reasoning | compute | refuses a run whose cost or placement it cannot state |
+| verifier | judging | the benchmark | refuses to judge against a criterion written after the result; recomputes the residual under the published operator |
+| reproducer | judging | published artifacts alone | refuses a result it cannot re-run from what was published — catching the result that only exists on the machine that made it |
 | teacher | judging | the owner's own check | refuses to report a pass it cannot hand the owner a way to re-run |
-| **optical bench** | **embodied** | mask, stage, camera | refuses **every** act without a grant naming that act; reports what it moved, never what it intended |
+| writer | judging | the field page and the paper | writes last, from the record, never from intent |
+| **optical bench** | **embodied** | mask, stage, camera | refuses **every** act without a grant naming it; reports what it moved, never what it intended |
 | **calibration rig** | **embodied** | the instrument as built | refuses to write a measured operator into scoring without a person confirming it |
-| **fabrication path** | **embodied** | masks, DOEs, printed optics | refuses a design it cannot state a tolerance for; reports the element as measured after fabrication, never as designed |
+| **fabrication path** | **embodied** | masks, DOEs, printed optics | refuses a design it cannot state a tolerance for; reports the element as measured, never as designed |
+> **Nine members are the floor, not the design.** A field may add; it may not
+> remove. An agent whose manifest omits the **verifier** or the **twin** is not a
+> research agent with fewer parts — it is *a method with a scoreboard*. Those two
+> are deliberately not the worker's: they answer *"what should this produce"* and
+> *"did it"*, and an agent owning both can pass any benchmark it likes by moving
+> one of them.
+
 
 **Why a body, here.** The bench row is the whole change: everything above it can be re-run, and the bench row can only be *reported*. The calibration rig is what makes "the forward operator is fixed and published" an honest claim rather than an assumption — the gap between the designed optic and the built one is measured with hardware.
 

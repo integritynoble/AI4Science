@@ -273,13 +273,24 @@ a thing, not a committee. The shared machinery is in
 
 | member | kind | acts on | its refusal |
 |---|---|---|---|
-| planner | reasoning | the seed plan | refuses a target list it cannot split by chemical series |
-| ranking runner | reasoning | the workspace files | refuses when DUD-E is absent, **naming the fetch command** |
-| ceiling verifier | judging | the metric's bound | refuses to compare before the bound is computed — a saturated enrichment is refused, not celebrated |
-| domain verifier | judging | the benchmark | refuses an enrichment that does not clear the property-only floor |
+| literature | reasoning | prior work, with citations | refuses a claim it cannot cite, and never reads while the method is being written |
+| twin | reasoning | the library and decoy model | refuses to be graded outside the regime it declares valid |
+| corpus | reasoning | DUD-E across six targets | refuses when the corpus is absent, **naming the fetch command** rather than substituting generated data |
+| method | reasoning | the candidate solution | the only member that writes the thing being judged |
+| runner | reasoning | compute | refuses a run whose cost or placement it cannot state |
+| verifier | judging | the benchmark | refuses to judge against a criterion written after the result; refuses an enrichment that does not clear the property-only floor, or one computed before the ceiling is known |
+| reproducer | judging | published artifacts alone | refuses a result it cannot re-run from what was published — catching the result that only exists on the machine that made it |
 | teacher | judging | the owner's own check | refuses to report a result without the query-to-test analogue similarity |
-| **synthesis robot** | **embodied** | reagents, glassware | refuses to start a synthesis without a grant naming it — reagents are spent and some are hazardous |
+| writer | judging | the field page and the paper | writes last, from the record, never from intent |
+| **synthesis robot** | **embodied** | reagents and glassware | refuses to start a synthesis without a grant naming it |
 | **assay robot** | **embodied** | plates, cells, the reader | refuses to re-run a failed assay silently; a discarded plate is a recorded event |
+> **Nine members are the floor, not the design.** A field may add; it may not
+> remove. An agent whose manifest omits the **verifier** or the **twin** is not a
+> research agent with fewer parts — it is *a method with a scoreboard*. Those two
+> are deliberately not the worker's: they answer *"what should this produce"* and
+> *"did it"*, and an agent owning both can pass any benchmark it likes by moving
+> one of them.
+
 
 **Why a body, here.** This is the field where bodies change the most: the others evaluate existing data, this one closes the loop — design, make, test, redesign. Which is exactly why calibrated uncertainty becomes load-bearing. A self-driving lab without it is a machine for generating expensive random samples.
 

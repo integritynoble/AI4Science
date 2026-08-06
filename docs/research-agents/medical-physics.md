@@ -310,13 +310,24 @@ a thing, not a committee. The shared machinery is in
 
 | member | kind | acts on | its refusal |
 |---|---|---|---|
-| planner | reasoning | the seed plan | refuses a goal sheet it cannot express as DVH criteria |
-| plan runner | reasoning | the optimiser, the workspace files | refuses when OpenKBP is absent, **naming the fetch command**; refuses a non-finite objective rather than reporting its result |
-| feasibility prober | judging | the declared space | refuses to report a ceiling it did not measure |
-| domain verifier | judging | the benchmark | refuses coverage bought with organ dose, naming the constraint and the amount |
-| teacher | judging | the owner's own check | refuses to report a plan quality without the achievability bound beside it |
+| literature | reasoning | prior work, with citations | refuses a claim it cannot cite, and never reads while the method is being written |
+| twin | reasoning | the beamlet dose kernel | refuses to be graded outside the regime it declares valid |
+| corpus | reasoning | OpenKBP head-and-neck plans | refuses when the corpus is absent, **naming the fetch command** rather than substituting generated data |
+| method | reasoning | the candidate solution | the only member that writes the thing being judged |
+| runner | reasoning | compute | refuses a run whose cost or placement it cannot state |
+| verifier | judging | the benchmark | refuses to judge against a criterion written after the result; refuses coverage bought with organ dose, naming the constraint and the amount |
+| reproducer | judging | published artifacts alone | refuses a result it cannot re-run from what was published — catching the result that only exists on the machine that made it |
+| teacher | judging | the owner's own check | refuses to report plan quality without the achievability bound beside it |
+| writer | judging | the field page and the paper | writes last, from the record, never from intent |
 | **QA robot** | **embodied** | phantoms, detectors, film | refuses to be in the room during beam-on |
-| **delivery measurement robot** | **embodied** | the linac | refuses to adjust the plan to reduce the discrepancy it just measured; reports what was delivered, never what was intended |
+| **delivery measurement robot** | **embodied** | the linac | refuses to adjust the plan to reduce the discrepancy it just measured |
+> **Nine members are the floor, not the design.** A field may add; it may not
+> remove. An agent whose manifest omits the **verifier** or the **twin** is not a
+> research agent with fewer parts — it is *a method with a scoreboard*. Those two
+> are deliberately not the worker's: they answer *"what should this produce"* and
+> *"did it"*, and an agent owning both can pass any benchmark it likes by moving
+> one of them.
+
 
 **Why a body, here.** A fluence map is a plan; what the machine delivers is a fact, and the difference is where optimiser gains usually evaporate. **The signature does not move** — at every stage, including the last, a plan that treats a patient carries a human one.
 

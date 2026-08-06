@@ -264,12 +264,24 @@ a thing, not a committee. The shared machinery is in
 
 | member | kind | acts on | its refusal |
 |---|---|---|---|
-| planner | reasoning | the seed plan | refuses a criterion that cannot be checked on detectability |
-| denoiser runner | reasoning | the GPU, the workspace files | refuses when the TCIA corpus is absent, **naming the fetch command** rather than simulating a stand-in |
-| domain verifier | judging | the benchmark | refuses a fidelity gain unaccompanied by a detectability result — and keeps the blur in the suite as a standing trap |
+| literature | reasoning | prior work, with citations | refuses a claim it cannot cite, and never reads while the method is being written |
+| twin | reasoning | the dose-reduction model | refuses to be graded outside the regime it declares valid |
+| corpus | reasoning | TCIA paired full/low dose | refuses when the corpus is absent, **naming the fetch command** rather than substituting generated data |
+| method | reasoning | the candidate solution | the only member that writes the thing being judged |
+| runner | reasoning | compute | refuses a run whose cost or placement it cannot state |
+| verifier | judging | the benchmark | refuses to judge against a criterion written after the result; refuses a fidelity gain unaccompanied by a detectability result, and keeps the blur as a standing trap |
+| reproducer | judging | published artifacts alone | refuses a result it cannot re-run from what was published — catching the result that only exists on the machine that made it |
 | teacher | judging | the owner's own check | refuses to report a pass without the one-line check: run the blur |
+| writer | judging | the field page and the paper | writes last, from the record, never from intent |
 | **phantom handler** | **embodied** | phantoms and lesion inserts | refuses to be near a person during exposure |
-| **protocol operator** | **embodied** | a real scanner | refuses to scan a human being, ever — phantoms only; refuses any acquisition without a grant naming it |
+| **protocol operator** | **embodied** | a real scanner | refuses to scan a human being, ever — phantoms only |
+> **Nine members are the floor, not the design.** A field may add; it may not
+> remove. An agent whose manifest omits the **verifier** or the **twin** is not a
+> research agent with fewer parts — it is *a method with a scoreboard*. Those two
+> are deliberately not the worker's: they answer *"what should this produce"* and
+> *"did it"*, and an agent owning both can pass any benchmark it likes by moving
+> one of them.
+
 
 **Why a body, here.** A body turns the simulated dose reduction into a measured one. Today the low-dose image is *derived* from a full-dose reconstruction by a stated photon model, and that model sits upstream of every number this agent reports. Only hardware can test it.
 
