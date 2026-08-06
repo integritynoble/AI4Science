@@ -1,5 +1,14 @@
 # The cancer agent — how to design it
 
+| | |
+|---|---|
+| **corpus** | TCGA via the GDC API — 978 cases |
+| **reference method** | **passes** |
+| **the number that matters** | 0.58–0.67 on **held-out hospitals** |
+
+> **The finding this page is built around.** A model called "non-transporting" transported fine once the split was drawn properly. A bad split can understate as easily as overstate, and both are measurement failures rather than facts about biology.
+
+
 **Status: built on real data; external cohort corrected 2026-08-05.** Charter,
 self-model, budget, field map and both functions are implemented in
 `ai4science/harness/agents/research_agents/`. The benchmark reads **TCGA
@@ -236,18 +245,30 @@ directly, and being asked twice does not change the answer.
 
 ## The problem queue — in the order they must be solved
 
-| # | problem | why it must come first | state |
-|---|---|---|---|
-| 1 | **Site-disjoint validation** | a prognostic model validated on a random split of a multi-hospital cohort is partly reading the hospital: batch, protocol, referral pattern. Holding out whole tissue source sites is the minimum honest test, and every number computed before it is a mixture of signal and institution | **done** — 0.58–0.67 on held-out hospitals against 0.66–0.68 internal |
-| 2 | **Report cross-histology transport without grading it** | a model that transports to a different tumour type is making a much stronger claim than one that does not. Reporting it as a graded criterion would push the agent to optimise for it; reporting it ungraded keeps it honest | **done** — 0.577, reported, not graded |
-| 3 | **Calibration, not only discrimination** | a c-index says who is at higher risk, never how much. Two models with identical c-index can give predicted survival curves that differ by years, and only one of them can be used for a decision | open |
-| 4 | **Competing risks and censoring, handled explicitly** | in an older cohort, death from other causes is not censoring, and treating it as such biases every estimate in the same direction | open |
-| 5 | **Multi-omic integration with a clinical-only floor** | the guardrail is that genomics must beat stage and age. Most published multi-omic models have never been asked to | open |
-| 6 | **Prospective validation** | retrospective performance on assembled cohorts is the weakest evidence that is still worth having; the strongest needs time and consent, and cannot be bought with compute | blocked — needs an agreement only the owner can sign |
+| # | problem | **solved when** | why it is placed here | state |
+|---|---|---|---|---|
+| 1 | **Site-disjoint validation** | `c-index is reported on hospitals that contributed nothing to fitting or selection` | a prognostic model validated on a random split of a multi-hospital cohort is partly reading the hospital: batch, protocol, referral pattern. Holding out whole tissue source sites is the minimum honest test, and every number computed before it is a mixture of signal and institution | **done** — 0.58–0.67 on held-out hospitals against 0.66–0.68 internal |
+| 2 | **Report cross-histology transport without grading it** | `cross-histology transport appears on the page, reported and ungraded` | a model that transports to a different tumour type is making a much stronger claim than one that does not. Reporting it as a graded criterion would push the agent to optimise for it; reporting it ungraded keeps it honest | **done** — 0.577, reported, not graded |
+| 3 | **Calibration, not only discrimination** | `predicted and observed survival agree within a stated tolerance, plotted` | a c-index says who is at higher risk, never how much. Two models with identical c-index can give predicted survival curves that differ by years, and only one of them can be used for a decision | open |
+| 4 | **Competing risks and censoring, handled explicitly** | `competing risks are modelled explicitly and the estimate changes when they are` | in an older cohort, death from other causes is not censoring, and treating it as such biases every estimate in the same direction | open |
+| 5 | **Multi-omic integration with a clinical-only floor** | `the genomic model beats stage and age by a stated margin on held-out sites` | the guardrail is that genomics must beat stage and age. Most published multi-omic models have never been asked to | open |
+| 6 | **Prospective validation** | `a pre-registered cohort is followed forward and the model is scored on it` | retrospective performance on assembled cohorts is the weakest evidence that is still worth having; the strongest needs time and consent, and cannot be bought with compute | blocked — needs an agreement only the owner can sign |
 
 > **PHI shapes the whole ordering.** Nothing here can be solved by moving data
 > to a faster machine. The constraint is what may be held, where, and by whom —
 > which is why 6 is a governance problem wearing a statistics costume.
+
+> **"Solved when" is the entry fee.** A problem with no measurement that would
+> settle it is a research *interest*, and interests belong in the charter. The
+> ladder is the part this agent can be wrong about in public.
+>
+> **A rung is closed by the registry, not by the agent.** "Solved" means a
+> benchmark has a published solution that meets it, runnable by anyone. The
+> agent may propose that a rung is closed; the closing is an artifact.
+>
+> The failure this is built against is **an agent that solves what it can**.
+> Given a free hand the cheapest defensible night is the easy rung, and a year
+> of easy rungs looks like a year of progress.
 
 ## The four layers
 

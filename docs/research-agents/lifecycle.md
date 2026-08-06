@@ -66,15 +66,43 @@ proposer.**
 
 Independence has to be structural, not promised:
 
-- a verifier does **not** share the proposer's context, and is not the same
-  agent in a different prompt;
+**Independence here is temporal and authorial — not informational.** This is
+worth stating plainly because the obvious guess is wrong: it is *not* achieved
+by hiding the workspace from the verifier.
+
+- **Temporal.** The criterion is fixed **before the result exists**. A verdict
+  against a bar written after seeing the number is not a verdict.
+- **Authorial.** The verdict is written by the verifier and **never** by the
+  worker. Its signature is the thing that makes it a verdict.
 - a verifier is prompted to **refute**, not to review — the default answer is
   "not established", and it must be argued out of that;
 - verifiers are **perspective-diverse** where a claim can fail in more than one
   way. Three identical skeptics catch less than one correctness checker, one
   reproduction checker, and one leakage checker;
-- **the proposer may never improve the verifier.** This is the same rule as the
-  never-improvable benchmark, for the same reason.
+- **the proposer may never improve the verifier.** Same rule as the
+  never-improvable benchmark, same reason.
+
+> This is why a shared workspace costs nothing. The group can see the same
+> files — that is what makes it one agent — because independence was never
+> being carried by what the verifier could see. It is carried by *when the bar
+> was set* and *whose name is on the verdict*.
+
+### The four ways a result gets verified
+
+The record says which of the four each verdict was, because they are not
+equally strong.
+
+| | how | strength |
+|---|---|---|
+| 1 | **a person verifies** — the plan states what counts as verified *before* the work, and the evidence is what that line asked for | the only one that is not itself an agent's output, which is why the format never changes even when it is rarely used |
+| 2 | **a sub-agent verifies** — the group's own verifier, judging against the pre-written criterion | routine, and only as good as the criterion |
+| 3 | **another field's agent verifies** — a different principle, a different twin, a different corpus, reproducing the claim | the strongest check available. Agreement between two agents sharing a codebase is nearly free; agreement between two sharing only the world is not |
+| 4 | **a person is taught to verify, and then does** | the escape hatch from irrelevance — below |
+
+> **The failure this is built against is agreement without independence.** N
+> agents from one lineage confirming each other is **one opinion with N
+> signatures.** A verification counts only when the verifier could have produced
+> the opposite verdict.
 
 A claim survives on a quorum, and the quorum, the lenses, and the dissent are
 all recorded. A verification that records only its verdict is an assertion.
@@ -87,6 +115,26 @@ caught in bounded time.
 ### Stage 3 — autonomous (not built)
 
 Agents verify agents. The person reads summaries and holds the switch.
+
+**Three conditions, all of them, before an agent may run this way — and they are
+conditions on the *field*, not on the agent's confidence:**
+
+1. **Verification is independent by construction.** Not the same lineage, not
+   the same corpus, not the same twin. Cross-field verification is available and
+   used.
+2. **A person could still check any result.** The evidence chain is complete and
+   the teacher can produce the path to checking it on demand. *Untested for a
+   year is acceptable; unavailable is not.*
+3. **The owner signed this specific standing, with a budget** — escalated once,
+   revocable at any round. **No agent may grant it, extend it, or grant it to
+   another agent.** A high ceiling is permission to act, never permission to
+   become more permitted.
+
+> **What is given up is real: the human signature on the individual adoption.**
+> What is kept is every gate, the complete chain, and the ability to revoke. If
+> the three conditions cannot be stated as met, the stage is not available — and
+> an agent arguing that it should be is making an authority claim, which is the
+> one claim it may never make.
 
 This is only reachable when stage 2 has produced enough audited history to
 estimate the verifier's own error rate — you cannot delegate verification to a
@@ -352,6 +400,29 @@ several names.**
 has one memory and acts as one thing — and a body whose nerves only ever report
 what the hand hoped is one that burns itself.
 
+### Nine members are the floor
+
+A field may add members. It may **not** remove these — an agent missing the
+verifier or the twin is not a research agent with fewer parts, it is *a method
+with a scoreboard*.
+
+| member | what it does | why it is separate |
+|---|---|---|
+| **literature** | finds and reads prior work, with citations | reading and doing must not share a context, or the agent finds what it set out to find |
+| **twin** | maintains the forward model | the thing a method is graded against; the method's author may not own it |
+| **corpus** | fetches and validates real data, refuses when absent | a benchmark that silently substitutes synthetic data produces numbers that are not results |
+| **method** | proposes and implements candidates | the only one that writes the thing being judged |
+| **runner** | executes runs | keeps cost and placement out of the method's hands |
+| **verifier** | judges against the criterion written before the result | the verdict is its signature |
+| **reproducer** | re-runs a published result from its artifacts alone | catches the result that only exists on the machine that made it |
+| **teacher** | derives the curriculum from the evidence chain | teaching is a product and must be checkable like one |
+| **writer** | assembles the field page and the paper | writing last, from the record, never from intent |
+
+> **Two of these are deliberately not the worker's.** The **twin** and the
+> **verifier** answer *"what should this produce"* and *"did it"* — and an agent
+> owning its own answer to both can pass any benchmark it likes by moving one of
+> them.
+
 ### Three kinds of member, defined by what their acts reach
 
 | kind | members | reaches | can it be undone |
@@ -497,10 +568,21 @@ Each agent owes three artifacts:
 3. **The disagreement.** What the agent expected, what it got, and where a
    reasonable person would still doubt it.
 
-> **The teaching test:** after reading, can the person independently construct a
-> measurement that would have refuted the claim? If not, they have been
-> informed, not taught — and at stage 2 they will approve what they cannot
-> check, which is worse than not auditing at all.
+**The curriculum is derived from the evidence chain, not written beside it.**
+For a claim, the path back through solution → benchmark → twin → principle is
+exactly what someone needs in order to check it, in exactly the order they need
+it. A tutorial written separately drifts from the method; a tutorial that *is*
+the chain cannot.
+
+| | |
+|---|---|
+| what it produces | the shortest path from what the learner already knows to running the benchmark and reading the number |
+| **how it is tested** | **the learner runs it and gets the same number.** The teaching succeeded if the check succeeded |
+| what it may not do | grade its own teaching by asking the learner whether they felt they understood |
+
+> **This is the field's escape hatch from irrelevance.** A field only its own
+> agent can check is a field that has left the human record — a state to be
+> declared, never drifted into.
 
 This is why every field document leads with a failure. A page with no negative
 results teaches nothing, because it never shows the reader what checking looks

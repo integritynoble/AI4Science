@@ -1,5 +1,14 @@
 # The computational imaging agent — how to design it
 
+| | |
+|---|---|
+| **corpus** | CAVE hyperspectral scenes, CASSI measurement simulated through a published operator |
+| **reference method** | **passes** |
+| **the number that matters** | −16.79 dB → **+21.2 dB** on one scene |
+
+> **The finding this page is built around.** Real scenes exposed a sign error in the reference solver's TV proximal operator — it *expanded* where a prox must contract. Synthetic blobs had hidden it for months, because blobs have no texture to diverge on. Its own search could never have found the fix: the parameter floor excluded the working value.
+
+
 **Status: built, 2026-08-04.** This agent had a runner before the others:
 `ai4science/harness/agents/imaging/` seeds a CASSI benchmark, runs GAP-TV in a
 sandboxed workspace and is gated by the real physics judge, with the answer key
@@ -227,30 +236,42 @@ applies unchanged: image quality is not diagnostic performance.
 
 ## The problem queue — in the order they must be solved
 
-Ordered by dependency, not by appeal. Each one is unreachable until the one
+Ordered by dependency, not by appeal. **The order is the topological order of *blocked by*, with cost breaking ties** — derivable rather than asserted, so an agent wanting a different order has to change a dependency and say why. A hand-sorted list would let it quietly promote the rung it already knows how to do. Each one is unreachable until the one
 above it holds.
 
-| # | problem | why it must come first | state |
-|---|---|---|---|
-| 1 | **Evaluate on real captures, not simulation** | a simulated measurement scores the simulator. Nothing below this can be trusted until it holds — and when it was done here it immediately exposed a sign error that synthetic blobs had hidden for months | **done** |
-| 2 | **Fix and publish the forward operator** | two reconstructions computed under different operators are not comparable, and an agent free to adjust the operator will adjust it until it wins | **done** — operator is fixed input, residual reported beside every result |
-| 3 | **Report the sim→real gap as a first-class number** | simulation results are cheap and infinite, which is exactly where an autonomous loop will spend a month improving nothing | **done** — scored dimension |
-| 4 | **One comparison table across subfields** | the field produces architectures faster than anyone evaluates them; without a shared table, "state of the art" means "the last paper" | open |
-| 5 | **Transfer under the *receiving* subfield's protocol** | a method carried from CASSI to MRI must be judged by MRI's baselines, or the transfer claim measures the source field's leniency | open |
-| 6 | **Encoder / mask / trajectory co-design** | only meaningful once 1–5 hold. Optimising the encoder against an untrusted evaluation optimises the fixture | open |
-| 7 | **Task-based evaluation** | fidelity is a proxy. Whether the reconstruction serves the downstream use is the actual question, and it is last because it needs all of the above | open |
+| # | problem | **solved when** | why it is placed here | state |
+|---|---|---|---|---|
+| 1 | **Evaluate on real captures, not simulation** | `every headline number on the site comes from a real capture, with the simulated ones labelled as such` | a simulated measurement scores the simulator. Nothing below this can be trusted until it holds — and when it was done here it immediately exposed a sign error that synthetic blobs had hidden for months | **done** |
+| 2 | **Fix and publish the forward operator** | `the operator ships with the benchmark and the residual is printed beside every fidelity number` | two reconstructions computed under different operators are not comparable, and an agent free to adjust the operator will adjust it until it wins | **done** — operator is fixed input, residual reported beside every result |
+| 3 | **Report the sim→real gap as a first-class number** | `sim and real are two columns in the same table, and their difference is a scored dimension` | simulation results are cheap and infinite, which is exactly where an autonomous loop will spend a month improving nothing | **done** — scored dimension |
+| 4 | **One comparison table across subfields** | `one table holds every method x every subfield, with empty cells visible as empty` | the field produces architectures faster than anyone evaluates them; without a shared table, "state of the art" means "the last paper" | open |
+| 5 | **Transfer under the *receiving* subfield's protocol** | `a transferred method is reported under the receiving subfield's baselines, and loses to them when it should` | a method carried from CASSI to MRI must be judged by MRI's baselines, or the transfer claim measures the source field's leniency | open |
+| 6 | **Encoder / mask / trajectory co-design** | `an encoder proposed by search beats the hand-designed one on a real capture, not in simulation` | only meaningful once 1–5 hold. Optimising the encoder against an untrusted evaluation optimises the fixture | open |
+| 7 | **Task-based evaluation** | `a downstream task score moves when fidelity moves, or is shown not to` | fidelity is a proxy. Whether the reconstruction serves the downstream use is the actual question, and it is last because it needs all of the above | open |
 
 **Why 6 is not first, though it is the most interesting.** Designed encoders are
 where the field's real gains live, and it is tempting to start there. Starting
 there means every design decision is validated by a measurement nobody has
 checked — and this agent has already demonstrated what that produces.
 
+> **"Solved when" is the entry fee.** A problem with no measurement that would
+> settle it is a research *interest*, and interests belong in the charter. The
+> ladder is the part this agent can be wrong about in public.
+>
+> **A rung is closed by the registry, not by the agent.** "Solved" means a
+> benchmark has a published solution that meets it, runnable by anyone. The
+> agent may propose that a rung is closed; the closing is an artifact.
+>
+> The failure this is built against is **an agent that solves what it can**.
+> Given a free hand the cheapest defensible night is the easy rung, and a year
+> of easy rungs looks like a year of progress.
+
 ## The four layers
 
 | layer | this field's instance |
 |---|---|
 | **Principle** | Physics is not a hyperparameter. The forward operator is a fixed, published input; the reconstruction is what may vary |
-| **Digital twin** | The SD-CASSI forward model — mask, shear, spectral sum, detector sampling — identical in generation and in scoring, and never staged where the agent can reach it |
+| **Digital twin** | The SD-CASSI forward model — mask, shear, spectral sum, detector sampling — identical in generation and in scoring, never staged where the agent can reach it, and carrying **where it stops being valid**: it assumes a thin, aligned, dispersion-linear system, and a fabricated element that violates that is outside the twin |
 | **Benchmark** | Real CAVE hyperspectral scenes, fixed scene set, per-scene reporting, forward-model residual carried beside every fidelity number |
 | **Solution** | FISTA with a Chambolle TV proximal operator, `iters` and `tv_weight` declared as the only knobs |
 
@@ -263,7 +284,12 @@ them mean.
 
 ## Scope, and the experts who set it
 
-**Current scope.** Reconstruction from a **known, published** forward operator, on real captures, across subfields that share that shape — CASSI, MRI, CT, single-pixel, lensless.
+**Current scope.** Two halves, and the second is what makes this field different from image restoration:
+
+1. **Reconstruction** from a **known, published** forward operator, on real captures, across subfields that share that shape — CASSI, MRI, CT, single-pixel, lensless.
+2. **Hardware system design** — the encoder itself. Coded apertures and masks, diffractive optical elements, illumination and exposure patterns, sampling trajectories, sensor and lens choice, and the end-to-end co-design of the optic *with* the reconstruction that will invert it.
+
+> **The second half is the point of the first.** A reconstruction judged against a fixed operator answers "how well can this measurement be inverted". Designing the operator asks the better question — *what should the instrument measure at all* — and it is the only place in this field where the gains are bounded by physics rather than by priors. It sits at rung 6 of the ladder, not rung 1, because an encoder optimised against an evaluation nobody has checked optimises the fixture.
 
 **Out of scope by decision, not by accident:** anything where the operator must be inferred jointly with the scene. That is the fission candidate below, and holding the line is what keeps this benchmark meaningful.
 
@@ -276,6 +302,7 @@ guards against a panel that only ever widens, and the recusal rule are in
 | expert role | what they decide here |
 |---|---|
 | **an optical / instrument physicist** | whether the published forward operator matches the instrument as built, and when a calibration result should re-base it |
+| **an optical systems designer** | the design half: what is manufacturable, what tolerances the design must hold, and whether a simulated encoder gain would survive fabrication |
 | **a reconstruction methodologist** | which subfields belong in the same comparison table, and which crossings are worth the instrument time |
 | **a downstream user of the images** | whether fidelity is still standing in for something they care about — the person who says when task-based evaluation must be promoted |
 | **an instrument custodian** | what the bench may be asked to do, and what needs a per-act grant |
@@ -305,6 +332,7 @@ a thing, not a committee. The shared machinery is in
 | teacher | judging | the owner's own check | refuses to report a pass it cannot hand the owner a way to re-run |
 | **optical bench** | **embodied** | mask, stage, camera | refuses **every** act without a grant naming that act; reports what it moved, never what it intended |
 | **calibration rig** | **embodied** | the instrument as built | refuses to write a measured operator into scoring without a person confirming it |
+| **fabrication path** | **embodied** | masks, DOEs, printed optics | refuses a design it cannot state a tolerance for; reports the element as measured after fabrication, never as designed |
 
 **Why a body, here.** The bench row is the whole change: everything above it can be re-run, and the bench row can only be *reported*. The calibration rig is what makes "the forward operator is fixed and published" an honest claim rather than an assumption — the gap between the designed optic and the built one is measured with hardware.
 

@@ -1,5 +1,14 @@
 # The low-dose CT agent — how to design it
 
+| | |
+|---|---|
+| **corpus** | TCIA `LDCT-and-Projection-data` — real paired full/low dose |
+| **reference method** | **passes** |
+| **the number that matters** | a higher-PSNR blur **fails** |
+
+> **The finding this page is built around.** The benchmark once inserted its lesion into a lung and measured "noise" over anatomy. Both flattered the method, and both were found by noticing physically impossible numbers rather than by reading the code.
+
+
 **Status: built and running on real data, 2026-08-04.** The benchmark reads
 **TCIA's `LDCT-and-Projection-data`** — the same patient reconstructed at full
 dose and at reduced dose, four patients, paired by `ImagePositionPatient`. No
@@ -180,19 +189,31 @@ question is phrased.
 
 ## The problem queue — in the order they must be solved
 
-| # | problem | why it must come first | state |
-|---|---|---|---|
-| 1 | **A metric that matches the purpose** | the field optimises PSNR and SSIM; radiology cares about whether a lesion is visible. The two disagree in a specific, dangerous direction — blur wins on fidelity. Every ranking made before this is fixed is a ranking of the wrong thing | **done** — detectability is scored and a higher-PSNR blur fails |
-| 2 | **Correct pairing of the real full-/low-dose data** | filename order is not anatomical order. This was wrong here and was replaced by `ImagePositionPatient`; a mispaired corpus makes every downstream number meaningless | **done** — reproduces at 0.9988–0.9994 correlation |
-| 3 | **A physically valid lesion and a noise region that measures noise** | the benchmark once inserted its lesion into a lung and measured "noise" over anatomy. Both flatter the method; both were found by looking at impossible numbers | **done** |
-| 4 | **A dose–detectability curve, not one dose point** | "works at 25% dose" is a claim about one operating point. The clinical question is where the curve falls off, and that cannot be read from a single number | open |
-| 5 | **Reader-study correlation** | detectability is still a proxy. Until it is shown to track human readers, it is a better proxy, not the thing | open |
-| 6 | **Generalisation across scanner and protocol** | reconstruction kernels and vendors differ more than methods do. A method validated on one scanner is a claim about that scanner | open |
+| # | problem | **solved when** | why it is placed here | state |
+|---|---|---|---|---|
+| 1 | **A metric that matches the purpose** | `a Gaussian blur that wins on PSNR fails the benchmark — it does, and the trap stays in the suite` | the field optimises PSNR and SSIM; radiology cares about whether a lesion is visible. The two disagree in a specific, dangerous direction — blur wins on fidelity. Every ranking made before this is fixed is a ranking of the wrong thing | **done** — detectability is scored and a higher-PSNR blur fails |
+| 2 | **Correct pairing of the real full-/low-dose data** | `slice correspondence reproduces from DICOM geometry at >0.99 correlation, independently recomputed` | filename order is not anatomical order. This was wrong here and was replaced by `ImagePositionPatient`; a mispaired corpus makes every downstream number meaningless | **done** — reproduces at 0.9988–0.9994 correlation |
+| 3 | **A physically valid lesion and a noise region that measures noise** | `the lesion sits in tissue that could hold it, and the noise ROI contains no anatomy` | the benchmark once inserted its lesion into a lung and measured "noise" over anatomy. Both flatter the method; both were found by looking at impossible numbers | **done** |
+| 4 | **A dose–detectability curve, not one dose point** | `detectability is reported at >=4 dose levels and the knee of the curve is named` | "works at 25% dose" is a claim about one operating point. The clinical question is where the curve falls off, and that cannot be read from a single number | open |
+| 5 | **Reader-study correlation** | `the ranking of >=5 methods by detectability matches a reader panel's ranking` | detectability is still a proxy. Until it is shown to track human readers, it is a better proxy, not the thing | open |
+| 6 | **Generalisation across scanner and protocol** | `the same method is scored on >=3 scanners and the spread is reported, not averaged away` | reconstruction kernels and vendors differ more than methods do. A method validated on one scanner is a claim about that scanner | open |
 
 **Why 1 is first and everything else waits.** A field that optimises the wrong
 metric does not accumulate; it drifts, confidently. Fixing the corpus (2) or the
 lesion model (3) while still ranking by PSNR would produce a cleaner measurement
 of the wrong quantity.
+
+> **"Solved when" is the entry fee.** A problem with no measurement that would
+> settle it is a research *interest*, and interests belong in the charter. The
+> ladder is the part this agent can be wrong about in public.
+>
+> **A rung is closed by the registry, not by the agent.** "Solved" means a
+> benchmark has a published solution that meets it, runnable by anyone. The
+> agent may propose that a rung is closed; the closing is an artifact.
+>
+> The failure this is built against is **an agent that solves what it can**.
+> Given a free hand the cheapest defensible night is the easy rung, and a year
+> of easy rungs looks like a year of progress.
 
 ## The four layers
 

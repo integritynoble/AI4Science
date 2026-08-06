@@ -1,5 +1,14 @@
 # The drug design agent — how to design it
 
+| | |
+|---|---|
+| **corpus** | DUD-E — 15,288 molecules across 6 targets |
+| **reference method** | **passes** |
+| **the number that matters** | analogue similarity **0.519 → 0.093**, AUC 0.94 → 0.82 |
+
+> **The finding this page is built around.** EF@1% was sitting at the theoretical maximum, which was the giveaway: the query set was drawn at random from each target's actives, and DUD-E actives are analogue series — so the model was being shown relatives of what it was scored on. The repaired benchmark is *harder*, which is how you know it was repaired and not loosened.
+
+
 **Status: built and running on real data, 2026-08-04.** The benchmark reads
 **DUD-E** — 15,288 molecules across six targets at ~2% active, which is the
 ratio that matters: capping decoys instead of actives once left the library 40%
@@ -192,16 +201,28 @@ well" and "works" is the entire field.
 
 ## The problem queue — in the order they must be solved
 
-| # | problem | why it must come first | state |
-|---|---|---|---|
-| 1 | **Series-disjoint splits** | actives in standard screening sets are analogue series. A random split shows the model relatives of what it is scored on, and it then measures memory rather than recognition. Every enrichment number computed before this is fixed is uninterpretable | **done** — analogue similarity fell 0.519 → 0.093, AUC 0.94 → 0.82. The task got harder, which is how you know it was repaired and not loosened |
-| 2 | **Measure the ceiling before claiming a gain** | EF@1% is bounded by the actives-to-decoys ratio. A method reported "at the theoretical maximum" was reporting the bound, not its own performance. The judge now refuses a saturated metric | **done** |
-| 3 | **A property-only baseline as the floor** | decoy sets carry physicochemical bias; a model that beats random but not bulk properties has learned the bias. The floor must be the baseline, not zero | **done** — 2.4–2.9× the property baseline |
-| 4 | **Held-out targets, not just held-out molecules** | generalising to a new compound in a known pocket is a different claim from generalising to a new pocket, and only the second one is useful | partly — reported as a guardrail |
-| 5 | **Calibrated uncertainty** | required before anything can propose what to make next; a ranking without uncertainty cannot be turned into a batch | open |
-| 6 | **Next-batch proposal (active learning)** | the actual bottleneck in a real programme is deciding what to synthesise, not scoring a static library. Needs 5 | open |
-| 7 | **Tolerability as a guardrail, not a footnote** | a candidate that improves potency while worsening tox must be refused automatically, the way coverage bought with organ dose is refused in medical physics | open |
-| 8 | **Nothing claimed without an assay** | the standing rule, and the last one because it binds everything above | charter |
+| # | problem | **solved when** | why it is placed here | state |
+|---|---|---|---|---|
+| 1 | **Series-disjoint splits** | `query-to-test analogue similarity is below 0.1 and the enrichment survives` | actives in standard screening sets are analogue series. A random split shows the model relatives of what it is scored on, and it then measures memory rather than recognition. Every enrichment number computed before this is fixed is uninterpretable | **done** — analogue similarity fell 0.519 → 0.093, AUC 0.94 → 0.82. The task got harder, which is how you know it was repaired and not loosened |
+| 2 | **Measure the ceiling before claiming a gain** | `the metric's ceiling is printed before any comparison, and a saturated result is refused` | EF@1% is bounded by the actives-to-decoys ratio. A method reported "at the theoretical maximum" was reporting the bound, not its own performance. The judge now refuses a saturated metric | **done** |
+| 3 | **A property-only baseline as the floor** | `enrichment is reported as a multiple of the property-only model, never alone` | decoy sets carry physicochemical bias; a model that beats random but not bulk properties has learned the bias. The floor must be the baseline, not zero | **done** — 2.4–2.9× the property baseline |
+| 4 | **Held-out targets, not just held-out molecules** | `performance is reported on targets absent from fitting, separately from held-out molecules` | generalising to a new compound in a known pocket is a different claim from generalising to a new pocket, and only the second one is useful | partly — reported as a guardrail |
+| 5 | **Calibrated uncertainty** | `predicted uncertainty is calibrated — stated confidence matches observed hit rate` | required before anything can propose what to make next; a ranking without uncertainty cannot be turned into a batch | open |
+| 6 | **Next-batch proposal (active learning)** | `a proposed batch beats a random batch of the same size on measured hits` | the actual bottleneck in a real programme is deciding what to synthesise, not scoring a static library. Needs 5 | open |
+| 7 | **Tolerability as a guardrail, not a footnote** | `a candidate improving potency while worsening tox is refused automatically, in the log` | a candidate that improves potency while worsening tox must be refused automatically, the way coverage bought with organ dose is refused in medical physics | open |
+| 8 | **Nothing claimed without an assay** | `no claim reaches the page without an assay result behind it, checked by the writer` | the standing rule, and the last one because it binds everything above | charter |
+
+> **"Solved when" is the entry fee.** A problem with no measurement that would
+> settle it is a research *interest*, and interests belong in the charter. The
+> ladder is the part this agent can be wrong about in public.
+>
+> **A rung is closed by the registry, not by the agent.** "Solved" means a
+> benchmark has a published solution that meets it, runnable by anyone. The
+> agent may propose that a rung is closed; the closing is an artifact.
+>
+> The failure this is built against is **an agent that solves what it can**.
+> Given a free hand the cheapest defensible night is the easy rung, and a year
+> of easy rungs looks like a year of progress.
 
 ## The four layers
 

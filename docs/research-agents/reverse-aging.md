@@ -1,5 +1,14 @@
 # The reverse-aging agent — how to design it
 
+| | |
+|---|---|
+| **corpus** | GEO GSE40279 — 656 whole-blood samples, ages 19–101, four institutions |
+| **reference method** | **13 of 28** seed-varied splits |
+| **the number that matters** | **55%** of the clock's gain is bulk structure |
+
+> **The finding this page is built around.** The benchmark accepted a seed and ignored it, so every seed produced identical data — a paired comparison with zero spread by construction, reporting **p = 0**. One measurement wearing four hats. It looked *better* than a genuine p = 0.0088 from another agent, which is how it nearly got signed.
+
+
 **Status: built and running on real data, 2026-08-05.** Charter, self-model,
 field map, corpus and benchmark are implemented. The benchmark reads **GEO
 GSE40279** — 656 whole-blood Illumina 450k samples, ages 19–101, from four
@@ -229,19 +238,31 @@ result.
 
 ## The problem queue — in the order they must be solved
 
-| # | problem | why it must come first | state |
-|---|---|---|---|
-| 1 | **Institution-disjoint validation, with the sites chosen by seed** | a clock validated on a fixed pair of held-out sites is validated against one arrangement of batch effects. Choosing the held-out institutions from the seed is a harder test, and the reference method's pass rate fell from "passes" to 13 of 28 when it was applied — which is the point | **done** |
-| 2 | **Bulk structure share as a scored guardrail** | in whole blood the methylome's leading components are dominated by cell-type proportions, which themselves shift with age. A clock riding on that is a blood-count detector with a birthday attached, and it will look excellent | **done** — 55% of the gain disappears when leading components are projected out, and lower is better for this number |
-| 3 | **A seed that actually varies the data** | it did not, for a while. Every seed produced byte-identical data, a paired comparison had zero spread by construction, and the loop reported `p = 0` — one measurement wearing four hats, which outranked a genuine `p = 0.0088` from another agent and nearly got signed | **done** — refused, repaired, re-earned at p = 0.014 |
-| 4 | **Outcome linkage** | chronological age is not the quantity of interest. A clock that predicts age well and predicts nothing about health has measured a calendar. This is the single largest gap on this page | **blocked** — needs a cohort with follow-up, and an agreement only the owner can sign |
-| 5 | **Multi-tissue and cross-platform transport** | a whole-blood clock is a whole-blood claim. Transport to another tissue or array platform is a separate question and is currently untested | open |
-| 6 | **Intervention response** | does the clock move when something changes? Requires longitudinal sampling, and cannot be answered by any cross-sectional cohort however large | open |
-| 7 | **Rate of ageing, as opposed to age** | the claim everyone actually wants, and the one this agent is forbidden to make until 4 and 6 hold | forbidden by charter |
+| # | problem | **solved when** | why it is placed here | state |
+|---|---|---|---|---|
+| 1 | **Institution-disjoint validation, with the sites chosen by seed** | `held-out institutions are drawn from the seed, and the pass rate is reported across seeds` | a clock validated on a fixed pair of held-out sites is validated against one arrangement of batch effects. Choosing the held-out institutions from the seed is a harder test, and the reference method's pass rate fell from "passes" to 13 of 28 when it was applied — which is the point | **done** |
+| 2 | **Bulk structure share as a scored guardrail** | `bulk-structure share is printed beside every error, and a clock above a stated share fails` | in whole blood the methylome's leading components are dominated by cell-type proportions, which themselves shift with age. A clock riding on that is a blood-count detector with a birthday attached, and it will look excellent | **done** — 55% of the gain disappears when leading components are projected out, and lower is better for this number |
+| 3 | **A seed that actually varies the data** | `two seeds produce measurably different data — the degeneracy check is in the suite` | it did not, for a while. Every seed produced byte-identical data, a paired comparison had zero spread by construction, and the loop reported `p = 0` — one measurement wearing four hats, which outranked a genuine `p = 0.0088` from another agent and nearly got signed | **done** — refused, repaired, re-earned at p = 0.014 |
+| 4 | **Outcome linkage** | `predicted age deviation associates with a health outcome in a cohort with follow-up` | chronological age is not the quantity of interest. A clock that predicts age well and predicts nothing about health has measured a calendar. This is the single largest gap on this page | **blocked** — needs a cohort with follow-up, and an agreement only the owner can sign |
+| 5 | **Multi-tissue and cross-platform transport** | `the clock is scored on a second tissue or platform and the drop is reported` | a whole-blood clock is a whole-blood claim. Transport to another tissue or array platform is a separate question and is currently untested | open |
+| 6 | **Intervention response** | `a repeated sample moves in the predicted direction after an intervention` | does the clock move when something changes? Requires longitudinal sampling, and cannot be answered by any cross-sectional cohort however large | open |
+| 7 | **Rate of ageing, as opposed to age** | `forbidden until outcome linkage and longitudinal data both exist` | the claim everyone actually wants, and the one this agent is forbidden to make until 4 and 6 hold | forbidden by charter |
 
 > **Only four institutions exist in this cohort.** Distinct site-disjoint splits
 > are therefore few, and statistical power is bounded by the corpus rather than
 > by the loop. More compute buys nothing here; more cohorts do.
+
+> **"Solved when" is the entry fee.** A problem with no measurement that would
+> settle it is a research *interest*, and interests belong in the charter. The
+> ladder is the part this agent can be wrong about in public.
+>
+> **A rung is closed by the registry, not by the agent.** "Solved" means a
+> benchmark has a published solution that meets it, runnable by anyone. The
+> agent may propose that a rung is closed; the closing is an artifact.
+>
+> The failure this is built against is **an agent that solves what it can**.
+> Given a free hand the cheapest defensible night is the easy rung, and a year
+> of easy rungs looks like a year of progress.
 
 ## The four layers
 

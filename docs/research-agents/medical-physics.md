@@ -1,5 +1,14 @@
 # The medical physics agent — how to design it
 
+| | |
+|---|---|
+| **corpus** | OpenKBP — real head-and-neck plans |
+| **reference method** | **2 of 4 slices pass** |
+| **the number that matters** | one case has a D99 ceiling of **62.6** against a **66.5** floor |
+
+> **The finding this page is built around.** Three wrong diagnoses preceded the real one — impossible constraints, step-size collapse, nested targets — and the cause was a NaN that silently disabled the optimiser. One case is *provably unreachable by these beams*, which no optimiser fixes and which looks identical to a weak model unless someone measures the ceiling.
+
+
 **Status: built, on real data, planner rewritten 2026-08-05.** The benchmark
 reads **OpenKBP** — eight real head-and-neck cases with CT, contours, and the
 dose the patient was actually treated with, which is the answer key and never
@@ -223,15 +232,15 @@ patients — including when the owner asks it to.
 
 ## The problem queue — in the order they must be solved
 
-| # | problem | why it must come first | state |
-|---|---|---|---|
-| 1 | **3D volumetric dose** | nine beams on one axial plane cannot spare an organ sitting above or below the target, and a cord that abuts the PTV in 3D looks adjacent-or-absent depending on which slice was picked. Every other number on this page is provisional until this holds | open — scoped in [`medical-physics-3d-plan.md`](medical-physics-3d-plan.md) |
-| 2 | **Achievability measured before the planner is blamed** | "the model achieved X" is unreadable without knowing what was reachable. An infeasible constraint set and a weak optimiser produce identical evidence. This is the one genuinely novel thing here | **done in 2D** — one case has a D99 ceiling of 62.6 against a 66.5 floor; must be re-measured in 3D before it is repeated |
-| 3 | **The full DVH metric set** | D95/D99/D2, V95/V107, homogeneity and conformity indices, gEUD. This is the language the field reviews in; reporting anything else reads as an outsider and, worse, hides the trade being made | open |
-| 4 | **Deliverability** | MLC and aperture constraints. A fluence map no linac can deliver is not a plan, and the gap between the two is where optimiser gains usually evaporate | open |
-| 5 | **Protocol templates** (RTOG / NRG goal sheets) | the judge should encode a real clinical goal sheet rather than limits chosen by whoever wrote the benchmark | open |
-| 6 | **Comparison against the delivered clinical plan** | per structure, differences named. A single score cannot say whether a plan is better or merely different | open |
-| 7 | **Adaptive replanning and setup robustness** | last, because it presumes every one of the above | open |
+| # | problem | **solved when** | why it is placed here | state |
+|---|---|---|---|---|
+| 1 | **3D volumetric dose** | `dose is computed on the full volume and an OAR outside the target's plane changes the plan` | nine beams on one axial plane cannot spare an organ sitting above or below the target, and a cord that abuts the PTV in 3D looks adjacent-or-absent depending on which slice was picked. Every other number on this page is provisional until this holds | open — scoped in [`medical-physics-3d-plan.md`](medical-physics-3d-plan.md) |
+| 2 | **Achievability measured before the planner is blamed** | `every verdict prints the ceiling beside the achieved value, re-measured in 3D` | "the model achieved X" is unreadable without knowing what was reachable. An infeasible constraint set and a weak optimiser produce identical evidence. This is the one genuinely novel thing here | **done in 2D** — one case has a D99 ceiling of 62.6 against a 66.5 floor; must be re-measured in 3D before it is repeated |
+| 3 | **The full DVH metric set** | `D95/D99/D2, V95/V107, HI, CI and gEUD are all reported per structure` | D95/D99/D2, V95/V107, homogeneity and conformity indices, gEUD. This is the language the field reviews in; reporting anything else reads as an outsider and, worse, hides the trade being made | open |
+| 4 | **Deliverability** | `the plan is expressed as deliverable apertures and re-scored after that conversion` | MLC and aperture constraints. A fluence map no linac can deliver is not a plan, and the gap between the two is where optimiser gains usually evaporate | open |
+| 5 | **Protocol templates** (RTOG / NRG goal sheets) | `the judge's limits are loaded from a published goal sheet, not written in the benchmark` | the judge should encode a real clinical goal sheet rather than limits chosen by whoever wrote the benchmark | open |
+| 6 | **Comparison against the delivered clinical plan** | `each structure is compared against the delivered clinical plan with the difference named` | per structure, differences named. A single score cannot say whether a plan is better or merely different | open |
+| 7 | **Adaptive replanning and setup robustness** | `a plan holds under a stated setup error, and the degradation is reported` | last, because it presumes every one of the above | open |
 
 > **2 must be re-measured, not carried.** The finding that one case is
 > unreachable is a **2D** result. Nine coplanar beams are a far weaker delivery
@@ -239,6 +248,18 @@ patients — including when the owner asks it to.
 > feasible. Carrying that conclusion into a 3D planner would be exactly the
 > error this agent keeps making: a property of the measurement reported as a
 > property of the world.
+
+> **"Solved when" is the entry fee.** A problem with no measurement that would
+> settle it is a research *interest*, and interests belong in the charter. The
+> ladder is the part this agent can be wrong about in public.
+>
+> **A rung is closed by the registry, not by the agent.** "Solved" means a
+> benchmark has a published solution that meets it, runnable by anyone. The
+> agent may propose that a rung is closed; the closing is an artifact.
+>
+> The failure this is built against is **an agent that solves what it can**.
+> Given a free hand the cheapest defensible night is the easy rung, and a year
+> of easy rungs looks like a year of progress.
 
 ## The four layers
 

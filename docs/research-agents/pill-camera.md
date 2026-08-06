@@ -1,5 +1,14 @@
 # The pill camera agent — how to design it
 
+| | |
+|---|---|
+| **corpus** | Kvasir-Capsule — 4,443 frames from 46 videos |
+| **reference method** | **passes** |
+| **the number that matters** | 0.614 → **0.624**, found by its own night loop |
+
+> **The finding this page is built around.** The improvement is small on purpose, and that is why it is credible: paired across seeds, validated on seeds not used to select it. With 46 videos the spread between seeds is comparable to the effects people claim, so a large delta here is a symptom rather than a result.
+
+
 **Status: built, on real data, and improved by its own night loop, 2026-08-05.**
 The benchmark reads **Kvasir-Capsule** — 4,443 frames from 9 positive and 37
 negative videos, split by video and verified patient-disjoint in code.
@@ -199,15 +208,27 @@ what would settle it, and that it has no path to one.
 
 ## The problem queue — in the order they must be solved
 
-| # | problem | why it must come first | state |
-|---|---|---|---|
-| 1 | **Video-disjoint splits** | consecutive capsule frames are near-duplicates. A random frame split puts the same anatomy on both sides and measures nothing; a patient-disjoint split is the minimum unit of independence | **done** — sampled per video, split by video |
-| 2 | **Seed variance separated from improvement** | with 46 videos, the spread between seeds is comparable to the effect sizes being claimed. Without a paired comparison across seeds, every result is a coin flip with a narrative | **done** — the standing rule of this agent |
-| 3 | **Pooled positives, honestly labelled** | the positive classes were pooled because each alone spans too few videos to split. That is a limitation of the corpus, and it is written into the benchmark rather than hidden in it | **done** — recorded in the bundle metadata |
-| 4 | **Per-finding classes as data allows** | pooling costs clinical meaning: "an abnormality" is not a finding a report can carry. Unlocking this needs more videos, not a better model | blocked — corpus-bound |
-| 5 | **Sequence, not a bag of frames** | a capsule study is a trajectory through the gut. Treating frames independently discards the strongest available signal, and it is the field's most common shortcut | open |
-| 6 | **Localisation along the tract** | a finding without a location is not actionable; the clinician has to know where to go back to | open |
-| 7 | **Miss rate at a fixed review time** | the real clinical quantity. A reader has minutes, not hours, and a model that improves accuracy while lengthening review has not helped | open |
+| # | problem | **solved when** | why it is placed here | state |
+|---|---|---|---|---|
+| 1 | **Video-disjoint splits** | `no frame from a test video appears in training, checked by video id` | consecutive capsule frames are near-duplicates. A random frame split puts the same anatomy on both sides and measures nothing; a patient-disjoint split is the minimum unit of independence | **done** — sampled per video, split by video |
+| 2 | **Seed variance separated from improvement** | `the reported delta exceeds the measured seed spread, paired across seeds` | with 46 videos, the spread between seeds is comparable to the effect sizes being claimed. Without a paired comparison across seeds, every result is a coin flip with a narrative | **done** — the standing rule of this agent |
+| 3 | **Pooled positives, honestly labelled** | `the pooling is stated in the corpus metadata and the reason is on the page` | the positive classes were pooled because each alone spans too few videos to split. That is a limitation of the corpus, and it is written into the benchmark rather than hidden in it | **done** — recorded in the bundle metadata |
+| 4 | **Per-finding classes as data allows** | `each finding class spans enough videos to split, and is scored separately` | pooling costs clinical meaning: "an abnormality" is not a finding a report can carry. Unlocking this needs more videos, not a better model | blocked — corpus-bound |
+| 5 | **Sequence, not a bag of frames** | `a sequence model beats the frame-pooled one on the same video-disjoint split` | a capsule study is a trajectory through the gut. Treating frames independently discards the strongest available signal, and it is the field's most common shortcut | open |
+| 6 | **Localisation along the tract** | `a predicted location matches the ground-truth segment of the tract` | a finding without a location is not actionable; the clinician has to know where to go back to | open |
+| 7 | **Miss rate at a fixed review time** | `miss rate is reported at a fixed review-time budget, not at unlimited time` | the real clinical quantity. A reader has minutes, not hours, and a model that improves accuracy while lengthening review has not helped | open |
+
+> **"Solved when" is the entry fee.** A problem with no measurement that would
+> settle it is a research *interest*, and interests belong in the charter. The
+> ladder is the part this agent can be wrong about in public.
+>
+> **A rung is closed by the registry, not by the agent.** "Solved" means a
+> benchmark has a published solution that meets it, runnable by anyone. The
+> agent may propose that a rung is closed; the closing is an artifact.
+>
+> The failure this is built against is **an agent that solves what it can**.
+> Given a free hand the cheapest defensible night is the easy rung, and a year
+> of easy rungs looks like a year of progress.
 
 ## The four layers
 
