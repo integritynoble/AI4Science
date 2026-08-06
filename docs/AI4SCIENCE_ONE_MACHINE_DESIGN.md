@@ -1094,6 +1094,28 @@ itself.
 > quietly assert *this owed nothing*. The unmeasured runs are counted and
 > reported, so a total is never mistaken for complete.
 >
+> **Bring your own key is priced.** A Claude Code session is exactly that case
+> and the economy saw nothing of it: `spend` reads its tokens and reports *PWM:
+> not charged here*, which is true — the owner paid Anthropic, or it came out of
+> a subscription — and `earnings` recorded the run as unmeasured. Those are two
+> different numbers and conflating them cost the fee: what the run **cost** in
+> PWM is nothing; what it **owes** is 10% of its value at the ratio, which
+> applies on your own key by design, or every run would be free by bringing one.
+>
+> So a BYO run owes the treasury and the author, and the provider is **not owed
+> here** — the API bill already paid them, and recording it as owed would
+> double-count something the owner has settled. The remainder is `paid_outside`,
+> named so the whole value is accounted for without the provider's part reading
+> as a debt this machine holds.
+>
+> **The cache rate is the whole correctness of it.** A live session on grace ran
+> 1,006 fresh input tokens against 8,201,359 cached; pricing cache at the input
+> rate would inflate its value — and the fee — by orders of magnitude. Cache
+> read and write are multiples of the input price rather than a second table
+> that would drift from the first. An unknown model returns `known_model:
+> False`, because a price from the fallback is a guess and a fee built on a
+> guess should be able to say so.
+
 > **The exchange node is built too** — `sarsi exchange start --budget-pwm N` ·
 > `status` · `stop`. Three of its four properties are refusals, which is the
 > right proportion for a thing that runs on the owner's machine to make money:

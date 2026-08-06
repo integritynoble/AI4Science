@@ -63,6 +63,19 @@ class Split:
 
 
 @dataclass
+class ByoSplit(Split):
+    """A run on the owner's own key or subscription.
+
+    The provider is **not owed anything here** — they were already paid, by the
+    API bill or the subscription. Recording them as owed would double-count a
+    bill the owner has settled, so what left in that direction is
+    `paid_outside`: named, so a reader can see the whole value accounted for
+    without it looking like a debt.
+    """
+    paid_outside: float = 0.0
+
+
+@dataclass
 class Owed(Split):
     agent_id: str = ""
     task_id: str = ""
@@ -111,6 +124,50 @@ def split(cost: float, *, price_share: float = 0.0) -> Split:
     provider = cost - treasury - author - platform
     return Split(cost=cost, treasury=treasury, author=author,
                  provider=provider, platform=platform)
+
+
+def split_byo(value: float, *, price_share: float = 0.0) -> ByoSplit:
+    """The shares of a bring-your-own-key run.
+
+    §13: *a user may use their own API key or subscription; the 10% still
+    applies, computed at the PWM/token ratio.* Otherwise every run would be
+    free by bringing one.
+
+    The author still earns: their slice is for the agent being used, not for
+    who paid the provider.
+    """
+    base = split(value, price_share=price_share)
+    return ByoSplit(cost=base.cost, treasury=base.treasury,
+                    author=base.author, provider=0.0,
+                    platform=base.platform,
+                    paid_outside=base.cost - base.treasury - base.author
+                                 - base.platform)
+
+
+def notional(spend, *, model: str) -> Optional[float]:
+    """What a run is worth in PWM, for the fee.
+
+    When the harness metered it, that number wins — this path exists only for
+    the sessions it does not meter, which is every Claude Code one. Those have
+    token counts and no price, and §13 says the fee still applies.
+
+    `None` when there are no token counts at all. The rule does not weaken
+    because there is now a way to price: a transcript that could not be read
+    gives no tokens, and no tokens is not zero tokens.
+    """
+    priced = getattr(spend, "pwm", None)
+    if priced is not None:
+        return float(priced)
+    counts = [getattr(spend, n, None) for n in
+              ("input_tokens", "output_tokens", "cached_tokens",
+               "cache_write_tokens")]
+    if all(c is None for c in counts):
+        return None
+    from ai4science.llm import pricing
+    got = pricing.price_session(model,
+                                input=counts[0] or 0, output=counts[1] or 0,
+                                cached=counts[2] or 0, cache_write=counts[3] or 0)
+    return float(got["pwm"])
 
 
 def _market_of(config: Config, agent_id: str) -> Dict[str, Any]:
@@ -178,7 +235,7 @@ def record(config: Config, *, agent_id: str, task_id: str,
 
 
 def from_spend(config: Config, *, agent_id: str, task_id: str,
-               spend, now=time.time) -> Optional[Owed]:
+               spend, model: str = "", now=time.time) -> Optional[Owed]:
     """Record what a run owes from what the METER said it cost.
 
     `Spend.pwm` is `None` when the session was not metered by us — a Claude
@@ -190,8 +247,38 @@ def from_spend(config: Config, *, agent_id: str, task_id: str,
     everywhere else: a verdict comes from a verifier, a radius from the
     transcript, and a bill from the meter.
     """
-    return record(config, agent_id=agent_id, task_id=task_id,
-                  cost=getattr(spend, "pwm", None), now=now)
+    priced = getattr(spend, "pwm", None)
+    if priced is not None:
+        # The harness metered it: the provider IS owed, in PWM, and the
+        # ordinary split applies.
+        return record(config, agent_id=agent_id, task_id=task_id,
+                      cost=priced, now=now)
+
+    # Bring your own key. §13: the 10% still applies, computed at the
+    # PWM/token ratio — otherwise every run would be free by bringing one. The
+    # provider is not owed here because the API bill or the subscription
+    # already paid them, so recording them as owed would double-count a bill
+    # the owner has settled.
+    value = notional(spend, model=model)
+    if value is None:
+        return record(config, agent_id=agent_id, task_id=task_id, cost=None,
+                      now=now)
+    who = _market_of(config, agent_id)
+    got = split_byo(value, price_share=who["share"])
+    row = Owed(cost=got.cost, treasury=got.treasury, author=got.author,
+               provider=0.0, platform=got.platform, agent_id=agent_id,
+               task_id=task_id,
+               author_handle=who["handle"] if got.author else "")
+    ledger.append(config, STREAM,
+                  {"agent": agent_id, "task": task_id, "measured": True,
+                   "cost": row.cost, "treasury": row.treasury,
+                   "author": row.author, "author_handle": row.author_handle,
+                   "provider": 0.0, "platform": row.platform,
+                   # Named, so the whole value is accounted for without the
+                   # provider's part looking like a debt this machine owes.
+                   "paid_outside": got.paid_outside, "byo_key": True},
+                  now=now)
+    return row
 
 
 def owed(config: Config) -> List[Owed]:
