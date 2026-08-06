@@ -155,11 +155,29 @@ class Gateway:
             # the record is what the agent answered, not what the transport
             # managed to deliver. A reply that failed to send is still the
             # thing the owner is owed, and scroll-back should show it.
-            ownerlog.reply(self.config, agent, reply, surface=TELEGRAM, now=self.now)
+            # Sent FIRST now, so the log can say whether it landed. Still
+            # logged either way — the record is what the agent answered, not
+            # what the transport managed to deliver, and that reasoning is
+            # unchanged. What is new is that a reader can tell the two apart.
+            #
+            # Not retried: a transport that just failed is not more likely to
+            # work on an immediate second attempt, and a retry loop inside a
+            # poll loop is how one unreachable chat starves every other agent.
+            delivered, error = True, ""
             try:
                 self.transport.send_message(token, chat_id, reply)
-            except Exception:
-                pass
+            except Exception as e:
+                # Not raised: this loop serves every agent, and taking the door
+                # down because one message could not be delivered is the worse
+                # failure. Recorded instead, with the reason.
+                delivered, error = False, f"{type(e).__name__}: {e}"
+                ledger.append(self.config, "outbound",
+                              {"channel": TELEGRAM, "account": account_id,
+                               "agent": agent.id, "delivered": False,
+                               "chars": len(reply), "error": error},
+                              now=self.now)
+            ownerlog.reply(self.config, agent, reply, surface=TELEGRAM,
+                           delivered=delivered, now=self.now)
         return 1
 
 

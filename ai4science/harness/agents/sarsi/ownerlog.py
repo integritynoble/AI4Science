@@ -46,10 +46,15 @@ AGENT = "agent"
 
 
 def append(config: Config, agent: Agent, text: str, *, surface: str,
-           role: str = OWNER,
+           role: str = OWNER, delivered: Optional[bool] = None,
            now: Callable[[], float] = time.time) -> Dict[str, Any]:
     record = {"text": text, "surface": surface, "role": role,
               "at": datetime.fromtimestamp(now(), timezone.utc).isoformat(timespec="seconds")}
+    if delivered is not None:
+        # Only on a reply, and only when the surface can say. An owner's own
+        # message has no delivery to report, and `None` is a third answer —
+        # "nobody checked" — which must not read as "it did not arrive".
+        record["delivered"] = bool(delivered)
     path = _path(agent)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a") as fh:
@@ -62,9 +67,18 @@ def append(config: Config, agent: Agent, text: str, *, surface: str,
 
 
 def reply(config: Config, agent: Agent, text: str, *, surface: str,
+          delivered: Optional[bool] = None,
           now: Callable[[], float] = time.time) -> Dict[str, Any]:
-    """Record what the agent answered. Same log, other role."""
-    return append(config, agent, text, surface=surface, role=AGENT, now=now)
+    """Record what the agent answered. Same log, other role.
+
+    `delivered` says whether it reached the surface. A reply that was answered
+    and never arrived reads identically to one that arrived, in the log the
+    owner scrolls back through — and on Telegram they see nothing at all, which
+    reads identically to an agent that had nothing to say. Two readers, two
+    wrong pictures, in opposite directions.
+    """
+    return append(config, agent, text, surface=surface, role=AGENT,
+                  delivered=delivered, now=now)
 
 
 def role_of(record: Dict[str, Any]) -> str:

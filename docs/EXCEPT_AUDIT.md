@@ -52,6 +52,7 @@ Of the 25, most are already right, and they are right in one of three ways:
 | `session.py` `release` | `set_ceiling` — a failed raise still recorded the new ceiling, so the board showed A1 while the session ran at A0 | `CouldNotRelease`; the record keeps what the session has |
 | `session.py` `release_session` | `.stop()` on a runtime that cannot stop — the record cleared and the terminal kept running (caught live) | falls back to the real runtime |
 | `hook.py` tripwire | `_trust.record` and `_sup.update` — a forbidden command was blocked, and the **record that it was attempted** could vanish | the deny is untouched; the gap goes into the verdict's reason |
+| `gateway.py` `_dispatch` | `send_message` — a reply the agent gave and the owner never received, indistinguishable in the log from one that arrived | the send happens first; the log records `delivered`, and the ledger carries the reason |
 
 The first three follow one rule: **honoured or refused, never dropped.** The
 fourth cannot, and the reason is worth stating — the hook is a subprocess Claude
@@ -62,11 +63,6 @@ worse failure than an unrecorded one. There the gap is surfaced instead.
 
 * **~140 file, JSON, subprocess and path guards.** Failing open is the designed
   behaviour and the callers read the fallback as "unknown".
-* **`gateway.py:161`** — a Telegram reply that will not send is `pass`ed. It is
-  a transport failure on a best-effort channel and the agent's answer is still
-  in the ledger, but an owner who never receives a reply has no way to tell it
-  from an agent that said nothing. Worth a look; not a silent authority change,
-  so not fixed under this pass.
 * **`attention.py:312`/`362`, `questions.py:166`** — `pane.capture` failing
   becomes `None`/`""`, which is the same value a dead pane produces. It
   conflates "the pane is gone" with "the reader broke". Mild, and the callers
