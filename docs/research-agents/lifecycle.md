@@ -179,6 +179,47 @@ its sub-agents get bodies.
 > produces more claims per unit of evidence, which is precisely the failure this
 > whole architecture exists to prevent.
 
+### One workspace, one voice — the group is a single agent
+
+The group is not a federation of agents that happen to cooperate. **It shares
+one workspace and speaks as one agent**, and from outside there is no seam:
+
+| | the group has exactly one |
+|---|---|
+| **workspace** | the same run directory — data, code, results, provenance. One record of what happened, not a record per member |
+| **charter** | one field it may work in, one set of things it may never touch |
+| **budget and switch** | one grant, one off switch. A sub-agent does not have its own allowance |
+| **set of ledgers** | `owner_set`, `benchmark`, `self_directed` — the group's work, not each member's |
+| **voice** | one answer to the person who asked, and one signature surface for the owner |
+
+**Communication happens through the workspace, never through side channels.**
+Members exchange artifacts and an append-only message log that lives in the same
+directory as the results. This is not a stylistic preference: an exchange that
+does not land in the workspace cannot be audited, and a group whose members can
+talk privately is a group whose reasoning cannot be reconstructed afterwards.
+
+**Agreement is required before the group speaks.** Members converge on one
+answer, and the disagreement along the way is recorded rather than smoothed
+away. If they cannot converge, the group reports **"not established"** — it does
+not report a majority opinion dressed as consensus. A split verdict presented as
+a verdict is the failure mode this whole design exists to prevent.
+
+> **The one asymmetry, and why it is not a contradiction.** Verifiers must not
+> see the proposer's *argument* — only the claim, the data, the seeds and the
+> reproduction path. Shared workspace, asymmetric visibility. A verifier that
+> reads why the proposer thinks it is right is anchored to that reasoning, and
+> the quorum becomes theatre.
+>
+> This is the same shape the codebase already uses for the answer key: the
+> benchmark's key lives in the workspace and is **never staged into the
+> sandbox**, so the solver cannot reach what judges it. The group works the same
+> way — one workspace, and specific things withheld from specific members, for
+> exactly one reason each.
+
+So: one body, one voice, one account of what it did — and inside it, deliberately
+separated eyes. The unity is in the record and the accountability. The
+independence is in the judgement, which is the only place it buys anything.
+
 ### What a body changes, concretely
 
 | | compute sub-agent | embodied sub-agent |
