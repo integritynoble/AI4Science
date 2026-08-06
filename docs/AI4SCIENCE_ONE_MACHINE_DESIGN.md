@@ -1053,8 +1053,50 @@ Worked, for **computational imaging**, which is the field furthest along:
 | 1 | the forward model disagrees between papers — mask convention, dispersion, normalisation | L2 | every number below it is uncomparable until this is settled. The CASSI wrapper bug that cost 35.5→28 dB was exactly this, one layer down |
 | 2 | a benchmark that fixes data, mask and metric together | L3 | a metric on unfixed data measures the data |
 | 3 | baselines re-run under that benchmark, not quoted from papers | L3 | a quoted number is a claim about somebody else's forward model |
-| 4 | a solution that beats the re-run baselines | L4 | the first checkable "better" in the field |
-| 5 | the principle behind why it beats them | L1 | promoted *last*, because a principle inferred from one win is a story |
+| 4 | **the coding optic as a design variable, with its tolerances** | L2 | *see below* — ties with #3, and the tie is arbitrary |
+| 5 | **does the fabricated optic match the one that was designed** | L3 | a mask optimised in simulation does not match when built |
+| 6 | **optimise the optic and the reconstruction together** | L4 | the field's actual claim |
+| 7 | a solution that beats the re-run baselines | L4 | the first checkable "better" in the field |
+| 8 | the principle behind why it beats them | L1 | promoted *last*, because a principle inferred from one win is a story — and now it has the hardware half to explain too |
+
+##### The hardware half: the optic is a design variable, not a constant
+
+The first version of this table was the **algorithm** ladder, and on its own it
+treats the coding optic as given. That is a real omission rather than a
+simplification, because computational imaging is **co-design**: a solution
+scored on an arbitrarily chosen optic is a solution to an arbitrarily chosen
+problem, and its number is a fact about that choice as much as about the method.
+
+This machine already had the evidence and did not draw the conclusion. The
+binary-vs-continuous mask question moved HDNet **35→28 dB** — and *the mask is
+the coding optic*. "Which mask" looked like an implementation detail and is a
+hardware statement wearing one's clothes.
+
+So three problems join the list, and they **interleave** with the algorithm
+ladder rather than following it. That interleaving is the point: if the hardware
+problems came after the algorithm ones, the list would be saying *design the
+method, then design the optic to suit it*, which is the thing co-design says
+does not work.
+
+* **the optic and its tolerances** (L2, after the forward model) — settled when
+  the spec states each parameter *and the tolerance on it*, and two masks
+  differing only within tolerance land within the benchmark's noise. A
+  tolerance-free optic spec is unbuildable, and an unbuildable spec is a
+  simulation.
+* **built versus simulated** (L3) — the measured point-spread function of the
+  fabricated optic against the designed one. **This is the one problem in this
+  field that needs a body**, and it is where the embodied member of the group
+  (§ the group with a body) stops being an illustration: nothing in software
+  settles whether a fabricated mask matches its design.
+* **co-design** (L4, after both) — a jointly designed system that beats the best
+  algorithm-only result on the fixed benchmark, with the optic's tolerances
+  respected. The tolerance clause is what stops it being won by an optic nobody
+  can make.
+
+Two of the three are marked as **readings of the field, not evidence this
+machine holds** — no optic has been fabricated here and nothing has been jointly
+optimised — and `sarsi problems` prints that on the line rather than in a
+footnote.
 
 Note where L1 sits. A field's principle is often the **last** thing that can be
 verified, not the first — which is why "start from first principles" is bad
@@ -1079,6 +1121,19 @@ advice for an agent that has to show its work.
 >
 > The table above is the output, and a test asserts it: the rule applied to the
 > real problems has to reproduce it, or the rule is wrong or this document is.
+>
+> Two honesty fixes the longer list forced, both worth keeping because both were
+> the list making a claim it could not support:
+>
+> * **only what is ready today says "ready now".** The ordering walk marks each
+>   pick solved as it goes — that is how it finds the next frontier — so reading
+>   readiness off the walk labelled all eight problems ready while their
+>   dependencies sat open. The walk's *now* is not the reader's *now*, and the
+>   reader is the one being told. Every other line names what it waits for.
+> * **a tie says it is a tie.** Re-running the baselines and specifying the
+>   optic both unblock three, and they are separated alphabetically, which is
+>   arbitrary. Printing the same reason at two different positions has a reader
+>   mistake position for judgement.
 
 **Each research agent has its own page** on `physicsworldmodel.org`, and the
 page *is* the problem list: the open problems in order, what tier each sits at,
