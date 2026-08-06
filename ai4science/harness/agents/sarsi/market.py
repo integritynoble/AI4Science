@@ -30,9 +30,12 @@ something the owner did not give it:
 """
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import re
 import shutil
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -75,6 +78,50 @@ class Report:
     #: every author whose code comes with it — the agent's, and each tool's
     authors: List[Dict[str, Any]] = field(default_factory=list)
     source: str = ""
+    #: who accepted THIS package — matched by digest, so an acceptance for a
+    #: neighbouring version is not one for this
+    accepted_by: List[str] = field(default_factory=list)
+    digest: str = ""
+
+    @property
+    def standing(self) -> str:
+        if self.accepted_by:
+            return f"accepted by {', '.join(self.accepted_by)}"
+        return ("UNREVIEWED — nobody has accepted this package. It installs "
+                "because it is your machine and your call, and the refusals "
+                "above applied to it either way")
+
+
+@dataclass
+class Listing:
+    """A package sealed for travel: what it is, and what it is made of."""
+    agent_id: str
+    version: str
+    digest: str
+    source: str = ""
+
+
+@dataclass
+class Acceptance:
+    """A signature over a DIGEST. The governor's whole contribution.
+
+    Everything else about acceptance is arithmetic anyone can re-run; this is
+    the part that is judgement, so it is the only part that has to be trusted
+    and the only part that is signed.
+    """
+    digest: str
+    by: str
+    signature: str
+    at: str = ""
+
+
+@dataclass
+class Reviewed:
+    ok: bool
+    problems: List[str] = field(default_factory=list)
+    #: what the AUTHOR says proves it works. Recorded, never run — see `review`.
+    tests: List[str] = field(default_factory=list)
+    digest: str = ""
 
 
 def _read_json(path: Path, what: str) -> Dict[str, Any]:
@@ -178,8 +225,15 @@ def _authors(root: Path, manifest: Dict[str, Any]) -> List[Dict[str, Any]]:
     return out
 
 
-def install(config: Config, path) -> Report:
-    """Accept a package onto this machine, or refuse it with a reason."""
+def install(config: Config, path, *, acceptances=None,
+            key: str = "k") -> Report:
+    """Accept a package onto this machine, or refuse it with a reason.
+
+    `acceptances` are signatures that travelled with it. They change what the
+    install SAYS, never what it allows: every refusal below runs for every
+    package whoever signed it, which is what makes a sideloaded package and an
+    accepted one equally safe to install. A signature is not a waiver.
+    """
     root = Path(path).expanduser().resolve()
     if not root.is_dir():
         raise Refused(f"{root} is not a package directory")
@@ -232,9 +286,13 @@ def install(config: Config, path) -> Report:
     (config.root / "market").mkdir(parents=True, exist_ok=True)
     (config.root / "market" / f"{agent_id}.md").write_text(spec_text)
 
+    # Read AFTER the refusals, deliberately: an acceptance decides what the
+    # owner is told about this package, not whether it gets past anything.
+    accepted = acceptance_of(root, acceptances, key=key)
     return Report(agent_id=agent_id, version=entry["market"]["version"],
                   purpose=entry["market"]["purpose"], authors=authors,
-                  source=str(root))
+                  source=str(root), digest=_digest(root),
+                  accepted_by=[accepted.by] if accepted else [])
 
 
 def installed(config: Config) -> List[Report]:
@@ -312,3 +370,126 @@ def _installed_dirs(config: Config, agent_id: str) -> None:
     for d in (agent.workspace, agent.host, agent.tasks, agent.sessions,
               agent.selfmodel):
         d.mkdir(parents=True, exist_ok=True)
+
+
+# ── pack · review · accept ────────────────────────────────────────────
+
+#: Everything under the package directory counts toward the digest. Over the
+#: manifest alone it would leave the obvious escape open: ship the reviewed
+#: manifest beside a tool nobody looked at.
+def _digest(root: Path) -> str:
+    h = hashlib.sha256()
+    for f in sorted(p for p in root.rglob("*") if p.is_file()):
+        h.update(str(f.relative_to(root)).encode())
+        h.update(b"\0")
+        h.update(f.read_bytes())
+        h.update(b"\0")
+    return h.hexdigest()
+
+
+def pack(path) -> Listing:
+    """Seal a directory into a listing. What is reviewed is what is installed."""
+    root = Path(path).expanduser().resolve()
+    if not root.is_dir():
+        raise Refused(f"{root} is not a package directory")
+    manifest = _read_json(root / MANIFEST, MANIFEST)
+    return Listing(agent_id=str(manifest.get("id") or ""),
+                   version=str(manifest.get("version") or ""),
+                   digest=_digest(root), source=str(root))
+
+
+def review(path) -> Reviewed:
+    """The acceptance questions, asked mechanically, by anyone.
+
+    The same questions `install` asks — one set of rules, or a package that
+    reviews clean and then refuses to install makes the review worth nothing.
+    Collected rather than raised on the first: a review that names one problem
+    at a time is a conversation, and an author fixing four things should be
+    told four things.
+
+    **It does not execute the package.** `tests/` is what the author says
+    proves it works, and running it to decide whether the author can be
+    trusted means executing untrusted code to find out whether it is
+    trustworthy. What tests exist is recorded; running them is the installer's
+    own call, on their own machine, after they have decided.
+    """
+    root = Path(path).expanduser().resolve()
+    problems: List[str] = []
+    try:
+        _probe(root)
+    except Refused as e:
+        problems.append(str(e))
+    tests = []
+    tdir = root / "tests"
+    if tdir.is_dir():
+        tests = sorted(f"tests/{f.name}" for f in tdir.rglob("*")
+                       if f.is_file())
+    digest = ""
+    try:
+        digest = _digest(root)
+    except OSError:
+        problems.append("the package could not be read in full")
+    return Reviewed(ok=not problems, problems=problems, tests=tests,
+                    digest=digest)
+
+
+def _probe(root: Path) -> None:
+    """Every refusal `install` applies that does not need the local registry."""
+    manifest = _read_json(root / MANIFEST, MANIFEST)
+    _check_shipped_state(root)
+    for name in _OWNERS_ALONE:
+        if name in manifest:
+            raise Refused(f"{MANIFEST} sets {name!r}, which is the owner's to "
+                          f"set. Installing an agent is not a way to grant one")
+    agent_id = str(manifest.get("id") or "").strip()
+    if not _ID.match(agent_id):
+        raise Refused(f"id {agent_id!r} is not a usable id — it keys this "
+                      f"agent's directory and its session store")
+    _check_requires(manifest)
+    share = manifest.get("price_share", 1.0)
+    try:
+        share = float(share)
+    except (TypeError, ValueError):
+        raise Refused(f"price_share {share!r} is not a number")
+    if not 0.0 <= share <= 1.0:
+        raise Refused(f"price_share {share} is outside 0-1")
+    _check_outward(manifest.get("outward"), MANIFEST)
+    if (root / ROSTER).exists():
+        _check_outward(_read_json(root / ROSTER, ROSTER).get("outward"), ROSTER)
+
+
+def _sign(digest: str, by: str, key: str) -> str:
+    return hmac.new(str(key).encode(), f"{by}:{digest}".encode(),
+                    hashlib.sha256).hexdigest()
+
+
+def accept(listing: Listing, *, by: str, key: str, now=time.time) -> Acceptance:
+    """Sign a reviewed listing. Judgement ON TOP of the checks, not instead.
+
+    A package that would not review cannot be accepted — a signature that
+    could override the arithmetic would make the arithmetic decorative.
+    """
+    got = review(listing.source)
+    if not got.ok:
+        raise Refused("this package does not pass review, so there is nothing "
+                      "to accept: " + "; ".join(got.problems))
+    return Acceptance(digest=listing.digest, by=by,
+                      signature=_sign(listing.digest, by, key),
+                      at=str(now()))
+
+
+def acceptance_of(path, acceptances, *, key: str = "k") -> Optional[Acceptance]:
+    """The acceptance that is actually FOR this package, or None.
+
+    Matched on the digest, so an acceptance does not travel to a neighbouring
+    version and does not survive the package being edited after it. The
+    signature is checked, so a record saying `by: governor` is not one.
+    """
+    here = _digest(Path(path).expanduser().resolve())
+    for acc in (acceptances or []):
+        if acc.digest != here:
+            continue
+        if hmac.compare_digest(acc.signature or "",
+                               _sign(here, acc.by, key)):
+            return acc
+    return None

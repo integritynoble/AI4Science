@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import List, Optional
 
+import json
 import typer
 from rich.console import Console
 from rich.table import Table
@@ -1541,6 +1542,10 @@ def market_install(path: str = typer.Argument(..., help="The package directory")
                       f" — touches {touches}", markup=False, highlight=False)
     console.print(f"  it runs at {reg_everyday()}, with an empty workspace and "
                   f"task list this machine made", markup=False, highlight=False)
+    # Which standing it has, said on the way in. An owner installing something
+    # nobody has looked at should be told that at the moment they do it, not
+    # be left to infer it from the absence of a line.
+    console.print(f"  {report.standing}", markup=False, highlight=False)
 
 
 @market_app.command("list", help="What was installed from the market.")
@@ -1578,3 +1583,52 @@ def market_remove(agent_id: str = typer.Argument(..., help="Agent id")) -> None:
 def reg_everyday() -> str:
     from ai4science.harness.agents.sarsi.registry import EVERYDAY_CEILING
     return EVERYDAY_CEILING
+
+
+@market_app.command("review", help="Ask the acceptance questions of a package.")
+def market_review(path: str = typer.Argument(..., help="The package directory")) -> None:
+    from ai4science.harness.agents.sarsi import market as mk
+    got = mk.review(path)
+    for problem in got.problems:
+        console.print(f"  - {problem}", markup=False, highlight=False)
+    if got.tests:
+        console.print("author's claim that it works: "
+                      + ", ".join(got.tests), markup=False, highlight=False)
+        # Said plainly, because a reader would otherwise assume a green review
+        # means the tests passed. Running them to decide whether the author can
+        # be trusted is executing untrusted code to find out if it is
+        # trustworthy — that is the installer's call, on their machine, after.
+        console.print("  (not run — reviewing does not execute the package)",
+                      markup=False, highlight=False)
+    else:
+        console.print("the author claims nothing proves it works",
+                      markup=False, highlight=False)
+    if not got.ok:
+        raise typer.Exit(code=1)
+    console.print(f"reviews clean · digest {got.digest[:16]}",
+                  markup=False, highlight=False)
+
+
+@market_app.command("publish", help="Seal a package and put it where a governor can read it.")
+def market_publish(path: str = typer.Argument(..., help="The package directory")) -> None:
+    from ai4science.harness.agents.sarsi import market as mk
+    config = _load()
+    try:
+        listing = mk.pack(path)
+    except mk.Refused as e:
+        console.print(str(e), style="yellow", markup=False, highlight=False)
+        raise typer.Exit(code=1)
+    # A file-inbox, the same handshake the compute design uses. HTTP later is a
+    # change of TRANSPORT: the digest and the signature are what is trusted, and
+    # neither cares how the listing travelled.
+    box = config.root / "market" / "outbox"
+    box.mkdir(parents=True, exist_ok=True)
+    body = {"agent_id": listing.agent_id, "version": listing.version,
+            "digest": listing.digest, "source": listing.source}
+    (box / f"{listing.agent_id}-{listing.digest[:12]}.json").write_text(
+        json.dumps(body, indent=2, sort_keys=True))
+    console.print(f"published {listing.agent_id} {listing.version}".rstrip(),
+                  markup=False, highlight=False)
+    console.print(f"  digest {listing.digest}", markup=False, highlight=False)
+    console.print(f"  waiting for review in {box}", markup=False,
+                  highlight=False)

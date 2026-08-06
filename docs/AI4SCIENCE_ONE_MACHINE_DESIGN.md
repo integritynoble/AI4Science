@@ -679,8 +679,38 @@ nothing else installed*:
 
 | | |
 |---|---|
-| **built** | the package format; `sarsi market install / list / remove`; the acceptance questions asked **at install, by the machine doing the installing**; the roster entry, the empty workspace and task list it creates; the author list shown before the owner commits |
-| **not built** | uploading, the governor's acceptance, the PWM reward and the 5% slice. All four need a server and belong to the app |
+| **built** | the package format; `pack` · `review` · `accept` · `publish` · `install` · `list` · `remove`; the acceptance questions asked **at install, by the machine doing the installing**; the digest that ties what was reviewed to what is installed; the signature that carries a governor's judgement; the roster entry, the empty workspace and task list it creates; the author list shown before the owner commits |
+| **not built** | the PWM reward and the 5% slice — §13, which needs the token economy, not a server |
+
+**The server is a transport detail, not the trust.** Uploading needs somewhere
+to upload *to*; acceptance does not. `review` asks the acceptance questions
+mechanically, on any machine, by anyone — so acceptance stops being a claim the
+market makes and becomes a thing a reader re-runs and gets the same answer to.
+What is left is the judgement, and that is a **signature over the digest**:
+
+| | |
+|---|---|
+| `pack` | seals the directory into a listing with a content digest — over **every file**, because a digest over the manifest alone leaves the obvious escape open: ship the reviewed manifest beside a tool nobody looked at |
+| `review` | the same questions the install asks. One set of rules, or a package that reviews clean and then refuses to install makes the review worth nothing. Every problem at once — an author fixing four things should be told four things |
+| `accept` | a signature over that digest, and the governor's whole contribution, because it is the only part that is judgement rather than arithmetic. A package that would not review **cannot** be accepted: a signature that could override the checks would make the checks decorative |
+| `publish` | writes the listing to a file inbox, the same handshake the compute design uses. HTTP later changes the transport and nothing else |
+| `install` | says which standing it has — accepted by whom, or **UNREVIEWED**, on the way in |
+
+An acceptance does not travel: it is matched on the digest, so it is not valid
+for a neighbouring version and does not survive the package being edited after
+it, and the signature is checked so a record *saying* `by: governor` is not one.
+
+**A signature is not a waiver.** Every refusal above runs for every package
+whoever signed it — the acceptance is read *after* them, and decides what the
+owner is told, never what gets past. That is what makes a sideloaded package and
+an accepted one equally safe to install, which is the property that lets this
+work with no server at all.
+
+**Review does not run the package.** `tests/` is what the author says proves it
+works, and running it to decide whether the author can be trusted is executing
+untrusted code to find out whether it is trustworthy. What tests exist is
+recorded and shown; running them is the installer's own call, on their own
+machine, after they have decided.
 
 The point of putting acceptance at install rather than at upload is that it
 holds either way. A listing's own claims are what the **market** needs; they are
