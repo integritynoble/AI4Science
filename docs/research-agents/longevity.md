@@ -174,16 +174,20 @@ what**, with cost breaking ties.
 
 ## The group
 
-The nine-member floor applies unchanged; only the field-specific parts are
-listed. The **twin** and the **verifier** are not the worker's, for the usual
-reason.
+The nine-member floor applies here as everywhere. The **twin** and the
+**verifier** are not the worker's, for the usual reason.
 
 | member | kind | acts on | its refusal |
 |---|---|---|---|
+| literature | reasoning | prior work, with citations | refuses a claim it cannot cite, and never reads while the method is being written |
 | twin | reasoning | the cohort-in-time model | refuses to be graded on a population outside the survey's sampling frame |
 | corpus | reasoning | NHANES + linked mortality | refuses when the linkage is absent, **naming the fetch command**, and never substitutes simulated follow-up |
+| method | reasoning | the survival model | the only member that writes the thing being judged |
+| runner | reasoning | compute | refuses a run whose cost or placement it cannot state |
 | verifier | judging | the benchmark | refuses any result not reported beside the age-and-sex floor |
+| reproducer | judging | published artifacts alone | refuses a result it cannot re-run from what was published |
 | teacher | judging | the owner's own check | refuses to report a hazard ratio without the absolute risk difference beside it |
+| writer | judging | the field page and the paper | writes last, from the record, never from intent |
 | **collection robot** | **embodied** | donors and samples | refuses to collect outside consented scope |
 
 > **Nine members are the floor, not the design.** A field may add; it may not
