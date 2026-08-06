@@ -187,6 +187,11 @@ LDCT = DomainBenchmark(
               "at least half the inserted contrast survives restoration",
               "an edge-preserving prior clears these; a PSNR-maximising blur "
               "does not, which is the whole point of scoring both"),
+    # Four distinct problems exist: seeds 0, 4, 8, 12 are byte-identical, as are
+    # 1/5/9/13 and so on. A six-seed night split search (0,1) and validation
+    # (2,3,4,5), so seeds 4 and 5 put the search set back into the validation
+    # set. One representative per class, and the split has to fit inside four.
+    usable_seeds=(0, 1, 2, 3),
 )
 
 
@@ -826,6 +831,12 @@ METHYLAGE = DomainBenchmark(
               "validated on institutions that contributed nothing to the fit",
               "chronological age only — no claim about rate of ageing, and no "
               "outcome examined"),
+    # Seven distinct problems across sixteen seeds, irregularly: {0,7}, {1},
+    # {2,3,10,13}, {4,6}, {5,8,11}, {9,14,15}, {12}. The old set (0..5) put
+    # seeds 2 and 3 — the same problem — both in validation, so a four-seed
+    # paired test rested on three measurements. One representative per class
+    # gives five genuinely distinct validation problems instead of three.
+    usable_seeds=(0, 1, 2, 4, 5, 9, 12),
 )
 
 # The registry lives at the end of the file so that adding a benchmark below an

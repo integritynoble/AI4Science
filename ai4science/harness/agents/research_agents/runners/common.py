@@ -119,6 +119,14 @@ class DomainBenchmark:
     #: Given metrics, decide. One per field; see the module docstring.
     judge: Callable[[Dict[str, float]], Verdict]
     criteria: Tuple[str, ...] = ()
+    #: Seeds that generate genuinely DIFFERENT problems for this benchmark.
+    #:
+    #: Empty means every seed does. Set it where the seed maps into a finite
+    #: corpus and repeats: low-dose CT has four patients, so seeds 0 and 4 are
+    #: byte-identical, and a night that used both was validating on its own
+    #: search set. Declaring the usable seeds here means a caller cannot get it
+    #: wrong; `check_seed_independence` is the check that catches it if one does.
+    usable_seeds: Tuple[int, ...] = ()
     #: The corpus this benchmark reads, if it reads one. None means the data is
     #: generated rather than measured — and a result from generated data is
     #: evidence about a method, never about the world.

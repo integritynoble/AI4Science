@@ -324,6 +324,18 @@ def autonomous_round(agent, bench: DomainBenchmark, *, client_factory,
     budget = agent.switch.require_on()          # raises PermissionError when off
     claim = agent.field_map.next_work()
     seeds = tuple(seeds)
+    # Where the benchmark declares which seeds generate different problems, use
+    # them. A caller asking for six seeds from a benchmark with four distinct
+    # problems is asking for two duplicates, and getting them silently is how a
+    # validation set stops being held out.
+    usable = tuple(getattr(bench, "usable_seeds", ()) or ())
+    if usable:
+        # The declared set IS the seed set for this benchmark — it is the widest
+        # set of genuinely different problems it has. Intersecting it with a
+        # caller's range(6) would quietly throw away the distinct problems that
+        # happen to sit at higher seed numbers, which is the opposite of the
+        # point: reverse aging's are at 9 and 12.
+        seeds = usable
     if validation_seeds is None:
         # Validation gets the LARGER share. The search only has to rank
         # candidates; the validation set has to carry a claim, and the first

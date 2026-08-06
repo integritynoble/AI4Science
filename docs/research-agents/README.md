@@ -132,6 +132,26 @@ Reverse aging and low-dose CT are corpus-bound and need more data, not more
 seeds — which is the same conclusion their pages already reach for other
 reasons.
 
+### The redraw, and what it cost each agent
+
+| | old set | redrawn | effect |
+|---|---|---|---|
+| **low-dose CT** | 0–5, of which 4 and 5 repeated 0 and 1 | **0–3**, one per patient | it can **measure** but no longer **search**: 4 problems cannot fund both a search set and a validation set worth the name |
+| **reverse aging** | 0–5, with 2 and 3 the same problem | **0, 1, 2, 4, 5, 9, 12** | validation goes from *three* distinct problems to **five** — more power than it had, from the same corpus |
+
+> **Low-dose CT losing its searching night is the correct outcome, not a
+> regression.** With four distinct problems, any split with enough search seeds
+> to rank candidates leaves too few to validate on — and the previous night only
+> appeared to manage it by validating on its own search set. The honest position
+> is that this agent's corpus supports measurement and not search, and that more
+> patients, not more seeds, is what would change it.
+
+Reverse aging's night on the redrawn set reaches the same verdict as before —
+nothing beat the incumbent, and the two large-ridge candidates were refused for
+pushing bulk-structure share from 0.56 to 0.78 and 0.74 — but it now rests on
+five genuinely different institutional splits rather than four seeds hiding
+three.
+
 ## 0b2. What a night actually costs
 
 Measured 2026-08-06, one agent at a time on one machine — sequential on purpose,
