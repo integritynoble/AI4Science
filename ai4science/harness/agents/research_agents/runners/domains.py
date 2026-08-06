@@ -193,7 +193,7 @@ LDCT = DomainBenchmark(
 # -------------------------------------------------------- medical physics
 
 def _score_medphys(seed_ws: Path, run_ws: Path) -> Dict[str, float]:
-    """Real DVH statistics, per structure, on the slice the plan was made for.
+    """Real DVH statistics, per structure, over the whole planned volume.
 
     The clinical dose is loaded here — outside the sandbox — purely to report
     how the candidate compares with what the patient actually received. It is
@@ -201,15 +201,24 @@ def _score_medphys(seed_ws: Path, run_ws: Path) -> Dict[str, float]:
     import json as _json
     proto = _json.loads((seed_ws / "data" / "protocol.json").read_text())
     dose = np.load(run_ws / "results" / "dose.npy")
-    k = int(np.load(run_ws / "results" / "slice_index.npy")[0])
-    clinical = np.load(seed_ws / "data" / "clinical_dose.npy")[:, :, k]
+    clinical_full = np.load(seed_ws / "data" / "clinical_dose.npy")
+    if dose.ndim == 3:
+        # Volumetric: every structure is scored on all of its voxels. The 2D
+        # path below survives only so an older artifact still reads — a planner
+        # that returns a slice is reporting a property of one plane.
+        take = lambda a: a
+        clinical = clinical_full
+    else:
+        k = int(np.load(run_ws / "results" / "slice_index.npy")[0])
+        take = lambda a: a[:, :, k]
+        clinical = clinical_full[:, :, k]
 
     out: Dict[str, float] = {}
     for name, rule in proto.items():
         f = seed_ws / "data" / ("%s.npy" % name)
         if not f.exists():
             continue
-        m = np.load(f)[:, :, k]
+        m = take(np.load(f))
         if not m.any():
             continue
         d = dose[m]
@@ -223,7 +232,7 @@ def _score_medphys(seed_ws: Path, run_ws: Path) -> Dict[str, float]:
             out["%s_Dmean" % name] = float(d.mean())
             out["%s_Dmean_limit" % name] = float(rule["Dmean"])
     out["clinical_PTV70_D99"] = float(np.percentile(
-        clinical[np.load(seed_ws / "data" / "PTV70.npy")[:, :, k]], 1))
+        clinical[take(np.load(seed_ws / "data" / "PTV70.npy"))], 1))
     out["hot_spot"] = float(dose.max())
     out["hot_spot_limit"] = float(proto["PTV70"]["prescription"] * 1.15)
     return out
