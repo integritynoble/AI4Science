@@ -1094,8 +1094,29 @@ itself.
 > quietly assert *this owed nothing*. The unmeasured runs are counted and
 > reported, so a total is never mistaken for complete.
 >
-> **Not built:** the non-exchangeable starting balance and the exchange node
-> below. Both hold a balance, which is the thing this deliberately does not do.
+> **The exchange node is built too** — `sarsi exchange start --budget-pwm N` ·
+> `status` · `stop`. Three of its four properties are refusals, which is the
+> right proportion for a thing that runs on the owner's machine to make money:
+>
+> * **it is not a worker**, and that is the invariant *the agent you talk to
+>   does not execute* with a sibling — **the thing that earns does not work for
+>   you**. `workers()` does not offer it, `admit` refuses it and `assign` will
+>   not drive a session for it. It has its **own role**, deliberately: sharing
+>   the worker role would leave it one rename from being handed a task.
+> * **it holds no task list** — asking raises rather than returning `[]`,
+>   because an empty list is a thing something can fill.
+> * **it is bounded.** It will not start without a budget the owner set, and it
+>   stops at it. It also refuses to record supply while stopped, so the ledger
+>   cannot grow for a node the owner turned off.
+> * **it is visible**, in the listing the owner already reads, so a machine
+>   that is earning never looks like one that is idle. `status` tells *"never
+>   started"* apart from *"started and stopped"* — the second has earnings
+>   behind it.
+>
+> **Not built:** the non-exchangeable starting balance. It holds a balance,
+> which is the thing this deliberately does not do — building it means deciding
+> where a balance lives and who may move it, and that is a question about
+> custody rather than a feature.
 
 **A run on ai4science pays no platform share.** That is the difference this
 product is: the app adds a manager and a front door and charges for them, and

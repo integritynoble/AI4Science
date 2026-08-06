@@ -85,6 +85,14 @@ class Admission:
 def admit(config: Config, agent: Agent, directive: Directive, *,
           now=time.time, **probe_kw) -> Admission:
     if not agent.is_worker:
+        # The exchange node is neither a manager nor a worker, and a refusal
+        # that called it one would send the owner to the wrong fix.
+        from ai4science.harness.agents.sarsi.registry import EXCHANGE_ROLE
+        if agent.role == EXCHANGE_ROLE:
+            raise NotAWorker(
+                f"{agent.id} is not a worker: it supplies capacity to other "
+                f"people's runs and never touches yours. It holds no task "
+                f"list, and this is the refusal that keeps it that way")
         raise NotAWorker(
             f"{agent.id} is a manager: it may tell a worker to work, and may "
             f"not admit work itself")

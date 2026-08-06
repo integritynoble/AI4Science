@@ -29,6 +29,11 @@ CONFIG_NAME = "sarsi.json"
 #: disagrees quietly is the one that grants too much.
 EVERYDAY_CEILING = "A1"
 MANAGER_ROLE = "manager"
+#: The exchange node. Its OWN role, deliberately — it is neither a manager nor
+#: a worker, and every refusal that keeps it away from the owner's work keys on
+#: this. Sharing the worker role would leave it one rename from being handed a
+#: task.
+EXCHANGE_ROLE = "exchange"
 WORKER_ROLE = "worker"
 
 
@@ -208,7 +213,7 @@ def _agent_from(entry: Dict[str, Any], defaults: Dict[str, Any], root: Path) -> 
     if not agent_id:
         raise ConfigError("an agent entry has no id")
     role = str(pick("role", WORKER_ROLE))
-    if role not in (MANAGER_ROLE, WORKER_ROLE):
+    if role not in (MANAGER_ROLE, WORKER_ROLE, EXCHANGE_ROLE):
         raise ConfigError(f"agent {agent_id!r} has unknown role {role!r}")
     return Agent(
         id=agent_id,

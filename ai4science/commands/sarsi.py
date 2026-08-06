@@ -1657,3 +1657,36 @@ def earned_cmd() -> None:
     console.print("  this records what is owed and moves nothing — settling is "
                   "the platform's, never this machine's", markup=False,
                   highlight=False)
+
+
+exchange_app = typer.Typer(help="The node that earns, and never touches your work.")
+app.add_typer(exchange_app, name="exchange")
+
+
+@exchange_app.command("start", help="Start the exchange node, bounded by a budget.")
+def exchange_start(budget_pwm: float = typer.Option(
+        None, "--budget-pwm", help="How much PWM it may supply before stopping.")) -> None:
+    from ai4science.harness.agents.sarsi import exchange as ex
+    try:
+        got = ex.start(_load(), budget_pwm=budget_pwm)
+    except ex.NotAnAgent as e:
+        console.print(str(e), style="yellow", markup=False, highlight=False)
+        raise typer.Exit(code=1)
+    console.print(got.summary, markup=False, highlight=False)
+    console.print("  stop it any time: ai4science sarsi exchange stop",
+                  markup=False, highlight=False)
+
+
+@exchange_app.command("status", help="Is it earning, and how much of its budget is left.")
+def exchange_status() -> None:
+    from ai4science.harness.agents.sarsi import exchange as ex
+    console.print(ex.status(_load()).summary, markup=False, highlight=False)
+
+
+@exchange_app.command("stop", help="Stop it. Yours to do at any time.")
+def exchange_stop() -> None:
+    from ai4science.harness.agents.sarsi import exchange as ex
+    got = ex.stop(_load())
+    console.print(got.summary, markup=False, highlight=False)
+    console.print("  what it supplied is kept — stopping it is a decision "
+                  "about the future", markup=False, highlight=False)
