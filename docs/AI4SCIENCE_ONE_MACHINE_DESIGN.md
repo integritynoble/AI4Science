@@ -58,6 +58,7 @@ say so in their own titles, so a point can be found by scrolling:
      The two functions, and who verifies what    (Point 24)
      What one research agent is made of          (Point 25)
      Self-awareness, in a research agent         (Point 26)
+     A research agent is a GROUP, and some of it has a body
      RSI, and how a field ends                   (Point 27)
      The governor's research agents             (Points 6 and 12)
 13. What runs it costs                          (Points 2, 3 and 4)
@@ -1168,6 +1169,89 @@ function works on next.
 
 So self-awareness here is instrumental: it exists to aim the work, and it is
 auditable because it is derived from things that already have verdicts on them.
+
+### Redesigned: a research agent is a GROUP, and some of it has a body
+
+The sections above describe a research agent as one agent with sub-agents
+plugged into it. That was right while everything it could do reached a screen or
+a file. It stops being right the moment a sub-agent can pick something up.
+
+**Human labour in a lab is going to be done by robots**, and the work a research
+agent is for — run the assay, load the sample, align the optics, image the
+plate — is exactly that labour. So the design has to answer a question it has
+never had to answer: what happens when an agent's act is not a file.
+
+So a research agent is redesigned as a **group** with three kinds of member,
+and the kinds are defined by *what their acts reach*:
+
+| kind | reaches | can it be undone |
+|---|---|---|
+| **reasoning** — planner, composer, self-model | a file in the workspace | yes, trivially |
+| **judging** — the domain verifier, the teacher | a verdict and a check | it is the thing that decides, so it is never the thing that acts |
+| **embodied** — the bench, the stage, the arm | **the world** | **no** |
+
+#### The rule a body forces
+
+This system already has the sentence, in `undo`, written for a published post:
+
+> *no way to retract a `<kind>` on `<destination>` is wired in here. Take it
+> down yourself; this will not pretend it did.*
+
+For an embodied sub-agent that is not an edge case, it is **the normal case**. A
+pipetted reagent, a cut, a moved stage, a fired laser: there is no retraction,
+and the honest design does not pretend otherwise. Which gives the group's first
+rule:
+
+> **An embodied act is irreversible, and is treated as irreversible by default.**
+> `outward` already asks *reversibility* before it asks anything else; for a
+> body the answer is always "no", so an embodied act needs the grant that
+> irreversible acts need, every time, and a standing grant does not cover it.
+
+Two more follow from it, and both are refusals this document has argued for
+elsewhere and now has a harder case for:
+
+* **an embodied sub-agent may not verify its own act.** The group's verifier
+  judges from *evidence the body produced*, not from the body's report of what
+  it did. This is the independence rule with the stakes raised: a closed loop
+  in §27 gives you a wrong number, and a closed loop here gives you a wrong
+  number **and a changed bench**.
+* **the group's ceiling is the LOWEST of its members', not the agent's.** An
+  agent released to A1 whose arm sub-agent could act at A2 has been released to
+  A2 by the back door. The ceiling belongs to the act, and the act with a body
+  sets it.
+
+#### What the group looks like, for one field
+
+Computational imaging again, because it is the one with real optics:
+
+| member | kind | acts on | what its refusal is |
+|---|---|---|---|
+| planner | reasoning | `plan0.md` | refuses a criterion no independent verifier can read |
+| reconstruction runner | reasoning | the GPU, files | refuses when the corpus is absent, **naming the fetch command** |
+| domain verifier | judging | the benchmark | refuses to judge a plan that has drifted from what was released |
+| teacher | judging | the owner's own check | refuses to report a pass it cannot hand the owner a way to re-run |
+| **optical bench** | **embodied** | mask, stage, camera | refuses **every** act without a grant naming that act; reports what it moved, never what it intended |
+
+The bench row is the whole change. Everything above it can be re-run; the bench
+row can only be *reported*.
+
+#### Where this leaves §27
+
+The collapse section said a field ends when agents verify agents and no human
+checks. With a body in the group, that end state has a physical half, and the
+honest handling is the same one and needs saying more loudly:
+
+> **A field whose embodied acts no human has checked is a field whose page says
+> so** — how long the chain of agent-only verification has run, and *what was
+> physically done* during it. A reader deciding whether to trust the field can
+> then see the one thing that decides it, and the one thing they cannot undo.
+
+**What is built, and what is not.** The reasoning and judging members are built
+or specified above. **Nothing embodied is built**, and this section is a design
+that says what would have to be true first: irreversible-by-default, no
+self-verification of an act, the group's ceiling set by its lowest member, and
+`undo`'s refusal — *this will not pretend it did* — as the normal case rather
+than the exception.
 
 ### Recursive self-improvement, and how a field ends (Point 27)
 
