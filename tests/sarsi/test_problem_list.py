@@ -134,8 +134,13 @@ def test_computational_imaging_orders_the_way_the_design_says_it_does():
     """§11b claims this order, from the rule. Applying the rule to the real
     problems has to produce it — or the rule is wrong, or the document is."""
     got = [p.id for p in problems.order(problems.COMPUTATIONAL_IMAGING)]
-    assert got == ["forward-model", "benchmark", "baselines", "solution",
-                   "principle"], got
+    # The algorithm ladder still runs in the documented order. The hardware
+    # branch interleaves with it rather than following it, which is what
+    # co-design means — the optic is a design variable, not a later step.
+    algo = [p for p in got if p in ("forward-model", "benchmark", "baselines",
+                                    "solution", "principle")]
+    assert algo == ["forward-model", "benchmark", "baselines", "solution",
+                    "principle"], got
 
 
 def test_and_the_principle_is_last_not_first():
@@ -196,3 +201,41 @@ def test_a_field_with_no_list_says_so_rather_than_printing_nothing(
     res = runner.invoke(app, ["sarsi", "problems", "astrology"])
     assert res.exit_code != 0
     assert "astrology" in res.output
+
+
+def test_a_tie_says_it_is_a_tie(  ):
+    """Two problems that unblock the same amount are separated alphabetically,
+    which is arbitrary — and a list that printed the same reason at two
+    different positions would have a reader mistake position for judgement."""
+    got = problems.order([_p("aaa", "L2"), _p("bbb", "L2"),
+                          _p("x", "L3", deps=["aaa"]),
+                          _p("y", "L3", deps=["bbb"])])
+    first = [p for p in got if p.id == "aaa"][0]
+    assert "tie" in first.why.lower() or "equally" in first.why.lower()
+
+
+def test_and_a_clear_winner_does_not(  ):
+    got = problems.order([_p("big", "L2"), _p("small", "L2"),
+                          _p("x", "L3", deps=["big"])])
+    first = [p for p in got if p.id == "big"][0]
+    assert "tie" not in first.why.lower()
+
+
+def test_only_the_ones_actually_ready_today_say_ready_now():
+    """`order` walks the frontier, marking each pick solved as it goes — so
+    every item downstream was being labelled "ready now" while its dependencies
+    sat open. The walk's "now" is not the reader's now, and the reader is the
+    one being told."""
+    got = problems.order([_p("a", "L2"), _p("b", "L3", deps=["a"])])
+    assert "ready now" in got[0].why
+    assert "ready now" not in got[1].why
+
+
+def test_and_a_waiting_one_names_what_it_waits_for():
+    got = problems.order([_p("a", "L2"), _p("b", "L3", deps=["a"])])
+    assert "a" in got[1].why and "after" in got[1].why.lower()
+
+
+def test_a_solved_dependency_does_not_count_as_something_to_wait_for():
+    got = problems.order([_p("a", "L2", solved=True), _p("b", "L3", deps=["a"])])
+    assert "ready now" in got[0].why or "ready now" in got[1].why

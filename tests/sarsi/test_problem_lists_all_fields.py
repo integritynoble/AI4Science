@@ -135,3 +135,45 @@ def test_listing_the_fields_themselves(tmp_path, monkeypatch):
     out = runner.invoke(app, ["sarsi", "problems"]).output
     for field in ALL:
         assert field in out
+
+
+# ── computational imaging is co-design, not algorithm-only ────────────
+
+def test_the_optic_is_a_design_variable_not_a_constant():
+    """The list treated the hardware as given, which is the algorithm half of a
+    field that is co-design: the coding optic and the reconstruction are
+    designed together, and a solution scored on an arbitrary mask is a solution
+    to an arbitrary problem."""
+    ids = {p.id for p in _list("computational-imaging")}
+    assert "hardware-model" in ids
+
+
+def test_the_mask_finding_on_this_machine_grounds_it():
+    """binary vs continuous mask: HDNet 35→28 dB. That is a HARDWARE-model
+    result held here, not a reading — the mask IS the coding optic."""
+    hw = [p for p in _list("computational-imaging")
+          if p.id == "hardware-model"][0]
+    assert hw.grounded is True
+    assert "mask" in hw.because.lower()
+
+
+def test_and_the_built_optic_is_its_own_problem():
+    """A mask optimised in simulation and then fabricated does not match. That
+    gap is the field's, and it is the one problem here that needs a body."""
+    ids = {p.id for p in _list("computational-imaging")}
+    assert "built-vs-simulated" in ids
+
+
+def test_co_design_cannot_come_before_the_thing_it_optimises_against():
+    """Joint optimisation needs a forward model to optimise through and a
+    benchmark to score against. The rule should place it after both without
+    being told."""
+    got = [p.id for p in problems.order(_list("computational-imaging"))]
+    assert got.index("co-design") > got.index("forward-model")
+    assert got.index("co-design") > got.index("benchmark")
+
+
+def test_and_the_principle_still_lands_last():
+    """Adding a whole hardware branch must not disturb the claim §11b makes."""
+    got = problems.order(_list("computational-imaging"))
+    assert got[-1].id == "principle"

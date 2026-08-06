@@ -148,6 +148,12 @@ def order(listing: Sequence[Problem]) -> List[Problem]:
     by_id = _check(listing)
     remaining = [p for p in listing if not p.solved]
     solved: Set[str] = {p.id for p in listing if p.solved}
+    #: What is solved TODAY, which stops changing. The walk below marks each
+    #: pick solved as it goes — that is how it finds the next frontier — so
+    #: reading readiness off `solved` would call every problem in the list
+    #: "ready now". The walk's now is not the reader's now, and the reader is
+    #: the one being told.
+    today = set(solved)
     out: List[Problem] = []
 
     while remaining:
@@ -168,8 +174,20 @@ def order(listing: Sequence[Problem]) -> List[Problem]:
             continue
         pick = sorted(here, key=lambda q: (-unblocks(listing, q.id), q.id))[0]
         n = unblocks(listing, pick.id)
-        pick.why = (f"ready now, and unblocks {n} problem(s) below it"
-                    if n else "ready now, and unblocks nothing further")
+        # A tie is separated alphabetically, which is arbitrary. Said out loud,
+        # because printing the same reason at two different positions would
+        # have a reader mistake position for judgement — and this list is meant
+        # to be arguable rather than authoritative.
+        tied = [q.id for q in here
+                if q.id != pick.id and unblocks(listing, q.id) == n]
+        waits_for = [d for d in pick.depends_on if d not in today]
+        when = ("ready now" if not waits_for
+                else "ready after " + ", ".join(waits_for))
+        pick.why = (f"{when}, and unblocks {n} problem(s) below it"
+                    if n else f"{when}, and unblocks nothing further")
+        if tied:
+            pick.why += (f" — tied with {', '.join(sorted(tied))}, so the order "
+                         f"between them is arbitrary")
         out.append(pick)
         solved.add(pick.id)
         remaining.remove(pick)
@@ -226,17 +244,59 @@ COMPUTATIONAL_IMAGING: List[Problem] = [
         title="a method that beats the re-run baselines",
         verified_when="it beats the re-run numbers on the fixed benchmark",
         because="the first checkable 'better' the field has"),
+    # ── the hardware half ─────────────────────────────────────────────
+    #
+    # The five problems above are the ALGORITHM ladder, and on their own they
+    # treat the coding optic as a constant. Computational imaging is co-design:
+    # the mask, aperture and illumination are design variables, and a solution
+    # scored on an arbitrarily chosen optic is a solution to an arbitrarily
+    # chosen problem.
     Problem(
-        id="principle", tier="L1", depends_on=["solution"],
+        id="hardware-model", tier="L2", depends_on=["forward-model"],
+        title="the coding optic as a design variable, with its tolerances",
+        verified_when=("the spec states the optic's parameters and the "
+                       "tolerance on each, and two masks differing only within "
+                       "tolerance give results within the benchmark's noise"),
+        because=("this machine has the evidence: the binary-vs-continuous mask "
+                 "question moved HDNet 35→28 dB, and the mask IS the coding "
+                 "optic — so 'which mask' is a hardware statement wearing an "
+                 "implementation detail's clothes")),
+    Problem(
+        id="built-vs-simulated", tier="L3",
+        depends_on=["hardware-model", "benchmark"],
+        title="does the fabricated optic match the one that was designed",
+        verified_when=("the measured point-spread function of the built optic "
+                       "against the simulated one, on the benchmark's metric"),
+        because=("a mask optimised in simulation and then fabricated does not "
+                 "match, and every downstream number inherits the difference. "
+                 "This is the one problem in this field that needs a body — "
+                 "see the embodied member of the group")),
+    Problem(
+        id="co-design", tier="L4",
+        depends_on=["built-vs-simulated", "baselines"],
+        title="optimise the optic and the reconstruction together",
+        verified_when=("a jointly designed system that beats the best "
+                       "algorithm-only result on the fixed benchmark, with the "
+                       "optic's tolerances respected"),
+        because=("the field's actual claim: that designing the measurement and "
+                 "the inversion together beats designing either alone")),
+    Problem(
+        id="principle", tier="L1", depends_on=["solution", "co-design"],
         title="the principle behind why it wins",
         verified_when=("it predicts a result on data the solution was not "
                        "tuned on"),
         because=("promoted last, because a principle inferred from one win is "
-                 "a story")),
+                 "a story — and now it has to explain the hardware half too")),
 ]
 for _p in COMPUTATIONAL_IMAGING:
-    # Every one of these is anchored in work this repository has done.
+    # Anchored in work this repository has done — the forward-model bug and the
+    # mask finding are both in its history.
     _p.grounded = True
+for _p in COMPUTATIONAL_IMAGING:
+    if _p.id in ("built-vs-simulated", "co-design"):
+        # No optic has been fabricated here and nothing has been jointly
+        # optimised. These two are read, and the listing says so.
+        _p.grounded = False
 
 
 #: ── the fields below are READ, not measured ──────────────────────────
