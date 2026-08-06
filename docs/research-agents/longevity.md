@@ -146,6 +146,14 @@ what**, with cost breaking ties.
 > **"Solved when" is the entry fee.** A problem with no measurement that would
 > settle it is a research interest, and interests belong in the charter.
 >
+> **A rung is closed by the registry, not by the agent.** "Solved" means a
+> benchmark has a published solution that meets it, runnable by anyone. The
+> agent may propose that a rung is closed; the closing is an artifact.
+>
+> **Evidence that would reorder it.** A cohort where age and sex are unavailable
+> would move rung 3 above rung 2; evidence that cycle drift is negligible would
+> demote rung 3.
+>
 > **The failure this ladder is built against is starting at rung 7.** Marker
 > panels are the fundable, publishable, sellable rung, and every one of them is
 > uninterpretable until rungs 2 and 3 hold.
@@ -177,6 +185,10 @@ reason.
 | verifier | judging | the benchmark | refuses any result not reported beside the age-and-sex floor |
 | teacher | judging | the owner's own check | refuses to report a hazard ratio without the absolute risk difference beside it |
 | **collection robot** | **embodied** | donors and samples | refuses to collect outside consented scope |
+
+> **Nine members are the floor, not the design.** A field may add; it may not
+> remove. An agent whose manifest omits the **verifier** or the **twin** is not a
+> research agent with fewer parts — it is *a method with a scoreboard*.
 
 > **What a body does not fix, and here it is the whole field.** Longevity is
 > gated on *follow-up time*. A robot can draw and process samples faster; it

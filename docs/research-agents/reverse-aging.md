@@ -62,7 +62,9 @@ longitudinal data, outcomes, and a twin that models trajectories rather than
 cross-sections. By the [`lifecycle.md`](lifecycle.md) test that is unambiguously
 a different field, and it is where all of this field's value actually lives.
 
-**And if it collapses by indifference, little survives** — which is the honest asymmetry. A clock with no outcome link has no service half to retire into. That is what makes problem 4 the one that decides the field.
+**This field is the one exception to "retired from research, not from
+service", and the exception is the point.** If it collapses by indifference,
+little survives — which is the honest asymmetry. A clock with no outcome link has no service half to retire into. That is what makes problem 4 the one that decides the field.
 
 **Status: built and running on real data, 2026-08-05.** Charter, self-model,
 field map, corpus and benchmark are implemented. The benchmark reads **GEO
