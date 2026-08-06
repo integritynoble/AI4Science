@@ -1181,7 +1181,9 @@ agent is for — run the assay, load the sample, align the optics, image the
 plate — is exactly that labour. So the design has to answer a question it has
 never had to answer: what happens when an agent's act is not a file.
 
-So a research agent is redesigned as a **group** with three kinds of member,
+So a research agent is redesigned as a **group** — one workspace, one task
+list, one ceiling, members that talk to each other directly, and one agent as
+far as anyone outside is concerned. Within it there are three kinds of member,
 and the kinds are defined by *what their acts reach*:
 
 | kind | reaches | can it be undone |
@@ -1189,6 +1191,57 @@ and the kinds are defined by *what their acts reach*:
 | **reasoning** — planner, composer, self-model | a file in the workspace | yes, trivially |
 | **judging** — the domain verifier, the teacher | a verdict and a check | it is the thing that decides, so it is never the thing that acts |
 | **embodied** — the bench, the stage, the arm | **the world** | **no** |
+
+#### One workspace, one body: what makes the group ONE agent
+
+The members are not seven agents cooperating. They **share one workspace, talk
+to each other directly, and stay in agreement** — from outside the group there
+is one agent, with one task list, one ceiling, one record and one verdict. The
+owner deals with a thing, not a committee.
+
+This is not a hole in §9's *"there is no channel between two agents"*. It is
+what that rule was always about. The rule keeps `work` from sending to
+`funding` — two agents with different scopes, where a pipe would let one act on
+the other's behalf. **Inside one research agent there are no two scopes.** The
+planner, the runner, the verifier and the bench are all working the same
+problem, on the same evidence, under one grant, and giving them a shared
+workspace does not widen anything — it is the workspace that agent already had.
+
+So the boundary moves down a level and the rules keep their shape:
+
+| | inside one group | between groups |
+|---|---|---|
+| workspace | **shared** — one `W_<name>` | separate |
+| talking | **direct** | publish, never browse |
+| task list | one | one each |
+| ceiling | one, and it is the **lowest** any member's act needs | one each |
+| a fact travels by | being written where all of them read | being **published** and read at plan time |
+
+#### And the one thing "in agreement" must not mean
+
+Sharing a workspace makes the members agree about **what happened** — one
+record, so the runner and the verifier cannot hold different accounts of what
+was run. That is the point, and it is the same reason there is one self-model
+and one task list rather than two: *the first thing to diverge would be the part
+that flatters it.*
+
+It must not make them agree about **whether it is good**:
+
+> **They share the evidence. They do not share the verdict.**
+
+The verifier reads the same files as the runner and reaches its own conclusion
+about them, and a group where the verdict is agreed by construction has replaced
+verification with unanimity. That is not a smaller version of the closed loop in
+§27 — it *is* the closed loop, moved inside one agent where it is harder to see.
+
+The practical test is the one this system already applies: a verdict from the
+same engine that did the work says so, in the record. A group verdict that
+cannot say which member reached it, from what evidence, and what would have
+changed its mind, is one voice with several names.
+
+**"Like one body" is exactly the right image, and it cuts both ways.** A body
+has one memory and acts as one thing — and a body whose nerves only ever report
+what the hand hoped is one that burns itself.
 
 #### The rule a body forces
 
