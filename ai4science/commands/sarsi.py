@@ -956,7 +956,7 @@ def run_cmd(agent_id: str = typer.Argument(..., help="Worker id"),
     except worker.NotAWorker as e:
         console.print(str(e), style="red", markup=False, highlight=False)
         raise typer.Exit(code=2)
-    except ses.NotReady as e:
+    except (ses.NotReady, ses.CouldNotRelease) as e:
         console.print(str(e), style="yellow", markup=False, highlight=False)
         raise typer.Exit(code=1)
     except ses.CouldNotStart as e:

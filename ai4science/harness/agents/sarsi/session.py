@@ -40,6 +40,17 @@ class NotReady(Exception):
     """The task is not ready to be assigned — and this says what it is waiting for."""
 
 
+class CouldNotRelease(Exception):
+    """The ceiling would not raise, so the task was not released.
+
+    Reported rather than recorded: the hook reads the LIVE supervisor record,
+    so a raise that failed leaves the session at A0 while this record would
+    have claimed the new ceiling — the board, `attention` and `agents` all
+    showing the owner a thing that is not true about the one field the ladder
+    rests on.
+    """
+
+
 class CouldNotStart(Exception):
     """The session would not start. Reported, never pretended around."""
 
@@ -676,8 +687,15 @@ def release(config: Config, agent: Agent, task: tsk.Task, *,
     rt = runtime or MachineRuntime()
     try:
         rt.set_ceiling((task.session or {}).get("name", ""), raised)
-    except Exception:
-        pass
+    except Exception as e:
+        # NOT swallowed. This used to `pass` and then record `raised` anyway,
+        # so a failed raise left the session running at A0 with every reader
+        # showing the new ceiling. Honoured or refused, never dropped — the
+        # same rule the governance wiring and the pane check now follow.
+        raise CouldNotRelease(
+            f"the ceiling would not raise to {raised}: {type(e).__name__}: {e}"
+            f" — {task.id} is not released, because a task recorded at a "
+            f"ceiling its session does not have is worse than one not released")
     if task.session:
         task.session["ceiling"] = raised
         task = tsk._touch(agent, task, now)

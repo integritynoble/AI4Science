@@ -61,6 +61,12 @@ class FakeRuntime:
         return {"ok": True}
 
 
+    def set_ceiling(self, name, ceiling):
+        """Part of the runtime contract. A double that omitted it used to be
+        hidden by a swallowed exception in `release`; now the omission is the
+        failure it always was."""
+        return {"name": name, "ceiling": ceiling}
+
 def _task(config, agent, goal="finish the export"):
     """A task with NO plan — the state the worker starts from."""
     d = worker.Directive(agent_id=agent.id, goal=goal, scope=["/home/me/reports"])

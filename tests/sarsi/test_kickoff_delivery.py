@@ -77,6 +77,11 @@ class Runtime:
         return {"ok": True}
 
 
+    def set_ceiling(self, name, ceiling):
+        """Part of the runtime contract — a double omitting it was hidden by a
+        swallowed exception in `release` until that stopped being swallowed."""
+        return {"name": name, "ceiling": ceiling}
+
 def _task(config, agent, goal="write the summary"):
     d = wk.Directive(agent_id=agent.id, goal=goal)
     t = tsk.create(config, agent, d)

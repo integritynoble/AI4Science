@@ -521,8 +521,22 @@ def start_session(name, cwd=".", *, claude_bin: str = "claude", govern: bool = F
             # The declared paths travel WITH the ceiling: the hook and the
             # sandbox have to draw one boundary, not two that can disagree.
             wire(cwd, ceiling=ceiling, writable=writable)
-        except Exception:
-            pass
+        except Exception as e:
+            # NOT swallowed. This used to `pass`, so a hook that could not be
+            # written — a read-only `.claude`, a full disk, a caller passing
+            # the wrong `wire` — started the session ANYWAY: ungoverned, no
+            # ceiling, no gates, and `ok: True` handed back so every layer
+            # above believed it was governed. For a claude-code session that
+            # hook is the only boundary in force.
+            #
+            # `govern=True` is a request to be honoured or refused, never
+            # dropped. A session that is not what was asked for is not started
+            # — the same rule the pane check already enforces one call below.
+            return {"ok": False,
+                    "reason": f"could not govern the session: "
+                              f"{type(e).__name__}: {e} — not started, because "
+                              f"an ungoverned session is not the one that was "
+                              f"asked for"}
     rc, out, err = run(["tmux", "new-session", "-d", "-s", tname, "-c", cwd, claude_bin])
     if rc != 0:
         return {"ok": False, "reason": f"could not start tmux session '{tname}': "

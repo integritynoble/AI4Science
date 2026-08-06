@@ -187,6 +187,11 @@ class _Runtime:
         return {"ok": True}
 
 
+    def set_ceiling(self, name, ceiling):
+        """Part of the runtime contract — a double omitting it was hidden by a
+        swallowed exception in `release` until that stopped being swallowed."""
+        return {"name": name, "ceiling": ceiling}
+
 def _sarsi(tmp_path, monkeypatch, *, work_root=None):
     monkeypatch.setenv("SARSI_STATE_DIR", str(tmp_path / "state"))
     from ai4science.harness.agents.sarsi import (plan as pl, registry as reg,
@@ -236,6 +241,11 @@ def test_the_session_is_launched_able_to_write_where_the_plan_says(
     assert str(root) == calls.get("cwd")
     assert f"--writable {tsk.dir_of(agent, t.id)}" in launched
 
+
+    def set_ceiling(self, name, ceiling):
+        """Part of the runtime contract — a double omitting it was hidden by a
+        swallowed exception in `release` until that stopped being swallowed."""
+        return {"name": name, "ceiling": ceiling}
 
 def test_and_the_task_folder_travels_with_it(tmp_path, monkeypatch):
     """`plan0.md` stays with the task when the session moves. A sandbox

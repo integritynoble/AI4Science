@@ -57,6 +57,12 @@ class FakeRuntime:
         return {"ok": True}
 
 
+    def set_ceiling(self, name, ceiling):
+        """Part of the runtime contract. A double that omitted it used to be
+        hidden by a swallowed exception in `release`; now the omission is the
+        failure it always was."""
+        return {"name": name, "ceiling": ceiling}
+
 def _plan(permissions=(), phases=None):
     return pl.Plan(goal="finish the export",
                    phases=phases or [
