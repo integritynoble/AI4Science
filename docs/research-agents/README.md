@@ -152,6 +152,28 @@ pushing bulk-structure share from 0.56 to 0.78 and 0.74 — but it now rests on
 five genuinely different institutional splits rather than four seeds hiding
 three.
 
+### Widening the three that could be widened
+
+Cancer, pill camera and drug design showed 16 distinct problems across 16 seeds
+— no repeat found — so for them the width is a **choice**, not a corpus ceiling.
+Twelve seeds: search 4, validation 8, double the validation problems of the old
+set, for about four minutes of extra compute across all three.
+
+| agent | on 4 validation problems | on 8 |
+|---|---|---|
+| **cancer** | delta +0.00284, p = 0.52 | delta **+0.000078**, p = **0.868** |
+| **drug design** | delta −0.963, p = 0.488 | delta −0.592, p = 0.474 |
+| pill camera | nothing beat the incumbent | unchanged |
+
+> **Cancer's near-miss was noise, and the wider set says so.** On four problems
+> it looked like a small positive effect that merely failed significance — the
+> kind of result that invites another night and a hopeful reading. On eight it
+> collapses to 0.000078 at p = 0.868. The winner moved too, from ridge 310 to
+> 210, which is what ranking on more seeds does when there is no signal to find.
+
+Nothing was adopted, which is the same answer as before — but it is now the
+answer to a question that was actually asked.
+
 ## 0b2. What a night actually costs
 
 Measured 2026-08-06, one agent at a time on one machine — sequential on purpose,

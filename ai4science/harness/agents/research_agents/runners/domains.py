@@ -417,6 +417,12 @@ CAPSULE = DomainBenchmark(
               "at least three patients on the test side",
               "the prior beats the naive baseline on held-out patients",
               "AUC ≥ 0.6 on the held-out patients"),
+    # 16 of 16 seeds measured distinct — no repeat found, so this width is a
+    # CHOICE rather than a ceiling, unlike low-dose CT and reverse aging where
+    # it is the corpus. Twelve gives search 4 / validation 8: double the
+    # validation problems of the old six-seed set, at a cost these three can
+    # afford. Widen further if a near-miss is worth resolving.
+    usable_seeds=tuple(range(12)),
 )
 
 
@@ -591,6 +597,12 @@ SCREENING = DomainBenchmark(
               "EF@1% cannot rank methods and is refused whatever pinned it",
               "the decoy property match is measured and reported",
               "no activity claimed without an assay"),
+    # 16 of 16 seeds measured distinct — no repeat found, so this width is a
+    # CHOICE rather than a ceiling, unlike low-dose CT and reverse aging where
+    # it is the corpus. Twelve gives search 4 / validation 8: double the
+    # validation problems of the old six-seed set, at a cost these three can
+    # afford. Widen further if a near-miss is worth resolving.
+    usable_seeds=tuple(range(12)),
 )
 
 
@@ -681,6 +693,12 @@ ONCO = DomainBenchmark(
     criteria=("external C-index ≥ 0.58 on a cohort the model never saw",
               "calibration reported with discrimination",
               "no patient-level claim"),
+    # 16 of 16 seeds measured distinct — no repeat found, so this width is a
+    # CHOICE rather than a ceiling, unlike low-dose CT and reverse aging where
+    # it is the corpus. Twelve gives search 4 / validation 8: double the
+    # validation problems of the old six-seed set, at a cost these three can
+    # afford. Widen further if a near-miss is worth resolving.
+    usable_seeds=tuple(range(12)),
 )
 
 

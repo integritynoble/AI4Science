@@ -307,7 +307,7 @@ def check_seed_independence(bench, search_seeds, validation_seeds, workspace_roo
 
 
 def autonomous_round(agent, bench: DomainBenchmark, *, client_factory,
-                     workspace_root: Path, seeds: Sequence[int] = (0, 1, 2, 3, 4),
+                     workspace_root: Path, seeds: Sequence[int] = (),
                      metric: str = "", cost_per_seed: float = 0.5,
                      ledgers: Optional[Ledgers] = None,
                      candidate: str = "search",
@@ -328,14 +328,13 @@ def autonomous_round(agent, bench: DomainBenchmark, *, client_factory,
     # them. A caller asking for six seeds from a benchmark with four distinct
     # problems is asking for two duplicates, and getting them silently is how a
     # validation set stops being held out.
-    usable = tuple(getattr(bench, "usable_seeds", ()) or ())
-    if usable:
-        # The declared set IS the seed set for this benchmark — it is the widest
-        # set of genuinely different problems it has. Intersecting it with a
-        # caller's range(6) would quietly throw away the distinct problems that
-        # happen to sit at higher seed numbers, which is the opposite of the
-        # point: reverse aging's are at 9 and 12.
-        seeds = usable
+    # `usable_seeds` is the DEFAULT, not an override. A caller that asks for
+    # seeds (0,) means it, and running twelve instead would be the same class of
+    # fault this whole area is about: quietly doing something other than what was
+    # asked. An explicit set that is unsound is refused below rather than
+    # silently replaced.
+    if not seeds:
+        seeds = tuple(getattr(bench, "usable_seeds", ()) or ()) or (0, 1, 2)
     if validation_seeds is None:
         # Validation gets the LARGER share. The search only has to rank
         # candidates; the validation set has to carry a claim, and the first
@@ -490,7 +489,7 @@ def _headline_metric(bench: DomainBenchmark, results) -> Optional[str]:
 
 def autonomous_loop(agent, bench: DomainBenchmark, *, client_factory,
                     workspace_root: Path, rounds: int = 3,
-                    seeds: Sequence[int] = (0, 1, 2),
+                    seeds: Sequence[int] = (),
                     cost_per_seed: float = 0.5,
                     ledgers: Optional[Ledgers] = None) -> List[Round]:
     """Rounds until the switch goes off, the budget runs out, or the map is dry.
