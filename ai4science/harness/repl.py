@@ -63,6 +63,145 @@ def known_commands() -> set:
     return names
 
 
+#: Every Action kind the loop performs. Asserted against what `console.route`
+#: can return, because an action the console produces and the loop does not
+#: handle is a command that silently does nothing.
+HANDLED_ACTIONS = {"answer", "say", "confirm", "create", "guide", "attach",
+                   "enter", "leave", "noop"}
+
+
+def _prompt_for(state: dict) -> str:
+    from ai4science.harness import console as _c
+    return _c.prompt_label(state.get("mode") or _c.Mode())
+
+
+def _attach_tmux(session: str, *, task: str = "", agent: str = "", run=None) -> str:
+    """Hand the terminal to tmux and take it back.
+
+    `run` is injected so tests assert what was asked for without attaching
+    anything. This is the one part of this piece that cannot be honestly
+    unit-tested: prompt_toolkit must release the terminal, a child takes it,
+    and the app is restored on return. If that goes wrong the failure mode is
+    an unusable terminal, which is why `/interact --print` exists.
+
+    The caller pauses the worker (`_pause_for_interact`) BEFORE calling this,
+    the same way `sarsi/chat.py:_interact` does for the board — so by the
+    time this prints "paused" it already is. `task`/`agent` are only used to
+    name a REAL way back: this REPL has no `/resume` slash, so the closing
+    line points at the CLI door that does (`sarsi ask <agent> "/resume …"`)
+    rather than a command that would 404.
+    """
+    import subprocess
+    argv = ["tmux", "attach", "-t", session]
+    caller = run or (lambda a: subprocess.call(a))
+    try:
+        rc = caller(argv)
+    except Exception as e:
+        return (f"could not attach {session} — {type(e).__name__}: {e}\n"
+                f"  attach it yourself: tmux attach -t {session}")
+    if rc:
+        return (f"tmux would not attach {session} (exit {rc})\n"
+                f"  is it still running? ai4science sarsi tasks <agent>")
+    if agent and task:
+        return (f"back from {session}. {task} is paused — the worker will "
+                f"not steer it again until you resume it:\n"
+                f"  ai4science sarsi ask {agent} \"/resume {task}\"")
+    return f"back from {session}."
+
+
+def _console_deps(state: dict) -> dict:
+    """The world, as callables `console.route` can index.
+
+    Every one returns a value or a string — never raises. `route` reads these
+    keys directly, and a KeyError or an exception here lands inside the REPL
+    loop, which is the one place nothing may drop the session.
+    """
+    def _config():
+        from ai4science.harness.agents.sarsi import registry as reg
+        return reg.load()
+
+    def _session_of(task_id: str) -> str:
+        try:
+            agent, t = _find_task(_config(), task_id)
+            if t is None:
+                return ""
+            s = t.session if isinstance(t.session, dict) else None
+            return (s or {}).get("name") or ""
+        except Exception:
+            return ""
+
+    def _create(agent_id: str, goal: str) -> str:
+        try:
+            from ai4science.harness.agents.sarsi import (plan as pl, task as tsk,
+                                                         worker as wk)
+            config = _config()
+            agent = config.agents.get(agent_id)
+            if agent is None:
+                return f"{agent_id} is not on this machine"
+            d = wk.Directive(agent_id=agent.id, goal=goal)
+            t = tsk.create(config, agent, d)
+            t = tsk.attach_plan(config, agent, t, pl.draft(d))
+            return t.id
+        except Exception as e:
+            return f"could not create it — {e}"
+
+    def _guide(task_id: str, text: str) -> str:
+        try:
+            from ai4science.harness.agents.sarsi import session as ses
+            config = _config()
+            agent, t = _find_task(config, task_id)
+            if t is None:
+                return f"{task_id} is not a task on this machine"
+            ses.guide(config, agent, t, text, by_owner=True)
+            return f"sent, ahead of the worker — {text[:80]}"
+        except Exception as e:
+            return f"could not steer it — {e}"
+
+    def _suggest(text: str) -> str:
+        try:
+            from ai4science.harness.agents.sarsi import triage
+            got = triage.suggest(_config(), text)
+            if got.best is None:
+                return ""          # a tie or nothing: a router that guesses is
+                                   # worse than one that is quiet
+            return (f"  ───\n  {got.best.agent_id} could take this as a task "
+                    f"instead — /{got.best.agent_id} to enter it")
+        except Exception:
+            return ""
+
+    def _find(task_id: str):
+        try:
+            return _find_task(_config(), task_id)
+        except Exception:
+            return (None, None)
+
+    def _pause_for_interact(task_id: str) -> str:
+        """Pause worker steering BEFORE the terminal is handed to tmux —
+        mirrors `sarsi/chat.py:_interact`, the board's own way in, so
+        `/interact` here is not a second, weaker implementation of the same
+        promise. Returns the agent id (so the closing message can point at a
+        real resume path) or "" if there was nothing to pause.
+        """
+        try:
+            from ai4science.harness.agents.sarsi import task as tsk
+            import time as _time
+            config = _config()
+            agent, t = _find_task(config, task_id)
+            if t is None or not t.session:
+                return ""
+            t.steering_paused = True
+            t.plan_stale = True          # the owner may abandon phases by hand
+            t.criteria = []              # a stale plan's criteria are withheld
+            tsk._touch(agent, t, _time.time)
+            return agent.id
+        except Exception:
+            return ""
+
+    return {"resolve": resolve_name, "find_task": _find, "suggest": _suggest,
+            "create": _create, "guide": _guide, "session_of": _session_of,
+            "pause_for_interact": _pause_for_interact, "unknown": slash_answer}
+
+
 def _source() -> str:
     try:
         return pathlib.Path(__file__).read_text()
@@ -197,9 +336,11 @@ def _dispatch_slash(line: str, state: dict) -> tuple[bool, str]:
         return True, ("slash commands: /help /clear /model <backend> [id] "
                       "/agent [name|specific <q>] /do <goal> /tasks /login "
                       "/whoami /feedback <text> /readonly /yes /default "
-                      "/cost /files /exit\n"
+                      "/cost /files /subagents /exit\n"
                       "  /do hands the goal to this agent's sarsi worker "
-                      "(task + plan + sarsi-claude) instead of answering here")
+                      "(task + plan + sarsi-claude) instead of answering here\n"
+                      "  /subagents lists the nested delegation types the "
+                      "task tool can hand a focused sub-task to")
     if cmd == "readonly":
         state["read_only"] = True
         return True, "read-only: ON (mutating tools blocked)"
@@ -213,6 +354,21 @@ def _dispatch_slash(line: str, state: dict) -> tuple[bool, str]:
     if cmd == "clear":
         state["clear"] = True
         return True, "conversation cleared"
+    if cmd in ("agent", "agents", "mode"):
+        # These need the live session (TUI picker, session rebuild) and are
+        # answered inline in the loop — but a dispatcher that calls a KNOWN
+        # command unhandled is the same defect this module exists to remove,
+        # so it is at least recognized here.
+        return True, ""
+    if cmd == "subagents":
+        # `/agents` used to print this — the nested `task`-tool delegation
+        # types (unrelated to the chat-agent switcher, which is what /agents
+        # became). Moved here, wording unchanged, so making /agents the
+        # switcher didn't delete a user-reachable listing to free up a name.
+        from ai4science.harness.subagents import SUBAGENTS
+        lines = ["sub-agents:"] + [f"  {n}: {p['description']}"
+                                    for n, p in sorted(SUBAGENTS.items())]
+        return True, "\n".join(lines)
     if cmd in ("do", "tasks"):
         return True, _sarsi_bridge(cmd, _arg.strip(), state.get("agent") or "")
 
@@ -749,6 +905,9 @@ def run_common_repl(
         # which agent is answering — `/do` delegates to the sarsi worker of
         # this name, so it has to follow `/agent` switches (see below).
         "agent": active_spec.name,
+        # the console's Mode — None until the first `/<agent-name>` line
+        # enters it; _prompt_for and console.route both default it themselves.
+        "mode": None,
     }
 
     # Per-turn token accumulator (mutated by the meter wrapper).
@@ -904,7 +1063,8 @@ def run_common_repl(
             from ai4science.harness import tui
             _st = f"{active_model} · {_shortcwd(workspace)}"
             # use the CURRENT spec name so the info-line label tracks /mode switches
-            line = tui.read_input("> ", active_spec.name or mode_label or "chat",
+            line = tui.read_input(_prompt_for(state),
+                                  active_spec.name or mode_label or "chat",
                                   _st).strip()
             _interrupts["n"] = 0
         except EOFError:
@@ -919,13 +1079,34 @@ def run_common_repl(
                   flush=True)
             continue
 
-        if not line:
-            continue
-
         # Accept bare exit words too (not only the slash form) — a user who
         # types `exit`/`quit`/`q` should not be sent to the LLM or trapped.
         if line.lower() in ("exit", "quit", "q", ":q", ":q!"):
             break
+
+        # Every line is routed through the console first — it decides mode
+        # transitions (`/sarsi-worker`, `/leave`), task creation and steering,
+        # and the tmux hand-off, before the older slash chain ever sees the
+        # line. An "answer" action means the console has nothing to add and
+        # `_act.text` (possibly rewritten) falls through to that chain as-is.
+        from ai4science.harness import console as _c
+        _deps = _console_deps(state)
+        _act, _new = _c.route(line, state.get("mode") or _c.Mode(), _deps)
+        state["mode"] = _new
+        if _act.kind != "answer":
+            if _act.kind in ("say", "enter", "leave", "confirm"):
+                if _act.text:
+                    print(_act.text, flush=True)
+            elif _act.kind == "create":
+                print(f"→ {_deps['create'](_act.agent, _act.goal)}", flush=True)
+            elif _act.kind == "guide":
+                print(_deps["guide"](_act.task, _act.text), flush=True)
+            elif _act.kind == "attach":
+                _agent_id = _deps["pause_for_interact"](_act.task)
+                print(_attach_tmux(_act.session, task=_act.task,
+                                   agent=_agent_id), flush=True)
+            continue
+        line = _act.text
 
         if line.startswith("/"):
             cmd, _, arg = line[1:].partition(" ")
@@ -1027,9 +1208,11 @@ def run_common_repl(
                     print(f"[harness] error: {e}", flush=True)
                 continue
 
-            # /agent switches the active AgentSpec — handle inline (rebuilds
-            # session). `/mode` kept as a silent back-compat alias.
-            if cmd in ("agent", "mode"):
+            # `/agents` lists AND switches, which is what someone typing it
+            # expects. `/agent` and `/mode` stay as aliases: removing a command
+            # people already use, to make a naming point, is a cost paid by the
+            # user for the designer's tidiness.
+            if cmd in ("agent", "agents", "mode"):
                 from ai4science.harness import tui as _tui
                 target = None
                 if not arg:
@@ -1114,14 +1297,6 @@ def run_common_repl(
                     print(f"[harness] files error: {e}", flush=True)
                 continue
 
-            # /agents lists available sub-agent types.
-            if cmd == "agents":
-                from ai4science.harness.subagents import SUBAGENTS
-                print("[harness] sub-agents:", flush=True)
-                for n, p in sorted(SUBAGENTS.items()):
-                    print(f"  {n}: {p['description']}", flush=True)
-                continue
-
             # /mcp describes MCP wiring status.
             if cmd == "mcp":
                 print("[harness] MCP servers: none configured "
@@ -1152,7 +1327,7 @@ def run_common_repl(
                 # refused when it LOOKS like a command — a prompt that begins
                 # with a path is still a prompt.
                 if looks_like_command(line):
-                    print(f"[harness] {unknown_command(line)}", flush=True)
+                    print(f"[harness] {slash_answer(line)}", flush=True)
                     continue
             else:
                 continue
@@ -1289,3 +1464,12 @@ def run_common_repl(
                 if _name not in BASE_TOOLS:
                     gate.post_usage(contribution_id=_name, agent_name=active_spec.name,
                                     turn_id=_tid)
+
+        # A line answered at the top level gets one note underneath naming the
+        # worker that could take it as a task instead — and a tie prints
+        # nothing, because a router that guesses is worse than one that is
+        # quiet.
+        if (state.get("mode") or _c.Mode()).kind == "top":
+            _note = _console_deps(state)["suggest"](line)
+            if _note:
+                print(_note, flush=True)
