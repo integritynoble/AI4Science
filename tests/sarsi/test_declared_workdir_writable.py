@@ -277,3 +277,64 @@ def test_a_task_with_no_declared_directory_passes_none(tmp_path, monkeypatch):
                         {"ok": True, "name": name, "pid": 1, "cwd": cwd})
     ses.assign(config, agent, t, runtime=ses.MachineRuntime())
     assert "--writable" not in (calls.get("claude_bin") or "")
+
+
+# ── the hook and the sandbox must get the SAME paths ──────────────────
+
+def test_the_ai4science_branch_declares_writable_to_the_hook_too(monkeypatch):
+    """Defect 5, and the reason a fully-granted, fully-released task still
+    could not write its own file.
+
+    A declared path reaches a session by TWO channels, and they are not the
+    same one:
+
+      * the SANDBOX gets `ai4science chat --writable <p>` on the command line;
+      * the HOOK gets `PWM_WRITABLE=<p>` in its command prefix, written by
+        `ensure_governance_hook` from `start_session(writable=...)`.
+
+    The claude-code branch passed `writable=` and got both. The ai4science
+    branch built the `--writable` flags and then called `start_session` WITHOUT
+    `writable=`, so the hook was never told. Live: the session stood in
+    `/home/grace/p3final`, was launched with `--writable /home/grace/p3final`,
+    was released to A1, produced exactly the right file content — and every
+    write was still gated, because the boundary that asks had never heard of
+    the path.
+
+    `claude_driver` already states the rule this restores: the declared paths go
+    to the hook "so the hook and the sandbox draw the same boundary." Two
+    boundaries that disagree are one boundary and one blind spot.
+    """
+    from ai4science.harness.agents.sarsi import session as ses
+    import ai4science.harness.agents.machine.sessions as machine
+
+    seen = {}
+    monkeypatch.setattr(machine, "start_session",
+                        lambda name, cwd, **kw: seen.update(kw) or
+                        {"ok": True, "name": name, "pid": 1, "cwd": cwd})
+
+    ses.MachineRuntime().start("s", "/tmp/w", govern=True, ceiling="A1",
+                               spec="unified-LLM",
+                               writable=["/tmp/w", "/tmp/task"])
+
+    assert seen.get("writable") == ["/tmp/w", "/tmp/task"], (
+        "the hook was not told the declared paths: %r" % (seen,))
+    # and the sandbox still gets them on the command line
+    assert "--writable" in (seen.get("claude_bin") or "")
+
+
+def test_the_claude_code_branch_is_unchanged(monkeypatch):
+    """It already passed them. This pins it so the fix does not swap which
+    branch is broken."""
+    from ai4science.harness.agents.sarsi import session as ses
+    import ai4science.harness.agents.machine.sessions as machine
+
+    seen = {}
+    monkeypatch.setattr(machine, "start_session",
+                        lambda name, cwd, **kw: seen.update(kw) or
+                        {"ok": True, "name": name, "pid": 1, "cwd": cwd})
+
+    ses.MachineRuntime().start("s", "/tmp/w", govern=True, ceiling="A1",
+                               spec="claude-code", writable=["/tmp/w"])
+    assert seen.get("writable") == ["/tmp/w"]
+    # Claude Code has no --writable flag; the hook IS its only boundary
+    assert "--writable" not in (seen.get("claude_bin") or "")

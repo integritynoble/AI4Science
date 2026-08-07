@@ -102,8 +102,19 @@ class MachineRuntime:
         import shlex
         extra = "".join(f" --writable {shlex.quote(str(w))}"
                         for w in (writable or []) if w)
+        # `writable=` as well as the flags. They are TWO channels, not one: the
+        # flags bound the sandbox, and `writable=` is what `ensure_governance_hook`
+        # turns into `PWM_WRITABLE` for the hook that ASKS. This branch built the
+        # flags and then omitted the argument, so the sandbox knew the declared
+        # path and the hook did not — and a task standing in its own declared
+        # working directory, granted and released to A1, had every write gated
+        # by the boundary that had never heard of it.
+        #
+        # `claude_driver` already states the rule: the declared paths go to the
+        # hook "so the hook and the sandbox draw the same boundary." Two
+        # boundaries that disagree are one boundary and one blind spot.
         return sessions.start_session(
-            name, cwd, govern=govern, ceiling=ceiling,
+            name, cwd, govern=govern, ceiling=ceiling, writable=writable,
             claude_bin=f"ai4science chat --mode {spec}{extra}")
 
     def send(self, name: str, text: str, *, _send=None) -> Dict[str, Any]:

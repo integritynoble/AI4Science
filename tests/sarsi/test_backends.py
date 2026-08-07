@@ -388,3 +388,30 @@ def test_a_worker_naming_no_spec_falls_back_to_the_default(config):
                    backend="sarsi-pwm")
     ses.assign(config, a, t, runtime=_RT(), installed=lambda: set())
     assert seen["spec"] == backends.spec_for("sarsi-pwm")
+
+
+# ── choosing the backend from the CLI ─────────────────────────────────
+
+def test_sarsi_do_accepts_a_backend():
+    """There was no supported way to put a task on `sarsi-claude`.
+
+    The design says the owner chooses at the confirmation; the REPL confirm
+    block never offered it, and `sarsi do` had no flag, so every task took the
+    default and `sarsi-claude` was reachable only by setting `task.backend` in
+    a Python one-liner. A choice the design promises and no surface offers is
+    not a choice.
+    """
+    import inspect
+    from ai4science.commands import sarsi as cmd
+    sig = inspect.signature(cmd.do)
+    assert "backend" in sig.parameters
+
+
+def test_the_flag_refuses_an_unknown_backend_by_name(config):
+    """Refused before the task exists, naming what would satisfy it — not at
+    run time, when the owner has confirmed and walked away."""
+    a = config.agents["sarsi-worker"]
+    with _pytest.raises(backends.NoSuchBackend) as e:
+        tsk.create(config, a, wk.Directive(agent_id=a.id, goal="g"),
+                   backend="sarsi-gemini")
+    assert "sarsi-pwm" in str(e.value) and "sarsi-claude" in str(e.value)

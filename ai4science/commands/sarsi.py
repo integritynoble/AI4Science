@@ -14,6 +14,7 @@ from rich.console import Console
 from rich.table import Table
 
 from ai4science.harness.agents.sarsi import admin, registry as reg
+from ai4science.harness.agents.sarsi import backends as backends_mod
 
 app = typer.Typer(help="sarsi worker agents on this machine.", no_args_is_help=True)
 console = Console()
@@ -175,7 +176,11 @@ def do(agent_id: str = typer.Argument(..., help="Worker id, e.g. sarsi-worker"),
        minutes: Optional[int] = typer.Option(None, "--minutes",
                                              help="Stop after this many minutes (no default)."),
        after: List[str] = typer.Option(None, "--after",
-                                       help="Wait until <agent>/<task> is VERIFIED (repeatable).")) -> None:
+                                       help="Wait until <agent>/<task> is VERIFIED (repeatable)."),
+       backend: str = typer.Option("", "--backend",
+                                   help="Which engine runs the session: "
+                                        "sarsi-pwm (ai4science, the default) or "
+                                        "sarsi-claude (Anthropic's claude binary).")) -> None:
     from pathlib import Path
 
     from ai4science.harness.agents.sarsi import worker
@@ -248,7 +253,15 @@ def do(agent_id: str = typer.Argument(..., help="Worker id, e.g. sarsi-worker"),
                          max_plan_steps=plan_steps,
                          max_plan_minutes=plan_minutes,
                          depends_on=draft.depends_on)
-    t = tsk.attach_plan(config, agent, tsk.create(config, agent, directive), draft)
+    # The backend belongs to the TASK: one worker runs many, and which engine
+    # ran a given one is a fact about that one. Refused here rather than at run
+    # time, when the owner has confirmed and walked away.
+    try:
+        made = tsk.create(config, agent, directive, backend=backend)
+    except backends_mod.NoSuchBackend as e:
+        console.print(str(e), style="red", markup=False, highlight=False)
+        raise typer.Exit(code=1)
+    t = tsk.attach_plan(config, agent, made, draft)
     t = tsk.start(config, agent, t)
     console.print(f"{agent_id} holds {t.id} — {t.state}", markup=False, highlight=False)
     if root:
