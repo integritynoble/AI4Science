@@ -474,6 +474,17 @@ def _ceiling_would_allow(screen: str, ceiling: str, writable) -> bool:
     path = _gate_write_path(screen)
     if not path or not ceiling:
         return False
+    # NEVER the plan file. It lives in the task folder, which is a declared
+    # writable root, so the ceiling permits writing it and this rule would
+    # happily approve a rewrite of the very thing the owner agreed to. The plan
+    # is the AGREEMENT, not the work: an agent that rewrites it mid-run with the
+    # loop's approval gets judged against criteria the owner never read.
+    #
+    # Answering a plan write DURING planning is a different rule (`_PLAN_WRITE`)
+    # and stays -- there, writing it is exactly what the session was asked to do.
+    import os as _os
+    if _os.path.basename(path).startswith(("plan0", ".plan-seed")):
+        return False
     # Containment is checked HERE, not delegated. `decide_tool_call` decides
     # "in-project" against `project_dir`, and this loop has no project dir to
     # give it — passing None made every path look in-project, which would let a

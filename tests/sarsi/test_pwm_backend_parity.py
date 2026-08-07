@@ -446,3 +446,33 @@ def test_the_write_path_survives_a_wrapped_line():
     got = operator._gate(wrapped, planning=False, released=True,
                          ceiling="A1", writable=["/home/grace/p3v2"])
     assert got and got[0] == "1", got
+
+
+def test_the_stale_gate_rule_never_answers_a_write_to_the_PLAN():
+    """The carve-out defect 6's rule needs, and a regression it caused.
+
+    `_ceiling_would_allow` answers a gate the ceiling has since permitted. The
+    plan file lives in the task folder, which is a declared writable root, so
+    after release the rule happily answered a rewrite of `plan0.md` --- and
+    `test_the_plan_write_gate_is_not_answered_once_work_has_started` caught it,
+    with the right reason: *outside planning it is an ordinary edit and belongs
+    to the owner.*
+
+    The plan is the AGREEMENT, not the work. An agent that rewrites it mid-run
+    and has the loop approve the rewrite is the exact drift the design exists to
+    prevent --- the owner would be judged against criteria they never read.
+
+    Answering it during PLANNING is a different rule (`_PLAN_WRITE`) and stays.
+    """
+    gate = ("⏺ write\n  Write /home/grace/task/plan0.md  (29 lines)\n\n"
+            "Do you want to proceed?\n\n  1. Yes\n  2. No\n"
+            "Type a number (1-2) and press Enter ❯ ")
+    assert not operator._ceiling_would_allow(gate, "A2", ["/home/grace/task"])
+
+
+def test_but_ordinary_work_in_the_same_folder_is_still_answered():
+    """The carve-out is the plan file, not the folder."""
+    gate = ("⏺ write\n  Write /home/grace/task/DONE.md  (1 line)\n\n"
+            "Do you want to proceed?\n\n  1. Yes\n  2. No\n"
+            "Type a number (1-2) and press Enter ❯ ")
+    assert operator._ceiling_would_allow(gate, "A2", ["/home/grace/task"])
