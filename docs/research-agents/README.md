@@ -138,6 +138,7 @@ reasons.
 |---|---|---|---|
 | **low-dose CT** | 0–5, of which 4 and 5 repeated 0 and 1 | **0–3**, one per patient | it can **measure** but no longer **search**: 4 problems cannot fund both a search set and a validation set worth the name |
 | **reverse aging** | 0–5, with 2 and 3 the same problem | **0, 1, 2, 4, 5, 9, 12** | validation goes from *three* distinct problems to **five** — more power than it had, from the same corpus |
+| **medical physics** | 0–5, all distinct but short of the corpus | **0–7** | one per OpenKBP patient — validation 4 → **6**. Seed 8 is patient 0 again, byte-identical, so 8 is the ceiling |
 
 > **Low-dose CT losing its searching night is the correct outcome, not a
 > regression.** With four distinct problems, any split with enough search seeds

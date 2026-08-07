@@ -322,6 +322,11 @@ MEDPHYS = DomainBenchmark(
               "brainstem ≤ 54 Gy, cord ≤ 45 Gy, parotid mean ≤ 26 Gy, mandible ≤ 70 Gy",
               "no hot spot above 115% of the primary prescription",
               "output is a candidate; a physicist signs"),
+    # Eight OpenKBP patients, so eight distinct problems: seed 8 is patient 0
+    # again, byte-identical. Measured, not assumed. This is a ceiling rather
+    # than a choice — the corpus sets it — and it gives search 2 / validation 6
+    # instead of the 2 / 4 a six-seed set gave.
+    usable_seeds=tuple(range(8)),
 )
 
 
