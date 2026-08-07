@@ -45,6 +45,51 @@ def _set_tripped(session_id: Optional[str], reason: str) -> None:
         pass
 
 
+def should_deny(verdict) -> bool:
+    """Is this call refused? Unchanged by any scoping below.
+
+    A forbidden command is refused in EVERY session, worker or owner. The
+    scoping in this module applies only to the persistent halt.
+    """
+    return (verdict or {}).get("decision") == "deny"
+
+
+def should_record_attempt(verdict) -> bool:
+    """Should the attempt be written to the trust ledger and the record?
+
+    Always, when a tripwire fired. Scoping the halt must not scope the
+    EVIDENCE: a forbidden command was tried, and that it was tried is exactly
+    what an owner would never think to check for.
+    """
+    return bool((verdict or {}).get("tripwire"))
+
+
+def should_halt_session(verdict, rec) -> bool:
+    """Should this session be halted for the rest of its life?
+
+    Only a governed WORKER session, and only on a tripwire.
+
+    `ensure_governance_hook` installs this hook into a project directory, so
+    anyone who later runs a coding agent there inherits it -- including the
+    owner, at a terminal, working by hand. On 2026-08-07 that happened: a
+    `-halt-on-error` FLAG matched the pattern for the `halt` COMMAND and killed
+    the owner's session permanently. Every later call, including reading a file,
+    returned "session halted by an earlier tripwire".
+
+    The pattern was fixed; the blast radius is the real defect. A false positive
+    in a regex should cost ONE DENIED COMMAND, not a working session.
+
+    The discriminator is one this hook already computes. A worker session was
+    started on the owner's behalf and has a supervisor record; nobody is
+    watching it, so stopping it until the owner looks is right. A session with
+    no record was started by a human who is sitting at it: deny the command and
+    let them carry on.
+    """
+    if not (verdict or {}).get("tripwire"):
+        return False
+    return rec is not None
+
+
 def _proc_comm_ppid(pid: int):
     with open(f"/proc/{int(pid)}/stat") as f:
         s = f.read()
@@ -138,8 +183,12 @@ def main(argv=None) -> int:
     # remote approval channel: escalate an 'ask' to the owner's Telegram if configured
     if verdict.get("decision") == "ask":
         verdict = _maybe_telegram(verdict, data)
-    if verdict.get("tripwire"):
-        _set_tripped(session_id, verdict.get("reason", ""))
+    if should_record_attempt(verdict):
+        # The HALT is scoped to worker sessions; the deny and the record are
+        # not. See `should_halt_session` for why the owner's own session must
+        # survive a false positive.
+        if should_halt_session(verdict, rec):
+            _set_tripped(session_id, verdict.get("reason", ""))
         # The deny is already decided and is printed either way, so the command
         # is blocked regardless of what follows. What used to vanish silently
         # is the RECORD of the attempt — the trust entry that voids A3
