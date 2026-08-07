@@ -273,6 +273,24 @@ The catalogue change:
   losing a capability — that is *why* the four can go, rather than a
   coincidence that makes it convenient.
 
+  **How "any LLM" is actually reached: the comparegpt method.** Not by building
+  a provider integration per vendor. `comparegpt-product/main/openai_bridge.py`
+  (184 lines) is the pattern — it speaks the **standard OpenAI chat-completions
+  wire protocol** on the front and translates to the ai4science gateway's JSONL
+  streaming on the back, so a client using a subscription reaches models it has
+  no code for. The gateway decides which provider serves the call; the client
+  exports a base URL and a token.
+
+  | | |
+  |---|---|
+  | client side | one base-URL export, as the Claude Code card already documents (`ANTHROPIC_BASE_URL` → the PWM gateway) |
+  | server side | the gateway fronts Claude, Google and OpenAI-family models, on subscriptions or keys |
+  | cost of a new provider | a gateway change, **not** a PWM-code change |
+
+  > **This is why "any LLM" is one line in a shell profile rather than N
+  > integrations**, and why the four cards collapse cleanly: they differed in
+  > which endpoint they were pinned to, and PWM code is pinned to none.
+
   > **The card must say both.** "Uses any LLM" alone reads as a model picker and
   > leaves a reader who needs a GPU thinking they still want the `+ GPU` card
   > that is no longer there.
