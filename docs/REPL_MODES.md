@@ -55,7 +55,7 @@ sarsi-worker ❯ count the md files under /home/grace/sarsi-state-check
   it will plan at A0 first, and stop for your grant
   create it? [Enter=yes / e=edit / n=no]
 
-sarsi-worker ❯ y
+sarsi-worker ❯                       ← Enter
 → tsk_593ea3762e
 
 sarsi-worker ❯ /tsk_593ea3762e
@@ -68,17 +68,17 @@ tsk_593ea3762e (guided) ❯ /back
 ❯
 ```
 
-> ### Type `y`, not Enter
+> ### Enter does mean yes
 >
-> **The block says `[Enter=yes]` and Enter does not work.** You must type `y`.
-> The loop discards an empty line before the confirmation ever sees it
-> (`repl.py:1048`, ahead of the routing at 1063), so the "just press Enter"
-> path is unreachable in the full-screen TUI. The unit test passes because it
-> calls the router directly and never goes through the loop.
->
-> This is a defect, not a convention — the interface promises an interaction it
-> cannot perform. It is recorded here until it is fixed, because a manual that
-> repeated the promise would send you to a keystroke that does nothing.
+> Pressing Enter at the confirmation used to do nothing — the loop discarded
+> an empty line ahead of the routing that reads it, so `[Enter=yes]` promised
+> an interaction the full-screen TUI could not perform, and `y` was the only
+> working answer. That pre-filter has been removed: an empty line now reaches
+> `console.route` like any other, which already treated it as `yes` — the unit
+> test always passed because it called the router directly and never crossed
+> the loop's own pre-filter, which is exactly how this went unnoticed as long
+> as it did. Verified live, in the full-screen TUI, not only by unit test.
+> `y` still works too.
 
 > ### The input box shows a bare `❯`
 >

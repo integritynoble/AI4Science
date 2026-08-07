@@ -75,7 +75,7 @@ def _prompt_for(state: dict) -> str:
     return _c.prompt_label(state.get("mode") or _c.Mode())
 
 
-def _attach_tmux(session: str, *, run=None) -> str:
+def _attach_tmux(session: str, *, task: str = "", agent: str = "", run=None) -> str:
     """Hand the terminal to tmux and take it back.
 
     `run` is injected so tests assert what was asked for without attaching
@@ -83,6 +83,13 @@ def _attach_tmux(session: str, *, run=None) -> str:
     unit-tested: prompt_toolkit must release the terminal, a child takes it,
     and the app is restored on return. If that goes wrong the failure mode is
     an unusable terminal, which is why `/interact --print` exists.
+
+    The caller pauses the worker (`_pause_for_interact`) BEFORE calling this,
+    the same way `sarsi/chat.py:_interact` does for the board — so by the
+    time this prints "paused" it already is. `task`/`agent` are only used to
+    name a REAL way back: this REPL has no `/resume` slash, so the closing
+    line points at the CLI door that does (`sarsi ask <agent> "/resume …"`)
+    rather than a command that would 404.
     """
     import subprocess
     argv = ["tmux", "attach", "-t", session]
@@ -95,7 +102,11 @@ def _attach_tmux(session: str, *, run=None) -> str:
     if rc:
         return (f"tmux would not attach {session} (exit {rc})\n"
                 f"  is it still running? ai4science sarsi tasks <agent>")
-    return f"back from {session}. the worker is still paused — /resume hands it back"
+    if agent and task:
+        return (f"back from {session}. {task} is paused — the worker will "
+                f"not steer it again until you resume it:\n"
+                f"  ai4science sarsi ask {agent} \"/resume {task}\"")
+    return f"back from {session}."
 
 
 def _console_deps(state: dict) -> dict:
@@ -164,8 +175,31 @@ def _console_deps(state: dict) -> dict:
         except Exception:
             return (None, None)
 
+    def _pause_for_interact(task_id: str) -> str:
+        """Pause worker steering BEFORE the terminal is handed to tmux —
+        mirrors `sarsi/chat.py:_interact`, the board's own way in, so
+        `/interact` here is not a second, weaker implementation of the same
+        promise. Returns the agent id (so the closing message can point at a
+        real resume path) or "" if there was nothing to pause.
+        """
+        try:
+            from ai4science.harness.agents.sarsi import task as tsk
+            import time as _time
+            config = _config()
+            agent, t = _find_task(config, task_id)
+            if t is None or not t.session:
+                return ""
+            t.steering_paused = True
+            t.plan_stale = True          # the owner may abandon phases by hand
+            t.criteria = []              # a stale plan's criteria are withheld
+            tsk._touch(agent, t, _time.time)
+            return agent.id
+        except Exception:
+            return ""
+
     return {"resolve": resolve_name, "find_task": _find, "suggest": _suggest,
-            "create": _create, "guide": _guide, "session_of": _session_of}
+            "create": _create, "guide": _guide, "session_of": _session_of,
+            "pause_for_interact": _pause_for_interact, "unknown": slash_answer}
 
 
 def _source() -> str:
@@ -1045,9 +1079,6 @@ def run_common_repl(
                   flush=True)
             continue
 
-        if not line:
-            continue
-
         # Accept bare exit words too (not only the slash form) — a user who
         # types `exit`/`quit`/`q` should not be sent to the LLM or trapped.
         if line.lower() in ("exit", "quit", "q", ":q", ":q!"):
@@ -1071,7 +1102,9 @@ def run_common_repl(
             elif _act.kind == "guide":
                 print(_deps["guide"](_act.task, _act.text), flush=True)
             elif _act.kind == "attach":
-                print(_attach_tmux(_act.session), flush=True)
+                _agent_id = _deps["pause_for_interact"](_act.task)
+                print(_attach_tmux(_act.session, task=_act.task,
+                                   agent=_agent_id), flush=True)
             continue
         line = _act.text
 
@@ -1294,7 +1327,7 @@ def run_common_repl(
                 # refused when it LOOKS like a command — a prompt that begins
                 # with a path is still a prompt.
                 if looks_like_command(line):
-                    print(f"[harness] {unknown_command(line)}", flush=True)
+                    print(f"[harness] {slash_answer(line)}", flush=True)
                     continue
             else:
                 continue

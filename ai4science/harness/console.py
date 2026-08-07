@@ -82,9 +82,10 @@ def route(line: str, mode: Mode, deps: dict) -> tuple:
     line = (line or "").strip()
 
     # A goal is waiting on an answer. This is read BEFORE anything else: a
-    # pending confirmation owns the next line, and a slash typed here is an
-    # answer of "no" rather than a command — which is the safe reading, since
-    # the alternative silently creates a task the user did not confirm.
+    # pending confirmation owns the next line, including a slash, which is
+    # read as "no" rather than as a command — because a stray /back
+    # mid-confirmation should not quietly discard a goal by a path that never
+    # tells you.
     if mode.pending is not None:
         settled = Mode(kind=mode.kind, name=mode.name, pending=None)
         if line == "" or line.lower() in ("y", "yes"):
@@ -123,19 +124,31 @@ def route(line: str, mode: Mode, deps: dict) -> tuple:
         kind, detail = deps["resolve"](name)
 
         if kind == "roster":
+            if rest:
+                return Action("answer", text=line), mode   # the old chain owns `do`/`tasks`
             return Action("enter", text=f"now addressing {name}"), \
                 Mode(kind="agent", name=detail)
         if kind == "both":
+            if rest:
+                return Action("answer", text=line), mode   # the old chain owns `do`/`tasks`
             return Action("enter",
                           text=f"{detail}. entered the worker; "
                                f"the chat spec is /agent {name}"), \
-                Mode(kind="agent", name=name)
+                Mode(kind="agent", name=name.lower())
         if kind == "task":
+            if rest:
+                return Action("guide", task=detail, text=rest), mode
+            if deps["find_task"](detail)[1] is None:
+                return Action("say", text=f"{detail} is not a task on this "
+                                          "machine — /task lists them"), mode
             return Action("enter", text=f"guided on {name}"), \
                 Mode(kind="task", name=detail)
         if kind == "spec":
             # Not a mode: a chat spec is WHO ANSWERS, not somewhere to stand.
-            return Action("say", text=f"chat agent is now {name}", agent=detail), mode
+            # Reuse the existing switcher (`/agent <name>`) rather than
+            # reimplementing it here — it does the provider-lock, session
+            # rebuild and TUI-label sync that a bare `say` never touched.
+            return Action("answer", text=f"/agent {name}"), mode
 
         if kind == "command":
             # A command the harness already owns. The console has nothing to add,

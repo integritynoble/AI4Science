@@ -99,10 +99,15 @@ def test_back_at_the_top_is_harmless():
 
 
 def test_a_spec_switches_the_chat_agent_without_entering_a_mode():
+    """A chat spec is not a mode — it is who answers. The switch itself is
+    NOT reimplemented here: `/agent <name>` is forwarded to the loop's real
+    switcher (provider-lock, session rebuild, TUI-label sync all live there),
+    so this returns an `answer` the old chain performs — not a `say` that
+    only claims a switch happened."""
     act, mode = console.route("/research", console.Mode(), _deps())
-    assert act.kind == "say"
+    assert act.kind == "answer"
+    assert act.text == "/agent research"
     assert mode.kind == "top", "a chat spec is not a mode — it is who answers"
-    assert act.agent == "research"
 
 
 def test_a_name_that_is_both_enters_the_worker_and_says_the_other_exists():

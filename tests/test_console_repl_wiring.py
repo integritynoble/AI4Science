@@ -155,3 +155,67 @@ def test_a_clear_winner_prints_one_line(monkeypatch):
     note = repl._console_deps({})["suggest"]("write a gap-tv algorithm")
     assert "sarsi-worker" in note
     assert note.count("\n") <= 1, "a recommendation is one line, not a paragraph"
+
+
+# ── fix-wave: findings that only show up crossing the loop's own pre-filters ──
+
+def test_the_documented_worker_commands_survive_the_console():
+    """C1: `/sarsi-worker do <goal>` is what both guides in this branch tell
+    users to type, and the console swallowed it — `rest` was parsed and never
+    read. Uses the REAL resolver: the stub fixtures are why nobody noticed."""
+    from ai4science.harness import console, repl
+    deps = repl._console_deps({})
+    for line in ("/sarsi-worker do count the md files",
+                 "/sarsi-worker tasks"):
+        act, mode = console.route(line, console.Mode(), deps)
+        assert act.kind == "answer", (line, act.kind)
+        assert act.text == line
+        assert mode.kind == "top", "a verb form must not also enter the mode"
+
+
+def test_a_task_instruction_steers_instead_of_entering():
+    from ai4science.harness import console, repl
+    deps = repl._console_deps({})
+    act, mode = console.route("/tsk_abc123 look at the logs", console.Mode(), deps)
+    assert act.kind == "guide"
+    assert act.text == "look at the logs"
+
+
+def test_a_bogus_task_id_is_refused_not_entered():
+    from ai4science.harness import console, repl
+    deps = repl._console_deps({})
+    act, mode = console.route("/tsk_nosuchtask", console.Mode(), deps)
+    assert act.kind == "say"
+    assert mode.kind == "top"
+
+
+def test_an_unknown_slash_reaches_the_real_suggester():
+    """I3: slash_answer's difflib suggestion was cut out of the live path."""
+    from ai4science.harness import console, repl
+    deps = repl._console_deps({})
+    act, _ = console.route("/agnet", console.Mode(), deps)
+    assert "/agent" in act.text
+
+
+def test_c3_the_pre_filter_is_gone_before_the_console_call():
+    """C3: `if not line: continue` used to run BEFORE console.route, so an
+    empty line (Enter, at the confirmation) never reached the pending branch
+    — `route` already returns Action("noop") for an empty non-pending line,
+    and the loop already `continue`s on that action, so the pre-filter was
+    pure redundancy in every case except the one that mattered.
+
+    This cannot be caught by calling console.route directly — every other
+    test in this suite does exactly that, which is why the defect shipped.
+    The only honest unit-level check left is reading the loop's own source:
+    confirm no early `if not line: continue` still runs ahead of the
+    console.route call. (Also re-verified by driving the real REPL live —
+    see the fix-wave report.)
+    """
+    import pathlib
+    from ai4science.harness import repl
+    src = pathlib.Path(repl.__file__).read_text()
+    route_at = src.index('_c.route(line')
+    prefilter_at = src.find("if not line:\n            continue")
+    assert prefilter_at == -1 or prefilter_at > route_at, (
+        "an empty-line pre-filter still runs before console.route is called "
+        "— Enter at the confirmation would never reach the pending branch")
