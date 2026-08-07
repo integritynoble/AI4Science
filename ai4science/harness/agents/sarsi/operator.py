@@ -393,7 +393,19 @@ _ONBOARDING = re.compile(r"Choose the option that looks best|Syntax theme:|"
 #: plan0.md?") and the loop abstained at the session writing the very file it
 #: had been told to write. Observed live, and the same shape as the `Try "…"`
 #: filter: a pattern written against assumed wording meeting the real one.
-_PLAN_WRITE = re.compile(r"\b(create|write|overwrite|edit|update)\b[^\n]*"
+#:
+#: `[^\n]*` was too strict for a second reason, found the same way. The path is
+#: long, so the TUI wraps it at the pane edge — mid-word, inside
+#: `sarsi-worke\nr/tasks/…` — and the verb and the filename end up on different
+#: PHYSICAL lines while being one logical line. The loop then abstained at the
+#: session writing the very plan it had just been briefed to write.
+#:
+#: So: tolerate up to three line breaks, non-greedily. That is what a wrap
+#: costs. It is deliberately not "anywhere on screen" — answering a write gate
+#: at A0 because `plan0.md` appeared somewhere above would grant a write the
+#: ceiling does not, which is the one mistake this rule must not make.
+_PLAN_WRITE = re.compile(r"\b(create|write|overwrite|edit|update)\b"
+                         r"[^\n]*(?:\n[^\n]*){0,3}?"
                          r"\bplan0(_\d+)?\.md\b",
                          re.I)
 

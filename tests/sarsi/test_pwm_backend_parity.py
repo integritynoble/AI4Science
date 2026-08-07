@@ -323,3 +323,51 @@ def test_wrapping_does_not_make_a_stranger_answerable():
         "Send this report to the funding portal?")
     got = operator._gate(stranger)
     assert got is not None and got[0] is None
+
+
+# ── the plan-write gate, wrapped mid-path ─────────────────────────────
+
+#: Captured verbatim from the third supervised `sarsi-pwm` run. The session is
+#: writing its own plan file — the one thing it was asked to do — and the TUI
+#: wrapped the path across the pane edge, INSIDE the word `sarsi-worker`.
+PLAN_WRITE_WRAPPED = """\
+⏺ write
+  Write /tmp/claude-1002/-home-spiritai-pwm/9626f15d-723b/scratchpad/p3verdict/agents/sarsi-worke
+r/tasks/tsk_a8a5bcb3ef/plan0.md  (29 lines)
+   1 # create a file DONE.md in this folder whose first line is exactly: pwm code drove this
+
+Do you want to proceed?
+
+  1. Yes
+  2. Yes, and don't ask again for write this session
+  3. No, and tell the agent what to do differently (esc)
+
+Type a number (1-3) and press Enter ❯ """
+
+
+def test_the_plan_write_gate_is_answered_when_the_path_wrapped():
+    """`_PLAN_WRITE` required the verb and `plan0.md` on ONE line. A long path
+    wraps at the pane edge, so `Write` and `plan0.md` land on different physical
+    lines and the rule missed — the loop abstained at the session writing the
+    very plan it had just been briefed to write, and planning could not finish.
+
+    Same class as the wrapped gate text above: a one-line pattern read against a
+    capture the terminal has already re-flowed.
+    """
+    got = operator._gate(PLAN_WRITE_WRAPPED, planning=True, released=False)
+    assert got and got[0] == "1", got
+
+
+def test_and_a_far_away_mention_of_the_plan_does_not_count():
+    """Tolerating a wrap is not the same as matching anywhere on screen. The
+    allowance is a few lines, because that is what a wrap costs — a `write` and
+    an unrelated `plan0.md` a screen apart must still stop for the owner."""
+    far = PLAN_WRITE_WRAPPED.replace(
+        "  Write /tmp/claude-1002/-home-spiritai-pwm/9626f15d-723b/scratchpad"
+        "/p3verdict/agents/sarsi-worke\nr/tasks/tsk_a8a5bcb3ef/plan0.md"
+        "  (29 lines)",
+        "  Write /tmp/work3/DONE.md  (1 line)\n" + "\n".join(
+            "  (unrelated output line %d)" % i for i in range(8))
+        + "\n  earlier it had written plan0.md")
+    got = operator._gate(far, planning=True, released=False)
+    assert got is not None and got[0] is None, got
