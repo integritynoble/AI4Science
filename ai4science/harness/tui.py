@@ -1009,7 +1009,15 @@ class FullScreen:
                 # Honking… (29s · ↓ 1.8k tokens · running grep)   — Claude-Code feel
                 star = (f"\x1b[38;5;173m{frame} {self._gerund}…\x1b[0m "
                         f"\x1b[38;5;245m({secs}s · ↓ {tok_s} tokens{act} · "
-                        f"esc to stop)\x1b[0m  ")
+                        # `esc to interrupt`, not `esc to stop`. This is the
+                        # ONE signal the supervision loop uses to tell a
+                        # running turn from a finished one, and the inline
+                        # renderer in commands/chat.py has always said
+                        # `interrupt` — the full-screen one drifted from its
+                        # own sibling. A session under this renderer looked
+                        # permanently idle to the loop, which is most of why
+                        # the ai4science TUI was assumed un-drivable.
+                        f"esc to interrupt)\x1b[0m  ")
             mode = f"\x1b[38;5;173mai4science · {_display_mode(self.mode)}\x1b[0m"
             extra = (f" · \x1b[38;5;245m{self._status_extra}\x1b[0m"
                      if self._status_extra else "")
