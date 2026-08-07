@@ -40,3 +40,26 @@ def test_a_dep_that_raises_becomes_a_message_not_an_exception(monkeypatch):
     monkeypatch.setattr(repl, "_find_task",
                         lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
     assert isinstance(d["session_of"]("tsk_nope"), str)
+
+
+def test_the_attach_is_injectable_and_pauses_before_attaching():
+    """The order is the safety property: a worker still steering while the
+    owner types into the same session is two hands on one wheel."""
+    calls = []
+    out = repl._attach_tmux("sarsi-worker-cd34",
+                            run=lambda argv: calls.append(argv) or 0)
+    assert calls == [["tmux", "attach", "-t", "sarsi-worker-cd34"]]
+    assert "sarsi-worker-cd34" in out
+
+
+def test_a_failed_attach_is_reported_not_raised():
+    out = repl._attach_tmux("nope", run=lambda argv: 1)
+    assert isinstance(out, str)
+    assert "nope" in out
+
+
+def test_the_attach_never_raises_even_when_tmux_is_absent():
+    def _boom(argv):
+        raise FileNotFoundError("tmux")
+    out = repl._attach_tmux("x", run=_boom)
+    assert isinstance(out, str) and out

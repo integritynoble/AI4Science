@@ -75,6 +75,29 @@ def _prompt_for(state: dict) -> str:
     return _c.prompt_label(state.get("mode") or _c.Mode())
 
 
+def _attach_tmux(session: str, *, run=None) -> str:
+    """Hand the terminal to tmux and take it back.
+
+    `run` is injected so tests assert what was asked for without attaching
+    anything. This is the one part of this piece that cannot be honestly
+    unit-tested: prompt_toolkit must release the terminal, a child takes it,
+    and the app is restored on return. If that goes wrong the failure mode is
+    an unusable terminal, which is why `/interact --print` exists.
+    """
+    import subprocess
+    argv = ["tmux", "attach", "-t", session]
+    caller = run or (lambda a: subprocess.call(a))
+    try:
+        rc = caller(argv)
+    except Exception as e:
+        return (f"could not attach {session} — {type(e).__name__}: {e}\n"
+                f"  attach it yourself: tmux attach -t {session}")
+    if rc:
+        return (f"tmux would not attach {session} (exit {rc})\n"
+                f"  is it still running? ai4science sarsi tasks <agent>")
+    return f"back from {session}. the worker is still paused — /resume hands it back"
+
+
 def _console_deps(state: dict) -> dict:
     """The world, as callables `console.route` can index.
 
@@ -831,6 +854,9 @@ def run_common_repl(
         # which agent is answering — `/do` delegates to the sarsi worker of
         # this name, so it has to follow `/agent` switches (see below).
         "agent": active_spec.name,
+        # the console's Mode — None until the first `/<agent-name>` line
+        # enters it; _prompt_for and console.route both default it themselves.
+        "mode": None,
     }
 
     # Per-turn token accumulator (mutated by the meter wrapper).
@@ -986,7 +1012,8 @@ def run_common_repl(
             from ai4science.harness import tui
             _st = f"{active_model} · {_shortcwd(workspace)}"
             # use the CURRENT spec name so the info-line label tracks /mode switches
-            line = tui.read_input("> ", active_spec.name or mode_label or "chat",
+            line = tui.read_input(_prompt_for(state),
+                                  active_spec.name or mode_label or "chat",
                                   _st).strip()
             _interrupts["n"] = 0
         except EOFError:
@@ -1008,6 +1035,29 @@ def run_common_repl(
         # types `exit`/`quit`/`q` should not be sent to the LLM or trapped.
         if line.lower() in ("exit", "quit", "q", ":q", ":q!"):
             break
+
+        # Every line is routed through the console first — it decides mode
+        # transitions (`/sarsi-worker`, `/leave`), task creation and steering,
+        # and the tmux hand-off, before the older slash chain ever sees the
+        # line. An "answer" action means the console has nothing to add and
+        # `_act.text` (possibly rewritten) falls through to that chain as-is.
+        from ai4science.harness import console as _c
+        _act, _new = _c.route(line, state.get("mode") or _c.Mode(),
+                              _console_deps(state))
+        state["mode"] = _new
+        if _act.kind != "answer":
+            _deps = _console_deps(state)
+            if _act.kind in ("say", "enter", "leave", "confirm"):
+                if _act.text:
+                    print(_act.text, flush=True)
+            elif _act.kind == "create":
+                print(f"→ {_deps['create'](_act.agent, _act.goal)}", flush=True)
+            elif _act.kind == "guide":
+                print(_deps["guide"](_act.task, _act.text), flush=True)
+            elif _act.kind == "attach":
+                print(_attach_tmux(_act.session), flush=True)
+            continue
+        line = _act.text
 
         if line.startswith("/"):
             cmd, _, arg = line[1:].partition(" ")
