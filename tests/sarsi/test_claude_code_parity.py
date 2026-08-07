@@ -133,3 +133,69 @@ def test_an_absolute_path_outside_the_declared_roots_is_still_refused():
               "Do you want to proceed?\n\n  1. Yes\n  2. No\n"
               "Type a number (1-2) and press Enter ❯ ")
     assert not operator._ceiling_would_allow(screen, "A2", ["/home/grace/paritycheck"])
+
+
+# ── busy vs finished, which the loop keys its whole cadence on ────────
+
+def test_a_working_session_reads_as_busy():
+    """Captured mid-turn from the real thing. Claude Code swaps one footer item
+    while it works:
+
+        ⏸ manual mode on · ? for shortcuts · ← for agents      idle
+        ⏸ manual mode on · esc to interrupt · ← for agents     working
+
+    `_BUSY` is that one phrase. It is worth a fixture because it has already
+    drifted once — the ai4science TUI said `esc to stop` while its own sibling
+    renderer said `esc to interrupt`, and a session under the full-screen
+    renderer looked permanently idle to the loop.
+    """
+    assert operator._busy(_fixture("claude_code_busy.txt")) is True
+
+
+def test_a_finished_session_does_not():
+    """The other direction, and the more dangerous one: a loop that believes a
+    finished session is busy waits for ever and reports nothing wrong."""
+    assert operator._busy(_fixture("claude_code_idle_after_turn.txt")) is False
+
+
+def test_a_glyph_is_not_a_state():
+    """`✻ Churned for 4s` sits on the FINISHED screen — the same glyph that
+    heads a working one. abraham's run sat at `✻ Brewed for 35s` and the loop
+    reported busy for ever at a session that had already stopped."""
+    finished = _fixture("claude_code_idle_after_turn.txt")
+    assert "✻" in finished
+    assert operator._busy(finished) is False
+
+
+def test_an_ACTIONABLE_suggestion_is_still_not_an_instruction():
+    """The strongest case, and the reason the styling rule is not fussiness.
+
+    After a turn, Claude Code offered `create hello.txt with hello in it` in the
+    input box. That is not a generic placeholder — it is a complete, actionable
+    instruction, indistinguishable in text from something the owner typed. The
+    loop would have pressed Enter and had the session act on a request nobody
+    made.
+
+    It is ignored for one reason: SGR 2. Read the pane without escapes and this
+    test's second assertion shows exactly what would happen instead.
+    """
+    styled = _fixture("claude_code_actionable_suggestion.txt", styled=True)
+    plain = _SGR.sub("", styled)
+    assert operator._dim_at_prompt(styled) is True
+    assert operator._stranded(plain, styled=styled) is None
+    assert operator._stranded(plain) == "create hello.txt with hello in it"
+
+
+def test_the_pane_reader_captures_the_styling_it_depends_on():
+    """The whole rule rests on `capture-pane -e`. A reader that drops `-e`
+    would leave every test above passing and the live loop blind — the styling
+    is not decoration here, it is the discriminator."""
+    import inspect
+    src = inspect.getsource(operator.TmuxPane.capture_styled)
+    assert '"-e"' in src, src
+    # …and that the styled capture actually REACHES the decision. A pane that
+    # can produce styling, feeding a caller that never asks for it, is the same
+    # blindness with an extra method.
+    tick = inspect.getsource(operator.tick)
+    assert "capture_styled" in tick, "tick never asks for the styled pane"
+    assert "styled" in tick, tick[:200]
