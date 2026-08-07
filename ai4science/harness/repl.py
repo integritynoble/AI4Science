@@ -192,6 +192,13 @@ def _console_deps(state: dict) -> dict:
             t.steering_paused = True
             t.plan_stale = True          # the owner may abandon phases by hand
             t.criteria = []              # a stale plan's criteria are withheld
+            # And the TIMESTAMP the design names. `plan_stale` is a flag someone
+            # has to remember to clear; `interact_at` is a fact, and staleness
+            # derives from it — `plan_at < max(set_at, interact_at)` — so a plan
+            # drafted AFTER the owner drove is fresh again without anyone
+            # resetting anything. The flag stays: it is what today's readers use.
+            from ai4science.harness.agents.sarsi import session as _ses
+            _ses.took_the_wheel(config, agent, t, now=_time.time)
             tsk._touch(agent, t, _time.time)
             return agent.id
         except Exception:

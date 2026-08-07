@@ -47,9 +47,20 @@ AGENT = "agent"
 
 def append(config: Config, agent: Agent, text: str, *, surface: str,
            role: str = OWNER, delivered: Optional[bool] = None,
+           mode: str = "",
            now: Callable[[], float] = time.time) -> Dict[str, Any]:
+    """`mode` says HOW this reached the session — `guided` (the owner authored
+    it), `worker-guided` (the worker did), `interact` (relayed verbatim).
+
+    Two drivers share one session: most of the time the worker occupies the
+    guide role and the owner joins occasionally. "The worker said this" and
+    "the human said this" are different facts, and a history that merges them
+    loses the one that matters.
+    """
     record = {"text": text, "surface": surface, "role": role,
               "at": datetime.fromtimestamp(now(), timezone.utc).isoformat(timespec="seconds")}
+    if mode:
+        record["mode"] = mode
     if delivered is not None:
         # Only on a reply, and only when the surface can say. An owner's own
         # message has no delivery to report, and `None` is a third answer —

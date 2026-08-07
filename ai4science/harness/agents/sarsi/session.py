@@ -1045,7 +1045,54 @@ def guide(config: Config, agent: Agent, task: tsk.Task, instruction: str, *,
                   {"agent": agent.id, "task": task.id,
                    "state": "guided-by-owner" if by_owner else "guided",
                    "evidence": [instruction[:200]]}, now=now)
+    # And into the SHARED history. It used to go to the ledger alone, while the
+    # worker's workspace reads the ownerlog — so the one thing the owner said by
+    # hand was the one thing the worker could not see, and the composer could
+    # write the next prompt straight against it. Two drivers, one session: what
+    # either does has to be visible to the other.
+    try:
+        from ai4science.harness.agents.sarsi import ownerlog as _ol, router as _rt
+        _ol.append(config, agent, instruction,
+                   surface=getattr(_rt, "CLI_CHANNEL", "cli"),
+                   mode="guided" if by_owner else "worker-guided", now=now)
+    except Exception:
+        pass          # a history that cannot be written must not stop the steer
     return task
+
+
+def took_the_wheel(config: Config, agent: Agent, task: tsk.Task, *,
+                   now=time.time) -> tsk.Task:
+    """The owner has started hand-driving this session — stamp it.
+
+    Pausing the operator stops it COLLIDING with the owner; it does not stop it
+    steering wrong afterwards. Relaying never touches the goal, so `set_at` does
+    not move and the plan still looks fresh — and the next pass drives
+    confidently through phases the owner has just overridden by hand.
+
+    The plan is WITHHELD, not deleted: `plan_version` survives, because deleting
+    it would lose what the owner agreed to.
+    """
+    task.interact_at = float(now())
+    tsk._save(agent, task)
+    return task
+
+
+def plan_is_stale(task: tsk.Task) -> bool:
+    """`plan_at < max(set_at, interact_at)` — the same protection a re-set goal
+    already had, extended to being hand-driven.
+
+    The no-plan guard is borrowed from the proven implementation
+    (`singularity web/runtime_agent.py:plan_is_stale`), which returns False when
+    there is no plan file at all. "Stale" means WRITTEN FOR AN EARLIER GOAL; a
+    task that has not planned yet is not stale, it has nothing — and without the
+    guard every reader asking "should I withhold the plan?" gets a yes about a
+    plan that does not exist.
+    """
+    if not getattr(task, "plan_version", 0):
+        return False
+    drafted = float(getattr(task, "plan_at", 0) or 0)
+    return drafted < max(float(getattr(task, "set_at", 0) or 0),
+                         float(getattr(task, "interact_at", 0) or 0))
 
 
 def kickoff(task: tsk.Task, plan: Optional[pl.Plan],

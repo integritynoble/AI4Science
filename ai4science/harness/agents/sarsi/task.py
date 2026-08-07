@@ -142,6 +142,12 @@ class Task:
     #: Where the work happens, from the plan's `Working directory:` line.
     #: Evidence is gathered from here; empty means the task's own folder.
     work_root: Optional[str] = None
+    #: When the owner last hand-drove this session (interact mode). A plan
+    #: drafted before this is stale — see `session.plan_is_stale`.
+    interact_at: Optional[float] = None
+    #: When the current plan was drafted, and when the goal was last set.
+    plan_at: Optional[float] = None
+    set_at: Optional[float] = None
     #: Per-phase verdicts, keyed by phase index as a STRING (JSON has no int
     #: keys). A phase is complete when the verifier said so ABOUT THAT PHASE —
     #: not when the session claims it and not when the loop moves on. Without
