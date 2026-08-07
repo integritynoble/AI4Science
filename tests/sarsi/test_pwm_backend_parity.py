@@ -227,3 +227,50 @@ def test_an_echo_of_the_option_text_also_counts():
     """Claude Code's picker echoes the chosen TEXT, not the number."""
     echoed = PENDING + "\n❯ Yes, I trust this folder\n"
     assert operator._gate(echoed) is None
+
+
+# ── a read-only command stays read-only after release ─────────────────
+
+BASH_GATE = """\
+⏺ bash
+  $ find . -name '*.md' | head
+Do you want to proceed?
+  1. Yes
+  2. Yes, and don't ask again for bash this session
+  3. No, and tell the agent what to do differently (esc)
+Type a number (1-3) and press Enter ❯ """
+
+
+def test_a_read_only_command_is_answered_while_planning():
+    got = operator._gate(BASH_GATE, planning=True, released=False)
+    assert got and got[0] == "1"
+
+
+def test_the_read_only_rule_stops_at_release_and_that_is_deliberate():
+    """I proposed lifting this scope, on the argument that a read-only command
+    does not become dangerous because the owner granted more. An existing test
+    — `test_once_the_task_is_released_this_rule_is_gone` — refuted it, and its
+    reasoning is better:
+
+    after `release` the ceiling has ALREADY been raised, so a gate still on
+    screen means the governance hook judged the command to be beyond that
+    raised ceiling. Answering it because a classifier calls it read-only would
+    second-guess the decision the release just made.
+
+    Kept as a test so the argument survives, rather than being re-proposed by
+    the next person who notices the asymmetry.
+    """
+    got = operator._gate(BASH_GATE, planning=False, released=True)
+    assert got is not None and got[0] is None
+
+
+def test_but_an_unprovable_command_still_stops_for_the_owner():
+    """The conservative half, unchanged and load-bearing. Arbitrary Python is
+    not provably read-only, so it is the owner's decision — before release and
+    after."""
+    arbitrary = BASH_GATE.replace("find . -name '*.md' | head",
+                                  "python3 -c 'import os; os.remove(1)'")
+    got = operator._gate(arbitrary, planning=False, released=True)
+    # (None, why) — seen, and deliberately not answered. A bare None would mean
+    # "no gate here", which is a different and wrong thing to assert.
+    assert got is not None and got[0] is None

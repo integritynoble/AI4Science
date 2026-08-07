@@ -415,6 +415,13 @@ def _gate(screen: str, *, planning: bool = False, deletes=None,
     if still_planning and _PLAN_WRITE.search(screen):
         return ("1", "writing this task's own plan file, which is exactly what "
                      "it was asked to do")
+    # Scoped to before-release ON PURPOSE, and it was worth re-deriving: after
+    # `release` the ceiling has already been raised, so a gate STILL on screen
+    # means the hook judged the command to be beyond that raised ceiling.
+    # Answering it because the classifier calls it read-only would second-guess
+    # the decision the release just made. (Proposed as a fix on 2026-08-07 and
+    # withdrawn — `test_once_the_task_is_released_this_rule_is_gone` states the
+    # reasoning and is right.)
     if still_planning:
         # A0 is "reads allowed, everything else asks", but the governance hook
         # gates EVERY bash — so six supervision passes in a row abstained at a
