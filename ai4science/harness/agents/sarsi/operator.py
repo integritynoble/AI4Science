@@ -64,8 +64,25 @@ _KNOWN_GATES = (
      "the folder-trust prompt, for a folder this worker created"),
 )
 
-#: The wider option — "and don't ask again" — is never pressed.
-_STANDING_OPTION = re.compile(r"don'?t ask again|and stop asking", re.I)
+#: The wider option — a standing permission — is never pressed. That is the
+#: owner's to give, and an option that grants it for a whole session is the one
+#: thing an unattended loop must not take.
+#:
+#: Matched against the REAL wordings, because this guard was blind to the only
+#: one that mattered. It knew "don't ask again" (the ai4science TUI's phrasing)
+#: and "and stop asking", while Claude Code v2.1.224 — the backend the loop was
+#: built for — says:
+#:
+#:     2. Yes, allow all edits during this session (shift+tab)
+#:     2. Yes, and don't ask again for bash this session
+#:
+#: A guard written against assumed wording, meeting the real one. Found by
+#: capturing an actual session rather than by being tripped over.
+_STANDING_OPTION = re.compile(
+    r"don'?t ask again"
+    r"|and stop asking"
+    r"|allow all\b.*\bthis session"
+    r"|for (?:this|the) (?:whole )?session", re.I)
 
 _GATE_SHAPE = re.compile(r"^\s*❯?\s*1\.\s+\S", re.M)
 # `[^\S\r\n]` is "whitespace that is not a line break": it must not swallow the
@@ -420,13 +437,21 @@ _PLAN_WRITE = re.compile(r"\b(create|write|overwrite|edit|update)\b"
 #: The path a `write` gate is asking about: `Write <path>  (N lines)`. Read off
 #: the UNWRAPPED screen, because the same terminal that broke the folder-trust
 #: prompt breaks a long path mid-word.
-_GATE_WRITE = re.compile(r"\b(?:write|edit|create|update)\s+(?P<path>/\S+)", re.I)
+#: Two shapes, because the two TUIs print different ones. The ai4science TUI
+#: gives an absolute path — `Write /home/grace/pwmv2/DONE.md  (1 line)` — and
+#: Claude Code gives a bare name: `Do you want to create hello.txt?`. Matching
+#: only the first meant defect 6's rule could never fire on `sarsi-claude`, the
+#: backend the loop was built for.
+_GATE_WRITE = re.compile(
+    r"\b(?:write|edit|create|update|overwrite)\s+"
+    r"(?P<path>/\S+|[\w.\-]+\.[A-Za-z0-9]{1,8})", re.I)
 
 
 def _gate_write_path(screen: str) -> str:
-    """The file a write gate names, or ''. Never raises."""
+    """The file a write gate names — an absolute path, or a bare name to be
+    resolved against the declared roots. '' when there is none. Never raises."""
     m = _GATE_WRITE.search(_unwrapped(screen))
-    return (m.group("path") if m else "").rstrip(".,;:)")
+    return (m.group("path") if m else "").rstrip(".,;:)?")
 
 
 def _ceiling_would_allow(screen: str, ceiling: str, writable) -> bool:
@@ -456,12 +481,22 @@ def _ceiling_would_allow(screen: str, ceiling: str, writable) -> bool:
     # something a gate gets to arrange.
     import os
     try:
-        target = os.path.realpath(path)
         roots = [os.path.realpath(str(w)) for w in (writable or []) if str(w).strip()]
+        if path.startswith("/"):
+            candidates = [os.path.realpath(path)]
+        else:
+            # A BARE name — what Claude Code prints. It has no directory of its
+            # own, so it is resolved against the declared roots and nothing
+            # else. This cannot reach outside them: every candidate is built
+            # from a root, and containment is still checked below.
+            candidates = [os.path.realpath(os.path.join(r, path)) for r in roots]
     except Exception:
         return False
-    if not any(target == r or target.startswith(r.rstrip("/") + "/") for r in roots):
+    inside = [t for t in candidates
+              if any(t == r or t.startswith(r.rstrip("/") + "/") for r in roots)]
+    if not inside:
         return False
+    target = inside[0]
     try:
         from ai4science.harness.agents.machine.session import decide_tool_call
         verdict = decide_tool_call(
