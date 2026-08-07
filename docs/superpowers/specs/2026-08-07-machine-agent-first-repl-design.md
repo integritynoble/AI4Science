@@ -259,8 +259,23 @@ is safe; removing the *spec* would break the path this document is built around.
 
 The catalogue change:
 
-* **Unified LLM → PWM code**, described as usable on a GPU server or ordinary
-  CPU, and able to use any LLM.
+* **Unified LLM → PWM code.** Two axes, and they are independent — which is the
+  whole point of the rename:
+
+  | | what it can use |
+  |---|---|
+  | **the model** | any LLM the exchange gateway fronts — Claude, GPT, Gemini, a local one. Not one vendor's |
+  | **the compute** | any provider on the PWM compute mesh — a GPU server, a high-CPU box, or the machine it is standing on |
+
+  The cards it replaces each fixed one axis: `claude-code` fixed the model,
+  `claude-code-gpu` fixed the model and added compute, and the same for the two
+  codex cards. PWM code fixes neither, so four cards collapse into one without
+  losing a capability — that is *why* the four can go, rather than a
+  coincidence that makes it convenient.
+
+  > **The card must say both.** "Uses any LLM" alone reads as a model picker and
+  > leaves a reader who needs a GPU thinking they still want the `+ GPU` card
+  > that is no longer there.
 * **remove** the Claude Code, Claude Code + GPU, Codex and Codex + GPU cards.
 * **remove** the `research` tier (the two SARSI cards) and the `general` tier.
 * **flatten**: one group called **Agents**, plus the existing **Tools**. PWM
