@@ -110,10 +110,33 @@ def _task(config, agent):
 
 
 def test_the_session_is_started_with_the_agents_spec(config):
+    """CHANGED by the backend work, deliberately, and worth the paragraph.
+
+    This asserted `claude-code` for `work`, whose roster spec is `claude-code`.
+    The owner then set the default the other way: "when sarsi-worker makes a
+    task, give the choice sarsi-claude or sarsi-pwm — **default is sarsi-pwm**",
+    and sarsi-pwm means "ai4science, not the vendor binary". An agent whose spec
+    is `claude-code` therefore takes the ai4science default unless the task
+    explicitly chooses `sarsi-claude`.
+
+    What this test still guards is the part that did not change: a spec is not
+    SUBSTITUTED. `social` starts `social`, `computational-imaging` starts
+    `computational-imaging` — see the tests below and
+    `test_sarsi_pwm_runs_the_agents_own_spec` in test_backends.py. Only the
+    `claude-code` spec is special, and only because one backend exists to avoid
+    requiring the vendor CLI at all.
+    """
     agent = config.agents["work"]
     rt = FakeRuntime()
     ses.assign(config, agent, _task(config, agent), runtime=rt)
-    assert rt.started[0]["spec"] == "claude-code"
+    assert rt.started[0]["spec"] == "unified-LLM"
+
+    from ai4science.harness.agents.sarsi import task as _t
+    t = _task(config, agent); t.backend = "sarsi-claude"
+    rt2 = FakeRuntime()
+    ses.assign(config, agent, t, runtime=rt2)
+    assert rt2.started[0]["spec"] == "claude-code", (
+        "naming sarsi-claude must still start the vendor binary")
 
 
 def test_a_different_agent_starts_a_different_spec(config):

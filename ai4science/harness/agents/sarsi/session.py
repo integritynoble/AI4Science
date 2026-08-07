@@ -195,7 +195,27 @@ def assign(config: Config, agent: Agent, task: tsk.Task, *,
     # A blank backend is an old record, and reads as the default rather than
     # as an error.
     from ai4science.harness.agents.sarsi import backends as _bk
-    run_spec = _bk.spec_for(_bk.resolve(getattr(task, "backend", "")))
+    # The BACKEND says which engine; the AGENT says which ai4science agent that
+    # engine runs. Reading only the backend made every worker start on
+    # `unified-LLM` — the sarsi-pwm default — and the roster's own specs became
+    # dead configuration, so `social` would have run the generalist under the
+    # social agent's name. That is exactly what `test_it_never_substitutes_a_
+    # generalist` forbids.
+    #
+    # `sarsi-claude` is the one backend that really does decide, because it
+    # launches a vendor binary and no ai4science spec applies to it.
+    _backend = _bk.resolve(getattr(task, "backend", ""))
+    _engine = _bk.spec_for(_backend)
+    if _backend == "sarsi-claude":
+        run_spec = _engine
+    else:
+        # ...and `sarsi-pwm` means "NOT the vendor binary", so an agent whose
+        # spec is `claude-code` takes the ai4science default instead. Honouring
+        # it literally would make sarsi-pwm launch `claude`, which is the exact
+        # thing choosing sarsi-pwm says you do not want — and it would put the
+        # vendor-CLI requirement back into the backend that exists to remove it.
+        _own = (getattr(agent, "spec", "") or "").strip()
+        run_spec = _engine if _own in ("", "claude-code") else _own
 
     # The spec has to be here. Substituting a generalist would run the wrong
     # agent under the right label, which is worse than not starting at all.
@@ -265,7 +285,13 @@ def assign(config: Config, agent: Agent, task: tsk.Task, *,
     #
     # This widens nothing. It is the directory the owner typed into
     # `--workdir`, already an evidence root and already a blast-radius path.
-    writable = [str(p) for p in tsk.evidence_roots(agent, task)]
+    # Only a DECLARED directory is added. With none declared the workdir IS the
+    # task folder, and passing it would turn "nothing was declared" into a flag
+    # — `test_a_task_with_no_declared_directory_passes_none` is right that those
+    # are different permissions.
+    _declared = bool((task.work_root or "").strip())
+    writable = [str(p) for p in tsk.evidence_roots(agent, task)
+                if _declared or str(p) != str(workdir)]
     writable += [str(p) for p in (task.may_touch or [])]
     started = runtime.start(name, str(workdir), govern=True, ceiling=ceiling,
                             env=secrets, spec=run_spec,

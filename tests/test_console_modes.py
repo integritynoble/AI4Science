@@ -265,3 +265,59 @@ def test_and_the_arguments_survive():
     act, _ = console.route("/agent sarsi-worker", console.Mode(), deps)
     assert act.kind == "answer"
     assert act.text == "/agent sarsi-worker"
+
+
+# ── `/agents` must list the workers, not only the chat specs ──────────
+
+def test_the_agent_menu_lists_workers_first():
+    """The owner opened `/agents`, saw sixteen chat specs, and could not find
+    `sarsi-worker` — the agent the whole machine is built around.
+
+    It was absent because `/agents` listed one registry (chat specs: what THIS
+    repl runs) and workers live in another (the sarsi roster: who holds tasks).
+    That distinction is real and it is not the owner's problem. One door.
+
+    Workers come first because that is what the owner reaches for.
+    """
+    from ai4science.harness import console
+
+    entries = console.agent_menu(
+        core=[("unified-LLM", "General coding assistant")],
+        specific=[("imaging", "CASSI reconstruction")],
+        workers=[("sarsi-worker", "the general worker"),
+                 ("jobs", "job search")],
+        active="unified-LLM")
+
+    assert [e.name for e in entries][:2] == ["sarsi-worker", "jobs"], \
+        [e.name for e in entries]
+    assert entries[0].kind == "worker"
+    assert entries[0].name == "sarsi-worker"
+
+
+def test_a_worker_entry_is_marked_as_one():
+    """Selecting a worker ENTERS it; selecting a spec SWITCHES this repl. Two
+    different acts in one list, so the list has to say which is which."""
+    from ai4science.harness import console
+    entries = console.agent_menu(core=[("unified-LLM", "d")], specific=[],
+                                 workers=[("sarsi-worker", "w")],
+                                 active="unified-LLM")
+    worker = [e for e in entries if e.kind == "worker"][0]
+    spec = [e for e in entries if e.kind == "spec"][0]
+    assert "worker" in worker.label.lower()
+    assert "← current" in spec.label
+
+
+def test_the_current_spec_is_still_marked():
+    from ai4science.harness import console
+    entries = console.agent_menu(core=[("a", "d1"), ("b", "d2")], specific=[],
+                                 workers=[], active="b")
+    assert "← current" in [e for e in entries if e.name == "b"][0].label
+    assert "← current" not in [e for e in entries if e.name == "a"][0].label
+
+
+def test_no_workers_configured_is_not_an_error():
+    """A machine with no sarsi registry still gets its spec list."""
+    from ai4science.harness import console
+    entries = console.agent_menu(core=[("a", "d")], specific=[], workers=[],
+                                 active="a")
+    assert [e.name for e in entries] == ["a"]

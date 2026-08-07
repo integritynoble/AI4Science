@@ -1223,17 +1223,34 @@ def run_common_repl(
                     specific = sorted(agent_registry.specific_agents(),
                                       key=lambda s: (s.order, s.name))
                     pick = list(core) + list(specific)
-                    labels = [
-                        f"{_tui._display_mode(s.name)} — {s.description}"
-                        + ("  ← current" if s.name == active_spec.name else "")
-                        + ("  [domain]" if s in specific else "")
-                        for s in pick
-                    ]
-                    idx = _tui.select("Select an agent", labels)
+                    # The sarsi WORKERS belong in this list too. The owner
+                    # opened `/agents`, read sixteen chat specs, and could not
+                    # find `sarsi-worker` — the agent the machine is built
+                    # around — because workers live in the other registry. That
+                    # distinction is real and it is not the owner's problem.
+                    from ai4science.harness import console as _c
+                    workers = _sarsi_worker_choices()
+                    entries = _c.agent_menu(
+                        core=[(_tui._display_mode(s.name), s.description)
+                              for s in core],
+                        specific=[(_tui._display_mode(s.name), s.description)
+                                  for s in specific],
+                        workers=workers,
+                        active=_tui._display_mode(active_spec.name))
+                    idx = _tui.select("Select an agent",
+                                      [e.label for e in entries])
                     if idx is None:
                         print("[harness] (cancelled)", flush=True)
                         continue
-                    target = pick[idx]
+                    chosen = entries[idx]
+                    if chosen.kind == "worker":
+                        # Entering a worker is a different act from switching
+                        # this repl's spec — same list, said out loud on the row.
+                        state["mode"] = _c.Mode(kind="agent", name=chosen.name)
+                        print(f"now addressing {chosen.name}", flush=True)
+                        continue
+                    # workers were prepended, so shift back into `pick`
+                    target = pick[idx - len(workers)]
                 else:
                     parts = arg.split(None, 1)
                     if parts[0] == "specific":
@@ -1473,3 +1490,33 @@ def run_common_repl(
             _note = _console_deps(state)["suggest"](line)
             if _note:
                 print(_note, flush=True)
+
+
+def _sarsi_worker_choices():
+    """`(id, description)` for every sarsi worker, `sarsi-worker` first.
+
+    Returns `[]` on any failure — a machine with no sarsi registry still gets
+    its spec list, and a broken registry must not take down the picker the
+    owner is standing in.
+    """
+    try:
+        from ai4science.harness.agents.sarsi import registry as reg
+        config = reg.load()
+    except Exception:
+        return []
+    rows = []
+    for agent_id, agent in (config.agents or {}).items():
+        if getattr(agent, "role", "") != "worker":
+            continue
+        if getattr(agent, "retired", False):
+            continue
+        # `about` is a list on some roster entries and a string on others —
+        # a picker must not care which, and must never raise into the loop.
+        about = getattr(agent, "about", "") or ""
+        if isinstance(about, (list, tuple)):
+            about = " ".join(str(x) for x in about)
+        rows.append((agent_id, str(about).strip()
+                     or "a sarsi worker: holds tasks and drives sessions"))
+    # `sarsi-worker` first: it is the general one, and the owner reaches for it.
+    rows.sort(key=lambda r: (r[0] != "sarsi-worker", r[0]))
+    return rows

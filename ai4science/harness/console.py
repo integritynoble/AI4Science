@@ -170,3 +170,40 @@ def route(line: str, mode: Mode, deps: dict) -> tuple:
         return Action("guide", task=mode.name, text=line), mode
 
     return Action("answer", text=line), mode
+
+
+@dataclass(frozen=True)
+class MenuEntry:
+    """One row of the `/agents` picker."""
+    name: str
+    kind: str          # "worker" — entering it; "spec" — switching this repl
+    label: str
+
+
+def agent_menu(*, core, specific, workers, active: str):
+    """Rows for `/agents`, workers first.
+
+    Two registries meet here. Chat SPECS are what this repl runs; sarsi WORKERS
+    hold tasks and drive sessions. The distinction is real and it is not the
+    owner's problem — they opened `/agents`, read sixteen specs, and could not
+    find `sarsi-worker`, the agent the machine is built around.
+
+    So: one door. Workers first, because that is what the owner reaches for,
+    and each row says which act it performs — selecting a worker ENTERS it,
+    selecting a spec SWITCHES this repl. Same list, two verbs, said out loud.
+
+    `core`, `specific` and `workers` are each `(name, description)` pairs, so
+    this stays a pure function over two registries it does not import.
+    """
+    rows = []
+    for name, desc in workers:
+        rows.append(MenuEntry(name, "worker",
+                              f"{name} — {desc}  [worker · enter it]"))
+    for name, desc in core:
+        rows.append(MenuEntry(name, "spec", f"{name} — {desc}"
+                              + ("  ← current" if name == active else "")))
+    for name, desc in specific:
+        rows.append(MenuEntry(name, "spec", f"{name} — {desc}"
+                              + ("  ← current" if name == active else "")
+                              + "  [domain]"))
+    return rows

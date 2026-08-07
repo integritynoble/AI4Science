@@ -306,3 +306,85 @@ def test_and_the_task_folder_is_still_writable_too(config, tmp_path):
     t.work_root = str(work)
     ses.assign(config, a, t, runtime=_RT(), installed=lambda: set())
     assert str(tsk.dir_of(a, t.id).resolve()) in seen["writable"]
+
+
+# ── the backend chooses the ENGINE; the agent still chooses the spec ──
+
+def test_sarsi_pwm_runs_the_agents_own_spec(config):
+    """`assign` computed `spec_for(resolve(task.backend))` and stopped there,
+    so EVERY worker started on `unified-LLM` — the sarsi-pwm default — and the
+    roster's own specs became dead configuration. `social` would have run the
+    generalist under the social agent's name, which is precisely what
+    `test_it_never_substitutes_a_generalist` exists to forbid.
+
+    The two choices are different questions:
+
+      * the BACKEND says which engine — Anthropic's `claude` binary, or
+        ai4science;
+      * the AGENT says which ai4science agent that engine runs.
+
+    So `sarsi-pwm` means "ai4science, running this worker's spec", and
+    `unified-LLM` is only the fallback for a worker that names none.
+    """
+    from ai4science.harness.agents.sarsi import session as ses
+    seen = {}
+
+    class _RT:
+        engine = "claude"
+        def start(self, name, cwd, *, govern, ceiling, env=None,
+                  spec="claude-code", writable=None):
+            seen["spec"] = spec
+            return {"ok": True, "name": name}
+        def send(self, name, text):
+            return {"ok": True}
+
+    a = config.agents["sarsi-worker"]
+    a.spec = "computational-imaging"
+    t = tsk.create(config, a, wk.Directive(agent_id=a.id, goal="g"),
+                   backend="sarsi-pwm")
+    ses.assign(config, a, t, runtime=_RT(), installed=lambda: set())
+    assert seen["spec"] == "computational-imaging"
+
+
+def test_sarsi_claude_still_overrides_it(config):
+    """`sarsi-claude` launches a vendor binary, so the ai4science spec does not
+    apply — this is the one backend that really does decide."""
+    from ai4science.harness.agents.sarsi import session as ses
+    seen = {}
+
+    class _RT:
+        engine = "claude"
+        def start(self, name, cwd, *, govern, ceiling, env=None,
+                  spec="claude-code", writable=None):
+            seen["spec"] = spec
+            return {"ok": True, "name": name}
+        def send(self, name, text):
+            return {"ok": True}
+
+    a = config.agents["sarsi-worker"]
+    a.spec = "computational-imaging"
+    t = tsk.create(config, a, wk.Directive(agent_id=a.id, goal="g"),
+                   backend="sarsi-claude")
+    ses.assign(config, a, t, runtime=_RT(), installed=lambda: set())
+    assert seen["spec"] == "claude-code"
+
+
+def test_a_worker_naming_no_spec_falls_back_to_the_default(config):
+    from ai4science.harness.agents.sarsi import session as ses
+    seen = {}
+
+    class _RT:
+        engine = "claude"
+        def start(self, name, cwd, *, govern, ceiling, env=None,
+                  spec="claude-code", writable=None):
+            seen["spec"] = spec
+            return {"ok": True, "name": name}
+        def send(self, name, text):
+            return {"ok": True}
+
+    a = config.agents["sarsi-worker"]
+    a.spec = ""
+    t = tsk.create(config, a, wk.Directive(agent_id=a.id, goal="g"),
+                   backend="sarsi-pwm")
+    ses.assign(config, a, t, runtime=_RT(), installed=lambda: set())
+    assert seen["spec"] == backends.spec_for("sarsi-pwm")
