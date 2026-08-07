@@ -385,6 +385,8 @@ def _gate(screen: str, *, planning: bool = False, deletes=None,
     """
     if not _GATE_SHAPE.search(screen):
         return None
+    if _already_answered(screen):
+        return None
     for pattern, answer, why in _KNOWN_GATES:
         if pattern.search(screen):
             return (answer, why)
@@ -447,6 +449,47 @@ _GATE_HEADER = re.compile(r"^(?P<indent>\s*)(Bash command|\$\s+\S.*)\s*$", re.M)
 #: description in and the gate unanswered; getting it wrong the other way would
 #: judge a truncated command, so the test is deliberately strict.
 _GATE_PROSE = re.compile(r"^[A-Za-z][A-Za-z0-9 ,.'\u2019]*$")
+
+
+def _already_answered(screen: str) -> bool:
+    """Has the last gate on screen already been answered?
+
+    Claude Code redraws when a gate is answered and its options disappear. The
+    ai4science TUI leaves them in the transcript, so the loop kept seeing `1.`
+    on a line — a gate SHAPE — long after `❯ 1` had answered it. Once the
+    identifying prompt text scrolled out of the captured pane there was no rule
+    left to match either, so it reported "an option menu this loop has no rule
+    for" and abstained on every pass. A live sarsi-pwm run abstained nine times
+    in one supervise pass and five in the next, and the session was never
+    briefed.
+
+    The discriminator was already in this module. A gate that has been answered
+    is followed by an ECHO — a line that starts with `❯` and has text after it,
+    which is exactly `_PROMPT_LINE`. A pending gate ends at
+    `Type a number (1-N) and press Enter ❯`, where the `❯` is not at the start
+    of the line.
+
+    True for both TUIs: where Claude Code's block vanishes there is nothing to
+    match, and this returns False for want of a gate shape at all.
+    """
+    options = list(re.finditer(r"^\s*❯?\s*(?P<n>\d+)\.\s+(?P<text>\S.*?)\s*$",
+                               screen, re.M))
+    if not options:
+        return False
+    last = options[-1]
+    numbers = {m.group("n") for m in options}
+    texts = {m.group("text").lower() for m in options}
+
+    # An echo is the option NUMBER or the option TEXT — nothing else. A `❯`
+    # line carrying anything else is a STRANDED PROMPT, which is the opposite
+    # situation: the trust gate is on screen precisely BECAUSE the kickoff
+    # could not run, and treating that as an answer would leave the loop
+    # ignoring a gate that is genuinely waiting.
+    for m in _PROMPT_LINE.finditer(screen, last.end()):
+        echoed = m.group("text").strip().rstrip(".").lower()
+        if echoed in numbers or echoed in texts:
+            return True
+    return False
 
 
 def _gate_command(screen: str) -> str:

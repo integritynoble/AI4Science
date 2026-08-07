@@ -72,21 +72,22 @@ def test_drivability_is_asked_of_the_spec_not_assumed_of_the_backend():
     assert ses.drivable(backends.spec_for("sarsi-claude")) is True
 
 
-def test_pwm_became_drivable_only_after_a_live_run():
-    """This test asserted the OPPOSITE until 2026-08-07, deliberately, so the
-    claim could not be made without evidence. The evidence: a real session
-    started by sarsi-worker on grace, running
+def test_pwm_is_not_claimed_drivable_until_a_run_reaches_a_verdict():
+    """This asserted `False`, was flipped to `True` on 2026-08-07, and was put
+    back the same day.
 
-        ai4science chat --mode unified-LLM
+    The flip rested on one captured screen where the loop's matchers
+    recognised the folder-trust gate. A driven run then showed that is not the
+    same thing: the ai4science TUI leaves an answered gate's options in the
+    transcript, so the loop keeps seeing a gate shape after it has been
+    answered — and once the identifying text scrolls away there is no rule to
+    match, so it abstains on every pass and never briefs the session.
 
-    with the loop's own matchers confirming, against that live screen, that it
-    saw a gate and recognised it as the folder-trust prompt answered by "1".
-
-    It also makes `jobs` loop-driven — same spec, same TUI. Drivability is a
-    property of the interface, not the agent."""
+    The bar is a run driven to a verdict, not a matcher succeeding on a
+    screenshot.
+    """
     from ai4science.harness.agents.sarsi import session as ses
-    assert ses.drivable(backends.spec_for("sarsi-pwm")) is True
-    assert ses.drivable("unified-LLM") is True
+    assert ses.drivable(backends.spec_for("sarsi-pwm")) is False
 
 
 # ── naming ────────────────────────────────────────────────────────────

@@ -145,18 +145,22 @@ class MachineRuntime:
 #: detection, stranded-prompt reading and busy marker are tuned to Claude
 #: Code's TUI; another interface may be STARTED, and is reported as not
 #: drivable rather than quietly mis-driven.
-DRIVABLE_SPECS = {"claude-code", "codex", "unified-LLM"}
-#: `unified-LLM` — the ai4science TUI, what `sarsi-pwm` runs — was added on
-#: 2026-08-07 after a live check, not because two strings matched. The loop
-#: reads four things, and all four were confirmed against a REAL running
-#: session on a second user account: the gate shape matched, `_KNOWN_GATES`
-#: recognised the folder-trust prompt and returned "1", the `❯` prompt line is
-#: identical, and `tui.py` now emits `esc to interrupt` like its own inline
-#: sibling always did.
+DRIVABLE_SPECS = {"claude-code", "codex"}
+#: `unified-LLM` was added on 2026-08-07 and REMOVED the same day. The evidence
+#: was one screen capture in which the loop's matchers recognised the
+#: folder-trust gate — and a driven run then showed that is not enough.
 #:
-#: This also makes `jobs` loop-driven, since it runs on the same spec.
-#: Drivability is a property of the INTERFACE, not the agent — claiming the
-#: TUI is readable for one agent and not another would be incoherent.
+#: The ai4science TUI leaves an answered gate's options in the transcript.
+#: Claude Code redraws and they disappear. So after the gate is answered the
+#: loop still sees `1.` on a line — a gate SHAPE — while the identifying prompt
+#: text has scrolled out of the captured pane, leaving no rule to match. It
+#: abstains, every pass, and the session is never briefed. Nine abstentions in
+#: one supervise run, then five more in the next.
+#:
+#: This spec goes back in when an ANSWERED gate stops looking like a pending
+#: one, and when a full run has been driven to a verdict — not before. The
+#: mistake worth not repeating: a matcher succeeding on one captured screen is
+#: not the loop driving a session.
 
 
 def drivable(spec: str) -> bool:

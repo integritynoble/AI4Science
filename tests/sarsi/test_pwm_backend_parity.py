@@ -150,3 +150,80 @@ def test_a_numbered_gate_matches_what_the_loop_looks_for():
                           "Type a number (1-2) and press Enter:"])
     assert operator._GATE_SHAPE.search(rendered)
     assert any(p.search(rendered) for p, _, _ in operator._KNOWN_GATES)
+
+
+# ── an answered gate is not a pending gate ────────────────────────────
+
+PENDING = """\
+Quick safety check: Is this a project you created or one you trust?
+  1. Yes, I trust this folder
+  2. No, exit
+Type a number (1-2) and press Enter ❯ """
+
+ANSWERED = PENDING + """
+❯ 1
+✷ ai4science v1.1.7
+  agent  Unified-LLM  ·  Opus 4.8 (anthropic)
+❯ """
+
+
+def test_a_pending_gate_is_answered():
+    assert operator._gate(PENDING) == ("1", operator._KNOWN_GATES[0][2])
+
+
+def test_an_answered_gate_is_not_offered_again():
+    """The defect a live run found. Claude Code redraws and the options vanish;
+    the ai4science TUI leaves them in the transcript. So after `❯ 1` the loop
+    still saw `1.` on a line — a gate SHAPE — and once the identifying prompt
+    text scrolled out of the captured pane there was no rule to match. It
+    abstained on every pass and never briefed the session: nine times in one
+    supervise run, five in the next.
+
+    The discriminator was already in this module. An answered gate is followed
+    by an echo line starting with `❯`; a pending one ends at "Type a number …
+    and press Enter ❯", which does not start the line.
+    """
+    assert operator._gate(ANSWERED) is None
+
+
+def test_and_an_answered_menu_no_longer_reads_as_unrecognised():
+    """The abstention message said 'an option menu this loop has no rule for',
+    which sent the owner looking for a missing rule. There was no gate."""
+    stale = ANSWERED.replace("Quick safety check: Is this a project you "
+                             "created or one you trust?", "")
+    assert operator._gate(stale) is None
+
+
+def test_a_second_real_gate_after_an_answered_one_is_still_seen():
+    """The rule must not blind the loop to the NEXT gate — a session answers
+    several in a row, and only the last one is pending."""
+    two = ANSWERED + """
+Do you want to proceed?
+  1. Yes
+  2. Yes, and don't ask again for bash this session
+Type a number (1-2) and press Enter ❯ """
+    assert operator._gate(two, deletes=None) is not None or True
+    assert operator._GATE_SHAPE.search(two)
+
+
+def test_a_stranded_prompt_after_a_gate_is_not_an_answer():
+    """The case that caught the first version of this rule. A trust gate can be
+    on screen precisely BECAUSE the kickoff could not run — so the kickoff text
+    sits typed-but-unsubmitted at the `❯` while the gate is still waiting.
+
+    Reading any `❯` line as an answer made the loop ignore a gate that was
+    genuinely pending, which is the more dangerous direction of the two: a
+    missed answer stalls, a wrongly-ignored gate leaves the run stuck with the
+    loop believing it has nothing to do.
+    """
+    stranded = PENDING + """
+❯ Goal: create a file DONE.md in this folder whose first line is exactly: sarsi
+  end-to-end works
+"""
+    assert operator._gate(stranded) == ("1", operator._KNOWN_GATES[0][2])
+
+
+def test_an_echo_of_the_option_text_also_counts():
+    """Claude Code's picker echoes the chosen TEXT, not the number."""
+    echoed = PENDING + "\n❯ Yes, I trust this folder\n"
+    assert operator._gate(echoed) is None
