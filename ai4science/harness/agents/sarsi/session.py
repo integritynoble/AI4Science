@@ -156,22 +156,41 @@ class MachineRuntime:
 #: detection, stranded-prompt reading and busy marker are tuned to Claude
 #: Code's TUI; another interface may be STARTED, and is reported as not
 #: drivable rather than quietly mis-driven.
-DRIVABLE_SPECS = {"claude-code", "codex"}
-#: `unified-LLM` was added on 2026-08-07 and REMOVED the same day. The evidence
-#: was one screen capture in which the loop's matchers recognised the
-#: folder-trust gate — and a driven run then showed that is not enough.
+DRIVABLE_SPECS = {"claude-code", "codex", "unified-LLM"}
+#: `unified-LLM` has been in this set three times. Twice it was taken out; the
+#: third time it stayed, and the difference is what the entry means.
 #:
-#: The ai4science TUI leaves an answered gate's options in the transcript.
-#: Claude Code redraws and they disappear. So after the gate is answered the
-#: loop still sees `1.` on a line — a gate SHAPE — while the identifying prompt
-#: text has scrolled out of the captured pane, leaving no rule to match. It
-#: abstains, every pass, and the session is never briefed. Nine abstentions in
-#: one supervise run, then five more in the next.
+#: **2026-08-07, first attempt — reverted the same day.** The evidence was one
+#: screen capture in which the loop's matchers recognised the folder-trust gate.
+#: A driven run then showed that is not the same thing: the ai4science TUI
+#: leaves an answered gate's options in the transcript where Claude Code redraws
+#: and they vanish, so the loop kept seeing a gate SHAPE after the gate was
+#: answered, and once the identifying text scrolled away there was no rule to
+#: match. Nine abstentions in one supervise run, five in the next.
 #:
-#: This spec goes back in when an ANSWERED gate stops looking like a pending
-#: one, and when a full run has been driven to a verdict — not before. The
-#: mistake worth not repeating: a matcher succeeding on one captured screen is
-#: not the loop driving a session.
+#: The comment then set the bar in two parts: **an answered gate must stop
+#: looking like a pending one, AND a full run must be driven to a verdict.**
+#:
+#: **2026-08-07, third attempt — both parts met, and this is the evidence.**
+#:
+#:   * `operator._already_answered` distinguishes an answered gate from a
+#:     pending one, by the echo line the TUI leaves after it;
+#:   * task `tsk_d07da8e72e` on grace ran cold start → trust gate answered →
+#:     brief delivered → plan-write gate answered → plan collected →
+#:     awaiting-grant → released → `answered — a write the A2 ceiling now
+#:     allows, asked before the task was released` → **`verified — the goal is
+#:     met`**, with ZERO abstentions. The file it was asked for exists, 20
+#:     bytes, first line exactly right.
+#:
+#: Five defects had to be fixed to get there, and every one of them was a
+#: parity gap found by driving rather than by a test: a gate whose text the
+#: terminal had wrapped, a multi-line brief submitted one line per prompt, a
+#: plan path wrapped mid-word, a declared workdir never passed as writable, the
+#: governance hook never told the declared paths, and a gate raised at A0 left
+#: pending after the ceiling rose.
+#:
+#: The mistake worth not repeating is still the original one: **a matcher
+#: succeeding on one captured screen is not the loop driving a session.**
 
 
 def drivable(spec: str) -> bool:

@@ -93,16 +93,18 @@ def test_the_loop_recognises_the_gate_the_tui_actually_shows():
 
 # ── what this unlocks, and what it does not ───────────────────────────
 
-def test_pwm_is_not_drivable_until_a_live_run_says_so():
-    """Parity is necessary and not sufficient. DRIVABLE_SPECS is a claim that
-    the loop has been SEEN reading that interface, so it grows after a live
-    check, not because two strings now match.
+def test_the_drivable_set_is_what_live_runs_have_earned():
+    """Parity was necessary and not sufficient — that half still holds, and it
+    is why this test existed: to fail loudly on the day someone added a spec
+    without the evidence.
 
-    This test is here to fail loudly on the day someone adds the spec without
-    the evidence — it is the same discipline as `verified live, once`.
+    `unified-LLM` now has the evidence (`tsk_d07da8e72e`, verdict PASS, zero
+    abstentions), so it is here. The other two were already earned. Nothing
+    joins this set for matching two strings.
     """
     assert "claude-code" in session.DRIVABLE_SPECS
     assert "codex" in session.DRIVABLE_SPECS
+    assert "unified-LLM" in session.DRIVABLE_SPECS
 
 
 def test_the_two_structural_patterns_were_never_the_problem():

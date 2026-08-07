@@ -72,22 +72,33 @@ def test_drivability_is_asked_of_the_spec_not_assumed_of_the_backend():
     assert ses.drivable(backends.spec_for("sarsi-claude")) is True
 
 
-def test_pwm_is_not_claimed_drivable_until_a_run_reaches_a_verdict():
-    """This asserted `False`, was flipped to `True` on 2026-08-07, and was put
-    back the same day.
+def test_pwm_is_drivable_because_a_run_reached_a_verdict():
+    """This asserted `False` for most of 2026-08-07, and the bar it named has
+    now been cleared — so it is inverted, with the evidence.
 
-    The flip rested on one captured screen where the loop's matchers
-    recognised the folder-trust gate. A driven run then showed that is not the
-    same thing: the ai4science TUI leaves an answered gate's options in the
-    transcript, so the loop keeps seeing a gate shape after it has been
-    answered — and once the identifying text scrolls away there is no rule to
-    match, so it abstains on every pass and never briefs the session.
+    The bar was two-part: an ANSWERED gate must stop looking like a pending one,
+    and a full run must be driven to a VERDICT. Both:
 
-    The bar is a run driven to a verdict, not a matcher succeeding on a
-    screenshot.
+      * `operator._already_answered` tells the two apart by the echo line the
+        ai4science TUI leaves behind;
+      * `tsk_d07da8e72e` on grace went cold start → trust gate answered → brief
+        delivered → plan-write gate answered → plan collected → awaiting-grant
+        → released → "a write the A2 ceiling now allows, asked before the task
+        was released" → **verified — the goal is met**. Zero abstentions.
+
+    It was flipped on a screenshot once and reverted the same day. The rule
+    that survived is the one that matters: a matcher succeeding on a captured
+    screen is not the loop driving a session.
     """
     from ai4science.harness.agents.sarsi import session as ses
-    assert ses.drivable(backends.spec_for("sarsi-pwm")) is False
+    assert ses.drivable(backends.spec_for("sarsi-pwm")) is True
+
+
+def test_and_drivability_is_still_a_claim_about_evidence():
+    """The set is not a wish list. Anything added here is asserting that a run
+    has been SEEN reaching a verdict on that interface."""
+    from ai4science.harness.agents.sarsi import session as ses
+    assert ses.drivable("some-spec-nobody-has-driven") is False
 
 
 # ── naming ────────────────────────────────────────────────────────────
