@@ -204,9 +204,26 @@ def _console_deps(state: dict) -> dict:
         except Exception:
             return ""
 
+    def _about_self(agent_id: str) -> str:
+        """What this worker can truthfully say about itself, or "".
+
+        Never raises: this text reaches the prompt the owner is standing in, and
+        a raise there would drop the REPL.
+        """
+        try:
+            from ai4science.harness.agents.sarsi import selfaware
+            config = _config()
+            agent = config.agents.get(agent_id)
+            if agent is None:
+                return ""
+            return selfaware.describe(config, agent)
+        except Exception:
+            return ""
+
     return {"resolve": resolve_name, "find_task": _find, "suggest": _suggest,
             "create": _create, "guide": _guide, "session_of": _session_of,
-            "pause_for_interact": _pause_for_interact, "unknown": slash_answer}
+            "pause_for_interact": _pause_for_interact, "unknown": slash_answer,
+            "about_self": _about_self}
 
 
 def _source() -> str:

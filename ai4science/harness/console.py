@@ -212,6 +212,22 @@ def route(line: str, mode: Mode, deps: dict) -> tuple:
                                            "the model")(line)), mode
 
     if mode.kind == "agent":
+        # A question the worker can answer about ITSELF is answered from its own
+        # state, not sent to a model and not turned into a task. `can you plan
+        # at A2?` became a task goal because the worker had nothing to answer
+        # from; now `deps["about_self"]` derives it from the registry, the trust
+        # ledger and the task store.
+        #
+        # Falls through when the agent is not self-aware (describe returns "")
+        # — an empty reply would be worse than the old behaviour.
+        if not _is_directive(line):
+            about = deps.get("about_self")
+            if about is not None:
+                from ai4science.harness.agents.sarsi import selfaware as _sa
+                if _sa.is_about_self(line):
+                    text = about(mode.name) or ""
+                    if text:
+                        return Action("say", text=text), mode
         if not _is_directive(line):
             # `hi` became a task goal. So did `can you plan at A2?`. A greeting
             # and a question about the worker are not directives, and turning

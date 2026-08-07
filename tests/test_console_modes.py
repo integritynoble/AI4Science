@@ -464,3 +464,44 @@ def test_task_mode_falls_back_to_the_chat_spec():
 def test_a_missing_mode_key_is_not_a_crash():
     from ai4science.harness import repl
     assert repl._bridge_target({"agent": "unified-LLM"}) == "unified-LLM"
+
+
+# ── the worker answers questions about itself ─────────────────────────
+
+def test_a_question_about_the_worker_is_answered_from_its_own_state():
+    """`can you plan at A2?` became a task goal, because the worker had nothing
+    to answer from. Now it does: `selfaware.describe` derives the answer from
+    the registry, the trust ledger and the task store — each claim linked to
+    the store it came from.
+    """
+    from ai4science.harness import console
+    deps = dict(_deps_ok())
+    deps["about_self"] = lambda name: "I am sarsi-worker, a worker on this machine."
+    m = console.Mode(kind="agent", name="sarsi-worker")
+    act, mode = console.route("can you plan at A2?", m, deps)
+    assert act.kind == "say", act
+    assert "sarsi-worker" in act.text
+    assert mode.pending is None, "a question must not become a pending goal"
+
+
+def test_a_question_about_the_world_still_reaches_the_model():
+    """A router that guesses is worse than one that is quiet. A canned page
+    standing in for a real answer is the failure mode here."""
+    from ai4science.harness import console
+    deps = dict(_deps_ok())
+    deps["about_self"] = lambda name: "SHOULD NOT BE USED"
+    m = console.Mode(kind="agent", name="sarsi-worker")
+    act, _ = console.route("how does GAP-TV work?", m, deps)
+    assert act.kind == "answer", act
+    assert "SHOULD NOT" not in act.text
+
+
+def test_an_agent_that_is_not_self_aware_falls_through():
+    """`describe` returns "" when the flag is off; the line must then be
+    answered as before rather than becoming an empty reply."""
+    from ai4science.harness import console
+    deps = dict(_deps_ok())
+    deps["about_self"] = lambda name: ""
+    m = console.Mode(kind="agent", name="sarsi-worker")
+    act, _ = console.route("what can you do?", m, deps)
+    assert act.kind == "answer", act
