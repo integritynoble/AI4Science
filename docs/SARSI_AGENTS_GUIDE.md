@@ -386,6 +386,52 @@ ai4science sarsi init --reconcile     # adds roster agents this release ships
 
 Additive only — it never removes, rewrites or re-ceilings anything you have set.
 
+### Before any of it: two kinds of agent, and they are not alike
+
+This is the distinction everything else depends on, and getting it wrong is
+what sends people in circles.
+
+| | what it does with your request |
+|---|---|
+| a **chat agent** — `Unified-LLM`, `Research`, `work` | **answers you, here.** Ask for a GAP-TV implementation and it writes one in front of you |
+| a **sarsi worker** — `sarsi-worker`, `computational-imaging` | **delegates.** Drafts a plan, `sarsi-claude` agrees it, you grant what it declared, and it works under supervision |
+
+`sarsi-worker` is the second kind. **You never become it — you hand it work.**
+`/agent sarsi-worker` fails for that reason: it is not a chat spec, and there is
+nothing to switch into.
+
+### Handing `sarsi-worker` a goal, end to end
+
+Start somewhere that is not your home directory — file searches from `~` go
+broad and slow, and the banner says so:
+
+```bash
+cd ~/some-project
+ai4science
+```
+
+Then, in the REPL:
+
+```
+❯ /sarsi-worker do write a GAP-TV algorithm for CASSI
+```
+
+That returns a task id. The rest is the §5 flow, and **step 2 is the one people
+get stuck on**:
+
+```bash
+ai4science sarsi run       sarsi-worker <task>
+ai4science sarsi supervise sarsi-worker <task> --passes 20 --interval 12
+ai4science sarsi grant     sarsi-worker <task> "<each permission it names>"
+ai4science sarsi release   sarsi-worker <task>
+ai4science sarsi supervise sarsi-worker <task>
+```
+
+Until `supervise` collects the plan, nothing is attached to the task — so there
+is nothing to grant and nothing to release, and the task keeps reading
+`planning`. That is not a failure; it is collection not having happened yet. It
+takes several passes.
+
 ### In the REPL: `/<name>` goes wherever the name points
 
 Inside `ai4science`, a slash addresses the **harness**, not the model. One rule
