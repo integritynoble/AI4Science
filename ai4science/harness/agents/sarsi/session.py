@@ -145,7 +145,18 @@ class MachineRuntime:
 #: detection, stranded-prompt reading and busy marker are tuned to Claude
 #: Code's TUI; another interface may be STARTED, and is reported as not
 #: drivable rather than quietly mis-driven.
-DRIVABLE_SPECS = {"claude-code", "codex"}
+DRIVABLE_SPECS = {"claude-code", "codex", "unified-LLM"}
+#: `unified-LLM` — the ai4science TUI, what `sarsi-pwm` runs — was added on
+#: 2026-08-07 after a live check, not because two strings matched. The loop
+#: reads four things, and all four were confirmed against a REAL running
+#: session on a second user account: the gate shape matched, `_KNOWN_GATES`
+#: recognised the folder-trust prompt and returned "1", the `❯` prompt line is
+#: identical, and `tui.py` now emits `esc to interrupt` like its own inline
+#: sibling always did.
+#:
+#: This also makes `jobs` loop-driven, since it runs on the same spec.
+#: Drivability is a property of the INTERFACE, not the agent — claiming the
+#: TUI is readable for one agent and not another would be incoherent.
 
 
 def drivable(spec: str) -> bool:

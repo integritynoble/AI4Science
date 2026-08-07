@@ -72,11 +72,21 @@ def test_drivability_is_asked_of_the_spec_not_assumed_of_the_backend():
     assert ses.drivable(backends.spec_for("sarsi-claude")) is True
 
 
-def test_pwm_is_not_yet_claimed_drivable():
-    """Deliberately failing the day someone flips this without a live run.
-    The parity work made it POSSIBLE; only a real session makes it true."""
+def test_pwm_became_drivable_only_after_a_live_run():
+    """This test asserted the OPPOSITE until 2026-08-07, deliberately, so the
+    claim could not be made without evidence. The evidence: a real session
+    started by sarsi-worker on grace, running
+
+        ai4science chat --mode unified-LLM
+
+    with the loop's own matchers confirming, against that live screen, that it
+    saw a gate and recognised it as the folder-trust prompt answered by "1".
+
+    It also makes `jobs` loop-driven — same spec, same TUI. Drivability is a
+    property of the interface, not the agent."""
     from ai4science.harness.agents.sarsi import session as ses
-    assert ses.drivable(backends.spec_for("sarsi-pwm")) is False
+    assert ses.drivable(backends.spec_for("sarsi-pwm")) is True
+    assert ses.drivable("unified-LLM") is True
 
 
 # ── naming ────────────────────────────────────────────────────────────
