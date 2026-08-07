@@ -430,6 +430,46 @@ def _mark_work_start(agent: Agent, task: Task, acts=None, now=time.time) -> None
         pass
 
 
+def set_owner_plan(config: Config, agent: Agent, task: Task, text: str, *,
+                   now=time.time) -> Task:
+    """The owner writes the plan, and it becomes the standard.
+
+    The design says the owner may author the plan; in practice the session
+    drafted and the owner could only grant or refuse, and `e=edit` at the
+    confirmation edits the GOAL. Every piece needed for this already existed --
+    `plan.parse`, `adopt_plan`, and the `plan_owner_edited` flag that
+    `adopt_plan` honours by refusing to let a session rewrite criteria the owner
+    authored. What was missing was the way in.
+
+    Three things this does that a session-written plan does not:
+
+      * **the file on disk is the owner's own words**, not a re-render. The
+        session reads that file, and a plan that comes back paraphrased is not
+        the plan the owner wrote;
+      * **it is agreed on arrival.** There is nobody left to settle it with;
+      * **it is marked the owner's**, which is what stops a session later
+        replacing the criteria a verdict is measured against. That has
+        happened: a session replaced the owner's criterion with one requiring a
+        cited source that did not exist.
+
+    Writing the plan is NOT granting what it declares. `awaiting` is set from
+    the plan's permissions exactly as it would be for a drafted one -- the owner
+    authors the standard, and the grant stays a separate, deliberate act.
+
+    Raises `pl.BadPlan` if the text will not parse, before it can become the
+    standard a verdict is measured against.
+    """
+    plan = pl.parse(text)                      # refuses here, not later
+    task = adopt_plan(config, agent, task, plan, now=now)
+    dir_of(agent, task.id).mkdir(parents=True, exist_ok=True)
+    (dir_of(agent, task.id) / f"{task.plan_version}.md").write_text(text)
+    task.criteria = plan.criteria()
+    task.plan_owner_edited = True
+    task.plan_agreed = True
+    task.plan_stale = False
+    return _touch(agent, task, now)
+
+
 def adopt_plan(config: Config, agent: Agent, task: Task, plan: pl.Plan, *,
                now=time.time) -> Task:
     """Take a plan the SESSION wrote, without rewriting the file it wrote.

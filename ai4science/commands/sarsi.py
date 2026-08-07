@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import List, Optional
 
 import json
+import pathlib
 import typer
 from rich.console import Console
 from rich.table import Table
@@ -915,12 +916,47 @@ def _load_task(agent_id: str, task_id: str):
     return config, agent, _task_or_exit(config, agent, task_id)
 
 
-@app.command("plan", help="Show one task's plan — its phases, criteria, and declared permissions.")
+@app.command("plan", help="Show one task's plan — or write it yourself with --set-from.")
 def plan_cmd(agent_id: str = typer.Argument(..., help="Worker id"),
-             task_id: str = typer.Argument(..., help="Task id, e.g. tsk_…")) -> None:
+             task_id: str = typer.Argument(..., help="Task id, e.g. tsk_…"),
+             set_from: str = typer.Option(
+                 "", "--set-from",
+                 help="A markdown plan file YOU wrote. It becomes the standard: "
+                      "agreed on arrival, and a session may not rewrite its "
+                      "criteria. Its permissions still need granting.")) -> None:
     from ai4science.harness.agents.sarsi import task as tsk
 
     config = _load()
+    if set_from:
+        # The owner's half of "here is the plan, follow it". Refused here rather
+        # than at run time, because this text becomes the standard a verdict is
+        # measured against.
+        from ai4science.harness.agents.sarsi import plan as _pl
+        agent = _worker_or_exit(config, agent_id)
+        t = _task_or_exit(config, agent, task_id)
+        try:
+            text = pathlib.Path(set_from).read_text()
+        except OSError as e:
+            console.print(f"could not read {set_from}: {e}", style="red",
+                          markup=False, highlight=False)
+            raise typer.Exit(code=2)
+        try:
+            t = tsk.set_owner_plan(config, agent, t, text)
+        except _pl.BadPlan as e:
+            console.print(f"that file is not a plan: {e}", style="red",
+                          markup=False, highlight=False)
+            raise typer.Exit(code=2)
+        console.print(f"{t.id} now follows the plan you wrote — "
+                      f"{t.plan_version}.md, agreed.", markup=False,
+                      highlight=False)
+        if t.awaiting:
+            console.print("it still declares permissions to grant:",
+                          markup=False, highlight=False)
+            for perm in t.awaiting:
+                console.print(f"  sarsi grant {agent.id} {t.id} \"{perm}\"",
+                              style="dim", markup=False, highlight=False)
+        return
+
     agent = _worker_or_exit(config, agent_id)
     t = tsk.get(config, agent, task_id)
     if t is None:

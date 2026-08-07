@@ -29,6 +29,12 @@ class Mode:
     kind: str = "top"          # top | agent | task
     name: str = ""             # agent id or task id
     pending: Optional[str] = None   # a goal awaiting confirmation
+    #: The last substantive thing the owner said here. Kept because a line the
+    #: worker could not place is usually the goal the NEXT line points at:
+    #: "please create the task for me according to this goal" refers to
+    #: something already on screen, and having to ask for it again is the
+    #: worker failing to read what it was just told.
+    recent: str = ""
 
 
 @dataclass(frozen=True)
@@ -74,7 +80,7 @@ def confirm_block(goal: str, agent: str) -> str:
     return (f"\n  goal:   {goal}\n"
             f"  agent:  {agent}\n"
             f"  it will plan at A0 first, and stop for your grant\n\n"
-            f"  create it? [Enter=yes / e=edit / n=no]")
+            f"  create it? [Enter=yes / e=edit / p=plan / n=no]")
 
 
 def route(line: str, mode: Mode, deps: dict) -> tuple:
@@ -93,6 +99,19 @@ def route(line: str, mode: Mode, deps: dict) -> tuple:
         if line.lower() == "e":
             return Action("say", text=f"edit it and send again:\n  {mode.pending}"), \
                 settled
+        if line.lower() == "p":
+            # The owner writes the plan. `e` edits the GOAL, which is a
+            # different thing and was the only thing on offer -- the design says
+            # the owner may author the plan and no surface let them.
+            return Action("say", text=(
+                f"write the plan yourself, then point the task at it:\n"
+                f"  1. create it:  the goal stays \"{mode.pending}\"\n"
+                f"  2. write a markdown plan -- phases, a `Verified when:` "
+                f"line each, and a `## Permissions needed` section\n"
+                f"  3. ai4science sarsi plan {mode.name} <task-id> "
+                f"--set-from <your-file>.md\n"
+                f"it is agreed on arrival and no session may rewrite its "
+                f"criteria. Its permissions still need granting.")), settled
         if line.lower() in ("n", "no"):
             # Named, so a dropped goal is a thing the owner can read back and
             # retype. "dropped — nothing was created" said neither what was
@@ -181,6 +200,15 @@ def route(line: str, mode: Mode, deps: dict) -> tuple:
         from ai4science.harness.agents.sarsi import intent as _intent
         got = _intent.classify(line)
 
+        def _remember(text: str) -> Mode:
+            """Carry forward what was said, so a later back-reference resolves.
+
+            Greetings and questions are NOT remembered: `hi` must never become
+            the goal a later "make a task for this" points at.
+            """
+            return Mode(kind=mode.kind, name=mode.name, pending=mode.pending,
+                        recent=text or mode.recent)
+
         if got.kind == "question":
             about = deps.get("about_self")
             if about is not None:
@@ -201,15 +229,34 @@ def route(line: str, mode: Mode, deps: dict) -> tuple:
         # A request to MAKE a task is not a goal, and a line this cannot place
         # is not one either. Both ask, and both say what was unclear -- the row
         # of the design's table that was missing.
+        if got.kind == "meta" and mode.recent:
+            # It asked for a task and pointed at a goal it did not restate ---
+            # and the goal is one line up. Offering it beats asking for a
+            # sentence the owner has already typed. Said out loud, because
+            # filing a goal they did not type on THIS line without saying where
+            # it came from is the loop putting words in their mouth.
+            goal = mode.recent
+            return Action("confirm", goal=goal, agent=mode.name,
+                          text=(f"using what you said earlier as the goal:\n"
+                                f"  {goal}\n"
+                                + confirm_block(goal, mode.name))), \
+                Mode(kind="agent", name=mode.name, pending=goal,
+                     recent=mode.recent)
+
         if got.kind in ("meta", "ambiguous"):
-            return Action("say", text=got.why), mode
+            # Nothing to point at, or nothing placeable. Ask, and say what was
+            # unclear. An ambiguous line is still worth remembering: it is
+            # usually the goal the next line refers to.
+            return Action("say", text=got.why), _remember(
+                line if got.kind == "ambiguous" else "")
 
         # `got.goal`, not `line`: the framing is not part of the goal.
         # "the goal is please write X" files as "write X", instead of reading
         # back as noise in every listing thereafter.
         return Action("confirm", goal=got.goal, agent=mode.name,
                       text=confirm_block(got.goal, mode.name)), \
-            Mode(kind="agent", name=mode.name, pending=got.goal)
+            Mode(kind="agent", name=mode.name, pending=got.goal,
+                 recent=got.goal)
 
     if mode.kind == "task":
         return Action("guide", task=mode.name, text=line), mode
