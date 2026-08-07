@@ -24,10 +24,10 @@ called `sarsi-worker`. The name had nowhere to go.
 
 | | what it does with your request |
 |---|---|
-| a **chat agent** — PWM code (`unified-LLM`), Research, `work` | **answers you, here.** Ask for a GAP-TV implementation and it writes one in your session |
+| a **chat agent** — PWM Code (`unified-LLM`), Research, `work` | **answers you, here.** Ask for a GAP-TV implementation and it writes one in your session |
 | a **sarsi worker** — `sarsi-worker`, `computational-imaging` | **delegates.** Drafts a plan, `sarsi-claude` agrees it, you grant what it declared, and it works under supervision |
 
-You land in **PWM code** — it is what answers at `❯`. You never *become* a
+You land in **PWM Code** — it is what answers at `❯`. You never *become* a
 worker; you enter it and hand it work.
 
 ## 2. Three levels
@@ -90,7 +90,7 @@ tsk_593ea3762e (guided) ❯ /back
 
 ## 4. What each mode does with plain text
 
-**Top level** — answered by PWM code, as always. A one-line note may appear
+**Top level** — answered by PWM Code, as always. A one-line note may appear
 underneath naming a worker that could take the job instead. When the router
 cannot pick a clear winner it prints nothing: a router that guesses is worse
 than one that is quiet.
