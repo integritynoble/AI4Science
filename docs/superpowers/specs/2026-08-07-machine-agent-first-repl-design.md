@@ -322,3 +322,25 @@ a live check on a real session before `DRIVABLE_SPECS` grows.
 
 Each gets its own plan. This document is the shared design they all refer back
 to, not a single work item.
+
+### Out of scope for all three: exercising a compute provider
+
+**No GPU-provider or CPU-provider function is to be tested as part of this
+work.** PWM code is *described* as able to use any compute provider, and
+`sarsi-pwm` opens a session that could dispatch to one — but leasing compute,
+dispatching a job to a GPU server or a high-CPU box, and settling what it cost
+are a separate system with their own money and their own failure modes.
+
+What that means concretely for each piece:
+
+| piece | tested | not tested |
+|---|---|---|
+| 1 catalogue | the card says PWM code works with any LLM **and** any compute provider | that it does — no provider is contacted |
+| 2 REPL | modes, resolution, confirm, guide, attach | nothing compute-related is reachable from here |
+| 3 `sarsi-pwm` | a session starts, the loop reads it, a task runs on this machine | no lease, no dispatch, no remote execution, no settlement |
+
+> **A capability stated on a page is a claim; a capability exercised in a test
+> is a result.** Keeping them apart here is deliberate: the page may say what
+> PWM code is for, and this work does not get to claim the compute half has
+> been shown to work. When it is tested, that is its own piece with its own
+> evidence.
