@@ -17,6 +17,8 @@ Session history is persisted per turn and reseeded via --continue / --resume.
 from __future__ import annotations
 
 import os
+import pathlib
+import re
 import secrets
 import sys
 from pathlib import Path
@@ -39,6 +41,146 @@ def _shortcwd(p) -> str:
         return ("~" + s[len(h):]) if s.startswith(h) else s
     except Exception:
         return str(p)
+
+
+#: Commands the loop answers itself, which never reach `_dispatch_slash` because
+#: they need the live session. A resolver built only from the dispatcher would
+#: call these unknown — the same defect wearing a helpful face.
+_LOOP_COMMANDS = ("model", "agent", "mode", "cost", "files", "agents", "mcp",
+                  "feedback", "login", "whoami")
+
+_COMMAND_WORD = re.compile(r"^/([A-Za-z][A-Za-z0-9_-]*)(\s|$)")
+
+
+def known_commands() -> set:
+    """Every slash this REPL answers — the dispatcher's and the loop's."""
+    names = set(_LOOP_COMMANDS)
+    src = _source()
+    for m in re.finditer(r"""cmd\s*==\s*["'](\w+)["']""", src):
+        names.add(m.group(1))
+    for m in re.finditer(r"""cmd\s+in\s+\(([^)]*)\)""", src):
+        names.update(re.findall(r"""["'](\w+)["']""", m.group(1)))
+    return names
+
+
+def _source() -> str:
+    try:
+        return pathlib.Path(__file__).read_text()
+    except OSError:                              # zipped install, frozen, …
+        return ""
+
+
+def looks_like_command(line: str) -> bool:
+    """Is this an attempt at a slash, or a sentence that starts with a path?
+
+    `/sarsi-worker` is an attempt. `/home/grace/x is missing` is a sentence, and
+    refusing it would be worse than the bug this fixes — a user quoting a path
+    should not have to escape anything. The separator is structure: a name is
+    one word, a path has slashes or dots inside it.
+    """
+    m = _COMMAND_WORD.match(line or "")
+    if not m:
+        return False
+    first = (line or "").split()[0]
+    return "/" not in first[1:] and "." not in first[1:]
+
+
+def _chat_specs() -> set:
+    """Spec names, loading the registry if nothing has yet.
+
+    `AGENT_REGISTRY` is populated by `reload()` at CLI start, so reading it cold
+    — from a test, or before the first turn — gives an empty set and every name
+    resolves to "unknown". Asking for it is what makes the answer true.
+    """
+    try:
+        from ai4science.harness.agents import registry as ar
+        if not ar.AGENT_REGISTRY:
+            try:
+                ar.reload()
+            except Exception:
+                pass
+        return set(ar.AGENT_REGISTRY)
+    except Exception:
+        return set()
+
+
+def _roster_agents() -> set:
+    """Roster ids, from this machine's registry when it has one and from the
+    shipped roster when it does not. A box that never ran `sarsi init` should
+    still be able to explain what the name means."""
+    from ai4science.harness.agents.sarsi import registry as reg
+    try:
+        return set(reg.load().agents)
+    except Exception:
+        try:
+            return {a["id"] for a in reg._ROSTER}
+        except Exception:
+            return set()
+
+
+def resolve_name(name: str):
+    """What does `/name` refer to? -> (kind, detail).
+
+    kind is one of: command, task, spec, roster, both, unknown.
+
+    `both` exists because two agents are called `work` and they are different
+    things: the chat spec ANSWERS in your session, the roster agent DELEGATES
+    to a Claude Code session. Choosing between them silently is how the
+    confusion started.
+    """
+    low = (name or "").strip().lower()
+    if not low:
+        return "unknown", ""
+    if low in known_commands():
+        return "command", low
+    if low.startswith("tsk_"):
+        return "task", low
+    spec = low in {s.lower() for s in _chat_specs()}
+    roster = low in {a.lower() for a in _roster_agents()}
+    if spec and roster:
+        return "both", (
+            f"{low} is BOTH: a chat spec (answers here, in this session) and a "
+            f"sarsi roster agent (holds tasks and drives a Claude Code session)")
+    if spec:
+        return "spec", low
+    if roster:
+        return "roster", low
+    return "unknown", low
+
+
+def slash_answer(line: str) -> str:
+    """What to print for a slash the command chain did not handle.
+
+    A slash addresses the HARNESS rather than the model. Forwarding one silently
+    turns a typo into a paid turn whose output reads like an answer to a
+    question nobody asked — and, worse, `/sarsi-worker` LOOKED like it had
+    switched agent when it had done nothing of the kind.
+    """
+    import difflib
+    m = _COMMAND_WORD.match(line or "")
+    if not m:
+        return ""
+    name = m.group(1)
+    kind, detail = resolve_name(name)
+    if kind == "both":
+        return (f"{detail}.\n"
+                f"  the one that answers here: /agent {name}\n"
+                f"  the one that delegates:   /{name} do <goal>  "
+                f"(or: ai4science sarsi do {name} \"<goal>\")")
+    if kind == "roster":
+        return (f"{name} is a sarsi roster agent — it holds tasks and drives "
+                f"sessions rather than answering here.\n"
+                f"  give it work: /{name} do <goal>\n"
+                f"  see its board: /{name} tasks")
+    if kind == "task":
+        return (f"{name} is a task id. Open it with /tasks, or work it from the "
+                f"CLI: ai4science sarsi run <agent> {name}")
+    msg = f"/{name} is not a command, and it was NOT sent to the model."
+    close = difflib.get_close_matches(name.lower(), sorted(known_commands()),
+                                      n=2, cutoff=0.6)
+    if close:
+        return msg + " Did you mean " + " or ".join("/" + c for c in close) + "?"
+    return msg + " /help lists them."
 
 
 def _dispatch_slash(line: str, state: dict) -> tuple[bool, str]:
@@ -73,7 +215,104 @@ def _dispatch_slash(line: str, state: dict) -> tuple[bool, str]:
         return True, "conversation cleared"
     if cmd in ("do", "tasks"):
         return True, _sarsi_bridge(cmd, _arg.strip(), state.get("agent") or "")
+
+    # `/<roster-agent> do <goal>` and `/<roster-agent> tasks`. `/do` reaches the
+    # sarsi worker whose id matches the CHAT AGENT's name, so a roster agent
+    # with no chat spec — `sarsi-worker`, the general worker — could not be
+    # addressed from the REPL at all. Naming it directly is the way in.
+    if cmd == "task" or cmd.startswith("tsk_"):
+        return True, _task_slash(cmd, _arg.strip())
+
+    kind, _detail = resolve_name(cmd)
+    if kind in ("roster", "both"):
+        verb, _, rest = _arg.strip().partition(" ")
+        verb = verb.lower().strip()
+        if verb in ("do", "tasks"):
+            return True, _sarsi_bridge(verb, rest.strip(), cmd)
+        if not verb:
+            return True, slash_answer(line)
     return False, ""
+
+
+def all_tasks(config):
+    """Every task on the machine, with the agent that holds it.
+
+    `/tasks` shows one agent's board — the chat agent's. An owner handed a task
+    name has no reason to know which agent owns it, so `/task` looks everywhere.
+    """
+    from ai4science.harness.agents.sarsi import task as tsk
+    out = []
+    for agent in config.agents.values():
+        try:
+            for t in tsk.all_of(config, agent):
+                out.append((agent, t))
+        except Exception:
+            continue
+    return out
+
+
+def task_view(config, agent, task) -> str:
+    """One task, and the two ways into it.
+
+    **Guided** steers from outside: the owner's word goes in ahead of the
+    worker's, and the worker keeps running. **Interact** is the session itself —
+    the tmux terminal the work is happening in. A view that named only the first
+    would leave the owner at the edge of the thing they asked to enter.
+    """
+    session = (task.session or {}).get("name") if isinstance(task.session, dict) else None
+    lines = [f"{task.id} — {task.state} — {agent.id}",
+             f"  {(task.goal or '')[:160]}"]
+    if task.blocked_by:
+        lines.append(f"  waiting on: {task.blocked_by}")
+    lines.append(f"  guided (your word first): /{task.id} <instruction>")
+    if session:
+        lines.append(f"  interact (the session itself): tmux attach -t {session}"
+                     f"   — Ctrl-b d hands it back")
+    else:
+        lines.append("  no session yet — start one: "
+                     f"ai4science sarsi run {agent.id} {task.id}")
+    return "\n".join(lines)
+
+
+def _find_task(config, task_id: str):
+    for agent, t in all_tasks(config):
+        if t.id == task_id:
+            return agent, t
+    return None, None
+
+
+def _task_slash(cmd: str, arg: str) -> str:
+    """`/task` (every board) and `/tsk_…` (one task, guided)."""
+    from ai4science.harness.agents.sarsi import registry as reg
+    try:
+        config = reg.load()
+    except reg.ConfigError:
+        return ("no sarsi registry on this machine yet — "
+                "set one up with: ai4science sarsi init")
+    except Exception as e:
+        return f"could not read the sarsi registry: {e}"
+
+    if cmd == "task":
+        rows = all_tasks(config)
+        if not rows:
+            return "no tasks on this machine yet — /<agent> do <goal> starts one"
+        return "\n".join(f"  {t.id}  {t.state:<14} {a.id:<22} "
+                          f"{(t.goal or '')[:60]}" for a, t in rows)
+
+    agent, t = _find_task(config, cmd)
+    if t is None:
+        return (f"{cmd} is not a task on this machine — /task lists them")
+    if not arg:
+        return task_view(config, agent, t)
+
+    # With words after it, this is guided steering: the owner's instruction goes
+    # in ahead of whatever the worker would have said next.
+    from ai4science.harness.agents.sarsi import session as ses
+    try:
+        ses.guide(config, agent, t, arg)
+        return f"{t.id}: sent, ahead of the worker — {arg[:80]}"
+    except Exception as e:
+        return f"{t.id}: could not steer it — {e}"
 
 
 def _sarsi_bridge(cmd: str, arg: str, agent_name: str) -> str:
@@ -906,8 +1145,15 @@ def run_common_repl(
                 session.gate.read_only = state["read_only"]
                 session.gate.auto_yes = state["auto_yes"]
             if not handled:
-                # Unknown slash — fall through to the LLM as literal text.
-                pass
+                # An unknown slash used to fall through to the LLM as literal
+                # text. That was generous in the wrong direction: a slash
+                # addresses the HARNESS, and forwarding it silently turns a typo
+                # into a paid turn whose output looks like an answer. It is only
+                # refused when it LOOKS like a command — a prompt that begins
+                # with a path is still a prompt.
+                if looks_like_command(line):
+                    print(f"[harness] {unknown_command(line)}", flush=True)
+                    continue
             else:
                 continue
 

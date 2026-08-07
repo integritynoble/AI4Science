@@ -386,6 +386,55 @@ ai4science sarsi init --reconcile     # adds roster agents this release ships
 
 Additive only — it never removes, rewrites or re-ceilings anything you have set.
 
+### In the REPL: `/<name>` goes wherever the name points
+
+Inside `ai4science`, a slash addresses the **harness**, not the model. One rule
+covers agents, workers and tasks:
+
+```
+/agent                     list every chat agent, and switch
+/task                      list every task on the machine, whoever holds it
+/<spec>                    switch the chat agent          e.g. /research
+/<roster-agent> do <goal>  hand a goal to a sarsi worker  e.g. /sarsi-worker do …
+/<roster-agent> tasks      that worker's board
+/<task-id>                 open a task — guided, with the way into its session
+/<task-id> <instruction>   steer it: your word goes in ahead of the worker's
+```
+
+**Two agents are called `work`, and the difference is the whole point.**
+
+| | what it is | what it does with your request |
+|---|---|---|
+| the **chat spec** `work` | the original in-process ai4science agent | **answers here.** Ask it for a GAP-TV implementation and it writes one, in your session |
+| the **roster agent** `work` | a sarsi worker with a task board | **delegates.** It drafts a plan, and `sarsi-claude` agrees it before anything runs |
+
+Neither is wrong; they are for different things. `/work` says which is which
+rather than silently picking one, and `/agent work` is the first while
+`/work do <goal>` is the second.
+
+> **`sarsi-worker` had nowhere to go before this.** `/do` looks up its worker by
+> the *chat agent's* name, and there is no chat spec called `sarsi-worker` — so
+> the REPL would list it among "workers with a task board" and offer no way to
+> address it. `/sarsi-worker do <goal>` is the way in.
+
+**An unrecognised slash is refused, not forwarded.** It used to fall through to
+the model as ordinary text, so `/sarsi-worker` became a prompt, the agent went
+off reading that worker's task folder, and it looked like a switch had happened.
+A near miss is offered the real command (`/agnet` → *did you mean /agent?*), and
+a sentence that merely begins with a path — `/home/grace/x is missing` — is
+still a sentence and still reaches the model.
+
+### The two ways into a task
+
+```
+/<task-id> <instruction>          guided — steer from outside, the worker keeps running
+tmux attach -t <session>          interact — the session itself (Ctrl-b d hands it back)
+```
+
+`/<task-id>` on its own prints both, with whichever applies to that task's
+state. Guided is the safer default: the owner's word goes in **ahead** of the
+worker's next instruction, and nothing else changes.
+
 ## 6. Getting into a running session
 
 ```bash
@@ -469,7 +518,8 @@ SETUP     sarsi init --owner-id <id> · init --reconcile · agents [--bindings]
           sarsi set-token <agent> <token>
           sarsi ceiling <agent|all> A0|A1|A2|A3
 TALK      sarsi ask <agent> "<text>"        (or that agent's bot)
-REPL      /agent <name> then /do <goal> · /tasks     # inside `ai4science`
+REPL      /agent · /task · /<spec> · /<worker> do <goal> · /<task-id> [instruction]
+          # inside `ai4science`. /<name> resolves to a spec, a worker or a task.
 WAITING   sarsi attention [--agent <id>]    # what is waiting on YOU (exit 1 if any)
 ENTER     sarsi enter <agent>               # the task you last touched, or the question
 LIFECYCLE sarsi stop|archive|reopen <agent> <task> · tasks <agent> --archived
