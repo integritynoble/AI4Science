@@ -156,3 +156,37 @@ def test_the_running_repl_files_the_task_under_the_agent_in_use(registry, tmp_pa
     config = reg.load()
     goals = [t.goal for t in tsk.all_of(config, config.agents["social"])]
     assert goals == ["write a gap-tv algorithm for cassi"]
+
+
+def test_a_framed_line_through_the_live_loop_files_the_stripped_goal(
+        registry, tmp_path, monkeypatch):
+    """The same journey the owner makes: enter the worker, type the framed
+    sentence, press Enter at the confirmation — and the task ON DISK carries
+    the stripped goal. `route()` is tested to decide this; nothing proved the
+    loop performs it, and a fleet of passing decision-function tests has
+    coexisted with broken user-facing commands before.
+    """
+    import ai4science.harness.repl as repl_mod
+    from ai4science.harness.adapters.stub import StubAdapter
+    from ai4science.harness.events import Done, TextDelta
+    from ai4science.harness.agents.sarsi import registry as reg, task as tsk
+    from ai4science.llm import routing
+
+    monkeypatch.setattr(repl_mod, "adapter_for",
+                        lambda b: StubAdapter([[TextDelta("hi"), Done("end")]]))
+    monkeypatch.setattr(repl_mod, "make_meter", lambda **kw: lambda u: None)
+    monkeypatch.setattr(routing, "backend_available", lambda b: True)
+    monkeypatch.setattr("ai4science.harness.persistence.save", lambda *a, **k: None)
+
+    inputs = iter(["/sarsi-worker",
+                   "the goal is please write a GAP-TV solver for CASSI",
+                   "",                      # Enter — yes, create it
+                   "/exit"])
+    monkeypatch.setattr("builtins.input", lambda _p="": next(inputs))
+
+    repl_mod.run_common_repl(tmp_path, backend="anthropic", model="stub",
+                             mode_label="social")
+
+    config = reg.load()
+    goals = [t.goal for t in tsk.all_of(config, config.agents["sarsi-worker"])]
+    assert goals == ["write a GAP-TV solver for CASSI"]
