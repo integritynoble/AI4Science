@@ -696,6 +696,31 @@ SCREENING = DomainBenchmark(
         Parameter("idf_weight", 0.0, 2.0, 0.0,
                   means="exponent on inverse-document-frequency bit weights; "
                         "0 weighs every bit alike, as unweighted Tanimoto does"),
+        # Default 0 — the incumbent, bit-identical. NOT adopted: measured here,
+        # for the search and the owner to decide on.
+        #
+        # Measured over 8 query-set draws, paired against the incumbent, at 0.75:
+        #   EF@1% novel tier  +7.27, 8/8 draws,  t=+4.16
+        #   AUC unseen        +0.09, 8/8 draws,  t=+11.15
+        #   EF@1% headline    +2.51, 6/8 draws,  t=+2.32
+        #   EF@1% held-out    -1.35, 2/8 draws,  t=-1.25   <- the cost, see below
+        #
+        # Against the molecular-weight baseline ON THE NOVEL TIER, which is the
+        # comparison that matters: the incumbent clears it on 1 draw in 8
+        # (mean 0.75x), this clears it on 5 in 8 (mean 1.06x). Better, not
+        # solved — on 3 draws a similarity search blended with a per-bit
+        # enrichment score still loses to ranking by molecular weight, and
+        # nobody should quote the mean without that.
+        #
+        # The held-out-target number goes the OTHER WAY and is not significant
+        # at n=8. It is a guardrail, so it decides adoption, and it needs the
+        # validation-seed protocol rather than this measurement.
+        Parameter("bayes_weight", 0.0, 1.0, 0.0,
+                  means="weight on a Laplacian-modified naive Bayes score "
+                        "(query set vs the library as background), blended with "
+                        "the similarity score as within-target ranks. 0 is the "
+                        "pure similarity search. Similarity cannot reach a new "
+                        "scaffold by construction; a per-bit enrichment score can"),
     ),
     criteria=("EF@1% ≥ 2 on molecules not handed to the solver",
               "and ≥ 1.5x what molecular weight alone achieves on the same library",

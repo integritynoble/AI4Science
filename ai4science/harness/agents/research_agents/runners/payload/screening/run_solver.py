@@ -31,8 +31,17 @@ rare bits say more. Weighting each bit by its inverse document frequency,
 raised to this exponent, is the usual correction. At 0 every bit weighs the
 same, which is what unweighted Tanimoto assumes.
 
+**`bayes_weight`** — blend a Laplacian-modified naive Bayes score, fitted on the
+query set against the library as background, with the similarity score; both
+converted to within-target ranks first. At 0 this term is absent and the solver
+is unchanged. Similarity asks whether a molecule resembles a known active, which
+by construction cannot reach a new scaffold; the Bayes term scores individual
+BITS by their enrichment in the actives, which can.
+
 None of these can reach the labels. They change how molecules are compared to
-the query set, which is the only thing the solver is given.
+the query set, which is the only thing the solver is given. The Bayes term's
+positives are the staged query set and its background is the unlabelled library
+— both of which the solver already holds.
 """
 import argparse, json, os
 import numpy as np
@@ -43,6 +52,31 @@ def load_params(ws, **defaults):
     if os.path.exists(f):
         defaults.update(json.load(open(f)))
     return defaults
+
+
+def bayes_scores(F: np.ndarray, q_mask: np.ndarray) -> np.ndarray:
+    """Laplacian-modified naive Bayes: query set against the library background.
+
+    Where max-similarity asks "does this look like one known active", this asks
+    "which BITS are enriched in the actives relative to this library". That
+    difference is the point: a feature-level score can survive a scaffold
+    change, and whole-molecule resemblance by construction cannot.
+
+    Uses no labels — the positives are the staged query set, the background is
+    the library the solver is handed. The +1 terms are the Laplacian smoothing
+    that makes this usable from ten actives, which is the whole regime here.
+    """
+    A = F[q_mask].sum(axis=0).astype(np.float64)     # actives carrying each bit
+    n_a, n_lib = int(q_mask.sum()), len(F)
+    expected = F.sum(axis=0).astype(np.float64) * (n_a / max(n_lib, 1))
+    return F.astype(np.float64) @ np.log((A + 1.0) / (expected + 1.0))
+
+
+def rank_unit(x: np.ndarray) -> np.ndarray:
+    """Ranks scaled to [0, 1]. Ties broken arbitrarily but deterministically."""
+    r = np.empty(len(x), np.float64)
+    r[np.argsort(x)] = np.arange(len(x), dtype=np.float64)
+    return r / max(len(x) - 1, 1)
 
 
 def bit_weights(FP: np.ndarray, idf_weight: float) -> np.ndarray:
@@ -77,9 +111,10 @@ def main():
     ap = argparse.ArgumentParser(); ap.add_argument("--workspace", default=".")
     ws = ap.parse_args().workspace
     pr = load_params(ws, top_k=1, tversky_alpha=1.0, tversky_beta=1.0,
-                     idf_weight=0.0)
+                     idf_weight=0.0, bayes_weight=0.0)
     top_k = max(1, int(round(float(pr["top_k"]))))
     alpha, beta = float(pr["tversky_alpha"]), float(pr["tversky_beta"])
+    bw = float(pr["bayes_weight"])
 
     d = lambda n: np.load(os.path.join(ws, "data", n + ".npy"))
     FP, tid, known = d("fingerprints").astype(bool), d("target_id"), d("known_active")
@@ -98,15 +133,32 @@ def main():
         sim = similarity(FP[m], q, w, alpha, beta)
         k = min(top_k, sim.shape[1])
         if k == 1:
-            scores[m] = sim.max(axis=1)                  # nearest known active
+            s = sim.max(axis=1)                          # nearest known active
         else:
             # Mean of the k most similar actives. Partition then average the
             # tail; sorting the whole row would cost more and say the same.
-            scores[m] = np.partition(sim, -k, axis=1)[:, -k:].mean(axis=1)
+            s = np.partition(sim, -k, axis=1)[:, -k:].mean(axis=1)
+        if bw > 0:
+            # Blend in the Bayes score, both sides converted to WITHIN-TARGET
+            # ranks first. Two reasons the ranks are not optional:
+            #
+            #   * the two scores have incompatible units — a Tversky index in
+            #     [0,1] against a sum of log-odds — so a raw blend is whichever
+            #     one happens to be numerically larger;
+            #   * enrichment is measured on all targets pooled, and raw scores
+            #     are not comparable ACROSS targets either. A target whose
+            #     actives form one tight series scores higher throughout than a
+            #     target with a diverse set, so a pooled top percentile fills up
+            #     with the former and the latter is never examined however good
+            #     its own ranking is. Ranking within the target removes that,
+            #     and it is what a screener reading six target lists does.
+            s = (1.0 - bw) * rank_unit(s) + bw * rank_unit(
+                bayes_scores(FP[m], known[m] == 1))
+        scores[m] = s
     os.makedirs(os.path.join(ws, "results"), exist_ok=True)
     np.save(os.path.join(ws, "results", "scores.npy"), scores)
-    print("scored %d  top_k=%d alpha=%.3g beta=%.3g idf=%.3g"
-          % (len(scores), top_k, alpha, beta, float(pr["idf_weight"])))
+    print("scored %d  top_k=%d alpha=%.3g beta=%.3g idf=%.3g bayes=%.3g"
+          % (len(scores), top_k, alpha, beta, float(pr["idf_weight"]), bw))
 
 
 if __name__ == "__main__":
