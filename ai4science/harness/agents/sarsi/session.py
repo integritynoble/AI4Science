@@ -1154,6 +1154,27 @@ def kickoff(task: tsk.Task, plan: Optional[pl.Plan],
         if facts:
             lines.append(facts)
 
+        # WHERE IT STANDS. The kickoff said what to do and never what the
+        # session was allowed to do — at exactly the moment the ceiling had just
+        # changed, because `release` is what sends this. A session that does not
+        # know its ceiling bumps into gates instead of planning around them, and
+        # the loop has to nurse it through each one.
+        #
+        # The letter alone answers nothing, so the permission is spelled out;
+        # this is the same table `selfaware` renders for the worker, because two
+        # descriptions of one ladder will disagree.
+        #
+        # Silent when no ceiling is recorded: an invented one is worse than
+        # none, since the session would plan against it.
+        _ceiling = str((task.session or {}).get("ceiling") or "")
+        if _ceiling:
+            from ai4science.harness.agents.sarsi import selfaware as _sa
+            _permits = _sa.PERMITS.get(_ceiling)
+            if _permits:
+                lines.append(f"You are at ceiling {_ceiling}. You may "
+                             f"{_permits}. Anything beyond that stops for the "
+                             f"owner — ask rather than work around it.")
+
         # The host facts every session would otherwise rediscover. Told, rather
         # than bumped into.
         from ai4science.harness.agents.sarsi import rules as _rules
