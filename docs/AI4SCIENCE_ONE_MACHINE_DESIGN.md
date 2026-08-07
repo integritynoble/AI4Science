@@ -84,8 +84,29 @@ the machine agent.
 ## 1. What ai4science is (Point 10)
 
 A set of agents that live on your machine, hold tasks, plan them, and get them
-done through governed `sarsi-claude` sessions — with a verifier that judges the
-plan's own criteria and gates that stop anything reaching the world without you.
+done through governed sessions — with a verifier that judges the plan's own
+criteria and gates that stop anything reaching the world without you.
+
+**A session runs on one of two backends, and they are peers.**
+
+| | `sarsi-claude` | `sarsi-pwm` |
+|---|---|---|
+| the session runs | Claude Code | **ai4science — PWM Code**, the agent you land in |
+| the model | Anthropic's | any the exchange gateway fronts |
+| compute | local | local, or a provider on the mesh |
+| the loop reads it | yes | yes — the two TUIs differ in two strings, not in shape |
+
+`sarsi-pwm` is the **default** for new tasks, and `sarsi-claude` is chosen at the
+confirmation or switched on an existing task. Everywhere below that says
+`sarsi-claude`, read "the session backend": nothing in the loop, the gates or
+the verifier depends on which one it is.
+
+> **This is why the entering agent matters.** PWM Code *is* the ai4science TUI,
+> and `sarsi-pwm` opens a session running that same TUI — so the interface the
+> owner works in, the interface a worker's session runs, and the interface the
+> supervision loop reads are one interface. Had the entering agent been anything
+> else, `sarsi-pwm` would be a third interface to learn and a second dialect for
+> the loop to parse.
 
 **What it does not have:** a manager, a server, a fleet, another machine. Those
 belong to the app, and their absence is what makes this a complete product
@@ -93,8 +114,8 @@ rather than a client.
 
 ## 2. The invariant
 
-> **The agent you talk to does not execute. Only a worker touches
-> `sarsi-claude`.**
+> **The agent you talk to does not execute. Only a worker touches a session
+> backend** — `sarsi-claude` or `sarsi-pwm`; the invariant does not care which.
 
 On one machine there is no network boundary to enforce this, so it is enforced
 as a code path: the machine agent plans, routes and answers, and `assign` raises
@@ -676,7 +697,7 @@ So `/<name>` now resolves to whatever the name is, and a worker or a task can be
 
 | where you are | prompt | plain text does |
 |---|---|---|
-| top | `❯` | asks the chat agent — **PWM code**, the agent you land in |
+| top | `❯` | asks the chat agent — **PWM Code**, the agent you land in |
 | agent | `sarsi-worker ❯` | proposes a **goal**, and waits for you |
 | task | `tsk_… (guided) ❯` | **steers** that task, ahead of the worker |
 
