@@ -109,3 +109,49 @@ def test_and_names_the_agent_when_there_is_one(monkeypatch):
                         lambda *a, **k: _S())
     note = repl._console_deps({})["suggest"]("write a gap-tv algorithm")
     assert "sarsi-worker" in note
+
+
+def test_agents_switches_as_well_as_lists():
+    """It lists and switches in one breath, which is what someone typing it
+    expects."""
+    handled, _ = repl._dispatch_slash("/agents", {"agent": "research"})
+    assert handled is True
+
+
+def test_agent_and_mode_survive_as_aliases():
+    """Removing a command people already use, to make a naming point, is a cost
+    paid by the user for the designer's tidiness."""
+    for c in ("/agent", "/mode"):
+        handled, _ = repl._dispatch_slash(c, {"agent": "research"})
+        assert handled is True, c
+
+
+def test_the_subagent_listing_survived_agents_becoming_the_switcher():
+    """`/agents` used to print the SUBAGENTS registry — nested delegation types,
+    an unrelated thing to the chat agents — and it was the only slash that
+    surfaced them. Making /agents the switcher would have deleted a
+    user-reachable listing to free up a name. It moved to /subagents instead."""
+    handled, msg = repl._dispatch_slash("/subagents", {"agent": "research"})
+    assert handled is True
+    assert "physics-reviewer" in msg or "schema-validator" in msg
+
+
+def test_a_tie_prints_no_recommendation(monkeypatch):
+    """A router that guesses is worse than one that is quiet."""
+    class _S:
+        best = None
+    monkeypatch.setattr("ai4science.harness.agents.sarsi.triage.suggest",
+                        lambda *a, **k: _S())
+    assert repl._console_deps({})["suggest"]("anything") == ""
+
+
+def test_a_clear_winner_prints_one_line(monkeypatch):
+    class _C:
+        agent_id = "sarsi-worker"
+    class _S:
+        best = _C()
+    monkeypatch.setattr("ai4science.harness.agents.sarsi.triage.suggest",
+                        lambda *a, **k: _S())
+    note = repl._console_deps({})["suggest"]("write a gap-tv algorithm")
+    assert "sarsi-worker" in note
+    assert note.count("\n") <= 1, "a recommendation is one line, not a paragraph"

@@ -302,9 +302,11 @@ def _dispatch_slash(line: str, state: dict) -> tuple[bool, str]:
         return True, ("slash commands: /help /clear /model <backend> [id] "
                       "/agent [name|specific <q>] /do <goal> /tasks /login "
                       "/whoami /feedback <text> /readonly /yes /default "
-                      "/cost /files /exit\n"
+                      "/cost /files /subagents /exit\n"
                       "  /do hands the goal to this agent's sarsi worker "
-                      "(task + plan + sarsi-claude) instead of answering here")
+                      "(task + plan + sarsi-claude) instead of answering here\n"
+                      "  /subagents lists the nested delegation types the "
+                      "task tool can hand a focused sub-task to")
     if cmd == "readonly":
         state["read_only"] = True
         return True, "read-only: ON (mutating tools blocked)"
@@ -318,6 +320,21 @@ def _dispatch_slash(line: str, state: dict) -> tuple[bool, str]:
     if cmd == "clear":
         state["clear"] = True
         return True, "conversation cleared"
+    if cmd in ("agent", "agents", "mode"):
+        # These need the live session (TUI picker, session rebuild) and are
+        # answered inline in the loop — but a dispatcher that calls a KNOWN
+        # command unhandled is the same defect this module exists to remove,
+        # so it is at least recognized here.
+        return True, ""
+    if cmd == "subagents":
+        # `/agents` used to print this — the nested `task`-tool delegation
+        # types (unrelated to the chat-agent switcher, which is what /agents
+        # became). Moved here, wording unchanged, so making /agents the
+        # switcher didn't delete a user-reachable listing to free up a name.
+        from ai4science.harness.subagents import SUBAGENTS
+        lines = ["sub-agents:"] + [f"  {n}: {p['description']}"
+                                    for n, p in sorted(SUBAGENTS.items())]
+        return True, "\n".join(lines)
     if cmd in ("do", "tasks"):
         return True, _sarsi_bridge(cmd, _arg.strip(), state.get("agent") or "")
 
@@ -1159,9 +1176,11 @@ def run_common_repl(
                     print(f"[harness] error: {e}", flush=True)
                 continue
 
-            # /agent switches the active AgentSpec — handle inline (rebuilds
-            # session). `/mode` kept as a silent back-compat alias.
-            if cmd in ("agent", "mode"):
+            # `/agents` lists AND switches, which is what someone typing it
+            # expects. `/agent` and `/mode` stay as aliases: removing a command
+            # people already use, to make a naming point, is a cost paid by the
+            # user for the designer's tidiness.
+            if cmd in ("agent", "agents", "mode"):
                 from ai4science.harness import tui as _tui
                 target = None
                 if not arg:
@@ -1244,14 +1263,6 @@ def run_common_repl(
                         print("[harness] workspace is empty", flush=True)
                 except Exception as e:
                     print(f"[harness] files error: {e}", flush=True)
-                continue
-
-            # /agents lists available sub-agent types.
-            if cmd == "agents":
-                from ai4science.harness.subagents import SUBAGENTS
-                print("[harness] sub-agents:", flush=True)
-                for n, p in sorted(SUBAGENTS.items()):
-                    print(f"  {n}: {p['description']}", flush=True)
                 continue
 
             # /mcp describes MCP wiring status.
@@ -1421,3 +1432,12 @@ def run_common_repl(
                 if _name not in BASE_TOOLS:
                     gate.post_usage(contribution_id=_name, agent_name=active_spec.name,
                                     turn_id=_tid)
+
+        # A line answered at the top level gets one note underneath naming the
+        # worker that could take it as a task instead — and a tie prints
+        # nothing, because a router that guesses is worse than one that is
+        # quiet.
+        if (state.get("mode") or _c.Mode()).kind == "top":
+            _note = _console_deps(state)["suggest"](line)
+            if _note:
+                print(_note, flush=True)
