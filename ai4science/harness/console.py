@@ -110,7 +110,7 @@ def route(line: str, mode: Mode, deps: dict) -> tuple:
 
         if kind == "roster":
             return Action("enter", text=f"now addressing {name}"), \
-                Mode(kind="agent", name=name)
+                Mode(kind="agent", name=detail)
         if kind == "both":
             return Action("enter",
                           text=f"{detail}. entered the worker; "
@@ -118,10 +118,10 @@ def route(line: str, mode: Mode, deps: dict) -> tuple:
                 Mode(kind="agent", name=name)
         if kind == "task":
             return Action("enter", text=f"guided on {name}"), \
-                Mode(kind="task", name=name)
+                Mode(kind="task", name=detail)
         if kind == "spec":
             # Not a mode: a chat spec is WHO ANSWERS, not somewhere to stand.
-            return Action("say", text=f"chat agent is now {name}"), mode
+            return Action("say", text=f"chat agent is now {name}", agent=detail), mode
 
         return Action("say", text=deps.get("unknown", lambda l: f"/{name} is not "
                                            "a command, and it was NOT sent to "

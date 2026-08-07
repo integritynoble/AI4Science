@@ -62,6 +62,15 @@ def test_entering_a_roster_agent_sets_the_mode():
     assert mode == console.Mode(kind="agent", name="sarsi-worker")
 
 
+def test_entering_is_case_insensitive_and_stores_the_canonical_id():
+    """resolve_name lower-cases; the Mode must carry what the registry keys on,
+    not what the user's shift key produced. Every fixture used matching case,
+    which is why this went unnoticed."""
+    deps = _deps(resolve=lambda n: ("roster", n.lower()))
+    act, mode = console.route("/Sarsi-Worker", console.Mode(), deps)
+    assert mode.name == "sarsi-worker"
+
+
 def test_entering_costs_nothing():
     """The invariant. Nothing may be created by arriving somewhere."""
     made = []
@@ -91,8 +100,9 @@ def test_back_at_the_top_is_harmless():
 
 def test_a_spec_switches_the_chat_agent_without_entering_a_mode():
     act, mode = console.route("/research", console.Mode(), _deps())
-    assert act.kind == "say" or act.kind == "enter"
+    assert act.kind == "say"
     assert mode.kind == "top", "a chat spec is not a mode — it is who answers"
+    assert act.agent == "research"
 
 
 def test_a_name_that_is_both_enters_the_worker_and_says_the_other_exists():
