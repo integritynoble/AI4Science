@@ -447,7 +447,18 @@ def send_to_session(name_or_pid, text: Optional[str] = None, *, enter: bool = Tr
     run = run or _tmux_send
     calls = []
     if text:
-        calls.append(["tmux", "send-keys", "-t", target, "-l", "--", text])   # literal string
+        # A literal newline IS the submit key in a TUI, so typing a multi-line
+        # message sends one prompt per LINE. The first supervised `sarsi-pwm`
+        # run showed it: the pane filled with `❯ Keep the headings … (queued)`,
+        # `❯ Goal: … (queued)` — a dozen fragments where one briefing was meant.
+        #
+        # Bracketed paste is how a terminal already solves this: between
+        # `ESC[200~` and `ESC[201~` a newline is content, not a keypress. Only
+        # multi-line bodies are wrapped — a gate answer stays a plain literal
+        # send, because that path works and the loop answers far more gates
+        # than it sends briefs.
+        body = f"\x1b[200~{text}\x1b[201~" if "\n" in text else text
+        calls.append(["tmux", "send-keys", "-t", target, "-l", "--", body])
     if key:
         calls.append(["tmux", "send-keys", "-t", target, key])
     if enter:

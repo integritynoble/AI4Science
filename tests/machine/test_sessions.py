@@ -296,3 +296,49 @@ def test_start_session_reports_tmux_failure():
     r = start_session("x", cwd="/p", run=lambda a: (1, "", "no server running"),
                       register=lambda **kw: {})
     assert r["ok"] is False and "could not start" in r["reason"]
+
+
+# ── a multi-line message is ONE message ───────────────────────────────
+
+def _sent_for(text):
+    from ai4science.harness.agents.machine.sessions import send_to_session
+    sent = []
+    send_to_session("work", text=text, enter=True, resolve=lambda s: 4242,
+                    target="work:0.0", run=lambda a: (sent.append(a) or (0, "")))
+    return sent
+
+
+def test_a_multi_line_message_is_pasted_not_typed():
+    """The defect the first supervised `sarsi-pwm` run showed on screen.
+
+    `tmux send-keys -l` types the text literally, and a literal newline IS the
+    submit key in a TUI. So the supervision loop's multi-line brief arrived as
+    one prompt per LINE — the pane filled with `❯ Keep the headings … (queued)`,
+    `❯ Goal: … (queued)`, a dozen fragments where one briefing was meant.
+
+    A terminal solves this with bracketed paste: between `ESC[200~` and
+    `ESC[201~` a newline is content, not a keypress. Both TUIs understand it,
+    because it is how every real paste already arrives.
+    """
+    sent = _sent_for("first line\nsecond line")
+    typed = [a for a in sent if "-l" in a]
+    assert len(typed) == 1, (
+        "the body must go in ONE literal send, not one per line: %r" % (sent,))
+    body = typed[0][-1]
+    assert body.startswith("\x1b[200~") and body.endswith("\x1b[201~"), body
+    assert "first line\nsecond line" in body
+
+
+def test_and_it_is_still_submitted_afterwards():
+    """Paste puts the text in the box; it does not send it."""
+    sent = _sent_for("first line\nsecond line")
+    assert sent[-1] == ["tmux", "send-keys", "-t", "work:0.0", "Enter"]
+
+
+def test_a_single_line_answer_is_left_exactly_as_it_was():
+    """`1` at a gate must stay a plain literal send. Wrapping a gate answer in
+    paste markers would change the one path that already works, and the loop
+    answers far more gates than it sends briefs."""
+    sent = _sent_for("1")
+    assert sent[0] == ["tmux", "send-keys", "-t", "work:0.0", "-l", "--", "1"]
+    assert sent[1] == ["tmux", "send-keys", "-t", "work:0.0", "Enter"]

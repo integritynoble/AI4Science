@@ -75,6 +75,26 @@ _GATE_SHAPE = re.compile(r"^\s*❯?\s*1\.\s+\S", re.M)
 # operator run reported `idle` at a visibly stranded screen for exactly that.
 _PROMPT_LINE = re.compile(r"^❯[^\S\r\n]+(?P<text>\S.*)$", re.M)
 
+#: Runs of whitespace, including the line breaks a TUI inserts when it wraps.
+_WRAP = re.compile(r"\s+")
+
+
+def _unwrapped(screen: str) -> str:
+    """The screen with the terminal's own wrapping undone.
+
+    A TUI hard-wraps its prompt to the pane width, so a phrase the loop looks
+    for arrives with a newline somewhere in the middle of it — and *where*
+    depends on a pane width nobody chose. The first supervised `sarsi-pwm` run
+    sat at a correctly-worded, correctly-numbered folder-trust gate and
+    abstained twelve times, because a 49-column pane had broken
+    `... you created or one you trust` after "created".
+
+    Only the *text* patterns in `_KNOWN_GATES` read this. `_GATE_SHAPE` and
+    `_PROMPT_LINE` are line-anchored on purpose and keep reading the raw
+    screen: their whole job is to know which line a thing is on.
+    """
+    return _WRAP.sub(" ", screen)
+
 
 @dataclass(frozen=True)
 class Action:
@@ -390,8 +410,9 @@ def _gate(screen: str, *, planning: bool = False, deletes=None,
         return None
     if _already_answered(screen):
         return None
+    flat = _unwrapped(screen)
     for pattern, answer, why in _KNOWN_GATES:
-        if pattern.search(screen):
+        if pattern.search(flat):
             return (answer, why)
     if deletes is not None:
         command = _gate_command(screen)

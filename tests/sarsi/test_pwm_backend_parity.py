@@ -274,3 +274,52 @@ def test_but_an_unprovable_command_still_stops_for_the_owner():
     # (None, why) — seen, and deliberately not answered. A bare None would mean
     # "no gate here", which is a different and wrong thing to assert.
     assert got is not None and got[0] is None
+
+
+# ── the gate text is WRAPPED by the terminal ──────────────────────────
+
+#: Captured verbatim from `tmux capture-pane -t sarsi-worker-1fcb` during the
+#: first supervised `sarsi-pwm` run, in a 49-column pane. The loop abstained
+#: twelve times in a row at this screen.
+WRAPPED = """\
+Quick safety check: Is this a project you created
+or one you trust (your own code, a well-known
+open-source project, or your team's work)? If
+not, review what's in it first.
+
+AI4Science will be able to read, edit, and
+execute files here.
+
+
+  1. Yes, I trust this folder
+  2. No, exit
+❯"""
+
+
+def test_the_gate_is_recognised_when_the_terminal_wrapped_it():
+    """The defect a live run found, and the reason wording parity was not
+    enough on its own.
+
+    A TUI hard-wraps its prompt to the pane width. `_KNOWN_GATES` matched
+    `... you created or one you trust` — a literal space where a 49-column pane
+    put a newline — so the pattern missed and the loop reported 'an option menu
+    this loop has no rule for' on every pass.
+
+    This is a CLASS of bug, not one gate: every phrase long enough to wrap is
+    unmatchable, and which ones wrap depends on a pane width nobody controls.
+    The earlier parity test passed because it matched an unwrapped string.
+    """
+    assert operator._gate(WRAPPED) == ("1", operator._KNOWN_GATES[0][2])
+
+
+def test_wrapping_does_not_make_a_stranger_answerable():
+    """Unwrapping must not turn 'no rule for this' into a match — it joins
+    lines, it does not loosen what counts as a rule."""
+    stranger = WRAPPED.replace(
+        "Quick safety check: Is this a project you created\n"
+        "or one you trust (your own code, a well-known\n"
+        "open-source project, or your team's work)? If\n"
+        "not, review what's in it first.",
+        "Send this report to the funding portal?")
+    got = operator._gate(stranger)
+    assert got is not None and got[0] is None
