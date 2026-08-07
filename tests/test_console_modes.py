@@ -193,3 +193,44 @@ def test_plain_text_at_the_top_is_answered_not_confirmed():
     act, mode = console.route("what is GAP-TV?", console.Mode(), _deps())
     assert act.kind == "answer"
     assert mode.pending is None
+
+
+def test_plain_text_in_task_mode_steers_it():
+    m = console.Mode(kind="task", name="tsk_ab12cd34")
+    act, mode = console.route("focus on the mask convention first", m, _deps())
+    assert act.kind == "guide"
+    assert act.task == "tsk_ab12cd34"
+    assert act.text == "focus on the mask convention first"
+    assert mode == m, "steering does not change where you are standing"
+
+
+def test_interact_names_the_session_to_attach():
+    m = console.Mode(kind="task", name="tsk_ab12cd34")
+    act, _ = console.route("/interact", m, _deps())
+    assert act.kind == "attach"
+    assert act.session == "sarsi-worker-cd34"
+    assert act.task == "tsk_ab12cd34"
+
+
+def test_interact_print_only_says_the_command():
+    """The escape hatch. On any terminal where the hand-off misbehaves there
+    must still be a way through."""
+    m = console.Mode(kind="task", name="tsk_ab12cd34")
+    act, _ = console.route("/interact --print", m, _deps())
+    assert act.kind == "say"
+    assert "tmux attach -t sarsi-worker-cd34" in act.text
+
+
+def test_interact_with_no_session_says_how_to_start_one():
+    """Not-there and cannot-be-read are different facts, and the first is the
+    one with an action attached."""
+    m = console.Mode(kind="task", name="tsk_ab12cd34")
+    act, _ = console.route("/interact", m, _deps(session_of=lambda t: ""))
+    assert act.kind == "say"
+    assert "sarsi run" in act.text
+
+
+def test_interact_outside_task_mode_says_which_task():
+    act, _ = console.route("/interact", console.Mode(), _deps())
+    assert act.kind == "say"
+    assert "task" in act.text.lower()

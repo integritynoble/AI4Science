@@ -106,6 +106,20 @@ def route(line: str, mode: Mode, deps: dict) -> tuple:
                 return Action("say", text="already at the top"), mode
             return Action("leave"), Mode()
 
+        if name.lower() == "interact":
+            if mode.kind != "task":
+                return Action("say", text="/interact needs a task — enter one "
+                                          "with /<task-id>, or /task to list"), mode
+            session = deps["session_of"](mode.name)
+            if not session:
+                return Action("say",
+                              text=f"{mode.name} has no session yet — start one:"
+                                   f"\n  ai4science sarsi run <agent> {mode.name}"), \
+                    mode
+            if rest.strip() in ("--print", "print"):
+                return Action("say", text=f"  tmux attach -t {session}"), mode
+            return Action("attach", session=session, task=mode.name), mode
+
         kind, detail = deps["resolve"](name)
 
         if kind == "roster":
