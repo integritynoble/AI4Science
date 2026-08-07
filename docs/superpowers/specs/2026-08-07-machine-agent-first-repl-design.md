@@ -300,3 +300,25 @@ page, so it has to answer the same four questions in the same order:
 > A card that says only *what an agent is* leaves the reader with nothing to do.
 > Removing the one card that told them how, and not carrying its steps across,
 > would make the page worse in the exact way the removal was meant to improve.
+
+---
+
+## 10. This is three pieces, not one
+
+The self-review caught it: this document describes three deliverables, in two
+repositories, with different risks. One implementation plan covering all three
+would be a plan whose failure modes have nothing to do with each other.
+
+| # | piece | where | depends on |
+|---|---|---|---|
+| **1** | the agents-page catalogue — rename, removals, flatten, how-to-use | `pwm_nonprofit` | nothing |
+| **2** | the REPL: modes, `/<name>`, confirm, `/task`, `/agents`, `/interact` | `AI4Science` `console.py` + `repl.py` | nothing |
+| **3** | `sarsi-pwm` as a backend and the default | `AI4Science` sessions + two parity strings | piece 2's confirm block, to be chosen at creation |
+
+**Order: 1, then 2, then 3.** The catalogue is independent and the smallest; the
+REPL is where the reported failure lives; `sarsi-pwm` is last because its
+confirm-time choice needs the confirm block, and because its parity change wants
+a live check on a real session before `DRIVABLE_SPECS` grows.
+
+Each gets its own plan. This document is the shared design they all refer back
+to, not a single work item.
