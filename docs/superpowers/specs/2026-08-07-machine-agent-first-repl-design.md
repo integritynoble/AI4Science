@@ -315,7 +315,18 @@ would be a plan whose failure modes have nothing to do with each other.
 | **2** | the REPL: modes, `/<name>`, confirm, `/task`, `/agents`, `/interact` | `AI4Science` `console.py` + `repl.py` | nothing |
 | **3** | `sarsi-pwm` as a backend and the default | `AI4Science` sessions + two parity strings | piece 2's confirm block, to be chosen at creation |
 
-**Order: 1, then 2, then 3.** The catalogue is independent and the smallest; the
+**Current priority: make `sarsi-worker` work well.** That is piece **2** — the
+REPL is the only surface where reaching `sarsi-worker` is currently impossible,
+and the reported failure is a user being shown eight workers and given no route
+to one. Pieces 1 and 3 wait.
+
+`sarsi-pwm` (piece 3) is explicitly *not* the thing to chase first: today
+`sarsi-worker` runs on `sarsi-claude`, that path is supervised end to end, and
+it has been verified live — plan collected, three grants, released, worked,
+judged. Making the default backend a second one before the first is comfortable
+to use would be widening the thing that already works instead of finishing it.
+
+**Order when the others come: 1, then 2, then 3.** The catalogue is independent and the smallest; the
 REPL is where the reported failure lives; `sarsi-pwm` is last because its
 confirm-time choice needs the confirm block, and because its parity change wants
 a live check on a real session before `DRIVABLE_SPECS` grows.
