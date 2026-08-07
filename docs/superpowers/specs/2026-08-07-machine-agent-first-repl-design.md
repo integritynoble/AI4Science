@@ -287,6 +287,19 @@ The catalogue change:
   | server side | the gateway fronts Claude, Google and OpenAI-family models, on subscriptions or keys |
   | cost of a new provider | a gateway change, **not** a PWM-code change |
 
+  **Which model reaches which provider, decided:**
+
+  | family | how |
+  |---|---|
+  | Claude | the PWM exchange gateway, as the Claude Code card documents |
+  | ChatGPT / OpenAI | **the codex subscription**, as `openai_bridge.py` already does — a subscription, not an API key |
+  | Google | the same gateway route |
+
+  The bridge exists precisely to call OpenAI models *"via the ChatGPT Plus
+  subscription (codex) rather than an API key"* — its own docstring. So the
+  answer to "which of the famous models can PWM code reach" is: the ones the
+  gateway fronts, on subscriptions where a subscription exists.
+
   > **This is why "any LLM" is one line in a shell profile rather than N
   > integrations**, and why the four cards collapse cleanly: they differed in
   > which endpoint they were pinned to, and PWM code is pinned to none.
