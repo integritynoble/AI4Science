@@ -69,40 +69,6 @@ def _is_slash(line: str) -> bool:
     return "/" not in first[1:] and "." not in first[1:]
 
 
-#: Lines that are plainly not directives. Kept deliberately SMALL: a classifier
-#: that guesses is worse than one that is quiet, and the cost of guessing wrong
-#: in the "directive" direction is a task the owner did not ask for.
-_GREETINGS = frozenset("""
-hi hello hey yo hiya sup thanks thanx cheers ok okay k bye goodbye
-""".split()) | frozenset([
-    "thank you", "good morning", "good afternoon", "good evening",
-    "how are you", "whats up", "what's up",
-])
-
-
-def _is_directive(line: str) -> bool:
-    """Is this an instruction to do work, or something to answer?
-
-    Two signals only, both cheap and both hard to get wrong:
-
-      * it ends in `?` — a question. `can you plan at A2?` is a thing to
-        answer, not a goal to plan.
-      * it IS a greeting — `hi`, `thanks`. Matched whole, so "hi-res
-        reconstruction" is still a directive.
-
-    Everything else is treated as a directive, which keeps the failure mode on
-    the safe side: an unrecognised line still reaches the confirmation, and the
-    confirmation is where the owner says no.
-    """
-    text = (line or "").strip()
-    if not text:
-        return False
-    if text.endswith("?"):
-        return False
-    bare = text.rstrip("!.").strip().lower()
-    return bare not in _GREETINGS
-
-
 def confirm_block(goal: str, agent: str) -> str:
     """What the owner reads before a task exists."""
     return (f"\n  goal:   {goal}\n"
@@ -212,15 +178,10 @@ def route(line: str, mode: Mode, deps: dict) -> tuple:
                                            "the model")(line)), mode
 
     if mode.kind == "agent":
-        # A question the worker can answer about ITSELF is answered from its own
-        # state, not sent to a model and not turned into a task. `can you plan
-        # at A2?` became a task goal because the worker had nothing to answer
-        # from; now `deps["about_self"]` derives it from the registry, the trust
-        # ledger and the task store.
-        #
-        # Falls through when the agent is not self-aware (describe returns "")
-        # — an empty reply would be worse than the old behaviour.
-        if not _is_directive(line):
+        from ai4science.harness.agents.sarsi import intent as _intent
+        got = _intent.classify(line)
+
+        if got.kind == "question":
             about = deps.get("about_self")
             if about is not None:
                 from ai4science.harness.agents.sarsi import selfaware as _sa
@@ -228,20 +189,27 @@ def route(line: str, mode: Mode, deps: dict) -> tuple:
                     text = about(mode.name) or ""
                     if text:
                         return Action("say", text=text), mode
-        if not _is_directive(line):
-            # `hi` became a task goal. So did `can you plan at A2?`. A greeting
-            # and a question about the worker are not directives, and turning
-            # every line into one is why the worker reads as a form rather than
-            # something you can talk to.
-            #
-            # Answered here — and the way to task it anyway is named, so a
-            # directive phrased as a question is never unreachable.
             return Action("answer",
                           text=f"{line}\n\n(to make that a task instead: "
                                f"/do {line})"), mode
-        return Action("confirm", goal=line, agent=mode.name,
-                      text=confirm_block(line, mode.name)), \
-            Mode(kind="agent", name=mode.name, pending=line)
+
+        if got.kind == "greeting":
+            return Action("answer",
+                          text=f"{line}\n\n(to make that a task instead: "
+                               f"/do {line})"), mode
+
+        # A request to MAKE a task is not a goal, and a line this cannot place
+        # is not one either. Both ask, and both say what was unclear -- the row
+        # of the design's table that was missing.
+        if got.kind in ("meta", "ambiguous"):
+            return Action("say", text=got.why), mode
+
+        # `got.goal`, not `line`: the framing is not part of the goal.
+        # "the goal is please write X" files as "write X", instead of reading
+        # back as noise in every listing thereafter.
+        return Action("confirm", goal=got.goal, agent=mode.name,
+                      text=confirm_block(got.goal, mode.name)), \
+            Mode(kind="agent", name=mode.name, pending=got.goal)
 
     if mode.kind == "task":
         return Action("guide", task=mode.name, text=line), mode

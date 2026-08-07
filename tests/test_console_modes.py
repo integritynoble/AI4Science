@@ -365,7 +365,7 @@ def test_a_new_goal_at_a_confirmation_is_not_thrown_away():
         "please write a gap-tv algorithm for cassi based on python",
         pending, _deps_ok())
     assert act.kind == "confirm", act
-    assert act.goal == "please write a gap-tv algorithm for cassi based on python"
+    assert act.goal == "write a gap-tv algorithm for cassi based on python"
     assert mode.pending == act.goal
     assert "can you plan at A2?" in act.text, (
         "the abandoned goal must be named, not silently forgotten")
@@ -422,6 +422,19 @@ def test_a_directive_still_becomes_a_goal():
     m = console.Mode(kind="agent", name="sarsi-worker")
     act, mode = console.route("write a gap-tv algorithm for cassi", m, _deps_ok())
     assert act.kind == "confirm" and mode.pending
+    assert act.goal == "write a gap-tv algorithm for cassi"
+
+
+def test_the_framing_does_not_become_the_goal():
+    """`the goal is please write X` used to file a task whose goal was
+    "the goal is please write X"."""
+    from ai4science.harness import console
+    act, mode = console.route(
+        "the goal is please write a GAP-TV solver for CASSI",
+        console.Mode(kind="agent", name="sarsi-worker"), _deps_ok())
+    assert act.kind == "confirm"
+    assert act.goal == "write a GAP-TV solver for CASSI", act.goal
+    assert mode.pending == act.goal
 
 
 # ── A1 · /tasks and /do must read the mode you are standing in ────────
