@@ -86,7 +86,8 @@ def tick(config: Config, agent: Agent, task: tsk.Task, *, pane: Any,
          acts=None, runtime: Optional[Any] = None,
          verifier: Optional[Callable[..., dict]] = None,
          model: Optional[Callable[[str], str]] = None,
-         engine: Optional[str] = None, now=time.time) -> Action:
+         engine: Optional[str] = None, accept_seed: bool = False,
+         now=time.time) -> Action:
     """One supervision pass over one session, in this order:
 
     no session · already done · the owner has the wheel · **verify** · a gate ·
@@ -290,6 +291,7 @@ def tick(config: Config, agent: Agent, task: tsk.Task, *, pane: Any,
             elif after.kickoff_pending:
                 stalled = Action("briefing", "waiting to see the brief land")
         after = ses.collect_plan(config, agent, task, runtime=_Sender(pane),
+                                 accept_seed=accept_seed,
                                  now=now)
         if after.state != tsk.PLANNING:
             return Action("planned",
@@ -323,13 +325,14 @@ def run(config: Config, agent: Agent, task: tsk.Task, *, pane: Any,
         verifier: Optional[Callable[..., dict]] = None,
         model: Optional[Callable[[str], str]] = None,
         engine: Optional[str] = None,
-        passes: int = 20, interval: float = 3.0, sleep=time.sleep) -> list:
+        passes: int = 20, interval: float = 3.0, accept_seed: bool = False,
+        sleep=time.sleep) -> list:
     """Supervise until the goal is verified, the owner takes over, or the budget
     runs out. Stops on a verdict — it does not keep guiding a finished session."""
     seen = []
     for i in range(passes):
         action = tick(config, agent, task, pane=pane, verifier=verifier,
-                      model=model, engine=engine)
+                      model=model, engine=engine, accept_seed=accept_seed)
         seen.append(action)
         # Three of these are states the loop has finished with. The other two
         # are things another pass cannot bring closer, and both were found by

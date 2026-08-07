@@ -1283,7 +1283,13 @@ def supervise_cmd(agent_id: str = typer.Argument(..., help="Worker id"),
                   no_verify: bool = typer.Option(False, "--no-verify",
                                                  help="Do not verify; unstick and steer only."),
                   no_steer: bool = typer.Option(False, "--no-steer",
-                                                help="Do not compose instructions; unstick only.")) -> None:
+                                                help="Do not compose instructions; unstick only."),
+                  accept_seed: bool = typer.Option(
+                      False, "--accept-seed",
+                      help="Take the worker's own seed plan when the session "
+                           "never improved it. Deliberate: collecting a seed "
+                           "the session ignored launders the worker's draft "
+                           "as the session's work.")) -> None:
     from ai4science.harness.agents.sarsi import (composer as cp, operator as op,
                                                  verifier as vf)
 
@@ -1297,7 +1303,8 @@ def supervise_cmd(agent_id: str = typer.Argument(..., help="Worker id"),
     actions = op.run(config, agent, t, pane=op.TmuxPane(),
                      verifier=None if no_verify else vf.default_verifier(),
                      model=None if no_steer else cp.claude_model(),
-                     engine=engine, passes=passes, interval=interval)
+                     engine=engine, passes=passes, interval=interval,
+                     accept_seed=accept_seed)
     for action in actions:
         console.print(f"  {action.kind}"
                       + (f" — {action.detail}" if action.detail else ""),
