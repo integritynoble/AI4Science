@@ -179,7 +179,11 @@ def test_a_task_instruction_steers_instead_of_entering():
     act, mode = console.route("/tsk_abc123 look at the logs", console.Mode(), deps)
     assert act.kind == "guide"
     assert act.text == "look at the logs"
-
+    assert mode.kind == "top", (
+        "a verb form acts and leaves you where you were — same as `do`. The "
+        "re-review caught that this assertion was missing while its C1 and I2 "
+        "siblings had it, so a regression that re-entered task mode would have "
+        "passed silently.")
 
 def test_a_bogus_task_id_is_refused_not_entered():
     from ai4science.harness import console, repl
@@ -219,3 +223,21 @@ def test_c3_the_pre_filter_is_gone_before_the_console_call():
     assert prefilter_at == -1 or prefilter_at > route_at, (
         "an empty-line pre-filter still runs before console.route is called "
         "— Enter at the confirmation would never reach the pending branch")
+
+
+def test_a_both_name_stores_the_canonical_id_not_your_shift_key():
+    """I6 was fixed in code with no test guarding it. `imaging`, `cancer`,
+    `drug-design`, `low-dose-ct`, `medical-physics` and `pill-camera` all
+    resolve `both` on this machine, so the branch is live — and a raw-case name
+    makes a later create fail after the user has already confirmed."""
+    from ai4science.harness import console, repl
+    deps = repl._console_deps({})
+    for name in ("imaging", "cancer", "work"):
+        kind, _ = repl.resolve_name(name)
+        if kind != "both":
+            continue
+        _, mode = console.route("/" + name.capitalize(), console.Mode(), deps)
+        assert mode.name == name, (name, mode.name)
+        return
+    import pytest
+    pytest.skip("no `both` name on this machine to exercise")
