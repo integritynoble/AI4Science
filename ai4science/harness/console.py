@@ -9,6 +9,7 @@ thing.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any, Optional
 
@@ -50,3 +51,58 @@ def prompt_label(mode: Mode) -> str:
     if mode.kind == "task":
         return f"{mode.name} (guided) {MARKER}"
     return MARKER
+
+
+_COMMAND_WORD = re.compile(r"^/([A-Za-z][A-Za-z0-9_-]*)(\s|$)")
+
+
+def _is_slash(line: str) -> bool:
+    """An attempt at a slash, or a sentence that starts with a path?
+
+    `/sarsi-worker` is an attempt. `/home/grace/x is missing` is a sentence, and
+    refusing it would be worse than the bug this fixes. The separator is
+    structure: a name is one word, a path has slashes or dots inside it.
+    """
+    if not _COMMAND_WORD.match(line or ""):
+        return False
+    first = line.split()[0]
+    return "/" not in first[1:] and "." not in first[1:]
+
+
+def route(line: str, mode: Mode, deps: dict) -> tuple:
+    """Given where the user is and what they typed, what should happen."""
+    line = (line or "").strip()
+    if not line:
+        return Action("noop"), mode
+
+    if _is_slash(line):
+        name, _, rest = line[1:].partition(" ")
+        rest = rest.strip()
+
+        if name.lower() == "back":
+            if mode.kind == "top":
+                return Action("say", text="already at the top"), mode
+            return Action("leave"), Mode()
+
+        kind, detail = deps["resolve"](name)
+
+        if kind == "roster":
+            return Action("enter", text=f"now addressing {name}"), \
+                Mode(kind="agent", name=name)
+        if kind == "both":
+            return Action("enter",
+                          text=f"{detail}. entered the worker; "
+                               f"the chat spec is /agent {name}"), \
+                Mode(kind="agent", name=name)
+        if kind == "task":
+            return Action("enter", text=f"guided on {name}"), \
+                Mode(kind="task", name=name)
+        if kind == "spec":
+            # Not a mode: a chat spec is WHO ANSWERS, not somewhere to stand.
+            return Action("say", text=f"chat agent is now {name}"), mode
+
+        return Action("say", text=deps.get("unknown", lambda l: f"/{name} is not "
+                                           "a command, and it was NOT sent to "
+                                           "the model")(line)), mode
+
+    return Action("answer", text=line), mode
