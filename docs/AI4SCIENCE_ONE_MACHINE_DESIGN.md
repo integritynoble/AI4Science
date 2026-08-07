@@ -663,6 +663,52 @@ owner's other agents have learned.
 A **bot token is a vault secret**, not a config value: an agent that held its own
 token could be moved, and then spoken to somewhere the owner is not looking.
 
+### Reaching a worker through the CLI door: modes
+
+The CLI door had a gap the table above hides. `/agent <id>` switches the **chat
+agent** — the thing that answers you in the session. A **worker** is a different
+kind of thing: it holds tasks and drives sessions. `/do` looked up its worker by
+the *chat agent's* name, and no chat spec is called `sarsi-worker`, so the REPL
+would list eight workers and offer no way to address one of them.
+
+So `/<name>` now resolves to whatever the name is, and a worker or a task can be
+**entered**:
+
+| where you are | prompt | plain text does |
+|---|---|---|
+| top | `❯` | asks the chat agent — **PWM code**, the agent you land in |
+| agent | `sarsi-worker ❯` | proposes a **goal**, and waits for you |
+| task | `tsk_… (guided) ❯` | **steers** that task, ahead of the worker |
+
+**The prompt is the safety mechanism, not decoration.** Plain text means three
+different things in three places, so the label has to name where the words are
+going; a mode that did not show itself would be a trap.
+
+Two invariants keep this from widening anything:
+
+* **entering costs nothing.** `/sarsi-worker` and `/tsk_…` create no task, start
+  no session and spend nothing. Only the confirmation creates — and it exists
+  because a task starts a session and spends PWM, so a sentence must not become
+  one by accident.
+* **mode never widens authority.** Task mode grants nothing. A guided
+  instruction takes the path `sarsi guide` already uses, with the ceiling and
+  the grants untouched. This is the same rule as *a surface is a door, not a
+  scope*, one level in: a mode is a door too.
+
+> **Verb forms do not move you.** `/sarsi-worker do <goal>` and
+> `/tsk_… <instruction>` act and leave you where you were; only a bare name
+> enters. That distinction was worth stating because the first implementation
+> silently swallowed both — they parsed the rest of the line and never read it,
+> which broke the exact command this design's own guide tells owners to type.
+
+**`/interact` is the second way into a task**, and the one this design cannot
+fully verify: it releases the terminal to a child process. `--print` always
+exists beside it, printing the `tmux attach` line and attaching nothing, because
+a hand-off that misbehaves on some terminal still needs a way through.
+
+The Telegram door is unchanged. Modes are a CLI affordance; the agent, its
+`W_name` and its sessions are the same whichever door was used.
+
 ## 11. The market (Points 1 and 2)
 
 Three kinds of listing — **agents**, **tools**, **sub-agents** — each uploadable,
