@@ -69,9 +69,31 @@ def _is_slash(line: str) -> bool:
     return "/" not in first[1:] and "." not in first[1:]
 
 
+def confirm_block(goal: str, agent: str) -> str:
+    """What the owner reads before a task exists."""
+    return (f"\n  goal:   {goal}\n"
+            f"  agent:  {agent}\n"
+            f"  it will plan at A0 first, and stop for your grant\n\n"
+            f"  create it? [Enter=yes / e=edit / n=no]")
+
+
 def route(line: str, mode: Mode, deps: dict) -> tuple:
     """Given where the user is and what they typed, what should happen."""
     line = (line or "").strip()
+
+    # A goal is waiting on an answer. This is read BEFORE anything else: a
+    # pending confirmation owns the next line, and a slash typed here is an
+    # answer of "no" rather than a command — which is the safe reading, since
+    # the alternative silently creates a task the user did not confirm.
+    if mode.pending is not None:
+        settled = Mode(kind=mode.kind, name=mode.name, pending=None)
+        if line == "" or line.lower() in ("y", "yes"):
+            return Action("create", goal=mode.pending, agent=mode.name), settled
+        if line.lower() == "e":
+            return Action("say", text=f"edit it and send again:\n  {mode.pending}"), \
+                settled
+        return Action("say", text="dropped — nothing was created"), settled
+
     if not line:
         return Action("noop"), mode
 
@@ -104,5 +126,13 @@ def route(line: str, mode: Mode, deps: dict) -> tuple:
         return Action("say", text=deps.get("unknown", lambda l: f"/{name} is not "
                                            "a command, and it was NOT sent to "
                                            "the model")(line)), mode
+
+    if mode.kind == "agent":
+        return Action("confirm", goal=line, agent=mode.name,
+                      text=confirm_block(line, mode.name)), \
+            Mode(kind="agent", name=mode.name, pending=line)
+
+    if mode.kind == "task":
+        return Action("guide", task=mode.name, text=line), mode
 
     return Action("answer", text=line), mode

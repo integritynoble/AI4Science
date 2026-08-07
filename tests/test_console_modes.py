@@ -115,3 +115,71 @@ def test_a_sentence_beginning_with_a_path_is_still_a_sentence():
     escape it."""
     act, _ = console.route("/home/grace/x is missing", console.Mode(), _deps())
     assert act.kind == "answer"
+
+
+def test_plain_text_in_agent_mode_asks_before_creating():
+    """A task starts a session and spends PWM. One keystroke of friction, and
+    no sentence becomes a task by accident."""
+    made = []
+    m = console.Mode(kind="agent", name="sarsi-worker")
+    act, mode = console.route("write a GAP-TV algorithm for CASSI", m,
+                              _deps(create=lambda a, g: made.append(g) or "x"))
+    assert act.kind == "confirm"
+    assert made == [], "nothing may be created before the confirmation"
+    assert mode.pending == "write a GAP-TV algorithm for CASSI"
+
+
+def test_the_confirm_block_names_the_goal_and_the_agent():
+    text = console.confirm_block("write a GAP-TV algorithm", "sarsi-worker")
+    assert "write a GAP-TV algorithm" in text
+    assert "sarsi-worker" in text
+    assert "Enter" in text
+
+
+def test_empty_confirms_and_creates():
+    m = console.Mode(kind="agent", name="sarsi-worker", pending="do the thing")
+    act, mode = console.route("", m, _deps())
+    assert act.kind == "create"
+    assert act.goal == "do the thing"
+    assert mode.pending is None
+
+
+def test_y_confirms_too():
+    m = console.Mode(kind="agent", name="sarsi-worker", pending="do the thing")
+    act, _ = console.route("y", m, _deps())
+    assert act.kind == "create"
+
+
+def test_n_drops_it_and_creates_nothing():
+    made = []
+    m = console.Mode(kind="agent", name="sarsi-worker", pending="do the thing")
+    act, mode = console.route("n", m,
+                              _deps(create=lambda a, g: made.append(g) or "x"))
+    assert act.kind == "say"
+    assert made == []
+    assert mode.pending is None
+
+
+def test_e_reopens_the_goal_for_editing():
+    m = console.Mode(kind="agent", name="sarsi-worker", pending="do the thing")
+    act, mode = console.route("e", m, _deps())
+    assert act.kind == "say"
+    assert "do the thing" in act.text
+    assert mode.pending is None, "editing clears it; the next line is the new goal"
+
+
+def test_anything_else_drops_it_rather_than_guessing():
+    """A pending goal answered with prose is a user who has moved on. Creating
+    the task anyway would be the one outcome nobody asked for."""
+    made = []
+    m = console.Mode(kind="agent", name="sarsi-worker", pending="do the thing")
+    act, mode = console.route("actually never mind", m,
+                              _deps(create=lambda a, g: made.append(g) or "x"))
+    assert made == []
+    assert mode.pending is None
+
+
+def test_plain_text_at_the_top_is_answered_not_confirmed():
+    act, mode = console.route("what is GAP-TV?", console.Mode(), _deps())
+    assert act.kind == "answer"
+    assert mode.pending is None
