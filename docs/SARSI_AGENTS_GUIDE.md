@@ -386,6 +386,121 @@ ai4science sarsi init --reconcile     # adds roster agents this release ships
 
 Additive only — it never removes, rewrites or re-ceilings anything you have set.
 
+### Before any of it: two kinds of agent, and they are not alike
+
+This is the distinction everything else depends on, and getting it wrong is
+what sends people in circles.
+
+| | what it does with your request |
+|---|---|
+| a **chat agent** — `Unified-LLM`, `Research`, `work` | **answers you, here.** Ask for a GAP-TV implementation and it writes one in front of you |
+| a **sarsi worker** — `sarsi-worker`, `computational-imaging` | **delegates.** Drafts a plan, `sarsi-claude` agrees it, you grant what it declared, and it works under supervision |
+
+`sarsi-worker` is the second kind. **You never become it — you hand it work.**
+`/agent sarsi-worker` fails for that reason: it is not a chat spec, and there is
+nothing to switch into.
+
+### Handing `sarsi-worker` a goal, end to end
+
+Start somewhere that is not your home directory — file searches from `~` go
+broad and slow, and the banner says so:
+
+```bash
+cd ~/some-project
+ai4science
+```
+
+Then, in the REPL:
+
+```
+❯ /sarsi-worker do write a GAP-TV algorithm for CASSI
+```
+
+That returns a task id. The rest is the §5 flow, and **step 2 is the one people
+get stuck on**:
+
+```bash
+ai4science sarsi run       sarsi-worker <task>
+ai4science sarsi supervise sarsi-worker <task> --passes 20 --interval 12
+ai4science sarsi grant     sarsi-worker <task> "<each permission it names>"
+ai4science sarsi release   sarsi-worker <task>
+ai4science sarsi supervise sarsi-worker <task>
+```
+
+Until `supervise` collects the plan, nothing is attached to the task — so there
+is nothing to grant and nothing to release, and the task keeps reading
+`planning`. That is not a failure; it is collection not having happened yet. It
+takes several passes.
+
+### Modes: standing inside `sarsi-worker` instead of addressing it
+
+`/<worker> do <goal>` addresses a worker one line at a time. **Entering** it puts
+you inside, and the prompt says so:
+
+```
+❯ /sarsi-worker
+  now addressing sarsi-worker
+
+sarsi-worker ❯ write a GAP-TV algorithm for CASSI
+
+  goal:   write a GAP-TV algorithm for CASSI
+  agent:  sarsi-worker
+  it will plan at A0 first, and stop for your grant
+
+  create it? [Enter=yes / e=edit / n=no]
+
+sarsi-worker ❯                       ← Enter
+→ tsk_ab12cd34
+
+sarsi-worker ❯ /tsk_ab12cd34
+  guided on tsk_ab12cd34
+
+tsk_ab12cd34 (guided) ❯ focus on the mask convention first
+  sent, ahead of the worker
+
+tsk_ab12cd34 (guided) ❯ /interact
+  → the tmux session itself; Ctrl-b d comes back here
+
+tsk_ab12cd34 (guided) ❯ /back
+❯
+```
+
+**The prompt is the safety mechanism, not decoration.** In agent mode plain text
+becomes a *goal*; in task mode it becomes an *instruction to a running session*.
+A mode that did not show itself would be a trap, so the label always names where
+your words are going, and `/back` pops one level. `/exit` still leaves the REPL
+from any depth — wanting out should not require knowing how deep you are.
+
+| where you are | plain text does |
+|---|---|
+| `❯` | asks the chat agent, as always |
+| `sarsi-worker ❯` | proposes a goal, and waits for you |
+| `tsk_… (guided) ❯` | steers that task, ahead of the worker |
+
+**Two invariants worth trusting.** *Entering costs nothing* — `/sarsi-worker`
+creates no task, starts no session and spends nothing; only the confirmation
+does. And *mode never widens authority* — task mode grants nothing, and guided
+instructions take the same path `sarsi guide` already uses, with the ceiling and
+grants untouched.
+
+**Why the confirmation exists.** A task starts a session and spends PWM, so a
+sentence must not become one by accident. Answer with Enter or `y` to create,
+`e` to edit, and anything else drops it — including a slash, which is read as
+"no" rather than as a command, because a stray `/back` mid-confirmation should
+not quietly discard a goal by a path that never tells you.
+
+**The two ways into a running task.** Guided steers from outside and the worker
+keeps running. `/interact` hands you the tmux session itself. If the hand-off
+ever misbehaves on your terminal, `/interact --print` gives you the `tmux attach`
+line to run by hand — that escape hatch is deliberate, because releasing the
+terminal to a child process is the one part of this that no test can honestly
+cover.
+
+**`/agents` lists and switches** the chat agents. The nested delegation types
+that `/agents` used to print now live under **`/subagents`** — they are a
+different thing entirely, and giving the name to the switcher without rehoming
+them would have deleted a listing to free up a word.
+
 ### In the REPL: `/<name>` goes wherever the name points
 
 Inside `ai4science`, a slash addresses the **harness**, not the model. One rule
