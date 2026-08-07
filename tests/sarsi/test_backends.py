@@ -236,3 +236,73 @@ def test_a_task_written_before_backends_existed_still_runs(config):
     t.backend = ""                       # as an old record would deserialise
     ses.assign(config, a, t, runtime=_RT(), installed=lambda: set())
     assert seen["spec"] == backends.spec_for(backends.DEFAULT)
+
+
+# ── the declared workdir must reach the sandbox ───────────────────────
+
+def test_the_declared_workdir_is_passed_as_writable(config, tmp_path):
+    """The defect that stopped the first end-to-end `sarsi-pwm` run.
+
+    `assign` built its writable list as "the evidence roots, EXCEPT the folder
+    the session runs in" — on the assumption that a session's own cwd is
+    writable by construction. That holds for Claude Code's sandbox. It does not
+    hold for PWM Code, where `--writable` is the ONLY declaration the governance
+    hook reads (`_declared_writable` reads `PWM_WRITABLE`, nothing else).
+
+    So live: the session stood in `/home/grace/p3test`, the plan said write
+    `DONE.md` there, the owner granted exactly that — and every write was gated,
+    forever. `release` cannot repair it either: `--writable` is fixed at launch
+    and the hook reads a process environment that is already running.
+
+    This widens nothing. It is the directory the owner typed into `--workdir`,
+    which is already an evidence root and already a blast-radius path — the
+    module docstring of `test_declared_workdir_writable` says so: "a declared
+    working directory is writable, and it is writable because it was declared".
+    Passing it makes the two backends agree about what that sentence means.
+    """
+    from ai4science.harness.agents.sarsi import session as ses
+    seen = {}
+
+    class _RT:
+        engine = "claude"
+        def start(self, name, cwd, *, govern, ceiling, env=None,
+                  spec="claude-code", writable=None):
+            seen["cwd"], seen["writable"] = cwd, list(writable or [])
+            return {"ok": True, "name": name}
+        def send(self, name, text):
+            return {"ok": True}
+
+    work = tmp_path / "declared"; work.mkdir()
+    a = config.agents["sarsi-worker"]
+    t = tsk.create(config, a, wk.Directive(agent_id=a.id, goal="g"))
+    t.work_root = str(work)
+    ses.assign(config, a, t, runtime=_RT(), installed=lambda: set())
+
+    assert seen["cwd"] == str(work.resolve())
+    assert str(work.resolve()) in seen["writable"], (
+        "the folder the plan writes into was not declared writable: %r"
+        % (seen["writable"],))
+
+
+def test_and_the_task_folder_is_still_writable_too(config, tmp_path):
+    """plan0.md lives there and the planning step exists to edit it, so the
+    task folder must stay in the list — this fix adds a path, it does not
+    swap one for another."""
+    from ai4science.harness.agents.sarsi import session as ses
+    seen = {}
+
+    class _RT:
+        engine = "claude"
+        def start(self, name, cwd, *, govern, ceiling, env=None,
+                  spec="claude-code", writable=None):
+            seen["writable"] = list(writable or [])
+            return {"ok": True, "name": name}
+        def send(self, name, text):
+            return {"ok": True}
+
+    work = tmp_path / "declared2"; work.mkdir()
+    a = config.agents["sarsi-worker"]
+    t = tsk.create(config, a, wk.Directive(agent_id=a.id, goal="g"))
+    t.work_root = str(work)
+    ses.assign(config, a, t, runtime=_RT(), installed=lambda: set())
+    assert str(tsk.dir_of(a, t.id).resolve()) in seen["writable"]

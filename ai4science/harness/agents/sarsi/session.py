@@ -251,8 +251,21 @@ def assign(config: Config, agent: Agent, task: tsk.Task, *,
     # The TASK FOLDER is in here whenever the session is standing somewhere
     # else: `plan0.md` lives there and the planning step exists to edit it, so a
     # sandbox permitting only the cwd would refuse the one write it is for.
-    writable = [str(p) for p in tsk.evidence_roots(agent, task)
-                if str(p) != str(workdir)]
+    # INCLUDING the folder the session runs in. It used to be excluded, on the
+    # assumption that a session's own cwd is writable by construction — true of
+    # Claude Code's sandbox, false of PWM Code, where `--writable` is the only
+    # declaration the governance hook reads (`_declared_writable` reads
+    # `PWM_WRITABLE` and nothing else).
+    #
+    # Live, that assumption cost a whole run: the session stood in
+    # `/home/grace/p3test`, the plan said write `DONE.md` there, the owner
+    # granted exactly that, and every write was gated for ever. `release`
+    # cannot repair it — `--writable` is fixed at launch and the hook reads an
+    # environment that is already running.
+    #
+    # This widens nothing. It is the directory the owner typed into
+    # `--workdir`, already an evidence root and already a blast-radius path.
+    writable = [str(p) for p in tsk.evidence_roots(agent, task)]
     writable += [str(p) for p in (task.may_touch or [])]
     started = runtime.start(name, str(workdir), govern=True, ceiling=ceiling,
                             env=secrets, spec=run_spec,
