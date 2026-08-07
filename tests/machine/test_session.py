@@ -40,6 +40,13 @@ def test_classify_read_allowlist():
     assert classify_command("cat foo.txt | grep bar | wc -l")["kind"] == "read"
 
 
+def test_tr_is_a_safe_read_head():
+    # 2026-08-07: a pipeline through `tr` classified unknown and stalled a
+    # session on an approval prompt; tr only transforms its stdin.
+    assert classify_command("cat main.log | tr -d '\\n' | wc -c")["kind"] == "read"
+    assert classify_command("echo abc | tr a-z A-Z")["kind"] == "read"
+
+
 def test_classify_unknown_is_not_read():
     assert classify_command("some_random_tool --go")["kind"] == "unknown"
     assert classify_command("git commit -m x")["kind"] == "unknown"   # non-read git

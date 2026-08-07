@@ -51,7 +51,7 @@ _SAFE_HEADS = {
     "ls", "cat", "head", "tail", "grep", "rg", "egrep", "fgrep", "find", "pwd",
     "echo", "printf", "wc", "which", "type", "date", "whoami", "id", "uname",
     "hostname", "file", "stat", "du", "df", "tree", "basename", "dirname",
-    "true", "false", "test", "sort", "uniq", "cut", "diff",
+    "true", "false", "test", "sort", "uniq", "cut", "tr", "diff",
     "cd", "sleep", "seq", "cmp", "realpath", "readlink", "git",
 }
 
