@@ -137,6 +137,13 @@ def route(line: str, mode: Mode, deps: dict) -> tuple:
             # Not a mode: a chat spec is WHO ANSWERS, not somewhere to stand.
             return Action("say", text=f"chat agent is now {name}", agent=detail), mode
 
+        if kind == "command":
+            # A command the harness already owns. The console has nothing to add,
+            # so it forwards the line UNCHANGED and lets the existing slash chain
+            # handle it exactly as before. Returning the whole `line`, not just
+            # the command word, is what keeps `/agent sarsi-worker` working.
+            return Action("answer", text=line), mode
+
         return Action("say", text=deps.get("unknown", lambda l: f"/{name} is not "
                                            "a command, and it was NOT sent to "
                                            "the model")(line)), mode

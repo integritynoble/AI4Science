@@ -234,3 +234,29 @@ def test_interact_outside_task_mode_says_which_task():
     act, _ = console.route("/interact", console.Mode(), _deps())
     assert act.kind == "say"
     assert "task" in act.text.lower()
+
+
+def test_every_harness_command_reaches_the_old_slash_chain():
+    """The defect this guards: `console.route` had no `command` branch, so every
+    known slash — /help, /model, /do, /exit — fell to the unknown catch-all,
+    printed "not a command", and was swallowed before the real chain ever saw it.
+
+    It uses the REAL resolver deliberately. `_deps()` stubs `resolve` with a dict
+    that never returns "command", which is exactly why no existing test caught
+    this. A fixture that cannot produce the failing input cannot find the bug.
+    """
+    from ai4science.harness import repl
+    deps = _deps(resolve=repl.resolve_name)
+    for cmd in sorted(repl.known_commands()):
+        act, mode = console.route(f"/{cmd}", console.Mode(), deps)
+        assert act.kind == "answer", (cmd, act.kind, act.text)
+        assert act.text == f"/{cmd}", (cmd, act.text)
+
+
+def test_and_the_arguments_survive():
+    """`/agent sarsi-worker` must forward whole, not just the command word."""
+    from ai4science.harness import repl
+    deps = _deps(resolve=repl.resolve_name)
+    act, _ = console.route("/agent sarsi-worker", console.Mode(), deps)
+    assert act.kind == "answer"
+    assert act.text == "/agent sarsi-worker"
