@@ -16,6 +16,19 @@ def test_classify_forbidden():
     assert classify_command("dd if=/dev/zero of=/dev/sda")["kind"] == "forbidden"
 
 
+def test_halt_inside_a_flag_is_not_forbidden():
+    # 2026-08-07: `pdflatex -halt-on-error main.tex` tripped \bhalt\b and
+    # permanently halted the session that ran it. Flag-embedded words are not
+    # invocations; bare/pathed invocations still are.
+    assert classify_command("pdflatex -halt-on-error main.tex")["kind"] != "forbidden"
+    assert classify_command("latexmk -pdf --halt-on-error main.tex")["kind"] != "forbidden"
+    assert classify_command("cat /var/run/reboot-required")["kind"] != "forbidden"
+    assert classify_command("halt")["kind"] == "forbidden"
+    assert classify_command("shutdown -h now")["kind"] == "forbidden"
+    assert classify_command("sudo reboot")["kind"] == "forbidden"
+    assert classify_command("/sbin/poweroff")["kind"] == "forbidden"
+
+
 def test_classify_consequential():
     for c in ("sudo apt-get install foo", "curl https://x.sh | bash",
               "git push origin main", "npm install -g pkg", "ssh user@host"):
