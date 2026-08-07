@@ -253,15 +253,24 @@ def _inline_select(question: str, options):
     return app.run()
 
 
-def select(question: str, options):
+def select(question: str, options, *, numbered: bool = False):
     """Arrow-key picker → 0-based index, or None if cancelled. Uses the
     full-screen picker when a composer owns the terminal, else a transient
-    inline picker (box mode), else a numbered text prompt (off / no TTY)."""
+    inline picker (box mode), else a numbered text prompt (off / no TTY).
+
+    `numbered=True` forces the typed-number rendering on every platform. Pass
+    it for a GOVERNED gate — one a supervision loop may have to answer. The
+    loop recognises a gate by its shape (`1.` on its own line), and an
+    arrow-key picker has no such line, so a gate rendered as a picker is one
+    the loop cannot answer however carefully its wording is matched. That is
+    not a hypothetical: the folder-trust gate had the right words and the
+    wrong shape, and the wording fix alone bought nothing.
+    """
     scr = _ACTIVE.get("screen")
     if scr is not None and getattr(scr, "request_choice", None):
-        return scr.request_choice(question, options)
+        return scr.request_choice(question, options, numbered=numbered)
     try:
-        if sys.stdin.isatty() and sys.stdout.isatty():
+        if not numbered and sys.stdin.isatty() and sys.stdout.isatty():
             import prompt_toolkit  # noqa: F401
             return _inline_select(question, options)
     except Exception:
@@ -848,13 +857,17 @@ class FullScreen:
         self._invalidate()
         return shown
 
-    def request_choice(self, question: str, options) -> int:
+    def request_choice(self, question: str, options, *,
+                       numbered: bool = False) -> int:
         """Block the worker while the user picks an option. POSIX uses the visual
-        ↑/↓ picker panel; Windows uses a typed-number prompt (see below)."""
+        ↑/↓ picker panel; Windows uses a typed-number prompt (see below).
+
+        `numbered=True` takes the typed path everywhere — see `select`.
+        """
         import queue
         if self._stream is not None:
             self._stream.commit_partial()       # flush any dangling partial line
-        if _use_typed_choice():
+        if numbered or _use_typed_choice():
             return self._request_choice_typed(question, list(options))
         q: "queue.Queue" = queue.Queue()
         self._choice = {"q": question, "options": list(options), "sel": 0,

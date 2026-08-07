@@ -119,7 +119,12 @@ def _trust_gate(ws: Path) -> bool:
         "work)? If not, review what's in it first.\n")
     console.print("[dim]AI4Science will be able to read, edit, and execute files here.[/dim]\n")
     from ai4science.harness import tui
-    idx = tui.select("", ["Yes, I trust this folder", "No, exit"])
+    # numbered=True: this is a GOVERNED gate. The supervision loop answers it
+    # from an allowlist, and it finds a gate by shape — `1.` on its own line.
+    # An arrow-key picker has no such line, so a picker here is a gate the loop
+    # cannot answer whatever its wording says.
+    idx = tui.select("", ["Yes, I trust this folder", "No, exit"],
+                     numbered=True)
     if idx == 0:
         _remember_trust(ws)
         return True

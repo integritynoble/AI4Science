@@ -110,3 +110,43 @@ def test_the_two_structural_patterns_were_never_the_problem():
     why this is two strings rather than a parser."""
     assert operator._GATE_SHAPE.search("  1. Yes")
     assert operator._PROMPT_LINE.search("❯ do the thing")
+
+
+# ── the folder-trust gate must be SHAPED like a gate, not a menu ──────
+
+def test_the_folder_trust_gate_is_numbered_not_an_arrow_menu():
+    """Wording parity was necessary and not sufficient, and I claimed
+    otherwise. `tui.select` renders an arrow-key picker on POSIX —
+    `❯ Yes, I trust this folder / No, exit` — and the loop's `_GATE_SHAPE`
+    (`^\\s*❯?\\s*1\\.\\s+\\S`) cannot match it. Fixing the TEXT of a gate whose
+    SHAPE the loop cannot parse buys nothing.
+
+    ai4science already renders numbered gates elsewhere — the bash gate does,
+    and `Screen.request_choice` has a typed-number path used on Windows. The
+    governed gate has to take it on every platform, because it is the one a
+    supervision loop must be able to answer.
+    """
+    from ai4science.commands import chat as chat_cmd
+    src = pathlib.Path(chat_cmd.__file__).read_text()
+    i = src.find("you created or one you trust")
+    assert i != -1, "the folder-trust prompt moved"
+    call = src[i:i + 800]
+    assert "numbered=True" in call, (
+        "the folder-trust gate still uses the arrow-key picker; the loop "
+        "cannot read it whatever the wording says")
+
+
+def test_select_can_be_forced_to_the_numbered_renderer():
+    from ai4science.harness import tui
+    import inspect
+    assert "numbered" in inspect.signature(tui.select).parameters
+
+
+def test_a_numbered_gate_matches_what_the_loop_looks_for():
+    """The shape the loop needs, asserted against the loop's own regex rather
+    than a copy of it."""
+    rendered = "\n".join(["", "Is this a project you created or one you trust?",
+                          "  1. Yes, I trust this folder", "  2. No, exit",
+                          "Type a number (1-2) and press Enter:"])
+    assert operator._GATE_SHAPE.search(rendered)
+    assert any(p.search(rendered) for p, _, _ in operator._KNOWN_GATES)
