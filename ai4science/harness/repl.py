@@ -370,7 +370,7 @@ def _dispatch_slash(line: str, state: dict) -> tuple[bool, str]:
                                     for n, p in sorted(SUBAGENTS.items())]
         return True, "\n".join(lines)
     if cmd in ("do", "tasks"):
-        return True, _sarsi_bridge(cmd, _arg.strip(), state.get("agent") or "")
+        return True, _sarsi_bridge(cmd, _arg.strip(), _bridge_target(state))
 
     # `/<roster-agent> do <goal>` and `/<roster-agent> tasks`. `/do` reaches the
     # sarsi worker whose id matches the CHAT AGENT's name, so a roster agent
@@ -1520,3 +1520,23 @@ def _sarsi_worker_choices():
     # `sarsi-worker` first: it is the general one, and the owner reaches for it.
     rows.sort(key=lambda r: (r[0] != "sarsi-worker", r[0]))
     return rows
+
+
+def _bridge_target(state: dict) -> str:
+    """Which sarsi worker `/do` and `/tasks` act on.
+
+    The mode FIRST. This passed `state["agent"]` — the chat spec — so the owner
+    standing in `sarsi-worker ❯` typed `/tasks` and read "claude-code has no
+    sarsi worker". The prompt said one thing and the command did another, which
+    makes the mode label a lie rather than a safety mechanism.
+
+    Only `kind == "agent"` counts: standing in a TASK is not standing in a
+    worker, and there is no worker name to take from it. Falls back to the chat
+    spec, which is the original behaviour and still right at the top.
+    """
+    mode = state.get("mode")
+    if mode is not None and getattr(mode, "kind", "") == "agent":
+        name = (getattr(mode, "name", "") or "").strip()
+        if name:
+            return name
+    return state.get("agent") or ""

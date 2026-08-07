@@ -69,6 +69,40 @@ def _is_slash(line: str) -> bool:
     return "/" not in first[1:] and "." not in first[1:]
 
 
+#: Lines that are plainly not directives. Kept deliberately SMALL: a classifier
+#: that guesses is worse than one that is quiet, and the cost of guessing wrong
+#: in the "directive" direction is a task the owner did not ask for.
+_GREETINGS = frozenset("""
+hi hello hey yo hiya sup thanks thanx cheers ok okay k bye goodbye
+""".split()) | frozenset([
+    "thank you", "good morning", "good afternoon", "good evening",
+    "how are you", "whats up", "what's up",
+])
+
+
+def _is_directive(line: str) -> bool:
+    """Is this an instruction to do work, or something to answer?
+
+    Two signals only, both cheap and both hard to get wrong:
+
+      * it ends in `?` — a question. `can you plan at A2?` is a thing to
+        answer, not a goal to plan.
+      * it IS a greeting — `hi`, `thanks`. Matched whole, so "hi-res
+        reconstruction" is still a directive.
+
+    Everything else is treated as a directive, which keeps the failure mode on
+    the safe side: an unrecognised line still reaches the confirmation, and the
+    confirmation is where the owner says no.
+    """
+    text = (line or "").strip()
+    if not text:
+        return False
+    if text.endswith("?"):
+        return False
+    bare = text.rstrip("!.").strip().lower()
+    return bare not in _GREETINGS
+
+
 def confirm_block(goal: str, agent: str) -> str:
     """What the owner reads before a task exists."""
     return (f"\n  goal:   {goal}\n"
@@ -93,7 +127,23 @@ def route(line: str, mode: Mode, deps: dict) -> tuple:
         if line.lower() == "e":
             return Action("say", text=f"edit it and send again:\n  {mode.pending}"), \
                 settled
-        return Action("say", text="dropped — nothing was created"), settled
+        if line.lower() in ("n", "no"):
+            # Named, so a dropped goal is a thing the owner can read back and
+            # retype. "dropped — nothing was created" said neither what was
+            # dropped nor what it said.
+            return Action("say", text=f"dropped — nothing was created:\n"
+                                      f"  {mode.pending}"), settled
+        # Anything else was never an answer to `[Enter=yes / e=edit / n=no]`.
+        # It used to be read as one, refused, and DISCARDED: the owner typed a
+        # whole goal at a stale confirmation and watched it vanish, twice in one
+        # session. Honoured or refused, never dropped — so the pending goal is
+        # abandoned OUT LOUD and the new line is routed as whatever it actually
+        # is, which is usually the next goal.
+        import dataclasses
+        act, after = route(line, settled, deps)
+        note = f"not created: {mode.pending}"
+        text = f"{note}\n{act.text}" if act.text else note
+        return dataclasses.replace(act, text=text), after
 
     if not line:
         return Action("noop"), mode
@@ -162,6 +212,17 @@ def route(line: str, mode: Mode, deps: dict) -> tuple:
                                            "the model")(line)), mode
 
     if mode.kind == "agent":
+        if not _is_directive(line):
+            # `hi` became a task goal. So did `can you plan at A2?`. A greeting
+            # and a question about the worker are not directives, and turning
+            # every line into one is why the worker reads as a form rather than
+            # something you can talk to.
+            #
+            # Answered here — and the way to task it anyway is named, so a
+            # directive phrased as a question is never unreachable.
+            return Action("answer",
+                          text=f"{line}\n\n(to make that a task instead: "
+                               f"/do {line})"), mode
         return Action("confirm", goal=line, agent=mode.name,
                       text=confirm_block(line, mode.name)), \
             Mode(kind="agent", name=mode.name, pending=line)
