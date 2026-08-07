@@ -63,6 +63,88 @@ def known_commands() -> set:
     return names
 
 
+#: Every Action kind the loop performs. Asserted against what `console.route`
+#: can return, because an action the console produces and the loop does not
+#: handle is a command that silently does nothing.
+HANDLED_ACTIONS = {"answer", "say", "confirm", "create", "guide", "attach",
+                   "enter", "leave", "noop"}
+
+
+def _prompt_for(state: dict) -> str:
+    from ai4science.harness import console as _c
+    return _c.prompt_label(state.get("mode") or _c.Mode())
+
+
+def _console_deps(state: dict) -> dict:
+    """The world, as callables `console.route` can index.
+
+    Every one returns a value or a string — never raises. `route` reads these
+    keys directly, and a KeyError or an exception here lands inside the REPL
+    loop, which is the one place nothing may drop the session.
+    """
+    def _config():
+        from ai4science.harness.agents.sarsi import registry as reg
+        return reg.load()
+
+    def _session_of(task_id: str) -> str:
+        try:
+            agent, t = _find_task(_config(), task_id)
+            if t is None:
+                return ""
+            s = t.session if isinstance(t.session, dict) else None
+            return (s or {}).get("name") or ""
+        except Exception:
+            return ""
+
+    def _create(agent_id: str, goal: str) -> str:
+        try:
+            from ai4science.harness.agents.sarsi import (plan as pl, task as tsk,
+                                                         worker as wk)
+            config = _config()
+            agent = config.agents.get(agent_id)
+            if agent is None:
+                return f"{agent_id} is not on this machine"
+            d = wk.Directive(agent_id=agent.id, goal=goal)
+            t = tsk.create(config, agent, d)
+            t = tsk.attach_plan(config, agent, t, pl.draft(d))
+            return t.id
+        except Exception as e:
+            return f"could not create it — {e}"
+
+    def _guide(task_id: str, text: str) -> str:
+        try:
+            from ai4science.harness.agents.sarsi import session as ses
+            config = _config()
+            agent, t = _find_task(config, task_id)
+            if t is None:
+                return f"{task_id} is not a task on this machine"
+            ses.guide(config, agent, t, text, by_owner=True)
+            return f"sent, ahead of the worker — {text[:80]}"
+        except Exception as e:
+            return f"could not steer it — {e}"
+
+    def _suggest(text: str) -> str:
+        try:
+            from ai4science.harness.agents.sarsi import triage
+            got = triage.suggest(_config(), text)
+            if got.best is None:
+                return ""          # a tie or nothing: a router that guesses is
+                                   # worse than one that is quiet
+            return (f"  ───\n  {got.best.agent_id} could take this as a task "
+                    f"instead — /{got.best.agent_id} to enter it")
+        except Exception:
+            return ""
+
+    def _find(task_id: str):
+        try:
+            return _find_task(_config(), task_id)
+        except Exception:
+            return (None, None)
+
+    return {"resolve": resolve_name, "find_task": _find, "suggest": _suggest,
+            "create": _create, "guide": _guide, "session_of": _session_of}
+
+
 def _source() -> str:
     try:
         return pathlib.Path(__file__).read_text()
