@@ -371,3 +371,76 @@ def test_and_a_far_away_mention_of_the_plan_does_not_count():
         + "\n  earlier it had written plan0.md")
     got = operator._gate(far, planning=True, released=False)
     assert got is not None and got[0] is None, got
+
+
+# ── a gate raised at A0 that RELEASE has since made allowable ─────────
+
+STALE_WRITE_GATE = """\
+⏺ write
+  Write /home/grace/p3v2/DONE.md  (1 line)
+   1 pwm code drove this
+
+Do you want to proceed?
+
+  1. Yes
+  2. Yes, and don't ask again for write this session
+  3. No, and tell the agent what to do differently (esc)
+
+Type a number (1-3) and press Enter ❯ """
+
+
+def test_a_gate_the_ceiling_now_allows_is_answered():
+    """Defect 6, and the last thing between `sarsi-pwm` and a verdict.
+
+    The session asked at A0 — where every write stops for the owner — and then
+    the owner granted, and `release` raised the ceiling to A1. **Raising a
+    ceiling does not retroactively answer a prompt already on screen.** So the
+    session sat at a gate the governance hook would now allow, and the loop
+    abstained fifteen times because it had no rule for a write.
+
+    The loop does not GUESS here: it asks `decide_tool_call`, the same function
+    the hook itself uses, with this session's current ceiling and declared
+    paths. If that says `allow`, the gate is stale by definition — the hook
+    only ever asks about what it would not allow.
+
+    That also answers the objection that withdrew an earlier fix
+    (`test_once_the_task_is_released_this_rule_is_gone`): a gate the hook would
+    STILL ask about is still not answered here. Nothing is second-guessed,
+    because the same authority is consulted.
+    """
+    got = operator._gate(STALE_WRITE_GATE, planning=False, released=True,
+                         ceiling="A1", writable=["/home/grace/p3v2"])
+    assert got and got[0] == "1", got
+
+
+def test_a_write_the_ceiling_does_not_allow_still_stops():
+    """The conservative half. A0 asks about every write, so a gate seen at A0
+    stays the owner's."""
+    got = operator._gate(STALE_WRITE_GATE, planning=False, released=True,
+                         ceiling="A0", writable=["/home/grace/p3v2"])
+    assert got is not None and got[0] is None
+
+
+def test_a_write_outside_the_declared_paths_still_stops():
+    """Widening is not something a gate can arrange."""
+    got = operator._gate(STALE_WRITE_GATE, planning=False, released=True,
+                         ceiling="A1", writable=["/home/grace/somewhere-else"])
+    assert got is not None and got[0] is None
+
+
+def test_without_a_ceiling_the_rule_does_not_fire():
+    """Callers that pass no ceiling get exactly the old behaviour — the rule
+    cannot fire on a default nobody chose."""
+    got = operator._gate(STALE_WRITE_GATE, planning=False, released=True)
+    assert got is not None and got[0] is None
+
+
+def test_the_write_path_survives_a_wrapped_line():
+    """Same terminal, same wrapping. A path broken across the pane edge must
+    still be the path."""
+    wrapped = STALE_WRITE_GATE.replace(
+        "  Write /home/grace/p3v2/DONE.md  (1 line)",
+        "  Write /home/grace/p3v2/DON\nE.md  (1 line)")
+    got = operator._gate(wrapped, planning=False, released=True,
+                         ceiling="A1", writable=["/home/grace/p3v2"])
+    assert got and got[0] == "1", got

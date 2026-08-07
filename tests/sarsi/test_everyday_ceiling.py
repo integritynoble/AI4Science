@@ -1,39 +1,35 @@
-"""A1 is what the seven run at. A2 is something the owner grants.
+"""What the seven run at, and why it has now been both values.
 
-The roster shipped every agent at **A2**, with the reasoning stated in the file:
+**A2 is the everyday ceiling**, by the owner's decision on 2026-08-07: "the
+default is A2; users can set into A1 or A0."
 
-    A2 is the auto level the seven run at: the loop answers the ordinary gates
-    itself.
+This file previously argued the other way, and the argument is kept because it
+is the cost of the current default. The roster shipped at A2, was lowered to A1
+because A2-as-default made A2 the ceiling of *every* ordinary released task —
+so "A2 may do consequential things" meant every run could, and A2 stopped being
+an elevated tier while still being described as one — and is now back at A2
+because the owner wants ordinary work to finish without a gate at every
+consequential step.
 
-That reads as a considered choice and it was one — but it made A2 the ceiling of
-every ordinary released task, so "A2 may do consequential things" meant *every
-run* could, and A2 stopped being an elevated tier while still being described as
-one. `/etc/passwd` answering `allow` was the visible end of that.
-
-So the ladder is put back the way it reads:
-
-| | what it is | what it costs |
+| | what it permits | the consequence |
 |---|---|---|
-| **A0** | planning. reads allowed, everything else asks | unchanged |
-| **A1** | **the everyday ceiling.** In-project writes, network, running and testing — the work a task was released to do | a **consequential** command (`git push`, `pip install`, `sudo`) now stops for the owner |
-| **A2** | elevated, and granted per agent with `sarsi ceiling` | it means something again |
-| **A3** | still earned, never set | unchanged |
+| **A0** | reads; everything else asks | what planning runs at, always |
+| **A1** | in-project writes, network, running and testing | a consequential command stops for the owner |
+| **A2** | **the everyday ceiling** — all of A1, plus `git push`, `pip install`, `sudo` | an ordinary released task can do those on its own |
+| **A3** | anything, including unclassifiable commands | cannot be set, only earned: capped to A2 until the trust ledger unlocks it |
 
-The cost is real and is the point: those commands are consequential by
-definition, and a run that reaches for one is a run the owner should see.
+Lower a specific agent with `admin.set_ceiling("<agent>", "A1")`.
 
-**An existing registry is not rewritten.** A stored `A2` is indistinguishable
-from one an owner chose, and silently lowering a recorded permission would be
-the same class of move as silently raising it. New machines get A1; existing
-ones are *told*, in the listing, which agents sit above the everyday ceiling and
-how to bring them down.
+**An existing registry is not rewritten.** A stored ceiling is indistinguishable
+from a deliberate one, and rewriting it silently is the same class of move as
+silently raising it.
 """
 import pytest
 
 from ai4science.harness.agents.machine.session import decide_tool_call
 from ai4science.harness.agents.sarsi import admin, registry as reg
 
-EVERYDAY = "A1"
+EVERYDAY = "A2"
 
 
 @pytest.fixture(autouse=True)
@@ -70,19 +66,40 @@ def test_it_does_the_work_a_task_was_released_to_do():
     "pip install requests",
     "sudo systemctl restart nginx",
 ])
-def test_but_a_consequential_command_stops_for_the_owner(command):
-    """The cost of the change, stated rather than discovered."""
+def test_a_consequential_command_is_permitted_at_the_everyday_ceiling(command):
+    """THE COST OF THE DEFAULT, asserted so it is stated rather than
+    discovered: at A2 an ordinary released task can push, install and sudo
+    without stopping for the owner.
+
+    This test asserted `ask` while the everyday ceiling was A1. It is inverted
+    here deliberately, not because the code changed under it."""
     got = decide_tool_call({"tool_name": "Bash", "tool_input": {"command": command}},
                            ceiling=EVERYDAY, project_dir="/work")
+    assert got["decision"] == "allow", command
+
+
+@pytest.mark.parametrize("command", [
+    "git push origin main",
+    "pip install requests",
+    "sudo systemctl restart nginx",
+])
+def test_and_lowering_an_agent_to_a1_brings_that_back(command):
+    """The owner's escape hatch has to actually work, or "users can set into A1"
+    is a sentence rather than a control."""
+    got = decide_tool_call({"tool_name": "Bash", "tool_input": {"command": command}},
+                           ceiling="A1", project_dir="/work")
     assert got["decision"] == "ask", command
 
 
-def test_and_a2_still_means_something():
-    """Elevated, and now actually above the everyday."""
+def test_a3_is_what_is_elevated_now():
+    """With A2 as the everyday, A3 is the tier that means something — and it is
+    the one that cannot be set, only earned."""
+    from ai4science.harness.agents.machine import trust
+    assert trust.effective_ceiling("A3") == ("A3" if trust.a3_unlocked() else "A2")
     got = decide_tool_call({"tool_name": "Bash",
-                            "tool_input": {"command": "git push origin main"}},
-                           ceiling="A2", project_dir="/work")
-    assert got["decision"] == "allow"
+                            "tool_input": {"command": "frobnicate --wat"}},
+                           ceiling=EVERYDAY, project_dir="/work")
+    assert got["decision"] == "ask", "an unclassifiable command needs A3"
 
 
 def test_planning_still_drops_below_it(config):
@@ -101,14 +118,14 @@ def test_a_stored_ceiling_is_not_rewritten(tmp_path):
     silently raising one. What was written stays written."""
     raw = reg.default_config(owner_id="1")
     for entry in raw["agents"]["list"]:
-        entry["ceiling"] = "A2"
+        entry["ceiling"] = "A3"
     c = reg.parse(raw, root=tmp_path)
-    assert c.agents["sarsi-worker"].ceiling == "A2"
+    assert c.agents["sarsi-worker"].ceiling == "A3"
 
 
 def test_the_listing_marks_an_agent_above_the_everyday_ceiling(tmp_path):
     raw = reg.default_config(owner_id="1")
-    raw["agents"]["list"][1]["ceiling"] = "A2"
+    raw["agents"]["list"][1]["ceiling"] = "A3"
     c = reg.parse(raw, root=tmp_path)
     c.ensure_dirs()
     rows = {r["id"]: r for r in admin.agent_rows(c)}
@@ -140,12 +157,12 @@ def test_the_rendered_listing_marks_an_elevated_agent(isolated):
     raw = json.loads(path.read_text())
     for entry in raw["agents"]["list"]:
         if entry["id"] == "social":
-            entry["ceiling"] = "A2"
+            entry["ceiling"] = "A3"
     path.write_text(json.dumps(raw))
 
     out = runner.invoke(cli, ["sarsi", "agents"]).output
     line = [l for l in out.splitlines() if "social" in l][0]
-    assert "A2" in line
+    assert "A3" in line
     assert "!" in line or "elevated" in line.lower(), line
 
 
@@ -157,7 +174,7 @@ def test_and_says_how_to_bring_it_down(isolated):
     runner.invoke(cli, ["sarsi", "init", "--owner-id", "7007143162"])
     path = reg.config_path(isolated)
     raw = json.loads(path.read_text())
-    raw["agents"]["list"][1]["ceiling"] = "A2"
+    raw["agents"]["list"][1]["ceiling"] = "A3"
     path.write_text(json.dumps(raw))
     out = runner.invoke(cli, ["sarsi", "agents"]).output
     assert "sarsi ceiling" in out

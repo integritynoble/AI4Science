@@ -210,7 +210,14 @@ def tick(config: Config, agent: Agent, task: tsk.Task, *, pane: Any,
     # The ceiling has not lifted until `release` runs, so what A0 permits and
     # what the plan step is allowed to write both hold until then.
     released = task.released_at is not None
-    gate = _gate(screen, planning=planning, deletes=deletes, released=released)
+    # This session's CURRENT ceiling and declared paths, so a gate raised before
+    # `release` can be re-put to the same authority the hook uses. Read off the
+    # session record rather than the agent's configured value: the record is
+    # what `release` actually raised, and what the hook itself resolves against.
+    _ceiling = str((task.session or {}).get("ceiling") or "")
+    _writable = [str(pth) for pth in tsk.evidence_roots(agent, task)]
+    gate = _gate(screen, planning=planning, deletes=deletes, released=released,
+                 ceiling=_ceiling, writable=_writable)
     if gate is not None:
         answer, why = gate
         if answer is None:
@@ -410,8 +417,64 @@ _PLAN_WRITE = re.compile(r"\b(create|write|overwrite|edit|update)\b"
                          re.I)
 
 
+#: The path a `write` gate is asking about: `Write <path>  (N lines)`. Read off
+#: the UNWRAPPED screen, because the same terminal that broke the folder-trust
+#: prompt breaks a long path mid-word.
+_GATE_WRITE = re.compile(r"\b(?:write|edit|create|update)\s+(?P<path>/\S+)", re.I)
+
+
+def _gate_write_path(screen: str) -> str:
+    """The file a write gate names, or ''. Never raises."""
+    m = _GATE_WRITE.search(_unwrapped(screen))
+    return (m.group("path") if m else "").rstrip(".,;:)")
+
+
+def _ceiling_would_allow(screen: str, ceiling: str, writable) -> bool:
+    """Would the governance hook allow this write NOW?
+
+    The loop does not decide; it ASKS — `decide_tool_call` is the same function
+    the hook itself runs. That matters twice over:
+
+      * a gate the hook would allow is stale by definition, because the hook
+        only ever asks about what it would not allow. Raising a ceiling does
+        not retroactively answer a prompt already on screen, so a session can
+        sit for ever at a question that has since been settled;
+      * and a gate the hook would STILL ask about is not answered here, which
+        is exactly the objection that withdrew an earlier version of this rule.
+        Nothing is second-guessed when the same authority is consulted.
+
+    Fails closed on any error: an unreadable path, an import failure, or a
+    decision this does not understand all leave the gate for the owner.
+    """
+    path = _gate_write_path(screen)
+    if not path or not ceiling:
+        return False
+    # Containment is checked HERE, not delegated. `decide_tool_call` decides
+    # "in-project" against `project_dir`, and this loop has no project dir to
+    # give it — passing None made every path look in-project, which would let a
+    # gate name any file on the machine and be answered. Widening is not
+    # something a gate gets to arrange.
+    import os
+    try:
+        target = os.path.realpath(path)
+        roots = [os.path.realpath(str(w)) for w in (writable or []) if str(w).strip()]
+    except Exception:
+        return False
+    if not any(target == r or target.startswith(r.rstrip("/") + "/") for r in roots):
+        return False
+    try:
+        from ai4science.harness.agents.machine.session import decide_tool_call
+        verdict = decide_tool_call(
+            {"tool_name": "Write", "tool_input": {"file_path": path}},
+            ceiling=ceiling, project_dir=None,
+            writable=[str(w) for w in (writable or [])])
+        return verdict.get("decision") == "allow"
+    except Exception:
+        return False
+
+
 def _gate(screen: str, *, planning: bool = False, deletes=None,
-          released: bool = False):
+          released: bool = False, ceiling: str = "", writable=None):
     """(answer, why) when a gate is on screen; (None, why) when unrecognised.
 
     `deletes` is `(root, granted)` when this task has a declared working
@@ -472,6 +535,12 @@ def _gate(screen: str, *, planning: bool = False, deletes=None,
             if is_read_only_bash(command):
                 return ("1", f"a read-only command, which A0 already allows: "
                              f"{command[:80]}")
+    # A gate raised BEFORE the ceiling went up. `release` cannot answer a
+    # question already on screen, so the session waits at one the hook would now
+    # allow — fifteen abstentions in one run, at a write the owner had granted.
+    if released and _ceiling_would_allow(screen, ceiling, writable):
+        return ("1", f"a write the {ceiling} ceiling now allows, asked before "
+                     f"the task was released")
     if _ONBOARDING.search(screen):
         # Recognised, and still not answered. Clicking through a setup wizard on
         # the owner's behalf is the guess the allowlist forbids — but a fresh
