@@ -9,12 +9,37 @@ import pytest
 from ai4science.harness import console, repl
 
 
+def _kinds_console_can_return() -> set:
+    """Every Action kind console.py actually constructs, read from its source.
+
+    Derived, not retyped. The previous version of this guard listed the kinds
+    as a literal and compared it to repl.HANDLED_ACTIONS — another literal — so
+    it could only fail when two hand-maintained lists disagreed with each other,
+    and never noticed console.py at all. `known_commands()` in repl.py already
+    derives from source the same way; this follows it.
+    """
+    import re, pathlib
+    from ai4science.harness import console
+    src = pathlib.Path(console.__file__).read_text()
+    return set(re.findall(r'Action\(\s*["\']([a-z-]+)["\']', src))
+
+
+def test_the_derivation_finds_something():
+    """The trap in the fix. A regex that matched nothing would return an empty
+    set, and `set() <= anything` passes — a hollow guard replaced by a hollow
+    guard. Pin the floor so the derivation cannot silently stop working."""
+    kinds = _kinds_console_can_return()
+    assert len(kinds) >= 9, kinds
+    assert "answer" in kinds and "attach" in kinds
+
+
 def test_every_action_kind_console_can_return_is_handled_by_repl():
-    """The drift guard. If console grows an action and repl does not learn it,
-    the command does nothing and says nothing."""
-    produced = {"answer", "say", "confirm", "create", "guide", "attach",
-                "enter", "leave", "noop"}
-    assert produced <= repl.HANDLED_ACTIONS
+    """If console grows a kind and repl does not learn it, the command does
+    nothing and says nothing."""
+    missing = _kinds_console_can_return() - repl.HANDLED_ACTIONS
+    assert not missing, (
+        "console.py constructs these Action kinds that repl does not handle: %s"
+        % sorted(missing))
 
 
 def test_deps_expose_every_key_route_reads():
@@ -63,3 +88,24 @@ def test_the_attach_never_raises_even_when_tmux_is_absent():
         raise FileNotFoundError("tmux")
     out = repl._attach_tmux("x", run=_boom)
     assert isinstance(out, str) and out
+
+
+def test_suggest_is_quiet_when_there_is_no_clear_winner(monkeypatch):
+    """A tie prints nothing. The alternative is a router that guesses, which is
+    worse than one that says nothing."""
+    class _S:
+        best = None
+    monkeypatch.setattr("ai4science.harness.agents.sarsi.triage.suggest",
+                        lambda *a, **k: _S())
+    assert repl._console_deps({})["suggest"]("anything") == ""
+
+
+def test_and_names_the_agent_when_there_is_one(monkeypatch):
+    class _C:
+        agent_id = "sarsi-worker"
+    class _S:
+        best = _C()
+    monkeypatch.setattr("ai4science.harness.agents.sarsi.triage.suggest",
+                        lambda *a, **k: _S())
+    note = repl._console_deps({})["suggest"]("write a gap-tv algorithm")
+    assert "sarsi-worker" in note
