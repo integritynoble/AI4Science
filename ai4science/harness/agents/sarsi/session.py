@@ -175,13 +175,19 @@ def assign(config: Config, agent: Agent, task: tsk.Task, *,
     if task.session:
         return task                          # one task, one session
 
-    # The spec this agent is built on has to be here. Substituting a generalist
-    # would run the wrong agent under the right label, which is worse than not
-    # starting at all.
+    # Which engine runs this task. The BACKEND is the task's — one worker runs
+    # many tasks, and which engine ran a given one is a fact about that task.
+    # A blank backend is an old record, and reads as the default rather than
+    # as an error.
+    from ai4science.harness.agents.sarsi import backends as _bk
+    run_spec = _bk.spec_for(_bk.resolve(getattr(task, "backend", "")))
+
+    # The spec has to be here. Substituting a generalist would run the wrong
+    # agent under the right label, which is worse than not starting at all.
     available = (installed or installed_specs)()
-    if available and agent.spec not in available:
+    if available and run_spec not in available:
         raise SpecUnavailable(
-            f"{agent.id} is built on the {agent.spec!r} agent, which is not "
+            f"{task.id} runs on the {run_spec!r} agent, which is not "
             f"installed here. Installed: {', '.join(sorted(available))}")
 
     # VLT for the secrets the DIRECTIVE declared. It has to be here rather than
@@ -234,7 +240,7 @@ def assign(config: Config, agent: Agent, task: tsk.Task, *,
                 if str(p) != str(workdir)]
     writable += [str(p) for p in (task.may_touch or [])]
     started = runtime.start(name, str(workdir), govern=True, ceiling=ceiling,
-                            env=secrets, spec=agent.spec,
+                            env=secrets, spec=run_spec,
                             writable=writable or None)
     if not (started or {}).get("ok"):
         reason = (started or {}).get("reason") or "the session would not start"

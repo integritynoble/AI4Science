@@ -67,6 +67,12 @@ class Task:
     blocked_by: Optional[str] = None
     verdict: Optional[Dict[str, Any]] = None
     session: Optional[Dict[str, Any]] = None
+    #: Which session backend runs this task — `sarsi-pwm` or `sarsi-claude`.
+    #: It belongs to the TASK, not the agent: one worker runs many tasks, and
+    #: "which engine ran this one" is a fact about the task. Blank on records
+    #: written before backends were named, which `backends.resolve` reads as
+    #: the default rather than an error.
+    backend: str = ""
     #: the owner has the wheel — the worker must not type over them
     steering_paused: bool = False
     #: the plan no longer matches what is being done; its criteria are withheld
@@ -157,12 +163,18 @@ class Task:
 # ── creating and reading ──────────────────────────────────────────────
 
 def create(config: Config, agent: Agent, directive: Directive, *,
-           now=time.time) -> Task:
+           backend: str = "", now=time.time) -> Task:
     _require_worker(agent)
+    from ai4science.harness.agents.sarsi import backends as _bk
+    # Resolved and CHECKED here, so a wrong name is refused before the task
+    # exists — rather than at run time, when the owner has already confirmed
+    # and walked away.
+    chosen = _bk.resolve(backend)
+    _bk.spec_for(chosen)
     stamp = _iso(now())
     task = Task(id=f"tsk_{uuid.uuid4().hex[:10]}", agent_id=agent.id,
                 goal=directive.goal, state=PLANNING,
-                directive=directive.as_record(),
+                directive=directive.as_record(), backend=chosen,
                 created_at=stamp, updated_at=stamp)
     _save(agent, task)
     return task
@@ -530,6 +542,30 @@ def finish(config: Config, agent: Agent, task: Task, *,
     # a run that succeeded should not carry its earlier failures forward
     task.retries = 0
     return _touch(agent, task, now)
+
+
+def set_backend(config: Config, agent: Agent, task: Task, name: str, *,
+                now=time.time) -> str:
+    """Switch which engine runs this task NEXT time. Returns what to tell the
+    owner.
+
+    It deliberately does not migrate a running session. Moving a live session
+    between engines mid-plan would silently change who wrote what, and the plan
+    record is the one thing that must stay attributable — so the switch takes
+    effect on the next `run`, and says so while a session is still up.
+    """
+    from ai4science.harness.agents.sarsi import backends as _bk
+    chosen = _bk.resolve(name)
+    _bk.spec_for(chosen)                 # refuses an unknown name
+    task.backend = chosen
+    _touch(agent, task, now)
+    live = (task.session or {}).get("name") if isinstance(task.session, dict) else None
+    if live:
+        return (f"{task.id} will run on {chosen} from the next run — the "
+                f"session already up ({live}) keeps the engine it started on, "
+                f"because moving a plan between engines mid-run would change "
+                f"who wrote what")
+    return f"{task.id} will run on {chosen} on the next run"
 
 
 def turn_off(config: Config, agent: Agent, task: Task, *, now=time.time) -> Task:
