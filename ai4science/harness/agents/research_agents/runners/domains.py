@@ -441,6 +441,35 @@ def _ef(scores: np.ndarray, labels: np.ndarray, frac: float = 0.01) -> float:
     return float(hit_rate / base) if base > 0 else float("nan")
 
 
+#: Above this Tanimoto to the query set, a molecule is an ANALOGUE of something
+#: the solver was handed, not a new chemotype. 0.3 sits below the 0.4 used to
+#: build the split, and it is roughly where the Deep Origin prospective hits
+#: landed (0.22-0.27 ECFP4 to known binders) — i.e. what counts as novel when a
+#: screen is judged by what came back from an assay rather than by a benchmark.
+NOVEL_TANIMOTO = 0.3
+
+
+def _query_similarity(run_ws: Path, tid: np.ndarray, known: np.ndarray) -> np.ndarray:
+    """Each molecule's greatest Tanimoto to the query set of ITS OWN target.
+
+    Computed from the fingerprints the solver was given, never from labels.
+    This is how far a molecule sits from what the solver was shown, which is
+    the axis a ligand-based method's performance actually runs along."""
+    FP = np.load(run_ws / "data" / "fingerprints.npy").astype(bool)
+    out = np.zeros(len(FP))
+    for t in np.unique(tid):
+        m = tid == t
+        q = FP[m & (known == 1)]
+        if not len(q):
+            continue
+        F = FP[m].astype(np.uint16)
+        Q = q.astype(np.uint16)
+        inter = F @ Q.T
+        union = F.sum(1)[:, None] + Q.sum(1)[None, :] - inter
+        out[m] = (inter / np.clip(union, 1, None)).max(axis=1)
+    return out
+
+
 def _score_screening(seed_ws: Path, run_ws: Path) -> Dict[str, float]:
     y = np.load(seed_ws / "data" / "labels.npy")
     tid = np.load(run_ws / "data" / "target_id.npy")
@@ -468,7 +497,45 @@ def _score_screening(seed_ws: Path, run_ws: Path) -> Dict[str, float]:
     # against this rather than against random.
     ef_prop = _ef(D[m_all][:, 0], y[m_all])
     frac = float(y[m_all].mean())
+
+    # Enrichment restricted to actives that are NOT analogues of the query set.
+    #
+    # A single EF@1% cannot tell "this method finds binders" from "this method
+    # finds molecules that look like the ten it was handed", and for a
+    # similarity search those are very different claims. The near actives are
+    # dropped from the library rather than counted as negatives — they are
+    # actives, and calling them decoys would be a lie in the other direction.
+    #
+    # This is the accuracy-generalization tradeoff made measurable: a method may
+    # buy overall EF by sharpening analogue retrieval while getting worse at the
+    # chemotypes a screen is actually run to discover.
+    qsim = _query_similarity(run_ws, tid, known)
+    novel = qsim <= NOVEL_TANIMOTO
+    m_nov = m_all & (novel | (y == 0))       # novel actives + every decoy
+    ef_nov = _ef(s[m_nov], y[m_nov]) if (y[m_nov] == 1).sum() else float("nan")
+    auc_nov = _auc(s[m_nov], y[m_nov]) if (y[m_nov] == 1).sum() else float("nan")
+    # The property baseline recomputed on the SAME restricted library. Comparing
+    # a novel-tier enrichment against the whole-library baseline would flatter
+    # it or damn it for the wrong reason; both numbers have to be measured on
+    # the molecules actually being ranked.
+    ef_prop_nov = (_ef(D[m_nov][:, 0], y[m_nov]) if (y[m_nov] == 1).sum()
+                   else float("nan"))
+
+    # What the top of the list is actually made of. The paper's prospective
+    # hits sat at 0.22-0.27 to known binders; a screen whose retrieved actives
+    # sit far above that is reporting analogue recall.
+    n1 = max(1, int(round(m_all.sum() * 0.01)))
+    top = np.flatnonzero(m_all)[np.argsort(-s[m_all])[:n1]]
+    hits = top[y[top] == 1]
+    missed = m_all & (y == 1) & ~np.isin(np.arange(len(y)), hits)
+
     return {"active_fraction": frac,
+            "ef_at_1pct_novel": ef_nov,
+            "ef_property_baseline_novel": ef_prop_nov,
+            "auc_novel": auc_nov,
+            "novel_actives": float((y[m_nov] == 1).sum()),
+            "retrieved_novelty": float(qsim[hits].mean()) if len(hits) else float("nan"),
+            "missed_novelty": float(qsim[missed].mean()) if missed.any() else float("nan"),
             "ef_property_baseline": ef_prop,
             "ef_ceiling": (1.0 / frac) if frac > 0 else float("inf"),
             "ef_at_1pct": _ef(s[m_all], y[m_all]),
@@ -548,6 +615,36 @@ def _judge_screening(m: Dict[str, float]) -> Verdict:
         reasons.append("too few scored actives to say anything")
     reasons.append("EF@1%% %.3g overall, %.3g on targets held out entirely"
                    % (m["ef_at_1pct"], m["ef_at_1pct_heldout_targets"]))
+    # The novelty tier, reported beside the headline and never instead of it.
+    # Both numbers are true; they answer different questions, and only the
+    # second one is the question a screening campaign is run to ask.
+    if m.get("novel_actives", 0) < 20:
+        ok = False
+        reasons.append("only %.0f actives sit beyond %.2g Tanimoto of the query "
+                       "set — too few to say whether this generalises past the "
+                       "series it was shown"
+                       % (m.get("novel_actives", 0), NOVEL_TANIMOTO))
+    else:
+        reasons.append("EF@1%% %.3g on the %.0f actives beyond %.2g Tanimoto of "
+                       "the query set (%.0f%% of the headline) — this is the "
+                       "number that survives contact with a new chemotype"
+                       % (m["ef_at_1pct_novel"], m["novel_actives"],
+                          NOVEL_TANIMOTO,
+                          100 * m["ef_at_1pct_novel"] / max(m["ef_at_1pct"], 1e-9)))
+        nlift = m["ef_at_1pct_novel"] / max(m["ef_property_baseline_novel"], 1e-9)
+        reasons.append("on that tier molecular weight alone gets %.3g, so the "
+                       "method is %.2gx the property baseline there against "
+                       "%.2gx overall%s"
+                       % (m["ef_property_baseline_novel"], nlift,
+                          m["ef_at_1pct"] / max(m["ef_property_baseline"], 1e-9),
+                          "" if nlift >= 1.0 else
+                          " — on new chemotypes it is WORSE than ranking by "
+                          "molecular weight"))
+        reasons.append("the actives it retrieved sit %.3g Tanimoto from the "
+                       "query set; the ones it missed sit %.3g. A screen that "
+                       "only reaches analogues of what it was given has not "
+                       "searched chemical space, it has interpolated in it"
+                       % (m["retrieved_novelty"], m["missed_novelty"]))
     reasons.append("a score ranks; it does not measure. Nothing here has been "
                    "made or assayed, and no compound is a candidate")
     return Verdict(ok, tuple(reasons), m)
@@ -580,7 +677,11 @@ SCREENING = DomainBenchmark(
     # anyone who screens deeper than 1%. The held-out targets guard the failure
     # that ends screening papers: gaining overall by suiting the well-represented
     # targets and losing the ones the method was meant to generalise to.
-    guardrails=("auc_unseen", "ef_at_1pct_heldout_targets"),
+    # ef_at_1pct_novel guards the failure this benchmark could not previously
+    # see: raising the headline by getting better at analogues of the query set
+    # while getting no better — or worse — at the chemotypes a screen exists to
+    # find. Measured on the same run, at no extra cost.
+    guardrails=("auc_unseen", "ef_at_1pct_heldout_targets", "ef_at_1pct_novel"),
     parameters=(
         Parameter("top_k", 1, 15, 1, integer=True,
                   means="group fusion: average the top-k similarities to known "
