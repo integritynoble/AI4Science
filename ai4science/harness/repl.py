@@ -1059,11 +1059,10 @@ def run_common_repl(
         # line. An "answer" action means the console has nothing to add and
         # `_act.text` (possibly rewritten) falls through to that chain as-is.
         from ai4science.harness import console as _c
-        _act, _new = _c.route(line, state.get("mode") or _c.Mode(),
-                              _console_deps(state))
+        _deps = _console_deps(state)
+        _act, _new = _c.route(line, state.get("mode") or _c.Mode(), _deps)
         state["mode"] = _new
         if _act.kind != "answer":
-            _deps = _console_deps(state)
             if _act.kind in ("say", "enter", "leave", "confirm"):
                 if _act.text:
                     print(_act.text, flush=True)
