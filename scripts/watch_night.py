@@ -88,6 +88,7 @@ def main(argv=None) -> int:
     a = ap.parse_args(argv)
 
     began = time.time()
+    seen_alive = False
     last_size, last_change = -1, time.time()
     # A run needs a moment to appear before its absence means anything.
     grace = began + 30.0
@@ -114,7 +115,19 @@ def main(argv=None) -> int:
             print("DONE      %s after %.1f min" % (a.log, (time.time() - began) / 60))
             return 0
 
-        if a.pattern and time.time() > grace and not _alive(a.pattern):
+        if a.pattern and _alive(a.pattern):
+            seen_alive = True
+        elif a.pattern and time.time() > grace and not seen_alive:
+            # Never matched anything, so this is far more likely a bad pattern
+            # than a dead run — and reporting DEAD here is the same false
+            # confidence as waiting on a corpse, just inverted. `pgrep -f` takes
+            # an extended regex, where alternation is `a|b` and `a\|b` matches
+            # nothing at all.
+            print("NO MATCH  pattern %r has never matched any process. Fix the "
+                  "pattern; this is not evidence the run died." % a.pattern,
+                  file=sys.stderr)
+            return 5
+        if a.pattern and seen_alive and not _alive(a.pattern):
             print("DEAD      %s: no process matching %r and the sentinel never "
                   "appeared. Either it was killed — stop waiting — or it "
                   "finished and wrote its sentinel somewhere this is not "
