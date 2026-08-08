@@ -42,6 +42,34 @@ def test_every_action_kind_console_can_return_is_handled_by_repl():
         % sorted(missing))
 
 
+def _kinds_the_loop_branches_on() -> set:
+    """The elif chain in run_common_repl itself, read from its source.
+
+    The other half of I5: `_kinds_console_can_return` stopped the guard being
+    literal-vs-literal on the console side, but HANDLED_ACTIONS stayed a
+    hand-typed list that nothing compared to the LOOP's branches — a kind
+    added to console.py and to the list, but not to the chain, kept every
+    guard green while the command silently did nothing.
+    """
+    import inspect, re
+    src = inspect.getsource(repl.run_common_repl)
+    kinds = set(re.findall(r'_act\.kind\s*[!=]=\s*["\']([a-z-]+)["\']', src))
+    for group in re.findall(r'_act\.kind\s+in\s+\(([^)]*)\)', src):
+        kinds |= set(re.findall(r'["\']([a-z-]+)["\']', group))
+    return kinds
+
+
+def test_handled_actions_is_read_off_the_loop_not_off_a_list():
+    """`noop` alone has no branch ON PURPOSE: doing nothing is its handling,
+    the fall-through to `continue`. Everything else in HANDLED_ACTIONS must
+    be a branch the loop really takes — and every branch must be listed."""
+    branches = _kinds_the_loop_branches_on()
+    assert len(branches) >= 8, ("derivation found almost no branches — "
+                                "a hollow guard", sorted(branches))
+    assert repl.HANDLED_ACTIONS == branches | {"noop"}, (
+        sorted(repl.HANDLED_ACTIONS), sorted(branches))
+
+
 def test_deps_expose_every_key_route_reads():
     """route() indexes deps directly; a missing key is a KeyError inside the
     REPL loop, which is the one place nothing may raise."""
