@@ -144,6 +144,20 @@ def test_select_can_be_forced_to_the_numbered_renderer():
     assert "numbered" in inspect.signature(tui.select).parameters
 
 
+def test_the_inline_picker_is_numbered_like_its_siblings():
+    """The last of the three pickers to show numbers. The full-screen panel
+    renders `❯ 1. Yes`, the typed prompt renders `  1. Yes`, Claude Code's own
+    menus are numbered — and the box-mode inline picker rendered ` ❯ Yes`:
+    a shape `_GATE_SHAPE` cannot read, under a hint ("1-9 pick") that pointed
+    at digits the options never showed."""
+    import inspect
+    from ai4science.harness import tui
+    src = inspect.getsource(tui._inline_select)
+    assert "{idx + 1}. " in src, (
+        "the inline picker dropped its option numbers; a governed gate "
+        "rendered here is unreadable to the supervision loop")
+
+
 def test_a_numbered_gate_matches_what_the_loop_looks_for():
     """The shape the loop needs, asserted against the loop's own regex rather
     than a copy of it."""

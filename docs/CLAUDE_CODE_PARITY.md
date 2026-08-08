@@ -416,3 +416,40 @@ default `0.5.5`** · Esc-interrupt `0.5.8` · **borderless two-line growing inpu
 `pip install --user --force-reinstall --no-cache-dir
 "pwm-ai4science[claude] @ https://github.com/integritynoble/AI4Science/archive/refs/heads/main.zip"`
 (the `--no-cache-dir` matters — pip caches the GitHub zip by URL).
+
+---
+
+## The loop-keyed strings — the parity CHECKLIST (2026-08-08)
+
+The sarsi supervision loop reads a session's pane and keys on **exact strings
+and shapes**. These are not cosmetic: a renderer that drifts from any row makes
+a session look permanently idle, or leaves a gate the loop can never answer —
+that is how the ai4science TUI was assumed un-drivable for a day. Three such
+drifts were found one trip-over at a time (busy marker, trust wording, gate
+shape) before this list existed. Check against it BEFORE changing any
+user-visible string in `commands/chat.py`, `harness/tui.py`, `harness/repl.py`
+(`make_confirm`), `harness/sdk_repl.py`, or `harness/toolfmt.py`.
+
+| What the loop reads | The exact string / shape | Loop pattern (`agents/sarsi/operator.py`) |
+|---|---|---|
+| a running turn | `esc to interrupt` in the status/spinner line | `_BUSY` |
+| the folder-trust gate | `Is this a project you created or one you trust` + numbered options | `_KNOWN_GATES` |
+| any gate | a line `1. <text>` (optional leading `❯`) | `_GATE_SHAPE` |
+| a stranded prompt | line starting `❯ ` (space OR non-breaking space) | `_PROMPT_LINE` |
+| the option it must never press | `don't ask again` / `and stop asking` / `allow all … this session` | `_STANDING_OPTION` |
+| the gate's subject | the command indented ≥2 spaces above `Do you want to proceed` | `attention._COMMAND` |
+
+Rules that follow from the table:
+
+- **A governed gate must be numbered on every path.** `tui.select(...,
+  numbered=True)` for gates the loop may answer; all three pickers
+  (full-screen panel, typed prompt, box-mode inline) render `1.` per option.
+- **A suggestion must stay dim (SGR 2).** The styling is the only thing that
+  separates Claude Code's input-box suggestions from typed text; any renderer
+  that prints undimmed text at the prompt teaches the loop to press Enter on it.
+- **Both directions are enforced by tests.** The loop reading real Claude Code
+  screens: `tests/sarsi/test_claude_code_parity.py` (fixtures are actual
+  `tmux capture-pane` output — refresh by re-capturing, never hand-edit). The
+  loop reading ai4science's own TUI: `tests/sarsi/test_pwm_backend_parity.py`.
+  A string change that breaks either suite is a functional regression, not a
+  wording preference.

@@ -203,8 +203,13 @@ def _inline_select(question: str, options):
             out.append(("", "\n"))
         for idx, opt in enumerate(options):
             cur = idx == sel["i"]
+            # Numbered like its two siblings (the full-screen panel and the
+            # typed prompt) and like Claude Code's own menus. Without the
+            # number the hint's "1-9 pick" points at digits the options never
+            # show — and a gate rendered here has no `1.` line, which is the
+            # one shape a supervision loop finds a gate by.
             out.append(("class:cur" if cur else "",
-                        f" {'❯' if cur else ' '} {opt}\n"))
+                        f" {'❯' if cur else ' '} {idx + 1}. {opt}\n"))
         out.append(("class:hint", " ↑/↓ or j/k move · 1-9 pick · ⏎/Tab select · Esc cancel"))
         return out
 
