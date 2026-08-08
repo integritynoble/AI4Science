@@ -956,7 +956,16 @@ class FullScreen:
         # region or lost.
         if self._stream is not None:
             self._stream.commit_partial()
-        if prompt and prompt not in ("❯ ", "> "):
+        if prompt and prompt.rstrip().endswith("❯"):
+            # A mode label ends in the prompt glyph and belongs IN the
+            # composer, in front of the cursor — it is the safety mechanism
+            # that says which program the next line feeds. Appended to the
+            # transcript it is a caption, one line above, scrolling away.
+            # The bare `❯ ` takes the label off again on leaving the mode.
+            if prompt != self.prompt:
+                self.prompt = prompt
+                self._invalidate()
+        elif prompt and prompt != "> ":
             self.append("\n" + prompt)           # e.g. permission questions
         self._status_extra = status
         self._busy = False
@@ -1010,7 +1019,9 @@ class FullScreen:
         # Borderless, two-line input like Claude Code: a coral prompt line that
         # grows 1→N as you type, with a single info line beneath it (no box).
         ta = TextArea(multiline=True, wrap_lines=True,
-                      prompt=[("class:prompt", self.prompt)],
+                      # A callable, not a snapshot: read_input swaps the label
+                      # in and out as the owner enters and leaves a mode.
+                      prompt=lambda: [("class:prompt", self.prompt)],
                       history=FileHistory(str(hp)) if hp else None, style="class:input")
         ta.window.height = _grow_height(lambda: ta.text)
 
