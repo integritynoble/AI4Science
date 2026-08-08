@@ -199,3 +199,83 @@ def test_the_pane_reader_captures_the_styling_it_depends_on():
     tick = inspect.getsource(operator.tick)
     assert "capture_styled" in tick, "tick never asks for the styled pane"
     assert "styled" in tick, tick[:200]
+
+
+# ── pass 2: a REAL bash gate, which pass 1 never provoked ─────────────
+
+def test_the_bash_gate_header_is_the_one_the_loop_looks_for():
+    """Pass 1 captured a write gate; no bash gate arose in those turns. This is
+    the real thing, from a `touch` outside the workspace."""
+    screen = _fixture("claude_code_bash_gate.txt")
+    assert operator._GATE_HEADER.search(screen), screen[-500:]
+    assert operator._GATE_SHAPE.search(screen)
+
+
+def test_the_command_is_extracted_without_its_description():
+    """Claude Code prints a human-readable description under the command:
+
+        Bash command
+          touch /tmp/parity_probe_file
+          Create empty file in /tmp
+
+    `_GATE_PROSE` recognises that line by what it LACKS — no metacharacter, no
+    path, no flag — and this description CONTAINS a path (`/tmp`), so it was
+    swallowed into the command.
+
+    That is not cosmetic. The string is handed to `is_read_only_bash`, and a
+    command with prose glued to it can never be proven read-only, so the loop
+    abstains where it could have answered. The failure is in the safe
+    direction and is still a failure.
+    """
+    screen = _fixture("claude_code_bash_gate.txt")
+    got = operator._gate_command(screen)
+    assert got == "touch /tmp/parity_probe_file", repr(got)
+
+
+def test_the_wider_option_is_recognised_a_second_time():
+    """The same guard, wrong again, in a second real wording.
+
+    Pass 1 found it blind to `Yes, allow all edits during this session`. The
+    bash gate says:
+
+        2. Yes, and always allow access to tmp/ from this project
+
+    Chasing wordings one capture at a time is losing. What every one of these
+    has in common is STRUCTURAL: option 1 is the narrow `Yes`, and any LATER
+    option beginning `Yes` is a wider one. The loop presses 1; it must never be
+    talked into pressing a later yes.
+    """
+    screen = _fixture("claude_code_bash_gate.txt")
+    wider = [l for l in screen.splitlines() if l.strip().startswith("2.")]
+    assert wider, "the fixture no longer has a second option"
+    assert operator._STANDING_OPTION.search(wider[0]), wider[0]
+
+
+def test_the_first_option_is_never_treated_as_a_standing_one():
+    """The guard must not swallow the option the loop is allowed to press."""
+    assert not operator._STANDING_OPTION.search("1. Yes")
+    assert not operator._STANDING_OPTION.search("  ❯ 1. Yes")
+
+
+def test_a_running_command_line_is_not_a_gate():
+    """`⎿  $ du -sh /usr/share/doc` is Claude Code showing a command it is
+    RUNNING, not asking about. It has the `$ <cmd>` shape `_GATE_HEADER` looks
+    for, so the header alone cannot mean "there is a gate here" — and it does
+    not, because `_gate` requires the option shape too."""
+    running = ("● Running 1 shell command…\n"
+               "  ⎿  $ du -sh /usr/share/doc (8s)\n"
+               "✻ Musing… (13s · ↓ 90 tokens)\n")
+    assert operator._gate(running) is None
+
+
+def test_a_wrapped_command_fragment_is_not_mistaken_for_a_description():
+    """The guard on allowing paths in the description rule. Dropping the last
+    line of a real command would hand a TRUNCATED command to the classifier,
+    which is the dangerous direction: a truncated command can look read-only
+    when the whole one is not."""
+    assert not operator._is_gate_description("cat /etc/passwd")
+    assert not operator._is_gate_description("find /usr -name x")
+    assert not operator._is_gate_description("rm /tmp/x")
+    # and the real description still is one
+    assert operator._is_gate_description("Create empty file in /tmp")
+    assert operator._is_gate_description("List files in the project")

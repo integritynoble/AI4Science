@@ -65,24 +65,52 @@ _KNOWN_GATES = (
 )
 
 #: The wider option — a standing permission — is never pressed. That is the
-#: owner's to give, and an option that grants it for a whole session is the one
+#: owner's to give, and an option granting it beyond this one call is the one
 #: thing an unattended loop must not take.
 #:
-#: Matched against the REAL wordings, because this guard was blind to the only
-#: one that mattered. It knew "don't ask again" (the ai4science TUI's phrasing)
-#: and "and stop asking", while Claude Code v2.1.224 — the backend the loop was
-#: built for — says:
+#: **Matched structurally, not lexically.** Chasing wordings lost twice against
+#: real captures:
 #:
-#:     2. Yes, allow all edits during this session (shift+tab)
-#:     2. Yes, and don't ask again for bash this session
+#:     2. Yes, and don't ask again for bash this session      (ai4science)
+#:     2. Yes, allow all edits during this session            (Claude Code)
+#:     2. Yes, and always allow access to tmp/ from this project
 #:
-#: A guard written against assumed wording, meeting the real one. Found by
-#: capturing an actual session rather than by being tripped over.
-_STANDING_OPTION = re.compile(
+#: Three phrasings, no shared words, and a fourth is one release away. What they
+#: DO share is structure: option 1 is the narrow yes, and any LATER option
+#: beginning "yes" is a wider one. The loop presses 1 and must never be talked
+#: into a later yes, whatever it is called.
+#:
+#: The lexical patterns are kept as a second net for a menu whose numbering this
+#: does not see.
+_STANDING_LEXICAL = re.compile(
     r"don'?t ask again"
     r"|and stop asking"
-    r"|allow all\b.*\bthis session"
+    r"|allow all\b"
+    r"|always allow"
     r"|for (?:this|the) (?:whole )?session", re.I)
+
+#: A numbered option, its number and its text.
+_OPTION_LINE = re.compile(r"^\s*❯?\s*(?P<n>\d+)\.\s+(?P<text>\S.*?)\s*$", re.M)
+
+
+class _StandingOption:
+    """`.search(text)` — truthy when `text` offers a permission beyond this call.
+
+    Kept as a search()-compatible object so every existing caller and test is
+    unchanged; what changed is how it decides.
+    """
+
+    def search(self, text: str):
+        for m in _OPTION_LINE.finditer(text or ""):
+            n, body = m.group("n"), m.group("text")
+            if n == "1":
+                continue                      # the narrow yes the loop presses
+            if body.strip().lower().startswith("yes"):
+                return m                      # a LATER yes is a wider yes
+        return _STANDING_LEXICAL.search(text or "")
+
+
+_STANDING_OPTION = _StandingOption()
 
 _GATE_SHAPE = re.compile(r"^\s*❯?\s*1\.\s+\S", re.M)
 # `[^\S\r\n]` is "whitespace that is not a line break": it must not swallow the
@@ -608,6 +636,27 @@ _GATE_HEADER = re.compile(r"^(?P<indent>\s*)(Bash command|\$\s+\S.*)\s*$", re.M)
 #: judge a truncated command, so the test is deliberately strict.
 _GATE_PROSE = re.compile(r"^[A-Za-z][A-Za-z0-9 ,.'\u2019]*$")
 
+#: The same description line when it names a PATH. Claude Code writes
+#: `Create empty file in /tmp` under the command, and the rule above forbids
+#: `/`, so it was glued onto the command and handed to `is_read_only_bash` --
+#: which can then never prove the command read-only, and the loop abstains
+#: where it could have answered.
+#:
+#: A path alone is not enough to call a line prose: `cat /etc/passwd` has one
+#: too. What separates them is that a description is a SENTENCE -- it starts
+#: with a capital and runs to several words -- while a command starts with its
+#: verb in lower case. Both conditions are required, and shell metacharacters
+#: and flags still disqualify a line entirely.
+_GATE_PROSE_PATH = re.compile(
+    r"^[A-Z][A-Za-z0-9 ,.'\u2019/]*$")
+
+
+def _is_gate_description(line: str) -> bool:
+    """Is this the human-readable description rather than part of the command?"""
+    if _GATE_PROSE.match(line):
+        return True
+    return bool(_GATE_PROSE_PATH.match(line)) and len(line.split()) >= 3
+
 
 def _already_answered(screen: str) -> bool:
     """Has the last gate on screen already been answered?
@@ -680,7 +729,7 @@ def _gate_command(screen: str) -> str:
         if indent <= header_indent:
             break                      # the block ended — `Hook …`, `A0 …`
         lines.append(raw.strip())
-    if len(lines) > 1 and _GATE_PROSE.match(lines[-1]):
+    if len(lines) > 1 and _is_gate_description(lines[-1]):
         lines.pop()                    # the human-readable description
     return " ".join(lines).strip()
 
