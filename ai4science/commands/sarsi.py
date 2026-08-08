@@ -916,6 +916,33 @@ def _load_task(agent_id: str, task_id: str):
     return config, agent, _task_or_exit(config, agent, task_id)
 
 
+@app.command("forecast", help="Say how likely this task is to be VERIFIED — before it is.")
+def forecast_cmd(agent_id: str = typer.Argument(..., help="Worker id"),
+                 task_id: str = typer.Argument(..., help="Task id, e.g. tsk_…"),
+                 p: float = typer.Argument(..., help="Probability in [0, 1]"),
+                 why: str = typer.Option("", "--why",
+                                         help="What that number rests on.")) -> None:
+    """A forecast is only evidence if it precedes the outcome, so this refuses
+    once the task has been judged rather than recording a number that would
+    score perfectly and mean nothing."""
+    from ai4science.harness.agents.sarsi import forecast as _fc
+
+    config = _load()
+    agent = _worker_or_exit(config, agent_id)
+    t = _task_or_exit(config, agent, task_id)
+    try:
+        t = _fc.record(config, agent, t, p, why=why)
+    except (_fc.TooLate, ValueError) as e:
+        console.print(str(e), style="red", markup=False, highlight=False)
+        raise typer.Exit(code=2)
+    console.print(f"{t.id} — forecast {p:.0%} recorded before the verdict",
+                  markup=False, highlight=False)
+    cal = _fc.calibration(config, agent)
+    if cal:
+        console.print(f"  so far: {_fc.render(cal)}", style="dim",
+                      markup=False, highlight=False)
+
+
 @app.command("plan", help="Show one task's plan — or write it yourself with --set-from.")
 def plan_cmd(agent_id: str = typer.Argument(..., help="Worker id"),
              task_id: str = typer.Argument(..., help="Task id, e.g. tsk_…"),

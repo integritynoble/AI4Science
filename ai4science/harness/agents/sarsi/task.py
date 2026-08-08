@@ -66,6 +66,11 @@ class Task:
     grants: List[str] = field(default_factory=list)
     blocked_by: Optional[str] = None
     verdict: Optional[Dict[str, Any]] = None
+    #: A PRE-ACTION forecast: the probability this task will be verified, with
+    #: when it was made and why. Recorded only before a verdict exists —
+    #: `forecast.record` refuses afterwards, because a number written after the
+    #: outcome scores perfectly and means nothing.
+    forecast: Optional[Dict[str, Any]] = None
     session: Optional[Dict[str, Any]] = None
     #: Which session backend runs this task — `sarsi-pwm` or `sarsi-claude`.
     #: It belongs to the TASK, not the agent: one worker runs many tasks, and

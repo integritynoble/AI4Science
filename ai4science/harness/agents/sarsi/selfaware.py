@@ -128,6 +128,17 @@ def claims(config: Config, agent: Agent) -> List[Dict[str, Any]]:
                        "work" % (est["n"], est.get("self_judged", 0)))
                       if est else "no task has been judged yet"))
 
+    # L3 — how well-calibrated it is. Distinct from L4: `proven` says what it
+    # has achieved, this says whether its own confidence can be trusted. A
+    # worker that succeeds 70% and says 70% is more useful than one that
+    # succeeds 90% and claims 100%, because only the first can be planned
+    # around. `None` when nothing was predicted before it was judged.
+    from ai4science.harness.agents.sarsi import forecast as _fc
+    cal = _fc.calibration(config, agent)
+    out.append(_claim("calibration", _fc.render(cal), 3, "forecasts",
+                      ("%d forecast(s) made before the verdict" % cal["n"])
+                      if cal else "nothing has been predicted before it was judged"))
+
     out.append(_claim("executes", False, 1, "design",
                       "the agent you talk to does not execute: it opens a "
                       "task, agrees a plan, and a session does the work"))
@@ -209,6 +220,8 @@ def describe(config: Config, agent: Agent) -> str:
 
     lines.append("")
     lines.append(f"What I have been verified to do: {by['proven']['value']}.")
+    lines.append(f"How far my own confidence can be trusted: "
+                 f"{by['calibration']['value']}.")
 
     lines.append("")
     lines.append("I do not execute anything myself. I open a task, agree a plan "

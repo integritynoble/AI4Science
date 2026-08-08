@@ -52,6 +52,45 @@ def render(config: Config, agent: Agent, task: tsk.Task) -> str:
     if published:
         blocks.append(published)
 
+    # THE SELF-MODEL ENTERS HERE, AND ONLY HERE.
+    #
+    # `Response_as_Action_A_Plain_Explanation`: the workspace IS the context
+    # window, item for item — "a lesson can be correct, written down, stored,
+    # indexed, and completely inert, because nothing put it in front of the
+    # model at the moment it mattered." That was this exactly: the worker could
+    # tell a HUMAN it was overconfident and could not tell the model about to
+    # write the next plan.
+    #
+    # Two rules from the same paper's nine measured experiments:
+    #
+    #   * presence is the whole effect. A one-line title scored as well as the
+    #     full episode, and burying it among 99 others cost nothing. So this is
+    #     two lines, and no retrieval machinery is built — that mechanism was
+    #     withdrawn for costing a draft per turn and paying nothing.
+    #   * it must be a FACT the model cannot work out, not encouragement. "Be
+    #     careful" is bottom-rung evidence; "you predicted 90% and achieved 25%"
+    #     is not.
+    #
+    # Silent when unmeasured. "No verified outcomes yet" in front of the model
+    # is absence of evidence dressed as a finding — the wallpaper the paper
+    # warns about.
+    from ai4science.harness.agents.sarsi import (competence as _comp,
+                                                 forecast as _fc)
+    measured = []
+    try:
+        est = _comp.competence(config, agent)
+        if est:
+            measured.append(_comp.render(est))
+        cal = _fc.calibration(config, agent)
+        if cal:
+            measured.append(_fc.render(cal))
+    except Exception:
+        pass                       # a self-model that cannot be read is not a
+                                   # reason to withhold the rest of the context
+    if measured:
+        blocks.append(_block("YOUR OWN RECORD (measured, not remembered)",
+                             measured, len(measured)))
+
     said = ownerlog.said(config, agent, limit=0)
     if said:
         blocks.append(_block(
