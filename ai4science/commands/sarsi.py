@@ -1040,7 +1040,9 @@ def _worker_or_exit(config: reg.Config, agent_id: str):
     return agent
 
 
-@app.command("run", help="Hand a task's plan to sarsi-claude — starts its governed session.")
+@app.command("run", help="Hand a task's plan to its backend — sarsi-claude or "
+                         "sarsi-pwm, whichever the task carries — and start "
+                         "the governed session.")
 def run_cmd(agent_id: str = typer.Argument(..., help="Worker id"),
             task_id: str = typer.Argument(..., help="Task id"),
             deny_secrets: bool = typer.Option(False, "--deny-secrets",

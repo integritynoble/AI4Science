@@ -518,3 +518,50 @@ def test_an_agent_that_is_not_self_aware_falls_through():
     m = console.Mode(kind="agent", name="sarsi-worker")
     act, _ = console.route("what can you do?", m, deps)
     assert act.kind == "answer", act
+
+
+# ── the confirmation offers the backend ───────────────────────────────
+#
+# backends.py's own charter: "what was missing is a name the owner can choose
+# at the confirmation". The CLI got `--backend`; the confirmation never did —
+# the one surface where every task is actually created.
+
+def test_the_confirm_block_names_the_backend_and_the_switch():
+    text = console.confirm_block("write a solver", "sarsi-worker")
+    assert "sarsi-pwm" in text, "the default backend must be shown, not implied"
+    assert "b=" in text, "and the block must say how to choose the other one"
+
+
+def test_b_switches_the_backend_and_keeps_the_goal():
+    m = console.Mode(kind="agent", name="sarsi-worker", pending="do the thing")
+    act, mode = console.route("b", m, _deps())
+    assert act.kind == "confirm"
+    assert "sarsi-claude" in act.text
+    assert mode.pending == "do the thing", "switching must not drop the goal"
+    assert mode.backend == "sarsi-claude"
+
+
+def test_b_again_switches_back():
+    m = console.Mode(kind="agent", name="sarsi-worker", pending="do the thing",
+                     backend="sarsi-claude")
+    act, mode = console.route("b", m, _deps())
+    assert mode.backend == "sarsi-pwm"
+    assert mode.pending == "do the thing"
+
+
+def test_yes_carries_the_chosen_backend():
+    m = console.Mode(kind="agent", name="sarsi-worker", pending="do the thing",
+                     backend="sarsi-claude")
+    act, mode = console.route("", m, _deps())
+    assert act.kind == "create"
+    assert act.backend == "sarsi-claude"
+    assert mode.pending is None
+
+
+def test_the_default_confirm_carries_no_backend():
+    """An empty backend means task.create resolves the default in ONE place —
+    the confirmation must not become a second author of the default."""
+    m = console.Mode(kind="agent", name="sarsi-worker", pending="do the thing")
+    act, _ = console.route("", m, _deps())
+    assert act.kind == "create"
+    assert act.backend == ""

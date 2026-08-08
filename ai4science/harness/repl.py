@@ -130,7 +130,7 @@ def _console_deps(state: dict) -> dict:
         except Exception:
             return ""
 
-    def _create(agent_id: str, goal: str) -> str:
+    def _create(agent_id: str, goal: str, backend: str = "") -> str:
         try:
             from ai4science.harness.agents.sarsi import (plan as pl, task as tsk,
                                                          worker as wk)
@@ -139,7 +139,7 @@ def _console_deps(state: dict) -> dict:
             if agent is None:
                 return f"{agent_id} is not on this machine"
             d = wk.Directive(agent_id=agent.id, goal=goal)
-            t = tsk.create(config, agent, d)
+            t = tsk.create(config, agent, d, backend=backend)
             t = tsk.attach_plan(config, agent, t, pl.draft(d))
             return t.id
         except Exception as e:
@@ -1126,7 +1126,8 @@ def run_common_repl(
                 if _act.text:
                     print(_act.text, flush=True)
             elif _act.kind == "create":
-                print(f"→ {_deps['create'](_act.agent, _act.goal)}", flush=True)
+                print(f"→ {_deps['create'](_act.agent, _act.goal, _act.backend)}",
+                      flush=True)
             elif _act.kind == "guide":
                 print(_deps["guide"](_act.task, _act.text), flush=True)
             elif _act.kind == "attach":

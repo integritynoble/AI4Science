@@ -29,6 +29,10 @@ class Mode:
     kind: str = "top"          # top | agent | task
     name: str = ""             # agent id or task id
     pending: Optional[str] = None   # a goal awaiting confirmation
+    #: The backend the pending confirmation will create with. Empty means
+    #: `task.create` resolves the default — the confirmation shows the choice
+    #: but must not become a second author of what the default IS.
+    backend: str = ""
     #: The last substantive thing the owner said here. Kept because a line the
     #: worker could not place is usually the goal the NEXT line points at:
     #: "please create the task for me according to this goal" refers to
@@ -46,6 +50,7 @@ class Action:
     agent: Any = None
     task: Any = None
     session: str = ""
+    backend: str = ""          # read by "create": which engine runs the task
 
 
 def prompt_label(mode: Mode) -> str:
@@ -75,12 +80,16 @@ def _is_slash(line: str) -> bool:
     return "/" not in first[1:] and "." not in first[1:]
 
 
-def confirm_block(goal: str, agent: str) -> str:
+def confirm_block(goal: str, agent: str, backend: str = "") -> str:
     """What the owner reads before a task exists."""
-    return (f"\n  goal:   {goal}\n"
-            f"  agent:  {agent}\n"
+    from ai4science.harness.agents.sarsi import backends as _bk
+    chosen = _bk.resolve(backend)
+    other = next(n for n in _bk.NAMES if n != chosen)
+    return (f"\n  goal:    {goal}\n"
+            f"  agent:   {agent}\n"
+            f"  backend: {chosen}\n"
             f"  it will plan at A0 first, and stop for your grant\n\n"
-            f"  create it? [Enter=yes / e=edit / p=plan / n=no]")
+            f"  create it? [Enter=yes / e=edit / p=plan / b={other} / n=no]")
 
 
 def route(line: str, mode: Mode, deps: dict) -> tuple:
@@ -95,7 +104,20 @@ def route(line: str, mode: Mode, deps: dict) -> tuple:
     if mode.pending is not None:
         settled = Mode(kind=mode.kind, name=mode.name, pending=None)
         if line == "" or line.lower() in ("y", "yes"):
-            return Action("create", goal=mode.pending, agent=mode.name), settled
+            return Action("create", goal=mode.pending, agent=mode.name,
+                          backend=mode.backend), settled
+        if line.lower() == "b":
+            # The owner chooses the engine at the one surface every task
+            # passes through. A switch re-shows the block — the choice must
+            # be READ back, not trusted to have landed — and keeps the goal:
+            # changing the engine is not an answer about the goal.
+            from ai4science.harness.agents.sarsi import backends as _bk
+            chosen = _bk.resolve(mode.backend)
+            other = next(n for n in _bk.NAMES if n != chosen)
+            return Action("confirm", goal=mode.pending, agent=mode.name,
+                          text=confirm_block(mode.pending, mode.name, other)), \
+                Mode(kind=mode.kind, name=mode.name, pending=mode.pending,
+                     recent=mode.recent, backend=other)
         if line.lower() == "e":
             return Action("say", text=f"edit it and send again:\n  {mode.pending}"), \
                 settled
