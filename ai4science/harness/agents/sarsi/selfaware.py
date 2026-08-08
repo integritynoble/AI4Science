@@ -116,6 +116,18 @@ def claims(config: Config, agent: Agent) -> List[Dict[str, Any]]:
         out.append(_claim("task_states", states, 2, "task-store",
                           "what each is waiting for"))
 
+    # L4 — what it has been VERIFIED to do, not what it did. This was the gap
+    # the module shipped with: it could say what the worker IS and what it is
+    # HOLDING, and not what it has PROVEN, while every verdict sat on disk
+    # unread. `None` when nothing has been judged — never a zero, because "never
+    # seen it work" and "seen it fail" are different claims.
+    from ai4science.harness.agents.sarsi import competence as _comp
+    est = _comp.competence(config, agent)
+    out.append(_claim("proven", _comp.render(est), 4, "verdicts",
+                      ("%d judged task(s); %d judged by the engine that did the "
+                       "work" % (est["n"], est.get("self_judged", 0)))
+                      if est else "no task has been judged yet"))
+
     out.append(_claim("executes", False, 1, "design",
                       "the agent you talk to does not execute: it opens a "
                       "task, agrees a plan, and a session does the work"))
@@ -194,6 +206,9 @@ def describe(config: Config, agent: Agent) -> str:
     else:
         lines.append("I have no standing grants: every permission is granted "
                      "per task, on the plan you read.")
+
+    lines.append("")
+    lines.append(f"What I have been verified to do: {by['proven']['value']}.")
 
     lines.append("")
     lines.append("I do not execute anything myself. I open a task, agree a plan "
