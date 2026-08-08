@@ -102,8 +102,11 @@ def _task(config, agent, goal="finish the export", secrets=()):
 
 
 def _with_session(config, agent, goal="finish the export"):
+    # `installed` is injected for the same reason `live` is (see below): left
+    # as None it asks the REAL agent registry, and whether `unified-LLM` is
+    # installed on the machine running the tests walks into the assertion.
     return ses.assign(config, agent, _task(config, agent, goal),
-                      runtime=FakeRuntime())
+                      runtime=FakeRuntime(), installed=lambda: set())
 
 
 # ── nothing waiting ───────────────────────────────────────────────────
