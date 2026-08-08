@@ -1,4 +1,4 @@
-import json, threading, time
+import atexit, json, shutil, tempfile, threading, time
 import uvicorn, pytest
 from pathlib import Path
 from ai4science.harness.control_plane.client import ControlPlaneClient
@@ -15,7 +15,14 @@ def _serve(tmp_path):
     from pwm_control_plane.service import build_app
     import os
     os.environ["PWM_CP_STATE_DIR"] = str(tmp_path)
-    os.environ["PWM_CP_SOCKET"] = str(tmp_path / "cp.sock")
+    # The socket gets its own SHORT dir, never tmp_path: an AF_UNIX path is
+    # capped near 108 bytes and --basetemp can be arbitrarily deep. A runner
+    # with a deep basetemp had every bind here fail "AF_UNIX path too long" —
+    # 30 e2e tests at once, misread as a missing service — while the foundry
+    # tests, which already mkdtemp under /tmp, sailed through.
+    sock_dir = tempfile.mkdtemp(prefix="pwmcp-", dir="/tmp")
+    atexit.register(shutil.rmtree, sock_dir, ignore_errors=True)
+    os.environ["PWM_CP_SOCKET"] = str(Path(sock_dir) / "cp.sock")
     cfg = Config.from_env(); cfg.ensure_dirs()
     priv, pub = generate_keypair()
     bundle = {"version": 1, "expires_at": time.time() + 3600,
@@ -25,7 +32,7 @@ def _serve(tmp_path):
     broker = CredentialBroker(generate_fernet_key())
     executor = SandboxExecutor()
     app = build_app(cfg, policy, ResourceGovernor(), AuditLog(cfg.audit_path), broker, executor)
-    uds = tmp_path / "cp.sock"
+    uds = Path(os.environ["PWM_CP_SOCKET"])
     server = uvicorn.Server(uvicorn.Config(app, uds=str(uds), log_level="warning"))
     threading.Thread(target=server.run, daemon=True).start()
     for _ in range(100):
