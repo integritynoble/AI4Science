@@ -288,3 +288,67 @@ def test_plain_text_is_not_swallowed_as_a_command(config, agent):
 def test_an_unknown_slash_command_lists_the_real_ones(config, agent):
     out = _say(config, agent, "/frobnicate")
     assert "/tasks" in out
+
+
+# ── the door tells what KIND of line it received (intent.classify) ────
+
+def test_a_greeting_is_greeted_not_answered_with_the_task_form(config, agent):
+    """`hi` got 'heard on telegram: hi / I cannot plan this yet' — the same
+    reply as a mistyped goal. A greeting is not a failed directive."""
+    out = _say(config, agent, "hi")
+    assert "cannot plan" not in out
+    assert "/new" in out or "/tasks" in out
+
+
+def test_a_framed_directive_offers_new_with_the_stripped_goal(config, agent):
+    """This door never files a task from plain chat — creation stays explicit.
+    But it can say exactly what to type, with the framing already stripped."""
+    out = _say(config, agent, "the goal is please write a GAP-TV solver for CASSI")
+    assert "/new write a GAP-TV solver for CASSI" in out
+    assert tsk.all_of(config, agent) == []
+
+
+def test_a_make_request_with_no_goal_asks_for_one(config, agent):
+    out = _say(config, agent, "please make a task for me")
+    assert "what the task is for" in out
+    assert tsk.all_of(config, agent) == []
+
+
+def test_a_question_about_the_worker_is_answered_from_its_self_model(config, agent):
+    """`what can you do?` is a question the worker can answer from its own
+    state — the same answer `self model` gives, not the task form. Compared by
+    first line, not whole-text: the rendered params dict reorders between
+    calls, and pinning that order would fail on content that is identical."""
+    out = _say(config, agent, "what can you do?")
+    assert "cannot plan" not in out
+    assert out.split("\n")[0] == chat._self_model(config, agent).split("\n")[0]
+
+
+def test_a_question_it_cannot_answer_still_names_the_way_to_task_it(config, agent):
+    out = _say(config, agent, "how are the exports going?")
+    assert "cannot plan" not in out
+    assert "/new" in out
+
+
+def test_new_strips_the_owners_framing_from_the_goal(config):
+    """`/new the goal is please write X` filed a task whose goal was the whole
+    sentence, framing included — the exact defect intent.classify exists for.
+    On `sarsi-worker`: the fixture's `work` agent is retired and admits
+    nothing, which is its own (already tested) refusal."""
+    live = config.agents["sarsi-worker"]
+    _say(config, live, "/new the goal is please write a GAP-TV solver for CASSI")
+    goals = [t.goal for t in tsk.all_of(config, live)]
+    assert goals == ["write a GAP-TV solver for CASSI"]
+
+
+def test_a_greeting_inside_a_task_still_steers_that_task(config, agent):
+    """Classification stops at the cursor: standing in a task, plain words are
+    about THAT task, whatever kind they look like."""
+    d = worker.Directive(agent_id=agent.id, goal="finish the export")
+    t = tsk.attach_plan(config, agent, tsk.create(config, agent, d), _plan())
+    t = tsk.start(config, agent, t)
+    rt = FakeRuntime()
+    t = ses.assign(config, agent, t, runtime=rt)
+    _say(config, agent, f"/{t.id}", runtime=rt)          # stand in it
+    _say(config, agent, "hi", runtime=rt)
+    assert any("hi" in text for _, text in rt.sent)

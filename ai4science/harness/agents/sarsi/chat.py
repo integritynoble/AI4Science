@@ -51,7 +51,7 @@ def handle(config: Config, agent: Agent, text: str, *, surface: str,
             return _why(config, agent, standing, "", runtime)
         if standing is not None:
             return _guided(config, agent, standing, body, runtime)
-        return _not_a_command(config, agent, body, surface)
+        return _classified(config, agent, body, surface)
 
     verb, _, rest = body[1:].partition(" ")
     verb, rest = verb.strip(), rest.strip()
@@ -127,6 +127,16 @@ def _new(config: Config, agent: Agent, goal: str, surface: str) -> str:
         return f"usage: /new <goal, one sentence>"
     if not agent.is_worker:
         return f"{agent.id} is a manager: it holds no tasks."
+
+    # `/new the goal is please write X` files as `write X` — the framing
+    # describes the sentence, not the work, and it would read back as noise
+    # in every listing thereafter. Only a clean directive is rewritten;
+    # anything else files as typed, because /new IS the explicit act and
+    # second-guessing it here would refuse goals the owner chose.
+    from ai4science.harness.agents.sarsi import intent as _intent
+    got = _intent.classify(goal)
+    if got.kind == "directive":
+        goal = got.goal
 
     from ai4science.harness.agents.sarsi import worker as wk
     try:
@@ -540,13 +550,46 @@ def _resolve(config: Config, agent: Agent, token: str):
     return f"no task {token!r} for {agent.id} — /tasks lists them."
 
 
-def _not_a_command(config: Config, agent: Agent, body: str, surface: str) -> str:
-    role = ("manager — I route and answer; I do not drive sessions"
-            if not agent.is_worker else
-            "worker — I hold tasks and drive sarsi-claude")
-    return (f"[{agent.id}] {role}.\n"
-            f"heard on {surface}: {body}\n"
-            f"I cannot plan this yet — /tasks shows what I am holding.")
+def _classified(config: Config, agent: Agent, body: str, surface: str) -> str:
+    """A plain line with no cursor, told apart before it is answered.
+
+    Every kind used to get the same reply — 'heard on cli: hi / I cannot plan
+    this yet' — which reads as a failed directive whatever the owner said. The
+    console door already classifies; a door that does not is the second
+    classifier problem in reverse: one decides, the other shrugs.
+
+    This door never files a task from plain chat — creation stays explicit —
+    so a directive is answered with the exact /new to type, framing already
+    stripped."""
+    if not agent.is_worker:
+        # A manager holds no tasks, so /new is not an offer it can make —
+        # classifying the line would only sharpen a suggestion that is wrong
+        # on this agent. It says what it is and where goals go instead.
+        return (f"[{agent.id}] manager — I route and answer; I do not drive "
+                f"sessions.\nheard on {surface}: {body}\n"
+                f"a worker takes goals — `sarsi agents` lists them.")
+    from ai4science.harness.agents.sarsi import intent as _intent
+    got = _intent.classify(body)
+
+    if got.kind == "greeting":
+        return (f"[{agent.id}] hello — /tasks shows what I am holding, "
+                f"/new <goal> opens a task.")
+
+    if got.kind == "question":
+        from ai4science.harness.agents.sarsi import selfaware as _sa
+        if _sa.is_about_self(body):
+            return _self_model(config, agent)
+        return (f"[{agent.id}] that is a question I cannot answer on this "
+                f"door.\nheard on {surface}: {body}\n"
+                f"to make it a task instead: /new {body}")
+
+    if got.kind in ("meta", "ambiguous"):
+        return f"[{agent.id}] {got.why}"
+
+    # A directive is a goal — and still not a task, until the owner says so.
+    return (f"[{agent.id}] that reads as a goal:\n"
+            f"  {got.goal}\n"
+            f"file it: /new {got.goal}")
 
 
 def _unknown(agent: Agent) -> str:
