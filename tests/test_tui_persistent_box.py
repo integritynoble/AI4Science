@@ -506,4 +506,10 @@ def test_shining_status_shows_tokens_and_activity():
     try: _os.waitpid(pid, 0)
     except OSError: pass
     assert "tokens" in mid and "running grep" in mid, f"status missing:\n{mid}"
-    assert "esc to stop" in mid
+    # `esc to interrupt`, never `esc to stop`: the supervision loop tells a
+    # running turn from a finished one by this exact phrase (operator._BUSY),
+    # and this test pinned the DRIFTED wording for a day after the renderer
+    # was fixed — asserting the old string absent keeps the drift from
+    # quietly coming back.
+    assert "esc to interrupt" in mid, f"busy phrase missing:\n{mid}"
+    assert "esc to stop" not in mid
