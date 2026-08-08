@@ -28,8 +28,13 @@ print("RESULT:" + repl._attach_tmux(os.environ["ATTACH_TARGET"]), flush=True)
 '''
 
 
-def _pump(fd, raw, deadline):
+def _pump(fd, raw, deadline, until=None):
+    """Read until `until` appears (or the deadline). The deadline is generous
+    — a full-tree run loads the box and 4s was not enough — and `until` keeps
+    the healthy path fast."""
     while time.monotonic() < deadline:
+        if until is not None and until in raw:
+            return
         r, _, _ = select.select([fd], [], [], 0.1)
         if fd in r:
             try:
@@ -61,13 +66,14 @@ def test_attach_takes_the_terminal_and_detach_hands_it_back():
         raw = bytearray()
         # The attach must actually take the terminal: the session's own
         # output reaches the PTY before anything is typed.
-        _pump(fd, raw, time.monotonic() + 4.0)
+        _pump(fd, raw, time.monotonic() + 20.0, until=marker.encode())
         assert marker.encode() in raw, (
             "attach never took the terminal:\n" + raw.decode(errors="replace"))
         assert b"RESULT:" not in raw, "returned before anyone detached"
 
         os.write(fd, b"\x02d")               # C-b d — the owner detaches
-        _pump(fd, raw, time.monotonic() + 4.0)
+        _pump(fd, raw, time.monotonic() + 20.0,
+              until=f"RESULT:back from {name}.".encode())
         os.close(fd)
         os.waitpid(pid, 0)
 
