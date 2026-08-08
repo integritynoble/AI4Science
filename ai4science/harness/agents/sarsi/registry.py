@@ -86,6 +86,22 @@ class Agent:
         return self.agent_dir / "workspace"
 
     @property
+    def work_dir(self) -> Path:
+        """Where this worker's tasks WORK — its desk, not its memory.
+
+        Deliberately not `workspace`, which above is W_name: mission, plan and
+        decisions, what the worker *knows*. One word for both is the "two
+        things, one name" confusion that has already cost this project real
+        time, so the thing a session stands in gets its own.
+
+        Per WORKER rather than per task, because that is what having a desk
+        means: it persists across the jobs done at it, and files left by the
+        last task are usually the point. A task needing isolation still passes
+        `--workdir`, which overrides.
+        """
+        return self.agent_dir / "work"
+
+    @property
     def host(self) -> Path:
         """W_host — tools, paths, resources. Never leaves this machine."""
         return self.agent_dir / "host"
@@ -148,7 +164,7 @@ class Config:
             d.mkdir(parents=True, exist_ok=True)
         self.vault_dir.chmod(0o700)
         for agent in self.agents.values():
-            for d in (agent.workspace, agent.host, agent.tasks,
+            for d in (agent.workspace, agent.work_dir, agent.host, agent.tasks,
                       agent.sessions, agent.selfmodel):
                 d.mkdir(parents=True, exist_ok=True)
 

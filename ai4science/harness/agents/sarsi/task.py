@@ -182,6 +182,20 @@ def create(config: Config, agent: Agent, directive: Directive, *,
                 goal=directive.goal, state=PLANNING,
                 directive=directive.as_record(), backend=chosen,
                 created_at=stamp, updated_at=stamp)
+    # A worker HAS a desk. `--workdir` was a flag the owner had to remember, and
+    # a task created without it had no declared working directory at all --
+    # which meant the session stood in its task folder and every write outside
+    # it was a question. Defaulting to the worker's own `work_dir` is what makes
+    # a task created from the REPL, where no flag exists, work at all.
+    #
+    # Explicit still wins: a directive naming a directory keeps it.
+    if not task.work_root:
+        task.work_root = str(agent.work_dir)
+        try:
+            agent.work_dir.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            pass          # a desk that cannot be made is reported by the run,
+                          # not by refusing to file the task
     _save(agent, task)
     return task
 
@@ -395,7 +409,13 @@ def attach_plan(config: Config, agent: Agent, task: Task, plan: pl.Plan, *,
     path.write_text(plan.render())
     task.plan_version = plan.version
     task.criteria = plan.criteria()
-    task.work_root = plan.work_root
+    # Only when the plan NAMES one. A plan that says nothing about a working
+    # directory is not a plan that says "nowhere" -- and this assigned
+    # unconditionally, so a drafted plan (which declares none) erased the
+    # worker's desk that `create` had just set. Every task made through the
+    # REPL came out with no working directory; the unit test passed because it
+    # called `create` alone, and the keyboard did not.
+    task.work_root = plan.work_root or task.work_root
     task.may_touch = list(plan.may_touch)
     task.max_steps, task.max_minutes = plan.max_steps, plan.max_minutes
     task.max_plan_steps = plan.max_plan_steps
@@ -478,7 +498,13 @@ def adopt_plan(config: Config, agent: Agent, task: Task, plan: pl.Plan, *,
     already exists on disk, so the session's own wording survives intact.
     """
     task.plan_version = plan.version
-    task.work_root = plan.work_root
+    # Only when the plan NAMES one. A plan that says nothing about a working
+    # directory is not a plan that says "nowhere" -- and this assigned
+    # unconditionally, so a drafted plan (which declares none) erased the
+    # worker's desk that `create` had just set. Every task made through the
+    # REPL came out with no working directory; the unit test passed because it
+    # called `create` alone, and the keyboard did not.
+    task.work_root = plan.work_root or task.work_root
     task.may_touch = list(plan.may_touch)
     task.max_steps, task.max_minutes = plan.max_steps, plan.max_minutes
     task.max_plan_steps = plan.max_plan_steps

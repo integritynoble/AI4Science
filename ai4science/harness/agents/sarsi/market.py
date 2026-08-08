@@ -367,7 +367,7 @@ def _write_entry(config: Config, entry: Dict[str, Any]) -> None:
 def _installed_dirs(config: Config, agent_id: str) -> None:
     """Empty, and made here rather than shipped. See `_check_shipped_state`."""
     agent = Agent(id=agent_id, role=WORKER_ROLE, root=config.root)
-    for d in (agent.workspace, agent.host, agent.tasks, agent.sessions,
+    for d in (agent.workspace, agent.work_dir, agent.host, agent.tasks, agent.sessions,
               agent.selfmodel):
         d.mkdir(parents=True, exist_ok=True)
 

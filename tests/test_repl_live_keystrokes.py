@@ -61,3 +61,49 @@ def test_and_pressing_p_reaches_the_plan_branch(screen):
 def test_the_goal_reached_the_confirmation_stripped(screen):
     """B1's stripping, seen from the keyboard rather than from `classify`."""
     assert "write a GAP-TV solver for CASSI" in screen, screen[-800:]
+
+
+# ── B4: a task created from keystrokes lands on the worker's desk ─────
+
+def test_a_task_made_from_keystrokes_gets_a_working_directory(tmp_path):
+    """The assertion that caught a real defect, and the reason this file exists.
+
+    `tsk.create` sets the worker's desk; `attach_plan` then took
+    `plan.work_root` unconditionally, and a drafted plan declares none — so
+    every task made through the REPL, which drafts immediately, came out with
+    no working directory at all. The unit test passed because it called
+    `create` alone. Only keystrokes showed it.
+
+    No `--workdir` is typed anywhere below. That is the whole point of B4.
+    """
+    import subprocess as sp, sys as _sys, os as _os
+    state = tmp_path / "state"
+    env = {**_os.environ, "SARSI_STATE_DIR": str(state), "COLUMNS": "140",
+           "TERM": "dumb"}
+    init = sp.run([_sys.executable, "-m", "ai4science.cli", "sarsi", "init",
+                   "--owner-id", "7007143162"], capture_output=True, text=True,
+                  env=env, timeout=120)
+    if init.returncode != 0:
+        pytest.skip("cannot init a sarsi registry here")
+
+    keys = "/sarsi-worker\nwrite a GAP-TV solver for CASSI\n\n/exit\n"
+    try:
+        sp.run([_sys.executable, "-m", "ai4science.cli", "chat",
+                "--mode", "unified-LLM"], input=keys, capture_output=True,
+               text=True, timeout=150, env=env)
+    except sp.TimeoutExpired:
+        pytest.skip("the REPL did not exit here")
+
+    import importlib
+    for m in ("ai4science.harness.agents.sarsi.registry",
+              "ai4science.harness.agents.sarsi.task"):
+        importlib.invalidate_caches()
+    _os.environ["SARSI_STATE_DIR"] = str(state)
+    from ai4science.harness.agents.sarsi import registry as reg, task as tsk
+    config = reg.load(reg.config_path(state))
+    agent = config.agents["sarsi-worker"]
+    tasks = tsk.all_of(config, agent)
+    assert tasks, "no task was created from the keystrokes"
+    t = tasks[0]
+    assert t.work_root == str(agent.work_dir), (t.work_root, str(agent.work_dir))
+    assert agent.work_dir.is_dir()
