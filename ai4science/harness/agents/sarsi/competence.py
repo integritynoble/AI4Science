@@ -153,7 +153,13 @@ def render(est: Optional[Dict[str, Any]]) -> str:
     """
     if not est:
         return "no verified outcomes yet"
-    line = ("%.0f%% (±%.0f) over %d verified outcome%s — %d passed, %d failed"
+    # "N verified, N refuted" rather than "N passed, N failed". These are
+    # VERDICTS on tasks, not test results, and the second phrasing is pytest's
+    # summary format -- log scanners and error detectors read it as a failing
+    # test run and raised a false alarm twice. Output written without regard
+    # for what else reads it gets misread; that is the same lesson the parity
+    # sweep learned about matching another system's wording.
+    line = ("%.0f%% (±%.0f) over %d verified outcome%s — %d verified, %d refuted"
             % (est["p"] * 100, est["ci"] * 100, est["n"],
                "" if est["n"] == 1 else "s", est["passed"], est["failed"]))
     if est.get("self_judged"):

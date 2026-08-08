@@ -173,6 +173,9 @@ def test_and_a_measured_one_reads_as_a_claim(config):
     _judged(config, a, "PASS", n=3)
     line = comp.render(comp.competence(config, a))
     assert "3" in line and "%" in line
+    # Not pytest's "N passed, N failed": these are verdicts on tasks, and that
+    # phrasing was read as a failing test run by two different log scanners.
+    assert "passed," not in line and "failed" not in line, line
 
 
 # ── and the self-model carries it ─────────────────────────────────────
