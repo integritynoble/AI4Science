@@ -86,10 +86,18 @@ def test_the_task_takes_the_declared_root_from_its_plan(config, agent, tmp_path)
     assert tsk.evidence_root(agent, t) == root.resolve()
 
 
-def test_with_no_declaration_the_task_folder_is_the_root(config, agent):
+def test_with_no_declaration_the_workers_desk_is_the_root(config, agent):
+    """CHANGED by 5-B4: a worker HAS a desk, so "a task that declares nothing"
+    no longer exists. `tsk.create` gives every task the worker's `work_dir`
+    unless a directive or plan names one, which is the whole point — the owner
+    should not have to remember `--workdir`.
+
+    The invariant this test was written for is kept below; only the expected
+    location moved, from the task folder to the desk.
+    """
     d = worker.Directive(agent_id=agent.id, goal="g")
     t = tsk.attach_plan(config, agent, tsk.create(config, agent, d), pl.draft(d))
-    assert tsk.evidence_root(agent, t) == tsk.dir_of(agent, t.id).resolve()
+    assert tsk.evidence_root(agent, t) == agent.work_dir.resolve()
 
 
 # ── gathering from it ─────────────────────────────────────────────────

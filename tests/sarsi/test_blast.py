@@ -191,10 +191,23 @@ def test_no_transcript_is_not_a_clean_bill(config, agent, tmp_path):
 
 # ── a task with no declaration ────────────────────────────────────────
 
-def test_a_task_with_no_working_directory_uses_its_own_folder(config, agent):
+def test_a_task_that_declares_nothing_uses_the_workers_desk(config, agent):
+    """CHANGED by 5-B4: a worker HAS a desk, so "a task that declares nothing"
+    no longer exists. `tsk.create` gives every task the worker's `work_dir`
+    unless a directive or plan names one, which is the whole point — the owner
+    should not have to remember `--workdir`.
+
+    The invariant this test was written for is kept below; only the expected
+    location moved, from the task folder to the desk.
+    """
     d = worker.Directive(agent_id=agent.id, goal="g")
     t = tsk.attach_plan(config, agent, tsk.create(config, agent, d), pl.draft(d))
-    assert blast.declared(agent, t) == [tsk.dir_of(agent, t.id).resolve()]
+    got = blast.declared(agent, t)
+    # BOTH: the task folder, where plan0.md is written, and the desk, where the
+    # work happens. The blast radius was one place because there was only one;
+    # it is two because a worker now has somewhere to work.
+    assert agent.work_dir.resolve() in got, got
+    assert tsk.dir_of(agent, t.id).resolve() in got, got
 
 
 # ── it shows up where the owner reads ─────────────────────────────────

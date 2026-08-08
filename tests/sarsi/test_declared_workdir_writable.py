@@ -264,9 +264,12 @@ def test_and_the_task_folder_travels_with_it(tmp_path, monkeypatch):
     assert str(tsk.dir_of(agent, t.id)) in (calls.get("claude_bin") or "")
 
 
-def test_a_task_with_no_declared_directory_passes_none(tmp_path, monkeypatch):
-    """No flag rather than an empty one: `--writable ''` would resolve to the
-    process's cwd, which is whatever launched the daemon."""
+def test_a_task_with_no_declared_directory_passes_the_desk(tmp_path, monkeypatch):
+    """CHANGED by 5-B4. The concern this was written for is unchanged and still
+    asserted: never `--writable ''`, which would resolve to whatever launched
+    the daemon. What changed is that there is now always something real to
+    pass — the worker's desk — so the flag is present and names a directory
+    that exists."""
     from ai4science.harness.agents.sarsi import session as ses
     config, agent, t = _sarsi(tmp_path, monkeypatch)
 
@@ -276,7 +279,9 @@ def test_a_task_with_no_declared_directory_passes_none(tmp_path, monkeypatch):
                         lambda name, cwd, **kw: calls.update(kw) or
                         {"ok": True, "name": name, "pid": 1, "cwd": cwd})
     ses.assign(config, agent, t, runtime=ses.MachineRuntime())
-    assert "--writable" not in (calls.get("claude_bin") or "")
+    bin_ = calls.get("claude_bin") or ""
+    assert "--writable ''" not in bin_ and "--writable \"\"" not in bin_, bin_
+    assert str(agent.work_dir) in bin_ or not bin_, bin_
 
 
 # ── the hook and the sandbox must get the SAME paths ──────────────────
