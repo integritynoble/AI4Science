@@ -624,20 +624,23 @@ def _next_available_brand(current: Optional[str]):
 #  • Every other agent gets the cross-provider flagship menu and can switch freely.
 # Selecting an entry switches BOTH backend and model.
 _LOCKED_MENU = {
-    "anthropic": [("Opus 4.8", "anthropic", "claude-opus-4-8"),
+    "anthropic": [("Opus 5", "anthropic", "claude-opus-5"),
+                  ("Opus 4.8", "anthropic", "claude-opus-4-8"),
                   ("Sonnet 4.6", "anthropic", "claude-sonnet-4-6"),
                   ("Haiku 4.5", "anthropic", "claude-haiku-4-5")],
     "openai":    [("ChatGPT 5.5", "openai", "gpt-5.5"),
                   ("ChatGPT 5.5 Codex", "openai", "gpt-5.5-codex")],
 }
-_FLAGSHIP_MENU = [("Opus 4.8", "anthropic", "claude-opus-4-8"),
+_FLAGSHIP_MENU = [("Opus 5", "anthropic", "claude-opus-5"),
+                  ("Opus 4.8", "anthropic", "claude-opus-4-8"),
                   ("ChatGPT 5.5", "openai", "gpt-5.5"),
                   ("Gemini 3.1 Pro", "gemini", "gemini-3.1-pro-preview")]
 
 # Typed shortcuts (`/model haiku`, `/model gpt`, …) → model id, resolved within
 # whatever menu the active agent allows.
 _TYPED_ALIASES = {
-    "opus": "claude-opus-4-8", "opus-4-8": "claude-opus-4-8", "fable": "claude-opus-4-8",
+    "opus": "claude-opus-5", "opus-5": "claude-opus-5",
+    "opus-4-8": "claude-opus-4-8", "fable": "claude-opus-5",
     "sonnet": "claude-sonnet-4-6", "haiku": "claude-haiku-4-5",
     "gpt": "gpt-5.5", "chatgpt": "gpt-5.5", "gpt-5.5": "gpt-5.5", "gpt5.5": "gpt-5.5",
     "codex": "gpt-5.5-codex",
@@ -707,7 +710,7 @@ def _pick_brand(backend: Optional[str], model: Optional[str]):
             if b == backend:
                 return backend, m
         # Backend not in orchestration chain — use a default model.
-        return backend, "claude-opus-4-8"
+        return backend, "claude-opus-5"
 
     if model:
         # Only a model id given — infer its backend so `--model gemini-…` works.
@@ -1041,7 +1044,8 @@ def run_common_repl(
     # Clean Claude-Code-style welcome header (coral accent), instead of noisy
     # [harness] log lines.
     _coral, _dim, _rst = "\x1b[38;5;173m", "\x1b[2m", "\x1b[0m"
-    _friendly = {"claude-opus-4-8": "Opus 4.8", "claude-sonnet-4-6": "Sonnet 4.6",
+    _friendly = {"claude-opus-5": "Opus 5",
+                 "claude-opus-4-8": "Opus 4.8", "claude-sonnet-4-6": "Sonnet 4.6",
                  "claude-haiku-4-5": "Haiku 4.5", "gpt-5.5": "ChatGPT 5.5",
                  "gpt-5.5-codex": "ChatGPT 5.5 Codex",
                  "gemini-3.1-pro-preview": "Gemini 3.1 Pro"}
