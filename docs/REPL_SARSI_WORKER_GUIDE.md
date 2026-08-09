@@ -97,16 +97,22 @@ startable), `awaiting-grant` (plan done, needs your permissions), `verified`
 `/tsk_XXXXXXXXXX` (bare) shows the task and then drops you into **guided
 mode** — the prompt becomes `tsk_xxxx (guided) ❯`:
 
-- **Every line you type is steering**: it goes into the session *ahead of*
-  whatever the worker's loop would have said next. You'll see
-  `sent, ahead of the worker — <your words>`. The worker keeps running; your
-  word just cuts the line.
+- **Instructions steer, questions are answered.** An imperative line goes
+  into the session *ahead of* whatever the worker's loop would have said next
+  (`sent, ahead of the worker — <your words>`). A line that reads as a
+  question — starts with what/why/how/is/can/status/… or ends with `?` — is
+  answered from the task's record instead: state, plan, phase verdicts, and
+  a note that nothing was sent. So `what is the plan of this task?` shows
+  the plan; `focus on the mask convention first` steers.
 - `/tsk_XXXXXXXXXX <instruction>` from anywhere does the same as a one-shot,
   without entering the mode.
 - `/interact` — hands your terminal to the task's actual tmux session (the
   work itself). Steering is paused first, and the plan is marked stale —
   because once you drive by hand, the old plan's criteria may no longer
-  describe the work. `Ctrl-b d` hands the terminal back.
+  describe the work. **Press `Ctrl-z` to come back** — a single key, bound
+  for the duration of the attach and removed after (the classic `Ctrl-b d`
+  also works when not nested). The attach now also works when the REPL
+  itself runs inside tmux.
 - `/interact --print` — prints the session's screen instead of attaching.
   **Use this when attach fails** (see §7).
 - `/back` — leave guided mode.
@@ -136,14 +142,14 @@ The full lifecycle, in one line:
 
 ## 7. Rough edges you will actually hit
 
-- **`/interact` fails with "tmux would not attach … (exit 1)".** Almost
-  always you are running the REPL *inside* tmux — tmux refuses to nest.
-  Three ways through: `/interact --print` (read the screen without
-  attaching); attach from a second, plain terminal
-  (`tmux attach -t sarsi-worker-<last4>`); or force the nest from a shell
-  with `TMUX= tmux attach -t <name>`. If none work, the session may simply
-  be gone — `ai4science sarsi tasks sarsi-worker` will say what the task is
-  waiting for.
+- **Getting back from `/interact`.** Since 1.1.8.dev13: press **`Ctrl-z`**
+  once — you are back at the REPL, and the nested-tmux case (REPL running
+  inside tmux) attaches instead of failing with exit 1. On older builds:
+  `/interact --print` reads the screen without attaching, or attach from a
+  second plain terminal (`tmux attach -t sarsi-worker-<last4>`,
+  `Ctrl-b d` back; nested: `TMUX= tmux attach …`, `Ctrl-b Ctrl-b d`). If
+  nothing attaches, the session may simply be gone —
+  `ai4science sarsi tasks sarsi-worker` says what the task waits for.
 - **A pending confirmation eats the next line.** By design the `create it?`
   question owns whatever you type next — answer it (`n` is always safe)
   before typing commands.

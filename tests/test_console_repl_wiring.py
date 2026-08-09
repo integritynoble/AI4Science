@@ -101,8 +101,30 @@ def test_the_attach_is_injectable_and_pauses_before_attaching():
     calls = []
     out = repl._attach_tmux("sarsi-worker-cd34",
                             run=lambda argv: calls.append(argv) or 0)
-    assert calls == [["tmux", "attach", "-t", "sarsi-worker-cd34"]]
+    assert ["tmux", "attach", "-t", "sarsi-worker-cd34"] in calls
     assert "sarsi-worker-cd34" in out
+
+
+def test_the_attach_offers_one_key_back_and_cleans_it_up():
+    """Ctrl-z detaches for the duration of the attach and ONLY for the
+    duration: the binding is set before the terminal is handed over and
+    removed after it comes back, whatever happened in between."""
+    calls = []
+    out = repl._attach_tmux("sarsi-worker-cd34",
+                            run=lambda argv: calls.append(argv) or 0)
+    assert calls[0] == ["tmux", "bind-key", "-n", "C-z", "detach-client"]
+    assert calls[-1] == ["tmux", "unbind-key", "-n", "C-z"]
+    assert "Ctrl-z" in out, "the way back is named where the owner reads it"
+
+
+def test_a_failed_bind_does_not_stop_the_attach():
+    """No binding is a degraded attach, not a failed one."""
+    def _run(argv):
+        if argv[1] == "bind-key":
+            raise FileNotFoundError("old tmux")
+        return 0
+    out = repl._attach_tmux("sarsi-worker-cd34", run=_run)
+    assert "back from sarsi-worker-cd34" in out
 
 
 def test_a_failed_attach_is_reported_not_raised():

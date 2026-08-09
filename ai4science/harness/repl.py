@@ -91,22 +91,49 @@ def _attach_tmux(session: str, *, task: str = "", agent: str = "", run=None) -> 
     line points at the CLI door that does (`sarsi ask <agent> "/resume …"`)
     rather than a command that would 404.
     """
+    import os
     import subprocess
-    argv = ["tmux", "attach", "-t", session]
-    caller = run or (lambda a: subprocess.call(a))
+    # $TMUX stripped so the attach works when the REPL itself runs inside
+    # tmux — without this, nesting is refused outright (exit 1) and the
+    # owner never even reaches the session.
+    _env = {k: v for k, v in os.environ.items() if k != "TMUX"}
+    caller = run or (lambda a: subprocess.call(a, env=_env))
+
+    # ONE key back: Ctrl-z detaches, for the duration of this attach only.
+    # The prefix chord (Ctrl-b d) still works standalone, but nested inside
+    # another tmux the OUTER server eats the prefix — Ctrl-z is not a prefix,
+    # so it reaches the inner server either way. Bound before the terminal is
+    # handed over, unbound after it comes back: a root-table binding left
+    # behind would turn Ctrl-z into detach for every session on this server.
+    bound = False
     try:
-        rc = caller(argv)
-    except Exception as e:
-        return (f"could not attach {session} — {type(e).__name__}: {e}\n"
-                f"  attach it yourself: tmux attach -t {session}")
-    if rc:
-        return (f"tmux would not attach {session} (exit {rc})\n"
-                f"  is it still running? ai4science sarsi tasks <agent>")
+        try:
+            caller(["tmux", "bind-key", "-n", "C-z", "detach-client"])
+            bound = True
+        except Exception:
+            pass                # no binding is a degraded attach, not a failed one
+        if bound:
+            print(f"entering {session} — press Ctrl-z to come back here",
+                  flush=True)
+        try:
+            rc = caller(["tmux", "attach", "-t", session])
+        except Exception as e:
+            return (f"could not attach {session} — {type(e).__name__}: {e}\n"
+                    f"  attach it yourself: tmux attach -t {session}")
+        if rc:
+            return (f"tmux would not attach {session} (exit {rc})\n"
+                    f"  is it still running? ai4science sarsi tasks <agent>")
+    finally:
+        if bound:
+            try:
+                caller(["tmux", "unbind-key", "-n", "C-z"])
+            except Exception:
+                pass
     if agent and task:
-        return (f"back from {session}. {task} is paused — the worker will "
-                f"not steer it again until you resume it:\n"
+        return (f"back from {session} (Ctrl-z came home). {task} is paused — "
+                f"the worker will not steer it again until you resume it:\n"
                 f"  ai4science sarsi ask {agent} \"/resume {task}\"")
-    return f"back from {session}."
+    return f"back from {session} (Ctrl-z came home)."
 
 
 def _console_deps(state: dict) -> dict:
@@ -220,10 +247,45 @@ def _console_deps(state: dict) -> dict:
         except Exception:
             return ""
 
+    def _task_status(task_id: str) -> str:
+        """The task's record, for a question asked in guided mode — with the
+        one fact the guided prompt otherwise hides: nothing was sent."""
+        try:
+            config = _config()
+            agent, t = _find_task(config, task_id)
+        except Exception as e:
+            return f"could not read {task_id}: {e}"
+        if t is None:
+            return f"{task_id} is not a task on this machine — /task lists them"
+        lines = [task_view(config, agent, t)]
+        try:
+            from ai4science.harness.agents.sarsi import task as tsk
+            plan = tsk.read_plan(config, agent, t)
+            if plan:
+                lines.append("  plan:")
+                lines.extend("    " + ln for ln in plan.render().splitlines())
+            else:
+                lines.append("  no plan yet — the session drafts one at A0")
+        except Exception:
+            pass
+        for key in sorted((t.phase_verdicts or {}), key=str):
+            v = (t.phase_verdicts or {}).get(key) or {}
+            reason = str(v.get("reason", ""))[:120]
+            lines.append(f"  phase {int(key) + 1 if str(key).isdigit() else key}"
+                         f": {str(v.get('state', '?')).upper()}"
+                         + (f" — {reason}" if reason else ""))
+        lines.append(
+            "  (answered from the task's record — nothing went to the "
+            "session.\n"
+            "   steer it: say it as an instruction · watch it: "
+            "/interact --print\n"
+            f"   full verdicts: ai4science sarsi why {agent.id} {t.id})")
+        return "\n".join(lines)
+
     return {"resolve": resolve_name, "find_task": _find, "suggest": _suggest,
             "create": _create, "guide": _guide, "session_of": _session_of,
             "pause_for_interact": _pause_for_interact, "unknown": slash_answer,
-            "about_self": _about_self}
+            "about_self": _about_self, "task_status": _task_status}
 
 
 def _source() -> str:

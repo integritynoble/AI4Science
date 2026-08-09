@@ -565,3 +565,32 @@ def test_the_default_confirm_carries_no_backend():
     act, _ = console.route("", m, _deps())
     assert act.kind == "create"
     assert act.backend == ""
+
+
+def test_a_question_in_task_mode_is_answered_not_steered():
+    """The owner asking ABOUT the task is not steering it. 'what is process
+    now' went into a live session as steering and the owner read the silence
+    as 'no reasoning ability' — the answer must come from the task's record,
+    and say that nothing was sent."""
+    m = console.Mode(kind="task", name="tsk_ab12cd34")
+    act, mode = console.route(
+        "what is the process now", m,
+        _deps(task_status=lambda t: f"{t} — running — status text"))
+    assert act.kind == "say"
+    assert "tsk_ab12cd34" in act.text
+    assert mode == m, "asking does not change where you are standing"
+
+
+def test_a_question_mark_in_task_mode_is_answered_not_steered():
+    m = console.Mode(kind="task", name="tsk_ab12cd34")
+    act, _ = console.route("did it finish?", m,
+                           _deps(task_status=lambda t: "state line"))
+    assert act.kind == "say" and "state line" in act.text
+
+
+def test_task_mode_without_a_status_dep_still_steers():
+    """A console wired before task_status existed keeps its old behavior —
+    a missing dep must not turn every question into a crash or a swallow."""
+    m = console.Mode(kind="task", name="tsk_ab12cd34")
+    act, _ = console.route("what is the process now", m, _deps())
+    assert act.kind == "guide"

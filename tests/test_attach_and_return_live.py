@@ -73,12 +73,12 @@ def test_attach_takes_the_terminal_and_detach_hands_it_back():
 
         os.write(fd, b"\x02d")               # C-b d — the owner detaches
         _pump(fd, raw, time.monotonic() + 20.0,
-              until=f"RESULT:back from {name}.".encode())
+              until=f"RESULT:back from {name} (Ctrl-z came home).".encode())
         os.close(fd)
         os.waitpid(pid, 0)
 
         text = raw.decode(errors="replace")
-        assert f"RESULT:back from {name}." in text, (
+        assert f"RESULT:back from {name} (Ctrl-z came home)." in text, (
             "detach did not hand the terminal back:\n" + text)
     finally:
         subprocess.run(["tmux", "kill-session", "-t", name],

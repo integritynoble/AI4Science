@@ -281,9 +281,33 @@ def route(line: str, mode: Mode, deps: dict) -> tuple:
                  recent=got.goal)
 
     if mode.kind == "task":
+        # Asking ABOUT the task is not steering it. "what is process now"
+        # went into a live session as raw steering, the session answered on
+        # its own screen, and the owner — who never saw that screen — read
+        # the silence as the worker having no reasoning at all. A question is
+        # answered from the task's record, and says so; only an instruction
+        # goes in ahead of the worker.
+        if _is_question(line) and "task_status" in deps:
+            return Action("say", text=deps["task_status"](mode.name)), mode
         return Action("guide", task=mode.name, text=line), mode
 
     return Action("answer", text=line), mode
+
+
+#: First words that make a line a question even without the "?" the owner
+#: rarely types. Deliberately small: a word like "check" or "run" must stay
+#: an instruction.
+_ASKING = {"what", "whats", "why", "how", "where", "when", "who", "which",
+           "is", "are", "was", "were", "does", "do", "did", "has", "have",
+           "can", "could", "should", "status", "progress"}
+
+
+def _is_question(line: str) -> bool:
+    text = (line or "").strip().lower()
+    if text.endswith("?"):
+        return True
+    words = re.findall(r"[a-z][\w'-]*", text)
+    return bool(words) and words[0] in _ASKING
 
 
 @dataclass(frozen=True)
