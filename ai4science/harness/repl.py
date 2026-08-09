@@ -67,7 +67,7 @@ def known_commands() -> set:
 #: can return, because an action the console produces and the loop does not
 #: handle is a command that silently does nothing.
 HANDLED_ACTIONS = {"answer", "say", "confirm", "create", "guide", "attach",
-                   "enter", "leave", "noop"}
+                   "enter", "leave", "noop", "task-verb"}
 
 
 def _prompt_for(state: dict) -> str:
@@ -282,10 +282,54 @@ def _console_deps(state: dict) -> dict:
             f"   full verdicts: ai4science sarsi why {agent.id} {t.id})")
         return "\n".join(lines)
 
+    def _task_verb(verb: str, task_id: str, rest: str) -> str:
+        """The owner's lifecycle acts, from the REPL — the same library calls
+        the CLI verbs make, so the two doors cannot drift."""
+        try:
+            config = _config()
+            agent, t = _find_task(config, task_id)
+        except Exception as e:
+            return f"could not read {task_id}: {e}"
+        if t is None:
+            return f"{task_id} is not a task on this machine — /task lists them"
+        from ai4science.harness.agents.sarsi import (chat as sarsi_chat,
+                                                     session as ses,
+                                                     task as tsk)
+        label = f"{t.name}---task" if t.name else t.id
+        try:
+            if verb == "stop":
+                ses.stop(config, agent, t)
+                return (f"{label} stopped — its slot is free. Pick it up "
+                        f"again: ai4science sarsi run {agent.id} {t.id}")
+            if verb == "archive":
+                ses.stop(config, agent, t, archive=True)
+                return f"{label} archived — off the board, and kept"
+            if verb == "reopen":
+                if t.state != tsk.ARCHIVED:
+                    return f"{label} is not archived — it is {t.state}"
+                tsk.reopen(config, agent, t)
+                return f"{label} is back on the board, stopped"
+            if verb == "goal":
+                if not rest:
+                    return "usage: /goal [task] <the new goal, one sentence>"
+                return sarsi_chat.handle(config, agent,
+                                         f"/goal {t.id} {rest}", surface="cli")
+            if verb == "rename":
+                if not rest:
+                    return "usage: /rename [task] <new name>"
+                tsk.rename(config, agent, t, rest)
+                return f"{t.id} is now {t.name}---task"
+        except ValueError as e:
+            return str(e)
+        except Exception as e:
+            return f"could not {verb} {label}: {type(e).__name__}: {e}"
+        return f"/{verb} is not an owner act this REPL knows"
+
     return {"resolve": resolve_name, "find_task": _find, "suggest": _suggest,
             "create": _create, "guide": _guide, "session_of": _session_of,
             "pause_for_interact": _pause_for_interact, "unknown": slash_answer,
-            "about_self": _about_self, "task_status": _task_status}
+            "about_self": _about_self, "task_status": _task_status,
+            "task-verb": _task_verb}
 
 
 def _source() -> str:
@@ -360,6 +404,9 @@ def resolve_name(name: str):
         return "command", low
     if low.startswith("tsk_"):
         return "task", low
+    named = _task_by_name(low)
+    if named:
+        return "task", named
     spec = low in {s.lower() for s in _chat_specs()}
     roster = low in {a.lower() for a in _roster_agents()}
     if spec and roster:
@@ -371,6 +418,22 @@ def resolve_name(name: str):
     if roster:
         return "roster", low
     return "unknown", low
+
+
+def _task_by_name(low: str) -> str:
+    """The task id wearing this name, or "". Names lose to everything that
+    resolves earlier (commands, `tsk_` ids) — a name may not shadow either."""
+    if not low or low.startswith("tsk_"):
+        return ""
+    try:
+        from ai4science.harness.agents.sarsi import registry as reg
+        config = reg.load()
+        for _agent, t in all_tasks(config):
+            if (t.name or "").lower() == low:
+                return t.id
+    except Exception:
+        pass
+    return ""
 
 
 def slash_answer(line: str) -> str:
@@ -423,6 +486,10 @@ def _dispatch_slash(line: str, state: dict) -> tuple[bool, str]:
                       "/agent [name|specific <q>] /do <goal> /tasks /login "
                       "/whoami /feedback <text> /readonly /yes /default "
                       "/cost /files /subagents /exit\n"
+                      "  tasks: /task (all boards) /<task-name> or /tsk_… "
+                      "(open, guided) /interact (its terminal — Ctrl-z back) "
+                      "/rename /goal /stop /archive /reopen [task] — owner "
+                      "acts on the task named, or the one you stand in\n"
                       "  /do hands the goal to this agent's sarsi worker "
                       "(task + plan + sarsi-claude) instead of answering here\n"
                       "  /subagents lists the nested delegation types the "
@@ -502,7 +569,8 @@ def task_view(config, agent, task) -> str:
     would leave the owner at the edge of the thing they asked to enter.
     """
     session = (task.session or {}).get("name") if isinstance(task.session, dict) else None
-    lines = [f"{task.id} — {task.state} — {agent.id}",
+    label = f"{task.name}---task ({task.id})" if task.name else task.id
+    lines = [f"{label} — {task.state} — {agent.id}---agent",
              f"  {(task.goal or '')[:160]}"]
     if task.blocked_by:
         lines.append(f"  waiting on: {task.blocked_by}")
@@ -538,8 +606,12 @@ def _task_slash(cmd: str, arg: str) -> str:
         rows = all_tasks(config)
         if not rows:
             return "no tasks on this machine yet — /<agent> do <goal> starts one"
-        return "\n".join(f"  {t.id}  {t.state:<14} {a.id:<22} "
-                          f"{(t.goal or '')[:60]}" for a, t in rows)
+        # The NAME is the row's handle — `/write-fib` opens it. The id still
+        # exists (task view shows it); a board is for scanning, not quoting.
+        return "\n".join(
+            f"  {(t.name + '---task' if t.name else t.id):<26} "
+            f"{t.state:<12} {a.id + '---agent':<28} "
+            f"{(t.goal or '')[:50]}" for a, t in rows)
 
     agent, t = _find_task(config, cmd)
     if t is None:
@@ -1192,6 +1264,9 @@ def run_common_repl(
                       flush=True)
             elif _act.kind == "guide":
                 print(_deps["guide"](_act.task, _act.text), flush=True)
+            elif _act.kind == "task-verb":
+                print(_deps["task-verb"](_act.verb, _act.task, _act.text),
+                      flush=True)
             elif _act.kind == "attach":
                 _agent_id = _deps["pause_for_interact"](_act.task)
                 print(_attach_tmux(_act.session, task=_act.task,

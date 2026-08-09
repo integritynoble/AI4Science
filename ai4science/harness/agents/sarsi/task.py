@@ -18,6 +18,7 @@ Four properties, each of them a rule from the spec rather than a convenience:
 from __future__ import annotations
 
 import json
+import re
 import time
 import uuid
 from dataclasses import asdict, dataclass, field, replace as dataclasses_replace
@@ -59,6 +60,10 @@ class Task:
     agent_id: str
     goal: str
     state: str = PLANNING
+    #: Short owner-facing name, shown on boards as `<name>---task`. The id
+    #: stays the identity — sessions, folders and references key on it; the
+    #: name is what a human scans a board by, and it is renamable.
+    name: str = ""
     directive: Dict[str, Any] = field(default_factory=dict)
     plan_version: Optional[str] = None
     criteria: List[str] = field(default_factory=list)
@@ -173,6 +178,53 @@ class Task:
 
 # ── creating and reading ──────────────────────────────────────────────
 
+#: Words that carry no scent of WHICH task this is. The leading verb stays —
+#: `count-md` and `write-fib` read better than two bare nouns.
+_NAME_NOISE = {"the", "a", "an", "in", "on", "at", "of", "to", "for", "this",
+               "that", "these", "those", "with", "under", "into", "and",
+               "please", "me", "my", "your", "it", "its", "is", "are", "be",
+               "folder", "directory", "file", "files", "called", "named",
+               "exactly", "whose", "first", "line", "working"}
+
+
+def slug_of(goal: str, *, limit: int = 3) -> str:
+    """A short scannable name from a goal: `write fib.py …` → `write-fib`.
+
+    Deterministic and lossy on purpose — the goal stays the goal; the name
+    only has to tell tasks apart on a board.
+    """
+    words = re.findall(r"[A-Za-z][A-Za-z0-9]*", (goal or "").lower())
+    kept = [w for w in words if w not in _NAME_NOISE][:limit]
+    return "-".join(kept)[:24].rstrip("-")
+
+
+def _unique_name(config: Config, agent: Agent, base: str) -> str:
+    """`base`, or `base-2`/`base-3`… if a live task already wears it."""
+    if not base:
+        return ""
+    taken = {t.name for t in all_of(config, agent) if t.name}
+    if base not in taken:
+        return base
+    n = 2
+    while f"{base}-{n}" in taken:
+        n += 1
+    return f"{base}-{n}"
+
+
+def rename(config: Config, agent: Agent, task: Task, wanted: str, *,
+           now=time.time) -> Task:
+    """Give the task the name the owner asked for — slugged, kept unique.
+
+    Refuses emptiness rather than inventing: a rename to nothing is a
+    question, not an instruction.
+    """
+    base = slug_of(wanted, limit=4)
+    if not base:
+        raise ValueError(f"{wanted!r} has no letters to make a name from")
+    task.name = _unique_name(config, agent, base)
+    return _touch(agent, task, now)
+
+
 def create(config: Config, agent: Agent, directive: Directive, *,
            backend: str = "", now=time.time) -> Task:
     _require_worker(agent)
@@ -185,6 +237,7 @@ def create(config: Config, agent: Agent, directive: Directive, *,
     stamp = _iso(now())
     task = Task(id=f"tsk_{uuid.uuid4().hex[:10]}", agent_id=agent.id,
                 goal=directive.goal, state=PLANNING,
+                name=_unique_name(config, agent, slug_of(directive.goal)),
                 directive=directive.as_record(), backend=chosen,
                 created_at=stamp, updated_at=stamp)
     # A worker HAS a desk. `--workdir` was a flag the owner had to remember, and

@@ -177,7 +177,8 @@ def _tasks(config: Config, agent: Agent) -> str:
         # never idle-looking when it is actually blocked: say which
         waiting = ", ".join(t.awaiting) or t.blocked_by or ""
         suffix = f" — waiting on {waiting}" if waiting else ""
-        lines.append(f"  /{t.id}  {t.goal}  [{t.state}]{suffix}")
+        label = f"{t.name}---task  " if t.name else ""
+        lines.append(f"  /{t.id}  {label}{t.goal}  [{t.state}]{suffix}")
     return "\n".join(lines) + tail
 
 

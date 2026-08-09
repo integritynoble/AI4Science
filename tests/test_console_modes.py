@@ -594,3 +594,32 @@ def test_task_mode_without_a_status_dep_still_steers():
     m = console.Mode(kind="task", name="tsk_ab12cd34")
     act, _ = console.route("what is the process now", m, _deps())
     assert act.kind == "guide"
+
+
+def test_stop_in_task_mode_acts_on_the_standing_task():
+    m = console.Mode(kind="task", name="tsk_ab12cd34")
+    act, mode = console.route("/stop", m, _deps())
+    assert act.kind == "task-verb" and act.verb == "stop"
+    assert act.task == "tsk_ab12cd34"
+    assert mode == m
+
+
+def test_goal_with_an_explicit_task_works_from_anywhere():
+    act, _ = console.route("/goal tsk_ab12cd34 count only tracked files",
+                           console.Mode(), _deps())
+    assert act.kind == "task-verb" and act.verb == "goal"
+    assert act.task == "tsk_ab12cd34"
+    assert act.text == "count only tracked files"
+
+
+def test_rename_keeps_the_words_after_the_task_token():
+    m = console.Mode(kind="task", name="tsk_ab12cd34")
+    act, _ = console.route("/rename gen", m, _deps())
+    assert act.kind == "task-verb" and act.verb == "rename"
+    assert act.task == "tsk_ab12cd34" and act.text == "gen"
+
+
+def test_a_lifecycle_verb_with_no_task_anywhere_says_so():
+    act, _ = console.route("/archive", console.Mode(), _deps())
+    assert act.kind == "say"
+    assert "needs a task" in act.text

@@ -76,6 +76,21 @@ slash is read as an answer, so don't type commands here):
 So to run a REPL-created task on real Claude Code: type the directive,
 press `b`, read `backend: sarsi-claude`, press Enter.
 
+## 3b. Names — every task wears one
+
+A task gets a short **name** derived from its goal (`write fib.py …` →
+`write-fib-py`), shown on boards as `<name>---task` next to
+`<agent>---agent` — the `---type` suffix says what a name refers to. The
+`tsk_` id stays the identity underneath (sessions and folders key on it;
+the task view shows both). Names are unique per worker (`write-fib-2` when
+taken) and renamable:
+
+```
+/rename gen                 # rename the task you are standing in
+/rename tsk_xxxx gen        # or name one explicitly
+/gen                        # a name works anywhere an id works — opens guided
+```
+
 ## 4. Boards — `/tasks` vs `/task`
 
 - `/tasks` — the board of the worker you are standing in (works from
@@ -120,10 +135,21 @@ mode** — the prompt becomes `tsk_xxxx (guided) ❯`:
 If the task has no session yet, the view says so and gives the start
 command: `ai4science sarsi run <agent> <task-id>`.
 
-## 6. What the REPL does not do — the CLI half
+## 6. Owner acts — in the REPL, and the CLI half
 
-The REPL is the door for *creating, watching, and steering*. The owner acts
-that move a task through its lifecycle live in `ai4science sarsi …`:
+Lifecycle housekeeping now has slashes. Each acts on the task you name
+(id or name) or, without one, the task you are standing in:
+
+```
+/rename [task] <new name>     # the board name; the id never changes
+/goal   [task] <one sentence> # change the goal — the plan is re-drafted
+/stop   [task]                # close its session; resumable (state → off)
+/archive [task]               # close for good — record kept, slot freed
+/reopen [task]                # an archived task back on the board, stopped
+```
+
+The verbs that move work forward remain CLI (`ai4science sarsi …`) — they
+gate real authority and stay on the one door that grants it:
 
 ```bash
 sarsi run   sarsi-worker tsk_x    # start the governed session (A0, planning)
@@ -133,7 +159,7 @@ sarsi release sarsi-worker tsk_x  # raise ceiling A0 → working level, live
 sarsi check sarsi-worker tsk_x    # independent verdict
 sarsi why   sarsi-worker tsk_x    # phase verdicts + blast radius
 sarsi attention                   # everything waiting on YOU
-sarsi stop / archive / reopen / retry / goal / handoff …
+sarsi retry / handoff …
 ```
 
 The full lifecycle, in one line:

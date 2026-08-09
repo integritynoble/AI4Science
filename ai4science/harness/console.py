@@ -51,6 +51,7 @@ class Action:
     task: Any = None
     session: str = ""
     backend: str = ""          # read by "create": which engine runs the task
+    verb: str = ""             # read by "task-verb": stop|archive|reopen|goal|rename
 
 
 def prompt_label(mode: Mode) -> str:
@@ -163,6 +164,23 @@ def route(line: str, mode: Mode, deps: dict) -> tuple:
             if mode.kind == "top":
                 return Action("say", text="already at the top"), mode
             return Action("leave"), Mode()
+
+        if name.lower() in ("stop", "archive", "reopen", "goal", "rename"):
+            # Owner acts on ONE task, from wherever they stand. The task is
+            # the first word of the rest when it names one (id or task name),
+            # else the task they are standing in — never a guess.
+            verb = name.lower()
+            token, _, tail = rest.partition(" ")
+            kind, detail = deps["resolve"](token) if token else ("", "")
+            if kind == "task":
+                return Action("task-verb", verb=verb, task=detail,
+                              text=tail.strip()), mode
+            if mode.kind == "task":
+                return Action("task-verb", verb=verb, task=mode.name,
+                              text=rest), mode
+            return Action("say", text=f"/{verb} needs a task — /{verb} "
+                          f"<task> …, or open one with /<task> first. "
+                          f"/task lists them."), mode
 
         if name.lower() == "interact":
             if mode.kind != "task":
