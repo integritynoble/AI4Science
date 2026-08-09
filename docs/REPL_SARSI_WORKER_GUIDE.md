@@ -176,5 +176,84 @@ tmux kill-session -t sarsi-worker-<last4> 2>/dev/null
 rm -rf /tmp/replguide-state /home/grace/replguide-work
 ```
 
+## 9. The three test examples, driven from the REPL
+
+`docs/TESTING_REPL_GRACE.md` proves the lifecycle with CLI commands. This
+section is the same three examples as keystrokes **inside the REPL**. One
+honest boundary first: the four owner verbs — `run`, `supervise`, `grant`,
+`release` (and `check`) — have no slash command. Two ways to reach them
+without leaving your seat:
+
+- **Cockpit + lever box (recommended):** keep the REPL in one terminal and a
+  plain shell in a second. The REPL creates, watches, and steers; the shell
+  runs the four verbs.
+- **One terminal:** the top-prompt chat agent (`❯`, Unified-LLM) has a shell
+  tool. `/back` to the top and type, as an instruction to the *assistant*:
+  `run this command and show me the output: /home/grace/sarsi-venv/bin/ai4science sarsi run sarsi-worker tsk_xxxx`
+  — approve its permission menu (`1`) and it runs it for you. Works for all
+  four verbs. Do this from the **top** prompt only: at `sarsi-worker ❯` the
+  same sentence would be classified as a new task goal.
+
+Setup (once, in a shell, so the test uses a throwaway state):
+
+```bash
+export SARSI_STATE_DIR=/tmp/repltest-state
+/home/grace/sarsi-venv/bin/ai4science sarsi init --owner-id 1
+mkdir -p /home/grace/repltest-work && cd /home/grace/repltest-work
+SARSI_STATE_DIR=/tmp/repltest-state /home/grace/sarsi-venv/bin/ai4science
+```
+
+(The REPL inherits `SARSI_STATE_DIR` from the shell that launches it — that
+is what keeps `/task` showing only your test board.)
+
+### Example A — the REPL itself (100% in-REPL)
+
+1. Folder-trust gate → `1` + Enter.
+2. Banner must read `Unified-LLM · Opus 5 (anthropic)`; status bar
+   `claude-opus-5`.
+3. Type `Reply with exactly: OPUS5-OK` → expect `OPUS5-OK` and a
+   `✶ crunched …` footer.
+4. `/model` → Opus 5 first, Opus 4.8 second; Esc to leave it.
+
+### Example B — create a task in the worker (100% in-REPL)
+
+1. `/agents` → `1` — prompt becomes `sarsi-worker ❯`.
+2. Type: `write fib.py in this folder that prints the first 10 Fibonacci numbers`
+3. The confirm block appears (`backend: sarsi-pwm`). Press Enter to accept —
+   expect `→ tsk_XXXXXXXXXX`. Note the id and its last 4 characters.
+4. `/tasks` — the task sits there `ready`.
+5. If instead you get *"I could not tell whether that is a goal"*, your
+   phrasing read as a question — retype it imperatively or use
+   `/do write fib.py …`.
+
+### Example C — the full lifecycle on real Claude Code (REPL cockpit)
+
+1. **Create on the claude engine, in the REPL:** at `sarsi-worker ❯` type
+   the directive; when the confirm block shows, press **`b`** — it re-shows
+   with `backend: sarsi-claude` — then Enter. `→ tsk_XXXXXXXXXX`.
+2. **Start it** (shell, or ask the top-prompt agent):
+   `ai4science sarsi run sarsi-worker tsk_xxxx` — a tmux session
+   `sarsi-worker-<last4>` comes up running real Claude Code at ceiling A0.
+3. **Let the loop drive:** `ai4science sarsi supervise sarsi-worker tsk_xxxx
+   --passes 25`. Meanwhile, in the REPL: `/tsk_XXXXXXXXXX` — you're in
+   guided mode; `/interact --print` shows the session's screen whenever you
+   want; a typed line goes in ahead of the worker. Expect the loop to answer
+   the trust gate, deliver the brief, approve the plan write, then stop at
+   **awaiting-grant**.
+4. **Grant + release** (shell): read `awaiting[]` from the task view or
+   task.json, `sarsi grant …` once per string verbatim, then
+   `sarsi release …`. Run `supervise` again for the work + verify passes.
+5. **Claude Code's own 1/2/3 menus:** if the session shows
+   `[blocked] user decision`, answer the menu yourself — from the REPL,
+   `/tsk_xxxx` → `/interact` (or, nested in tmux, attach from the second
+   terminal) and type `1`. `--print` first if you just want to see what it
+   is asking.
+6. **Verdict:** `sarsi check sarsi-worker tsk_xxxx` → PASS; in the REPL,
+   `/tsk_xxxx` shows `verified`, and `/why tsk_xxxx` from the worker door —
+   or the CLI `sarsi why` — shows the phase verdicts.
+7. **Cleanup** (shell): kill `sarsi-worker-<last4>`, remove
+   `/tmp/repltest-state` and `/home/grace/repltest-work`. Never touch
+   `sarsi-worker-2a68` / `-f1f0`.
+
 Companion doc: `docs/TESTING_REPL_GRACE.md` — the same lifecycle as a
 verified end-to-end transcript, including the expected output at each step.
