@@ -98,10 +98,15 @@ taken) and renamable:
 - `/task` — **every** board on the machine, all agents, all states:
 
 ```
-tsk_d3f02f2a68  running   sarsi-worker  Write a file called pwm-backend-proof.md …
-tsk_bd326ebfeb  ready     sarsi-worker  write a live-test GAP-TV sanity note
+write-pwm-backend---task  running   sarsi-worker---agent   Write a file called pwm-backend-proof.md …
+write-live-gap---task     ready     sarsi-worker---agent   write a live-test GAP-TV sanity note
+tsk_3e23e4def9            ready     sarsi-worker---agent   hi
 …
 ```
+
+The first column is the task's **name** (see §3b) — `/write-live-gap`
+opens it. A bare `tsk_` id in that column is a task created before names
+existed; `/rename` it once and it joins the convention.
 
 States you will see: `ready` (created, not started), `running` (session up or
 startable), `awaiting-grant` (plan done, needs your permissions), `verified`
@@ -109,8 +114,9 @@ startable), `awaiting-grant` (plan done, needs your permissions), `verified`
 
 ## 5. One task — view, guide, interact
 
-`/tsk_XXXXXXXXXX` (bare) shows the task and then drops you into **guided
-mode** — the prompt becomes `tsk_xxxx (guided) ❯`:
+`/tsk_XXXXXXXXXX` — or `/<its-name>`, e.g. `/write-fib-py` — shows the
+task and drops you into **guided mode**; the prompt becomes
+`tsk_xxxx (guided) ❯`:
 
 - **Instructions steer, questions are answered.** An imperative line goes
   into the session *ahead of* whatever the worker's loop would have said next
@@ -119,8 +125,8 @@ mode** — the prompt becomes `tsk_xxxx (guided) ❯`:
   answered from the task's record instead: state, plan, phase verdicts, and
   a note that nothing was sent. So `what is the plan of this task?` shows
   the plan; `focus on the mask convention first` steers.
-- `/tsk_XXXXXXXXXX <instruction>` from anywhere does the same as a one-shot,
-  without entering the mode.
+- `/tsk_XXXXXXXXXX <instruction>` (or `/<name> <instruction>`) from
+  anywhere does the same as a one-shot, without entering the mode.
 - `/interact` — hands your terminal to the task's actual tmux session (the
   work itself). Steering is paused first, and the plan is marked stale —
   because once you drive by hand, the old plan's criteria may no longer
