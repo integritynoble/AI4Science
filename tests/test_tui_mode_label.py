@@ -14,6 +14,7 @@ typed share a line — the label is IN the box, not above it.
 import os
 import pty
 import select
+import sys
 import time
 
 import pytest
@@ -47,7 +48,9 @@ def _spawn_and_drive(inputs, settle=0.6, total_timeout=12.0, driver=_DRIVER):
     if pid == 0:  # child
         os.environ["TERM"] = "xterm-256color"
         os.environ["PYTHONPATH"] = repo + os.pathsep + os.environ.get("PYTHONPATH", "")
-        os.execvp("python3", ["python3", "-c", driver])
+        # The interpreter the importorskip guards above actually checked — not
+        # whatever `python3` PATH happens to resolve to in the child.
+        os.execv(sys.executable, [sys.executable, "-c", driver])
         os._exit(127)  # unreachable
 
     raw = bytearray()
@@ -106,6 +109,13 @@ def test_leaving_the_mode_takes_the_label_back_off():
     raw, lines = _spawn_and_drive([b"hi\n", b"back at top\n", b"typing now"],
                                   driver=driver)
     text = "\n".join(lines)
+    # "typing now" is echoed by the tty whether or not the child is alive, so
+    # the claim below is only meaningful once the labelled read has rendered.
+    # The label lives in the composer, which the plain-prompt read redraws over
+    # — so look for it in the byte stream, not in the closing snapshot.
+    assert "sarsi-worker ❯".encode() in raw, (
+        "the driver never got as far as the labelled read — nothing here can "
+        f"say whether the label comes back off:\n{text}")
     typing = [ln for ln in lines if "typing now" in ln]
     assert typing, f"never saw the typed text:\n{text}"
     assert all("sarsi-worker" not in ln for ln in typing), (
