@@ -3,8 +3,8 @@
 | | |
 |---|---|
 | **corpus** | DUD-E — 15,288 molecules across 6 targets |
-| **reference method** | **passes** |
-| **the number that matters** | analogue similarity **0.519 → 0.093**, AUC 0.94 → 0.82 |
+| **reference method** | **refused before the repair; passes on 11 of 12 seeds after it** |
+| **the number that matters** | query-to-test analogue similarity, seed 42, like for like: raw **0.526 → 0.261**, decoy-subtracted **0.372 → 0.110**. AUC 0.955 → 0.850 |
 
 > **The finding this page is built around.** EF@1% was sitting at the theoretical maximum, which was the giveaway: the query set was drawn at random from each target's actives, and DUD-E actives are analogue series — so the model was being shown relatives of what it was scored on. The repaired benchmark is *harder*, which is how you know it was repaired and not loosened.
 
@@ -80,19 +80,48 @@ validation above all — and the chemistry does not.
 
 **Retired from research, not from service.** The screening tools stay installable and get plugged into other fields' agents — which is how the series-disjoint discipline reaches places this agent never worked.
 
-**Status: built and running on real data, 2026-08-04.** The benchmark reads
-**DUD-E** — 15,288 molecules across six targets at ~2% active, which is the
-ratio that matters: capping decoys instead of actives once left the library 40%
-active and EF@1% saturated at 2.5, where ranking by molecular weight scored
-exactly what fingerprint similarity scored.
+**Status: built and running on real data, 2026-08-04. Every number in this
+section was re-measured on 2026-08-11 and is quoted from that night's run.** The
+benchmark reads **DUD-E**, 15,288 molecules across six targets, 288 of them
+actives, so 1.9% of the library. Withholding the query set's own clusters leaves
+15,205 molecules scored at 1.4% active, and that ratio is what sets the metric's
+ceiling. An earlier state of the generator, not re-run on 2026-08-11, capped
+decoys instead of actives, left the library 40% active, and saturated EF@1% at
+2.5, where ranking by molecular weight scored exactly what fingerprint
+similarity scored.
 
 Set up as ligand-based virtual screening actually works: ten actives per target
 are staged as the query set, and enrichment is measured only on molecules the
-solver was never given. Morgan-fingerprint similarity reaches **EF@1% 66.8
-(63.5 on targets held out entirely), AUC 0.943** and passes. The bar is not
-"beats random" but **1.5x what molecular weight alone achieves on the same
-library** — DUD-E's decoys carry 0.56 SD of residual property bias, and weight
-alone enriches at EF 20.
+solver was never given. The query set is drawn from whole chemical clusters and
+the rest of those clusters is withheld rather than scored. On that split
+Morgan-fingerprint similarity reaches **EF@1% 41.5 against a ceiling of 74.2, so
+55.9% of the ceiling, at AUC 0.850** on seed 42, and passes. On the two targets
+held out entirely it reaches EF 39.2, which is below its own overall figure.
+Across twelve seeds EF@1% runs **32.7 to 56.0, mean 44.7**, which is 44.7% to
+77.0% of each seed's own ceiling; held-out-target EF runs 45.4 to 68.6, and AUC
+on unseen molecules runs 0.762 to 0.883. **Eleven of the twelve seeds pass. Seed
+6 fails**, at 1.49x the property baseline against a bar of 1.5x.
+
+The bar is not "beats random" but **1.5x what molecular weight alone achieves on
+the same library**. The repaired screen ran 1.49x to 3.50x that baseline, mean
+2.43x. Weight alone enriches at EF 14.7 to 24.9 across those seeds, and DUD-E's
+decoys carry 0.45 to 0.60 SD of residual property bias.
+
+**The saturated number this page used to lead with was a broken instrument, and
+it is kept because catching it is the evidence.** Drawing the ten query actives
+at random from each target's actives, with nothing withheld, gives EF@1% 66.789
+against a ceiling of 66.789. That is 100.0% of the ceiling, at AUC 0.955. The
+benchmark's own `_judge_screening` **refused** that run: refusal begins at 98.0%
+of ceiling, which is EF 65.45 here. Seeds 0, 1 and 2 pin it at 100.0% of ceiling
+as well. A metric at its bound reports the library's active fraction and not the
+method, so it cannot rank one method above another. Until 2026-08-11 this page
+gave that reading as its headline result and said it passed.
+
+**Two of the older figures did not reproduce.** Pre-repair AUC came out 0.9550,
+where this page previously published 0.943. Pre-repair raw analogue similarity
+came out 0.5258, where the split's own docstring records 0.519. The figures
+above are the 2026-08-11 ones. The older pair is named here rather than quietly
+overwritten, and why the two runs differ is unmeasured.
 
 ## 1. The field
 
@@ -274,9 +303,9 @@ well" and "works" is the entire field.
 
 | # | problem | **solved when** | why it is placed here | state |
 |---|---|---|---|---|
-| 1 | **Series-disjoint splits** | `query-to-test analogue similarity is below 0.1 and the enrichment survives` | actives in standard screening sets are analogue series. A random split shows the model relatives of what it is scored on, and it then measures memory rather than recognition. Every enrichment number computed before this is fixed is uninterpretable | **done** — analogue similarity fell 0.519 → 0.093, AUC 0.94 → 0.82. The task got harder, which is how you know it was repaired and not loosened |
+| 1 | **Series-disjoint splits** | `query-to-test analogue similarity is below 0.1 and the enrichment survives` | actives in standard screening sets are analogue series. A random split shows the model relatives of what it is scored on, and it then measures memory rather than recognition. Every enrichment number computed before this is fixed is uninterpretable | **done** — measured 2026-08-11 on seed 42, like for like: raw analogue similarity fell 0.526 → 0.261, the decoy-subtracted gap fell 0.372 → 0.110, AUC 0.955 → 0.850. The task got harder, which is how you know it was repaired and not loosened. The gap runs 0.086 to 0.159 across twelve seeds, mean 0.116, so it clears this rung's own 0.1 bar on 5 of the 12 |
 | 2 | **Measure the ceiling before claiming a gain** | `the metric's ceiling is printed before any comparison, and a saturated result is refused` | EF@1% is bounded by the actives-to-decoys ratio. A method reported "at the theoretical maximum" was reporting the bound, not its own performance. The judge now refuses a saturated metric | **done** |
-| 3 | **A property-only baseline as the floor** | `enrichment is reported as a multiple of the property-only model, never alone` | decoy sets carry physicochemical bias; a model that beats random but not bulk properties has learned the bias. The floor must be the baseline, not zero | **done** — 2.4–2.9× the property baseline |
+| 3 | **A property-only baseline as the floor** | `enrichment is reported as a multiple of the property-only model, never alone` | decoy sets carry physicochemical bias; a model that beats random but not bulk properties has learned the bias. The floor must be the baseline, not zero | **done** — 1.5×–3.5× the property baseline across twelve seeds, mean 2.4×, measured 2026-08-11 |
 | 4 | **Held-out targets, not just held-out molecules** | `performance is reported on targets absent from fitting, separately from held-out molecules` | generalising to a new compound in a known pocket is a different claim from generalising to a new pocket, and only the second one is useful | partly — reported as a guardrail |
 | 5 | **Calibrated uncertainty** | `predicted uncertainty is calibrated — stated confidence matches observed hit rate` | required before anything can propose what to make next; a ranking without uncertainty cannot be turned into a batch | open |
 | 6 | **Next-batch proposal (active learning)** | `a proposed batch beats a random batch of the same size on measured hits` | the actual bottleneck in a real programme is deciding what to synthesise, not scoring a static library. Needs 5 | open |
@@ -505,7 +534,7 @@ reasoning and judging members. See [`lifecycle.md`](lifecycle.md).
 | **L1 · principle** | binding is a free-energy difference, and structure determines it. Every scoring function in the field is an approximation to one quantity that is, in principle, computable |
 | **L2 · spec — the digital twin** | the physics-based free-energy model (FEP/MD), with docking as its cheap approximation. **Where it stops:** protein flexibility, explicit water, entropy and protonation — and it stops there expensively, because those are exactly the terms that decide the cases people care about |
 | **L3 · benchmark** | DUD-E, 15,288 molecules across 6 targets, **series-disjoint** with property-matched decoys (rung 1), reported as enrichment **with its ceiling and its property-only baseline** (rung 2) |
-| **L4 · solution** | EF@1% of **41–56 — 51–77% of the achievable ceiling and 2.4–2.9× the property baseline.** Three numbers because the first one alone would have been unreadable |
+| **L4 · solution** | EF@1% of **33–56, which is 45–77% of the achievable ceiling and 1.5×–3.5× the property baseline** across twelve seeds, measured 2026-08-11. Three numbers because the first one alone would have been unreadable |
 
 **This field has the best-specified twin of the seven and the widest gap between
 the twin and the benchmark.** Free energy is computable and too expensive to
@@ -526,7 +555,7 @@ The path from "knows what a molecule is" to checking one result:
    protonation and dock it again. Watch the score move.
 3. **L3** — run the benchmark with a random split, then with the series-disjoint
    split. **Watch the enrichment collapse.**
-4. **L4** — read **41–56** against its ceiling and against the property-only
+4. **L4** — read **33–56** against its ceiling and against the property-only
    baseline, and find the published methods that do not beat the baseline.
 
 **Steps 2 and 3 are two different lessons and both are load-bearing**: the
