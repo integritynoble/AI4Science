@@ -1,6 +1,6 @@
 # REPL modes — using `sarsi-worker` from inside `ai4science`
 
-**Status: on `feat/repl-modes`, not yet merged.** Everything here was exercised
+**Status: merged into `main`.** Everything here was exercised
 live on a second user account on 2026-08-07; where something does not work, it
 says so on the line rather than in a footnote at the end.
 
@@ -80,13 +80,12 @@ tsk_593ea3762e (guided) ❯ /back
 > as it did. Verified live, in the full-screen TUI, not only by unit test.
 > `y` still works too.
 
-> ### The input box shows a bare `❯`
+> ### The input box carries the label
 >
-> The mode label appears in the transcript, one line above where you type — the
-> box itself always shows `❯`. So the level you are standing at is visible, but
-> not at the cursor. Read the line above the box before typing a sentence in
-> agent mode, because there plain text proposes a task rather than asking a
-> question.
+> The mode label sits **in** the box, in front of the cursor — `sarsi-worker ❯`
+> is what you type at, so the level you are standing at is legible where your
+> eyes already are. Leaving the mode takes it back off. Both directions are
+> covered by `tests/test_tui_mode_label.py`.
 
 ## 4. What each mode does with plain text
 
@@ -116,15 +115,22 @@ worker would have said next. Steering does not move you; you stay in task mode.
 ```
 
 `--print` exists because the real attach releases your terminal to a child
-process, and that is the one part of this that no test can honestly cover. If
-the hand-off misbehaves on your terminal, that flag is the way through.
+process, and no test in this repo covers that hand-off — it has been shown by
+hand, under a PTY, but not by anything that runs in CI. If the hand-off
+misbehaves on your terminal, that flag is the way through.
 
-> **Known, and honest:** the successful attach-and-return has **not** been
-> demonstrated yet. The live test ran inside tmux, so `/interact` hit tmux's
-> nesting guard. What that did prove is that a failed attach is handled — the
-> REPL printed the reason, stayed alive, and kept its mode. The failure hint it
-> prints ("is it still running?") is misleading in that case: the session was
-> running, and nesting was the cause.
+> **Where the attach claim comes from:** the successful attach-and-return is
+> demonstrated in the **Addendum — 2026-08-08** of
+> `singularity/docs/plans/2026-08-07-pieces-status.md`, which records a real
+> PTY, a real tmux, a real `C-b d`, and the function returning with `back
+> from …`. That run is the whole of the evidence: nothing on this branch
+> re-ran it, and no test here demonstrates anything about attach. Read the
+> addendum before you rely on it.
+>
+> The nesting guard is separate and still worth knowing: run `/interact` from
+> inside tmux and it refuses. The REPL prints the reason, stays alive and keeps
+> its mode, but the hint it prints ("is it still running?") is misleading —
+> the session was running, and nesting was the cause.
 
 ## 6. Entering costs nothing
 
@@ -132,6 +138,14 @@ the hand-off misbehaves on your terminal, that flag is the way through.
 Only the confirmation creates. And mode never widens authority: task mode grants
 nothing, and guided instructions take the same path `sarsi guide` already uses,
 with the ceiling and the grants untouched.
+
+Both halves are pinned by test. `tests/test_repl_entering_costs_nothing.py`
+drives the REPL by keystrokes, enters a worker, declines the confirmation, and
+asserts every regular file under `SARSI_STATE_DIR` is byte-identical
+afterwards. `tests/test_repl_mode_never_widens_authority.py` pins that
+`session.guide` takes no ceiling or grant parameter, that both owner-facing
+doors into guidance make the same call, and that entering a task mode moves no
+byte on disk.
 
 ## 7. Commands
 
