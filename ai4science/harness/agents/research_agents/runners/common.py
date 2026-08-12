@@ -46,10 +46,28 @@ class Verdict:
 
     provenance: str = ""
 
+    #: Metric names to print before the alphabetical dump: the objective
+    #: first, then the guardrails. A number a reader has to find in a
+    #: sorted list of eleven is not reported at the same prominence as
+    #: the one the search optimises. Empty for a verdict built by hand.
+    headline: Tuple[str, ...] = ()
+
     def report(self) -> str:
         L = ["verdict: %s" % ("PASS" if self.passed else "FAIL")]
         if self.provenance:
             L.append("  %s" % self.provenance)
+        # The objective is marked, not merely listed first: the line exists so
+        # both are visible, NOT so they read as interchangeable. Only the
+        # objective may be optimised; a guardrail is a bound. A name the judge
+        # did not compute is skipped rather than raising.
+        head = []
+        for i, k in enumerate(self.headline):
+            if k not in self.metrics:
+                continue
+            s = "%s %.6g" % (k, self.metrics[k])
+            head.append(s + " (objective)" if i == 0 else s)
+        if head:
+            L.append("  %s" % " | ".join(head))
         for k, v in sorted(self.metrics.items()):
             L.append("  %-26s %.6g" % (k, v))
         for r in self.reasons:
@@ -378,8 +396,14 @@ def run_domain_task(bench: DomainBenchmark, *, client, workspace: Path,
     # Scored here, against the key the sandbox never saw.
     metrics = bench.score(workspace, run_ws)
     verdict = bench.judge(metrics)
+    # The headline is derived from what the benchmark itself declared, so a
+    # benchmark cannot get a different prominence than the one its own
+    # declaration implies, and the agent cannot choose which of its numbers
+    # leads. An unset objective simply drops out.
     verdict = Verdict(verdict.passed, verdict.reasons, verdict.metrics,
-                      provenance=bench.provenance())
+                      provenance=bench.provenance(),
+                      headline=tuple(n for n in (bench.objective,)
+                                     + bench.guardrails if n))
 
     # The one place a number reaches the agent's self-model. Not wrapped in a
     # try/except on purpose: a run that could not be recorded is a run the
