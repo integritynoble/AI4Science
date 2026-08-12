@@ -179,6 +179,22 @@ def test_enrichment_is_reported_on_targets_held_out_entirely(tmp_path):
         "no activity may be claimed without an assay"
 
 
+def test_the_report_leads_with_the_objective_and_what_constrains_it(tmp_path):
+    """The held-out-target figure is measured, and it is a declared guardrail,
+    but a reader meets it part-way down an alphabetical dump of eleven metrics
+    rather than beside the objective it qualifies. "Reported" and "reported
+    beside" are not the same claim, and rung 4 of that page's ladder asks for
+    the second one."""
+    out = _run(SCREENING, tmp_path)
+    lines = out["verdict"].report().splitlines()
+    hits = [i for i, ln in enumerate(lines) if "ef_at_1pct" in ln]
+    assert hits, out["verdict"].report()
+    first = lines[hits[0]].strip()
+    assert "ef_at_1pct_heldout_targets" in first, (
+        "the objective's first appearance in the report is %r — the "
+        "held-out-target number is somewhere below it" % first)
+
+
 # ------------------------------------------ cancer: external, and calibrated
 
 def test_the_model_is_validated_on_an_external_cohort(tmp_path):

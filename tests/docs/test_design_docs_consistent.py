@@ -172,3 +172,30 @@ def test_a_rung_marked_done_does_not_report_missing_its_own_bar():
                 assert 2 * int(hits) > int(total), (
                     "%s rung %s is marked done and its own cell says it "
                     "clears on %s of %s" % (stem, rung, hits, total))
+
+
+def test_drug_design_states_its_held_out_number_where_it_states_ef():
+    """The field's two one-line claims — its row in the research-agents
+    README index, and the `L4 · solution` row of its own page — are where a
+    reader who reads nothing else meets this field's result. Both state EF@1%
+    and neither states the held-out-target figure, so the number the field's
+    own ladder calls the useful one is absent from every summary of it."""
+    import re
+    readme = (chk.RA / "README.md").read_text()
+    page = (chk.RA / "drug-design.md").read_text()
+    claims = [ln for ln in readme.splitlines()
+              if ln.startswith("| [drug design]") and "EF@1%" in ln]
+    claims += [ln for ln in page.splitlines() if "**L4 · solution**" in ln]
+    assert len(claims) == 2, (
+        "expected exactly the README index row and the L4 · solution row; "
+        "if these two rows have been renamed this check has stopped "
+        "checking anything and must be re-pointed rather than left to "
+        "pass: %s" % (claims,))
+    for line in claims:
+        assert "EF@1%" in line, line
+        where = ("the README index row"
+                 if line.startswith("| [drug design]")
+                 else "drug-design.md's L4 · solution row")
+        assert re.search(r"held[- ]out[- ]target", line, re.I), (
+            "%s states EF@1%% and not the held-out-target figure: %s"
+            % (where, line[:90]))
