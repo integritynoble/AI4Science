@@ -199,3 +199,36 @@ def test_drug_design_states_its_held_out_number_where_it_states_ef():
         assert re.search(r"held[- ]out[- ]target", line, re.I), (
             "%s states EF@1%% and not the held-out-target figure: %s"
             % (where, line[:90]))
+
+
+def test_drug_design_says_when_a_person_last_checked_one_of_its_results():
+    """`lifecycle.md` requires every field's page to carry three lines: when
+    a person last checked one of its results and how long the agent-only
+    chain has run since, what was physically done during that chain, and
+    what of it is still in service. Collapse by exhaustion and collapse by
+    saturation look identical from inside a field — the human verification
+    rate goes to zero in both, and the recorded thing that tells them apart
+    is whether anyone acts. A page with no such record cannot tell which one
+    it is in. This check holds ONE page, drug-design's, because that is the
+    page whose group was asked for it; a check that failed on seven pages
+    nobody has been asked to fix would be switched off within a day, and a
+    check that is off is worth nothing."""
+    import re
+    lines = (chk.RA / "drug-design.md").read_text().splitlines()
+
+    def saying(phrase):
+        return [ln for ln in lines if phrase in ln.lower()]
+
+    checked = saying("last checked")
+    assert checked, (
+        "drug-design.md does not record when a person last checked one "
+        "of its results")
+    assert any(re.search(r"\d{4}-\d{2}-\d{2}", ln) for ln in checked), (
+        "drug-design.md says when a person last checked one of its "
+        "results without a date, and an undated answer cannot measure "
+        "how long the agent-only chain has run: %s" % (checked,))
+    assert saying("physically done"), (
+        "drug-design.md does not say what was physically done during the "
+        "agent-only chain")
+    assert saying("still in service"), (
+        "drug-design.md does not say what of it is still in service")
