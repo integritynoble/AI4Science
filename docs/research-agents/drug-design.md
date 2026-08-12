@@ -80,6 +80,37 @@ validation above all — and the chemistry does not.
 
 **Retired from research, not from service.** The screening tools stay installable and get plugged into other fields' agents — which is how the series-disjoint discipline reaches places this agent never worked.
 
+### Who has checked this, and what of it is running
+
+The three lines [`lifecycle.md`](lifecycle.md) requires of every field's page,
+answered rather than implied. Two of the three answers are uncomfortable, which
+is the reason for writing them down rather than leaving them to be inferred.
+
+**When a person last checked one of these results: never, as of 2026-08-12.**
+No commit, review artifact or record in this repository says a person verified
+one of this field's numbers — `checked_by`, `reviewed_by`, `human_verified` and
+`last_checked` match nothing anywhere in it. The last human hand on this page
+was 2026-08-06 (`b15aae2`), and that was writing the page, not checking a
+result; every number now on it was measured on 2026-08-11 and 2026-08-12, and
+every commit to it since 2026-08-11 is the agent's. So the agent-only chain is
+six days old and every number on this page was produced inside it. Only the
+owner can replace this line with a date. Until they do it reads `never`, which
+is worth more than reading nothing: `never` is the number the collapse test
+needs.
+
+**What was physically done during that chain: nothing.** No compound has been
+made, no assay run, no material moved. Nothing embodied exists to do it with —
+the roster has no embodied member, `Charter.check_outward` refuses every outward
+act not named in a grant, and this agent holds no grant. Everything above is
+computational and retrospective.
+
+**What of it is still in service: the benchmark and the reference solver, and
+they are maintained rather than finished.** Both are installable and both run
+today; `tests/research_agents` exercises them against the real corpora. But the
+numbers move when a rung moves, and only rungs 2 and 3 are closed. Nothing here
+is a frozen artifact you can install and stop thinking about, and nothing is
+deployed to anyone.
+
 **Status: built and running on real data, 2026-08-04. Every number in this
 section was re-measured on 2026-08-11 and is quoted from that night's run.** The
 benchmark reads **DUD-E**, 15,288 molecules across six targets, 288 of them
