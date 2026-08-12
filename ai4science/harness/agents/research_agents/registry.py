@@ -20,6 +20,7 @@ from typing import Dict, Optional, Tuple
 from .budget import Budget, Switch
 from .charter import Charter
 from .fieldmap import Claim, FieldMap, UNTRIED
+from .observations import replay
 from .selfmodel import Dimension, SelfModel
 
 
@@ -676,7 +677,17 @@ def build(name: str) -> ResearchAgent:
     if name not in _BUILDERS:
         raise KeyError("no research agent %r — have: %s"
                        % (name, ", ".join(NAMES)))
-    return _BUILDERS[name]()
+    agent = _BUILDERS[name]()
+    # Fresh, then given back whatever previous processes actually measured.
+    # Without this the self-model could only ever describe runs made inside the
+    # process asking, which for `selfmodel-report` is none of them.
+    #
+    # A replayed number goes in through `observe()` exactly like a fresh one, so
+    # the evidence requirement and the unmeasured/zero distinction hold
+    # unchanged; a dimension with no stored row is still unmeasured, not zero.
+    # `replay` returns a count of rows applied — a count, never a permission.
+    replay(agent.self_model)
+    return agent
 
 
 def build_all() -> Dict[str, ResearchAgent]:

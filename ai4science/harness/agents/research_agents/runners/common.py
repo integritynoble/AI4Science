@@ -32,6 +32,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from .. import observations
+
 PAYLOAD = Path(__file__).parent / "payload"
 
 
@@ -102,6 +104,20 @@ class Parameter:
 
 
 @dataclass(frozen=True)
+class Observed:
+    """One metric this benchmark produces, and the self-model dimension it is a
+    measurement of."""
+    #: A key in that agent's SelfModel.
+    dimension: str
+    #: A key in the dict this benchmark's score() returns.
+    metric: str
+    #: What the number is and is not, in the field's terms. It ends up inside
+    #: the evidence line, where the person reading the self-model sees it next
+    #: to the figure.
+    note: str = ""
+
+
+@dataclass(frozen=True)
 class DomainBenchmark:
     """One field's runnable problem."""
 
@@ -153,6 +169,16 @@ class DomainBenchmark:
     #: cord dose falling read as a breach. A guardrail pointing the wrong way is
     #: worse than none — it rejects the candidates that spare the organ.
     guardrail_lower_is_better: Tuple[str, ...] = ()
+    #: Which of this benchmark's metrics measure which self-model dimensions.
+    #:
+    #: **Declared by the benchmark, never by the agent.** The drug-design
+    #: charter's `also_never` already puts `benchmark`, `metric`,
+    #: `actives_decoys_set`, `split` and `hit_criteria` out of the agent's
+    #: reach; a self-model that could choose which number describes it could
+    #: choose the flattering one, and would have every reason to. Empty means
+    #: this benchmark's numbers stay out of any self-model — which is the honest
+    #: default for a benchmark whose mapping nobody has run.
+    observes: Tuple[Observed, ...] = ()
 
     def guardrail_directions(self) -> Dict[str, bool]:
         low = set(self.guardrail_lower_is_better)
@@ -354,11 +380,23 @@ def run_domain_task(bench: DomainBenchmark, *, client, workspace: Path,
     verdict = bench.judge(metrics)
     verdict = Verdict(verdict.passed, verdict.reasons, verdict.metrics,
                       provenance=bench.provenance())
+
+    # The one place a number reaches the agent's self-model. Not wrapped in a
+    # try/except on purpose: a run that could not be recorded is a run the
+    # report will go on calling `unmeasured`, and a traceback here is cheaper
+    # than a self-model that is quietly a night out of date. A failed run never
+    # reaches this line — the two returns above take it — and `record_run`
+    # refuses a rejected verdict and non-default params itself.
+    used_params = bench.check_params(params or {}) if bench.parameters else {}
+    recorded = observations.record_run(bench, seed=seed, metrics=metrics,
+                                       verdict=verdict, params=used_params,
+                                       run_workspace=str(run_ws))
     return {"status": "delivered" if verdict.passed else "rejected",
             "agent": bench.agent, "seed": seed, "benchmark": meta,
             "real": bench.real, "provenance": bench.provenance(),
-            "params": bench.check_params(params or {}) if bench.parameters else {},
+            "params": used_params,
             "withheld": withheld, "metrics": metrics, "verdict": verdict,
+            "observed": [r["dimension"] for r in recorded],
             "run_workspace": str(run_ws), "criteria": list(bench.criteria)}
 
 

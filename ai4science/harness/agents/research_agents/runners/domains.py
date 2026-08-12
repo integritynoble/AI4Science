@@ -23,7 +23,7 @@ from typing import Dict, Tuple
 
 import numpy as np
 
-from .common import DomainBenchmark, Parameter, Verdict
+from .common import DomainBenchmark, Observed, Parameter, Verdict
 
 
 # ------------------------------------------------------------------ helpers
@@ -602,6 +602,22 @@ SCREENING = DomainBenchmark(
               "EF@1% cannot rank methods and is refused whatever pinned it",
               "the decoy property match is measured and reported",
               "no activity claimed without an assay"),
+    # The held-out-targets figure, NOT `ef_at_1pct`. The dimension is
+    # Dimension("enrichment", "retrospective enrichment", "EF@1% and BEDROC on
+    # held-out targets", ...) and its declared measurement says *on held-out
+    # targets*. `ef_at_1pct` is the figure over every unseen molecule, including
+    # the ten targets the solver was given actives for; filing it under this
+    # dimension is one metric standing in for another — the failure selfmodel.py
+    # exists to prevent — and it would read as generalisation to a target class
+    # that was never actually tested.
+    #
+    # This is the only benchmark with an `observes` mapping. Only drug-design
+    # has been wired, and a mapping for a benchmark nobody has run is a claim.
+    observes=(Observed("enrichment", "ef_at_1pct_heldout_targets",
+                       note="EF@1% on the targets held out entirely; BEDROC is "
+                            "not computed by this benchmark, so half of what "
+                            "this dimension declares as its measurement is what "
+                            "was actually run"),),
     # 16 of 16 seeds measured distinct — no repeat found, so this width is a
     # CHOICE rather than a ceiling, unlike low-dose CT and reverse aging where
     # it is the corpus. Twelve gives search 4 / validation 8: double the
