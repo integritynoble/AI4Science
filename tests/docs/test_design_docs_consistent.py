@@ -139,3 +139,36 @@ def test_every_link_into_research_agents_resolves():
             continue
         for link in set(re.findall(r"\]\((research-agents/[^)#]+)\)", path.read_text())):
             assert (base / link).exists(), "%s links to a missing %s" % (path.name, link)
+
+
+def _queue_rows(text):
+    """Yield (rung, state) for each row of a page's problem queue table."""
+    for line in text.splitlines():
+        line = line.strip()
+        if not line.startswith("|"):
+            continue
+        parts = line.split("|")
+        if len(parts) < 6:
+            continue
+        cells = parts[1:-1]
+        if len(cells) != 5 or not cells[0].strip().isdigit():
+            continue
+        yield cells[0].strip(), cells[-1].strip()
+
+
+def test_a_rung_marked_done_does_not_report_missing_its_own_bar():
+    """A rung's state cell is the page's own claim about itself. A cell that
+    says `done` and in the same breath reports clearing the rung's bar on a
+    minority of the declared seeds is a page contradicting itself in one cell,
+    and the reader has no way to know which half to believe."""
+    import re
+    for stem in sorted(chk.agent_pages(chk.RA)):
+        text = (chk.RA / (stem + ".md")).read_text()
+        for rung, state in _queue_rows(text):
+            if not state.lower().replace("*", "").startswith("done"):
+                continue
+            for hits, total in re.findall(r"on (\d+) of (?:the )?(\d+)",
+                                          state):
+                assert 2 * int(hits) > int(total), (
+                    "%s rung %s is marked done and its own cell says it "
+                    "clears on %s of %s" % (stem, rung, hits, total))
