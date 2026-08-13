@@ -12,16 +12,16 @@ so it cannot regress in silence. The mutation anchor is assertion 3: thread a
 ``person`` / ``user`` / ``owner_id`` field into ``ResearchAgent`` and this file
 turns red.
 
-**What this file deliberately does NOT assert.** The group's *membership* — the
-literature / twin / corpus / method / runner / verifier / reproducer / teacher /
-writer members, plus the embodied rows — and the rule that **"the group's
-ceiling is the lowest of its members'"** are **design only, not built**. That
-design lives in ``docs/research-agents/cancer.md`` under "The group — who does
-what, and which of them have bodies", which states plainly that nothing embodied
-is built and that what exists today is the reasoning and judging members. Pinning
-those here would assert an architecture that does not exist, so this file names
-them and leaves them unasserted — the correct test to add is the one that fails
-the day membership is built and starts passing for the right reason.
+**What this file asserts and what it leaves elsewhere.** The group's *membership*
+— the literature / twin / corpus / method / runner / verifier / reproducer /
+teacher / writer members — and the rule that **"the group's ceiling is the lowest
+of its members'"** are now built (``ResearchAgent.group``), and are pinned in
+``tests/test_research_group_ceiling.py``, the test that fails the day membership
+regresses and passes for the right reason. This file keeps its own subject: the
+group presents *outward as one agent* — one charter naming a field, one roster
+entry, no per-person identity. Assertion 3 below now expects ``group`` in the
+field set as the inward half of that property; the embodied rows in
+``docs/research-agents/cancer.md`` remain design only, as that page states.
 """
 import dataclasses
 import os
@@ -39,8 +39,13 @@ from ai4science.harness.agents.research_agents import registry as ra
 #: fact about history, not a second name for the field.
 ALIAS = {"imaging": "computational-imaging"}
 
-#: The five fields that bound a research agent. Not a person among them.
-EXPECTED_FIELDS = {"charter", "self_model", "switch", "night", "field_map"}
+#: The fields that bound a research agent. Not a person among them. ``group`` is
+#: the inward half of the group-agent property this file pins: the agent still
+#: presents outward as one thing, but now carries the reasoning/judging members
+#: (and the ceiling rule they impose) explicitly. Added deliberately here, in the
+#: same commit that built it — not slipped past assertion 3.
+EXPECTED_FIELDS = {"charter", "self_model", "switch", "night", "field_map",
+                   "group"}
 
 
 def test_one_entry_per_field_keyed_by_charter_name():
