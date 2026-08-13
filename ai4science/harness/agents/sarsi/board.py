@@ -76,9 +76,95 @@ def index(config: Config) -> str:
             f"<tr><td><a href='/{escape(agent.id)}'>{escape(agent.id)}</a></td>"
             f"<td>{len(held)}</td><td class=why>{closed} archived</td></tr>")
     body = ("<h1>sarsi</h1><p class=sub>the same records the CLI and the chat "
-            "show</p><table><tr><th>agent<th>tasks<th></tr>"
+            "show · <a href='/research'>research agents</a></p>"
+            "<table><tr><th>agent<th>tasks<th></tr>"
             + "".join(rows) + "</table>")
     return _page("sarsi", body)
+
+
+def research_index(config: Config) -> str:
+    """The seven research agents: field, members, and the group ceiling.
+
+    A research agent is a group; its ceiling is the lowest of its members' — so
+    the ceiling column carries that reason, the way every row on this board
+    carries its own."""
+    from ai4science.harness.agents.research_agents import registry as ra
+
+    rows = []
+    for name, agent in ra.build_all().items():
+        ceiling = agent.group.ceiling() or "—"
+        rows.append(
+            f"<tr><td><a href='/research/{escape(name)}'>{escape(name)}</a></td>"
+            f"<td>{escape(agent.charter.field)}</td>"
+            f"<td>{len(agent.group.members)}</td>"
+            f"<td><code>{escape(ceiling)}</code> "
+            f"<span class=why>the lowest any member's act needs</span></td></tr>")
+    body = ("<h1>research agents</h1>"
+            "<p class=sub><a href='/'>all agents</a> · a research agent is a "
+            "group; its ceiling is the lowest of its members', not the "
+            "agent's</p>"
+            "<table><tr><th>agent<th>field<th>members<th>group ceiling</tr>"
+            + "".join(rows) + "</table>")
+    return _page("research agents", body)
+
+
+def render_research(config: Config, agent) -> str:
+    """One research agent in full — the same content as `research show`, escaped.
+
+    Takes the built `ResearchAgent` so the same renderer can be handed any group:
+    the charter, the group ceiling stated as the rule, and a members table where
+    a judging member shows `—` because it never acts and so caps nothing.
+    Everything here is agent-authored text and goes through `escape`."""
+    from ai4science.harness.agents.research_agents import group as g
+    from ai4science.harness.agents.sarsi.registry import EVERYDAY_CEILING
+
+    ch = agent.charter
+    grp = agent.group
+    # declared → group → effective: the agent's own ceiling no longer decides.
+    declared = EVERYDAY_CEILING
+    gceil = grp.ceiling() or "—"
+    effective = grp.capped(declared)
+
+    member_rows = []
+    for m in grp.members:
+        cap = m.ceiling if m.ceiling is not None else "—"
+        member_rows.append(
+            f"<tr><td><code>{escape(m.name)}</code></td>"
+            f"<td>{escape(m.kind.value)}</td>"
+            f"<td>{escape(m.acts_on)}</td>"
+            f"<td><code>{escape(cap)}</code></td>"
+            f"<td class=why>{escape(m.refusal)}</td></tr>")
+
+    parts = [
+        f"<h1>{escape(ch.name)}</h1>",
+        f"<p class=sub><a href='/research'>all research agents</a> · "
+        f"{escape(ch.field)}</p>",
+        f"<p>subfields: {escape(', '.join(ch.subfields))}</p>",
+        # the rule, in words: declared A2 · group A1 · effective A1
+        f"<p>ceiling: <code>declared {escape(declared)}</code> · "
+        f"<code>group {escape(gceil)}</code> · "
+        f"<code>effective {escape(effective)}</code> "
+        f"<span class=why>the lowest any member's act needs</span></p>",
+        "<table><tr><th>member<th>kind<th>acts on<th>ceiling<th>its refusal"
+        "</tr>" + "".join(member_rows) + "</table>",
+    ]
+    if any(m.kind is g.Kind.JUDGING for m in grp.members):
+        parts.append("<p class=why>a judging member shows — because it never "
+                     "acts, so it does not cap the group.</p>")
+    # Refusals and scope are different things and stay apart: a refusal travels
+    # to any agent in the subfield, a scope note is about this agent's own role
+    # and does not.
+    if ch.refusals:
+        parts.append("<h1>refuses</h1><p class=sub>these travel to any agent in "
+                     "the subfield</p><ul>"
+                     + "".join(f"<li>{escape(r)}</li>" for r in ch.refusals)
+                     + "</ul>")
+    if ch.scope:
+        parts.append("<h1>not its job</h1><p class=sub>scope — does not travel"
+                     "</p><ul>"
+                     + "".join(f"<li>{escape(s)}</li>" for s in ch.scope)
+                     + "</ul>")
+    return _page(f"research · {ch.name}", "".join(parts))
 
 
 def render(config: Config, agent: Agent) -> str:
@@ -123,6 +209,20 @@ def page(config: Config, path: str) -> Tuple[int, str]:
     name = (path or "/").strip("/")
     if not name:
         return 200, index(config)
+    # The `research` prefix is handled BEFORE the agent lookup, so `/research`
+    # is never mistaken for an agent id.
+    if name == "research":
+        return 200, research_index(config)
+    if name.startswith("research/"):
+        from ai4science.harness.agents.research_agents import registry as ra
+        rname = name[len("research/"):]
+        try:
+            agent = ra.build(rname)
+        except KeyError:
+            return 404, _page("not found",
+                              "<h1>not found</h1>"
+                              "<p><a href='/research'>all research agents</a></p>")
+        return 200, render_research(config, agent)
     agent = config.agents.get(name)
     if agent is None or not agent.is_worker:
         return 404, _page("not found",
