@@ -156,7 +156,7 @@ class MachineRuntime:
 #: detection, stranded-prompt reading and busy marker are tuned to Claude
 #: Code's TUI; another interface may be STARTED, and is reported as not
 #: drivable rather than quietly mis-driven.
-DRIVABLE_SPECS = {"claude-code", "codex", "unified-LLM"}
+DRIVABLE_SPECS = {"claude-code", "codex", "ai4sci", "unified-LLM"}
 #: `unified-LLM` has been in this set three times. Twice it was taken out; the
 #: third time it stayed, and the difference is what the entry means.
 #:

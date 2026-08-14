@@ -3,7 +3,7 @@
 Science-tier only (capability bundle "ci-algorithms"): research / paper /
 computational-imaging agents can browse and run every reconstruction algorithm
 registered in the monorepo's algorithm_base (170 modalities). The open tier
-(claude-code, codex, unified-LLM) never receives this bundle — those agents
+(claude-code, codex, ai4sci) never receives this bundle — those agents
 stay pure base coding agents.
 
 algorithm_base lives at the Physics_World_Model repo root, outside this

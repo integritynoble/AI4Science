@@ -129,7 +129,7 @@ def test_the_session_is_started_with_the_agents_spec(config):
     agent = config.agents["work"]
     rt = FakeRuntime()
     ses.assign(config, agent, _task(config, agent), runtime=rt)
-    assert rt.started[0]["spec"] == "unified-LLM"
+    assert rt.started[0]["spec"] == "ai4sci"   # sarsi-pwm's canonical spec (was 'unified-LLM')
 
     from ai4science.harness.agents.sarsi import task as _t
     t = _task(config, agent); t.backend = "sarsi-claude"

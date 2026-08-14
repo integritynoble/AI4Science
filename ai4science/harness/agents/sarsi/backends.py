@@ -38,7 +38,7 @@ _SPECS: Dict[str, str] = {
     # PWM Code — the agent the owner lands in. Running it here means the
     # interface they work in, the interface a worker's session runs, and the
     # interface the supervision loop reads are one interface.
-    "sarsi-pwm": "unified-LLM",
+    "sarsi-pwm": "ai4sci",
 }
 
 NAMES = tuple(_SPECS)

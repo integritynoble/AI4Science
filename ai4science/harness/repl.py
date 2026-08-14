@@ -968,7 +968,7 @@ def run_common_repl(
     session_id: Optional[str] = None,
     writable_roots: Optional[List[Path]] = None,
     system_prompt: Optional[str] = None,
-    mode_label: str = "unified-LLM",
+    mode_label: str = "ai4sci",
     intro: Optional[str] = None,
 ) -> None:
     """Run the native-harness REPL until EOF or /exit.
@@ -1043,7 +1043,7 @@ def run_common_repl(
 
     _confirm = make_confirm(_tui_read, mode_label)
 
-    active_spec = agent_registry.get(mode_label) or agent_registry.get("unified-LLM")
+    active_spec = agent_registry.get(mode_label) or agent_registry.get("ai4sci")
     # A mode may prefer a backend (e.g. 'codex' → openai, 'claude-code' →
     # anthropic). Honor it only when the user pinned nothing, so an explicit
     # --backend/--model always wins.

@@ -30,7 +30,8 @@ _MODE_DISPLAY = {
     "codex": "Codex",
     "research": "Research",
     "paper": "Paper",
-    "unified-LLM": "Unified-LLM",
+    "ai4sci": "Unified-LLM",
+    "unified-LLM": "Unified-LLM",   # legacy id, same display label
     "computational-imaging": "Computational Imaging",
 }
 
@@ -40,7 +41,10 @@ def _display_mode(mode: str) -> str:
 
 
 # Reverse: a display name (or its lowercase) the user types resolves to the id.
+# Two ids share the "Unified-LLM" label; pin the reverse to the canonical id so
+# typing the display name (or the legacy id) never resolves ambiguously.
 _DISPLAY_TO_ID = {v.lower(): k for k, v in _MODE_DISPLAY.items()}   # {"claude": "claude-code"}
+_DISPLAY_TO_ID["unified-llm"] = "ai4sci"   # canonical wins over the legacy id
 
 
 def resolve_mode(name: str) -> str:
