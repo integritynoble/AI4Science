@@ -79,8 +79,68 @@ def index(config: Config) -> str:
             "show</p><table><tr><th>agent<th>tasks<th></tr>"
             + "".join(rows) + "</table>"
             "<p class=sub><a href='/groups'>groups</a> — the agents that are a "
-            "group on the inside, and what each is made of</p>")
+            "group on the inside, and what each is made of · "
+            "<a href='/federation'>federation</a> — which of these is the "
+            "brain, and which is a motor</p>")
     return _page("sarsi", body)
+
+
+def federation(config: Config) -> str:
+    """`/federation` — brain vs executor, and what each actually did here.
+
+    The plan of record puts this structure in `openclaw.json`, which is mode
+    0600. This is the same fact where a person can read it. `federation.py`
+    says which fields it will touch and which it refuses to.
+    """
+    from ai4science.harness.agents.sarsi import federation as fed
+
+    ids = fed.load()
+    if not ids:
+        return _page("sarsi · federation",
+                     "<h1>federation</h1><p class=sub><a href='/'>all agents</a>"
+                     "</p><p>no federation config is readable from here.</p>")
+
+    rows = []
+    for i in ids:
+        if i.role == "brain":
+            what = "plans and verifies · holds the lesson index"
+            drives = f"<code>{escape(i.model or 'default model')}</code>"
+        else:
+            what = "executes — the brain routes work to it"
+            drives = (f"drives <code>{escape(i.drives or '?')}</code> via "
+                      f"<code>{escape(i.backend or '?')}</code>"
+                      + (f" ({escape(i.mode)})" if i.mode else ""))
+        css = "pass" if i.ran_here else "unv"
+        rows.append(
+            f"<tr><td><code>{escape(i.id)}</code></td>"
+            f"<td><strong>{escape(i.role)}</strong></td>"
+            f"<td>{drives}</td>"
+            f"<td class={css}>{escape(str(i.sessions))}</td>"
+            f"<td class=why>{escape(i.what_it_did)}<br>{escape(what)}</td></tr>")
+
+    warn = fed.model_pin_warning(ids, fed.default_model())
+    note = f"<p class=unv>⚠ {escape(warn)}</p>" if warn else ""
+
+    idle = [i.id for i in ids if i.role == "executor" and not i.ran_here]
+    if idle:
+        note += ("<p class=why>" + escape(", ".join(idle)) +
+                 " left no session here. This page cannot tell an executor "
+                 "that was never asked from one that could not run — both "
+                 "look like an empty directory — so it says only what the "
+                 "disk shows.</p>")
+
+    body = ("<h1>federation</h1><p class=sub><a href='/'>all agents</a> · "
+            "the brain plans and verifies; the executors run. Two identities, "
+            "one machine — read from the agent config, not from a name</p>"
+            "<table><tr><th>identity<th>role<th>runs on<th>sessions"
+            "<th>what it did here</tr>" + "".join(rows) + "</table>"
+            + note +
+            "<p class=why>Role is derived from the declared runtime — an "
+            "<code>acp</code> runtime means it drives a harness — never from "
+            "the id, because a name is a label and the runtime is what "
+            "decides. Only the agents subtree of the config is read; nothing "
+            "else in that file reaches this page.</p>")
+    return _page("sarsi · federation", body)
 
 
 def groups(config: Config) -> str:
@@ -194,6 +254,8 @@ def page(config: Config, path: str) -> Tuple[int, str]:
     # it shows the same records the CLI does.
     if name == "groups":
         return 200, groups(config)
+    if name == "federation":
+        return 200, federation(config)
     agent = config.agents.get(name)
     if agent is None or not agent.is_worker:
         return 404, _page("not found",
