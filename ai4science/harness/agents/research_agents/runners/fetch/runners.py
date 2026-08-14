@@ -74,6 +74,11 @@ _FIELDS = ",".join((
     # T and N stage: the strongest clinical predictors in NSCLC and more
     # granular than the overall stage, which collapses them.
     "diagnoses.ajcc_pathologic_t", "diagnoses.ajcc_pathologic_n",
+    # Where a living patient's follow-up time actually is. `diagnoses.
+    # days_to_last_follow_up` is present for 17 of 397 living LUAD cases and 259
+    # of 284 living LUSC ones; the follow_ups entity covers 329 and 283. See
+    # `_followup_days`.
+    "follow_ups.days_to_follow_up",
 ))
 
 
@@ -84,6 +89,28 @@ def _gdc_cohort(project: str, size: int = 1200) -> List[Dict[str, Any]]:
                                 "size": str(size), "format": "JSON"})
     raw = json.loads(_get("%s?%s" % (_GDC, q)))
     return raw["data"]["hits"]
+
+
+def _followup_days(h: Dict[str, Any], dx: Dict[str, Any]) -> Optional[float]:
+    """How long a living patient was observed, from wherever GDC records it.
+
+    Reading only `diagnoses.days_to_last_follow_up` dropped 380 of 397 living
+    LUAD cases and 5 of 284 living LUSC ones, and dropping the survivors is not
+    a neutral loss: it left a development cohort of 196 with 180 deaths, a 92%
+    mortality rate that no lung adenocarcinoma cohort has. The model was being
+    fitted on the people who died. Nothing announced it, because a cohort that
+    is too small is loud and a cohort that is biased is silent.
+
+    The `follow_ups` entity carries the same quantity, one record per visit, and
+    covers both projects: 329 and 283. The last visit is the observation time.
+    Both sources are read and the longest is taken, so neither project depends
+    on the other's recording habits."""
+    days = [f.get("days_to_follow_up") for f in (h.get("follow_ups") or [])]
+    days = [float(d) for d in days if d is not None]
+    last = dx.get("days_to_last_follow_up")
+    if last is not None:
+        days.append(float(last))
+    return max(days) if days else None
 
 
 def _tcga_rows(hits: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -97,7 +124,7 @@ def _tcga_rows(hits: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
         dx = (h.get("diagnoses") or [{}])[0]
         vital = (demo.get("vital_status") or "").lower()
         dead = vital == "dead"
-        t = demo.get("days_to_death") if dead else dx.get("days_to_last_follow_up")
+        t = demo.get("days_to_death") if dead else _followup_days(h, dx)
         age = demo.get("age_at_index")
         if t is None or age is None or float(t) <= 0:
             continue
@@ -139,9 +166,23 @@ def tcga_survival(_argv=()) -> str:
     if len(dev) < 100 or len(ext) < 100:
         raise RuntimeError("GDC returned too few usable cases (%d dev, %d ext)"
                            % (len(dev), len(ext)))
+    # A survival cohort is mostly censored. When it is not, the fetcher has kept
+    # the deaths and dropped the survivors — which is what a missing follow-up
+    # field did here, and it produced a 92%-mortality LUAD cohort that the
+    # size check above waved through. Refuse rather than write it: a biased
+    # cohort is worse than no cohort, because everything downstream still runs.
+    for nm, rows in (("dev", dev), ("ext", ext)):
+        rate = sum(r["event"] for r in rows) / float(len(rows))
+        if rate > 0.75:
+            raise RuntimeError(
+                "%s cohort is %.0f%% deaths over %d cases — a survival cohort "
+                "that uncensored means follow-up time is being dropped for the "
+                "living, not that the disease killed everyone" % (nm, 100 * rate, len(rows)))
     (d / "dev.json").write_text(json.dumps({"project": "TCGA-LUAD", "rows": dev}))
     (d / "ext.json").write_text(json.dumps({"project": "TCGA-LUSC", "rows": ext}))
     _provenance(d, c, dev_n=len(dev), ext_n=len(ext),
+                dev_events=sum(r["event"] for r in dev),
+                ext_events=sum(r["event"] for r in ext),
                 dev_project="TCGA-LUAD", ext_project="TCGA-LUSC",
                 note="lung adenocarcinoma as development, squamous cell as "
                      "external — different tumour biology and a different "
