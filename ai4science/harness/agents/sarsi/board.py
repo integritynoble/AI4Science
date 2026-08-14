@@ -77,8 +77,73 @@ def index(config: Config) -> str:
             f"<td>{len(held)}</td><td class=why>{closed} archived</td></tr>")
     body = ("<h1>sarsi</h1><p class=sub>the same records the CLI and the chat "
             "show</p><table><tr><th>agent<th>tasks<th></tr>"
-            + "".join(rows) + "</table>")
+            + "".join(rows) + "</table>"
+            "<p class=sub><a href='/groups'>groups</a> — the agents that are a "
+            "group on the inside, and what each is made of</p>")
     return _page("sarsi", body)
+
+
+def groups(config: Config) -> str:
+    """`/groups` — a research agent from the inside (design §11b, 1436-1570).
+
+    Read-only, like everything else here: the ceiling this page computes is
+    *printed*, never applied. `group.py` says why that boundary is where it is.
+    """
+    from ai4science.harness.agents.sarsi import group as grp
+
+    got = grp.all_of(config)
+    if not got:
+        return _page("sarsi · groups",
+                     "<h1>groups</h1><p class=sub><a href='/'>all agents</a>"
+                     "</p><p>no agent here is modelled as a group.</p>")
+
+    blocks = []
+    for g in got:
+        agent = config.agents.get(g.agent_id)
+        rows = []
+        for m in g.members:
+            note = []
+            if not m.built:
+                note.append("not built")
+            if m.irreversible:
+                note.append("irreversible — no undo")
+            if not m.may_verify_own_act:
+                note.append("may not verify its own act")
+            rows.append(
+                f"<tr><td>{escape(m.name)}</td>"
+                f"<td><code>{escape(m.kind)}</code></td>"
+                f"<td>{escape(m.acts_on)}</td>"
+                f"<td>{escape(m.ceiling)}</td>"
+                f"<td class=why>{escape(m.refusal)}"
+                + (f"<br>{escape(' · '.join(note))}" if note else "")
+                + "</td></tr>")
+
+        gap = g.gap_against(agent) if agent else None
+        head = (f"<h2>{escape(g.agent_id)}</h2>"
+                f"<p class=sub>one workspace · one task list · "
+                f"{len(g.members)} members · "
+                f"group ceiling <strong>{escape(g.ceiling)}</strong> — "
+                f"the lowest of its members', per the design</p>")
+        table = ("<table><tr><th>member<th>kind<th>acts on<th>ceiling"
+                 "<th>its refusal</tr>" + "".join(rows) + "</table>")
+        note = ""
+        if gap:
+            note = f"<p class=unv>⚠ {escape(gap)}</p>"
+        if g.has_unbuilt:
+            note += ("<p class=why>Nothing embodied is built. The design says "
+                     "so of itself (§11b): the bench row is a design that "
+                     "states what would have to be true first — irreversible "
+                     "by default, no self-verification of an act, and the "
+                     "group's ceiling set by its lowest member.</p>")
+        blocks.append(head + table + note)
+
+    body = ("<h1>groups</h1><p class=sub><a href='/'>all agents</a> · "
+            "a research agent is one agent from outside and several members "
+            "from inside</p>" + "".join(blocks) +
+            "<p class=why>This page computes the group ceiling and prints it. "
+            "It does not enforce it — making that rule bind would narrow what "
+            "every research agent may do, which is the owner's decision.</p>")
+    return _page("sarsi · groups", body)
 
 
 def render(config: Config, agent: Agent) -> str:
@@ -123,6 +188,12 @@ def page(config: Config, path: str) -> Tuple[int, str]:
     name = (path or "/").strip("/")
     if not name:
         return 200, index(config)
+    # `groups` is a reserved path. An agent with that id would be shadowed by
+    # it — named here rather than left to be discovered, because a board that
+    # silently hid one agent would break the one promise this page makes: that
+    # it shows the same records the CLI does.
+    if name == "groups":
+        return 200, groups(config)
     agent = config.agents.get(name)
     if agent is None or not agent.is_worker:
         return 404, _page("not found",
