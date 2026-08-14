@@ -81,7 +81,9 @@ def index(config: Config) -> str:
             "<p class=sub><a href='/groups'>groups</a> — the agents that are a "
             "group on the inside, and what each is made of · "
             "<a href='/federation'>federation</a> — which of these is the "
-            "brain, and which is a motor</p>")
+            "brain, and which is a motor · "
+            "<a href='/economy'>economy</a> — what a run cost, the split, and "
+            "the two balances kept apart</p>")
     return _page("sarsi", body)
 
 
@@ -243,11 +245,156 @@ def render(config: Config, agent: Agent) -> str:
     return _page(f"sarsi · {agent.id}", body)
 
 
+def economy(config: Config) -> str:
+    """`/economy` — what a run costs, and the two balances kept apart.
+
+    Market spec §11/§13. Three facts, and the third is the one the page exists
+    for:
+
+      * **what a run cost in PWM**, from the LLM ledger — the metered record,
+        not an estimate.
+      * **the 10/5/5 split**, computed by `earnings.split()` here rather than
+        written into this template. A percentage typed into a page can drift
+        from the one the product charges; a percentage read from the product
+        cannot.
+      * **the two balances, never added.** The starting balance is
+        non-exchangeable (`balance.py`: spendable on fees, never sellable) and
+        the wallet's is not. A single figure covering both would let the
+        bootstrap grant read as sellable supply, which is precisely the leak
+        the design forbids. There is no total on this page, and that absence is
+        deliberate — `checks/economy.sh` asserts it.
+
+    On the exchangeable side this page reports **`unknown`, not `0`**, when
+    there is no authentication. `wallet.balance()` returns `0.0` both for "no
+    money" and "no auth"; only `wallet._platform_balance()` tells them apart, by
+    raising. Printing `0 PWM` for an unauthenticated wallet would be a made-up
+    number wearing the clothes of a measurement.
+    """
+    from ai4science.harness.agents.sarsi import balance as bal
+    from ai4science.harness.agents.sarsi import earnings as earn
+
+    # ── the two balances, in two separate tables. Never summed. ──────────
+    b = bal.of(config)
+    if b.granted:
+        non_exch = (f"<tr><td>remaining</td><td>{b.remaining:g} PWM</td>"
+                    f"<td class=why>of {bal.STARTING:g} granted once</td></tr>"
+                    f"<tr><td>spent on fees</td><td>{b.spent:g} PWM</td>"
+                    f"<td class=why>can only ever be spent down</td></tr>")
+    else:
+        non_exch = ("<tr><td>remaining</td><td>not granted</td>"
+                    "<td class=why>no starting balance on this machine yet — "
+                    "<code>sarsi balance --grant</code></td></tr>")
+
+    # The exchangeable side. `_platform_balance()` raises rather than lying.
+    try:
+        from ai4science import wallet as _w
+        mode = _w.mode()
+        addr = _w.address()
+        try:
+            amount = f"{_w._platform_balance():g} PWM"
+            why = "platform billing, authenticated"
+        except Exception as e:
+            amount = "unknown"
+            why = (f"not authenticated, so this is unknown and not zero — "
+                   f"{escape(type(e).__name__)}. <code>wallet.balance()</code> "
+                   f"would say <code>0.0</code> here and mean nothing by it.")
+    except Exception as e:                       # wallet unreadable: say so
+        mode, addr, amount = "unreadable", "—", "unknown"
+        why = f"wallet could not be read — {escape(type(e).__name__)}"
+
+    # ── the split, computed by the product ───────────────────────────────
+    runs = []
+    total_cost = 0.0
+    try:
+        from ai4science.llm import ledger as _lg
+        rows = _lg.load()
+    except Exception:
+        rows = []
+    for r in rows:
+        cost = float(r.get("pwm") or 0.0)
+        total_cost += cost
+        s = earn.split(cost)
+        runs.append(
+            f"<tr><td><code>{escape(str(r.get('model') or '?'))}</code></td>"
+            f"<td>{int(r.get('input_tokens') or 0)}"
+            f"/{int(r.get('output_tokens') or 0)}</td>"
+            f"<td>{s.cost:g}</td><td>{s.treasury:g}</td>"
+            f"<td>{s.author:g}</td><td>{s.provider:g}</td></tr>")
+
+    if runs:
+        metered = ("<table><tr><th>model<th>in/out tokens<th>cost PWM"
+                   "<th>treasury 10%<th>author 5%<th>provider</tr>"
+                   + "".join(runs) + "</table>")
+    else:
+        # Why there is nothing here matters more than the emptiness. An empty
+        # table with no reason reads as "this costs nothing".
+        try:
+            from ai4science.llm import routing as _rt
+            src = _rt._select_source("anthropic")[0]
+        except Exception:
+            src = "unknown"
+        metered = (
+            f"<p>no metered run has been recorded on this machine.</p>"
+            f"<p class=why>Not an idle fleet — <b>blocked by design</b>. "
+            f"AI4Science has no free bring-your-own-key path: every turn is "
+            f"billed in PWM to a wallet-bound provider, and "
+            f"<code>routing._select_source()</code> answers "
+            f"<code>{escape(str(src))}</code> for every backend here, which "
+            f"blocks usage until a provider is registered with a wallet "
+            f"address. Registering one decides who gets paid, so it is the "
+            f"owner's, not this agent's.</p>")
+
+    # The split shown on a worked example, so the arithmetic is legible even
+    # with no runs. Labelled as an example — it is not a measurement.
+    ex = earn.split(100.0)
+    example = (f"<p class=why>On a worked 100 PWM run, as this build computes "
+               f"it: treasury {ex.treasury:g} ({earn.TREASURY:.0%}), author "
+               f"{ex.author:g} (up to {earn.AUTHOR_SLICE:.0%}, and 0 until an "
+               f"agent has a market listing), platform {ex.platform:g} "
+               f"({earn.PLATFORM:.0%} — the app charges 5% and "
+               f"<b>ai4science does not</b>), provider {ex.provider:g} as the "
+               f"remainder rather than a fourth percentage. Example, not a "
+               f"measurement.</p>")
+
+    body = ("<h1>economy</h1><p class=sub><a href='/'>all agents</a> · what a "
+            "run cost, the split, and the two balances</p>"
+
+            "<h2>metered runs</h2>" + metered + example +
+
+            "<h2>non-exchangeable balance</h2>"
+            "<p class=sub>spendable on fees · never sellable · granted once</p>"
+            "<table><tr><th>field<th>value<th></tr>" + non_exch +
+            f"<tr><td>exchangeable</td><td>no</td>"
+            f"<td class=why>there is no function that moves it</td></tr>"
+            "</table>"
+
+            "<h2>wallet balance</h2>"
+            "<p class=sub>the other kind — kept in its own table, on purpose"
+            "</p>"
+            "<table><tr><th>field<th>value<th></tr>"
+            f"<tr><td>balance</td><td>{escape(amount)}</td>"
+            f"<td class=why>{why}</td></tr>"
+            f"<tr><td>mode</td><td><code>{escape(str(mode))}</code></td>"
+            f"<td class=why>billing mode this machine is in</td></tr>"
+            f"<tr><td>address</td><td><code>{escape(str(addr))}</code></td>"
+            f"<td class=why>an address is not a secret; no key is read by this "
+            f"page</td></tr>"
+            "</table>"
+
+            "<p class=why><b>These two are never added.</b> The starting "
+            "balance is a fee credit that can only be destroyed; the wallet's "
+            "is supply. One figure covering both is how a bootstrap grant "
+            "leaks into sellable supply, so this page shows no total.</p>")
+    return _page("sarsi · economy", body)
+
+
 def page(config: Config, path: str) -> Tuple[int, str]:
     """(status, html) for a request path. The whole routing table."""
     name = (path or "/").strip("/")
     if not name:
         return 200, index(config)
+    if name == "economy":
+        return 200, economy(config)
     # `groups` is a reserved path. An agent with that id would be shadowed by
     # it — named here rather than left to be discovered, because a board that
     # silently hid one agent would break the one promise this page makes: that
