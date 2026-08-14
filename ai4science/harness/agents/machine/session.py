@@ -270,9 +270,23 @@ def _deny(reason, tripwire=False): return {"decision": "deny", "reason": reason,
 
 def decide_tool_call(call: Dict[str, Any], *, ceiling: str = "A1",
                      project_dir: Optional[str] = None,
-                     writable=None) -> Dict[str, Any]:
+                     writable=None, group=None) -> Dict[str, Any]:
     tool = call.get("tool_name") or call.get("tool") or ""
     inp = call.get("tool_input") or call.get("input") or {}
+    # A group agent is held to the LOWEST ceiling among its members (one-machine
+    # design §11b, line 1534). It lands HERE, before `lvl` is computed, because
+    # every branch below hangs off `lvl` — a cap applied further down would bind
+    # some decisions and silently miss the rest, which is the worst of both: an
+    # authority rule that looks enforced and is not.
+    #
+    # `capped` only ever narrows; a malformed group leaves `ceiling` as declared.
+    # `group=None` is the ordinary case and changes nothing.
+    if group is not None:
+        try:
+            from ai4science.harness.agents.machine.trust import capped as _capped
+            ceiling = _capped(ceiling, group)
+        except Exception:
+            pass                      # cap unreachable: the declared ceiling stands
     lvl = _CEILING_ORDER.get(ceiling, 1)
 
     if tool in READ_ONLY_TOOLS:

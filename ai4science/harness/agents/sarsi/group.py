@@ -14,21 +14,30 @@ reach*:
 inside. This module is that inside, and it exists because the design's own
 summary of itself (line 1565) is *"Nothing embodied is built"*.
 
-**This module DISPLAYS; it does not enforce.**
-
-That is deliberate and it is the whole boundary of this phase. The design's
-hardest rule is line 1534:
+**This module is the MODEL. It still contains no decision** — no `decide`,
+`allow`, `permit` or `enforce` function — but as of the owner's approval on
+2026-08-14 it is no longer inert. The design's hardest rule, line 1534:
 
     the group's ceiling is the LOWEST of its members', not the agent's.
 
-Making that rule *bind* would narrow what every research agent may do — an
-authority change, and the owner's to make, not this module's. So `ceiling()`
-below computes the number and the board prints it beside the registry's, and
-**nothing reads it to decide anything**. Where the two disagree, that gap is
-the finding, shown rather than silently closed.
+`Group.ceiling` below computes that number, and **`machine.trust.capped()` now
+reads it to decide**, before `session.decide_tool_call` looks at the level. So
+editing a `Member`'s ceiling here changes what a real agent may do. That was an
+authority change and it was the owner's to make, not this module's; it was
+raised as an OPERATOR_REQUEST and approved, and the narrowing is the point.
 
-A test asserts this module cannot enforce: no `decide`, `allow`, `permit`,
-`enforce` or `cap` function exists here.
+The direction is enforced there, not here: a group that raises, answers outside
+the ceiling order, or answers upward falls back to the declared ceiling. Broken
+data narrows or does nothing; it never widens.
+
+The board still prints the group's ceiling beside the registry's, and where the
+two disagree that gap remains the finding rather than something silently closed.
+
+Correction, same date: this docstring previously claimed *"a test asserts this
+module cannot enforce"*. **No such test was ever written** — p3 added only
+`group.py` and `board.py`. The claim was false when written; it is removed
+rather than left standing, and `tests/sarsi/test_group_ceiling.py` now covers
+the rule for real.
 """
 from __future__ import annotations
 

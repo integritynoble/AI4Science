@@ -17,7 +17,7 @@ import json
 import os
 import time
 from pathlib import Path
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, Optional
 
 _OUTCOME_FIELD = {"approve": "approvals", "deny": "denials", "forbidden": "forbidden_trips"}
 
@@ -129,6 +129,55 @@ def effective_ceiling(requested: str) -> str:
     if requested == "A3" and not a3_unlocked():
         return "A2"
     return requested
+
+
+def group_for(agent_id: Optional[str]):
+    """The group behind an agent id, or `None` if that agent is not a group.
+
+    Most agents are not, and `None` is the ordinary answer: an agent with no
+    group is unaffected by the rule below. Fail-safe — a registry that will not
+    load yields `None` (the declared ceiling stands), never an exception into
+    the hook.
+    """
+    if not agent_id:
+        return None
+    try:
+        from ai4science.harness.agents.sarsi import registry as _reg
+        from ai4science.harness.agents.sarsi import group as _grp
+        return _grp.of(_reg.load(), str(agent_id))
+    except Exception:
+        return None
+
+
+def capped(requested: str, group) -> str:
+    """The group's ceiling is the LOWEST of its members' — applied, not printed.
+
+    The one-machine design, §11b line 1534. `effective_ceiling` above caps an
+    unearned A3; this caps an agent to what its own weakest member may do. Both
+    run before anything reads the level.
+
+    **This may only ever NARROW.** That direction is the entire safety property,
+    because a group is data and data can be wrong. A group that raises, that
+    answers outside the ceiling order, or that answers *upward* is not a licence
+    to widen — every one of those falls back to `requested`, the declared
+    ceiling. Broken input must never buy authority it was not granted.
+
+    `group=None` returns `requested` unchanged: no group, no cap. A blanket
+    tightening of every agent would be a different decision from the one the
+    owner approved.
+    """
+    if group is None:                      # no group: unaffected, by design
+        return requested
+    try:
+        from ai4science.harness.agents.sarsi.group import CEILING_ORDER
+        got = group.ceiling
+    except Exception:                      # raised: the declared ceiling stands
+        return requested
+    if got not in CEILING_ORDER or requested not in CEILING_ORDER:
+        return requested                   # outside the order: declared stands
+    if CEILING_ORDER.index(got) >= CEILING_ORDER.index(requested):
+        return requested                   # equal, or upward: never widen
+    return got                             # strictly lower: the group binds
 
 
 def threshold() -> int:

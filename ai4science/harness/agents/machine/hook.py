@@ -125,6 +125,28 @@ def _session_ceiling(claude_pid, project_dir, env_ceiling, sup):
     return env_ceiling, None
 
 
+def _agent_id(rec, project_dir) -> Optional[str]:
+    """Which agent this session is acting as, for the group lookup.
+
+    Three sources, most explicit first: `PWM_AGENT` (declared, like
+    `PWM_CEILING` beside it), then the supervisor record's own name, then the
+    project directory's basename. Nothing here invents an identity — each is a
+    name the session already carries, and an id that names no group simply
+    resolves to `None`, which caps nothing.
+    """
+    got = os.environ.get("PWM_AGENT")
+    if got:
+        return got.strip() or None
+    if rec and rec.get("name"):
+        return str(rec["name"])
+    if project_dir:
+        try:
+            return pathlib.Path(project_dir).name or None
+        except Exception:
+            return None
+    return None
+
+
 def verdict_to_hook_output(verdict: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "hookSpecificOutput": {
@@ -178,8 +200,18 @@ def main(argv=None) -> int:
         ceiling = _trust.effective_ceiling(ceiling)
     except Exception:
         _trust = None
+    # Which agent is this session, and is that agent a GROUP? A group is held to
+    # the lowest ceiling among its members, so this has to be resolved at the
+    # call site and passed in — a ceiling computed and not passed is a display,
+    # which is what this replaced.
+    group = None
+    try:
+        from ai4science.harness.agents.machine import trust as _t2
+        group = _t2.group_for(_agent_id(rec, project_dir))
+    except Exception:
+        group = None
     verdict = decide_tool_call(call, ceiling=ceiling, project_dir=project_dir,
-                               writable=_declared_writable())
+                               writable=_declared_writable(), group=group)
     # remote approval channel: escalate an 'ask' to the owner's Telegram if configured
     if verdict.get("decision") == "ask":
         verdict = _maybe_telegram(verdict, data)
