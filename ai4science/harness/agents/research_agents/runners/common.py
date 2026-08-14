@@ -232,16 +232,28 @@ _CACHE_ROOT = Path(os.environ.get(
 
 
 def _seed_key(bench: DomainBenchmark, seed: int) -> str:
-    """What the generated data depends on: the seed and the generator's source.
+    """What the generated data depends on: the seed, the generator's source, and
+    the corpus that generator reads.
 
     Hashing the source rather than a version string means nobody has to remember
     to bump anything — editing a generator invalidates its cache by definition.
-    """
+
+    The corpus belongs here for the same reason and was missing, which made the
+    reasoning below false rather than merely incomplete: the generator source is
+    only half of what the data depends on, and every one of these benchmarks
+    reads a corpus at run time. Fixing the TCGA fetcher tripled its cohort and
+    invalidated nothing; the cache kept serving problems built from a cohort
+    that no longer existed, and a single night's results came half from each.
+    See `Corpus.digest`."""
     h = hashlib.sha256()
     h.update(("%s|%d|" % (bench.agent, seed)).encode())
     for f in sorted(bench.files(), key=lambda q: q.name):
         h.update(f.name.encode())
         h.update(f.read_bytes())
+    if bench.corpus:
+        from . import corpus as _c
+        h.update(("|corpus=%s@%s" % (bench.corpus,
+                                     _c.ALL[bench.corpus].digest())).encode())
     return h.hexdigest()[:24]
 
 

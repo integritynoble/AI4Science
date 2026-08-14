@@ -23,10 +23,14 @@ unused and it teaches the reader that the flag means nothing.
 """
 from __future__ import annotations
 
+import hashlib
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
+
+#: corpus key -> (stat stamp, content digest). Per process; see `Corpus.digest`.
+_DIGESTS: Dict[str, Tuple[Any, str]] = {}
 
 #: Override with AI4SCIENCE_DATA. Kept outside the repo: data is not source.
 DEFAULT_ROOT = Path(os.environ.get("AI4SCIENCE_DATA",
@@ -62,6 +66,40 @@ class Corpus:
     def missing(self, root: Optional[Path] = None) -> Tuple[str, ...]:
         d = self.dir(root)
         return tuple(f for f in self.required if not (d / f).exists())
+
+    def digest(self, root: Optional[Path] = None) -> str:
+        """What this corpus IS, right now, as content rather than as a path.
+
+        A generated benchmark depends on three things: the generator, the seed,
+        and the data the generator reads. The first two were in the seed cache's
+        key and this one was not, so re-fetching a corpus left every cached seed
+        untouched — and the cache went on serving problems built from data that
+        no longer existed. It is not a hypothetical: the TCGA fetcher was fixed
+        to stop dropping living patients, the cohort went from 196 cases to 499,
+        and seeds 0-3 kept returning their old numbers to the last digit while
+        seeds 4-11 returned new ones. The same night's results were half from one
+        cohort and half from another.
+
+        Content, not mtime: a corpus copied between machines keeps its bytes and
+        loses its timestamps, and two machines with the same bytes should share a
+        key. All seven corpora hash in 0.12s together, so this is memoised for
+        tidiness rather than out of need."""
+        d = self.dir(root)
+        if not d.is_dir():
+            return "absent"
+        stamp = tuple(sorted((str(f.relative_to(d)), f.stat().st_size,
+                              f.stat().st_mtime_ns)
+                             for f in d.rglob("*") if f.is_file()))
+        memo = _DIGESTS.get(self.key)
+        if memo is not None and memo[0] == stamp:
+            return memo[1]
+        h = hashlib.sha256()
+        for rel, _sz, _mt in stamp:
+            h.update(rel.encode())
+            h.update((d / rel).read_bytes())
+        out = h.hexdigest()[:16]
+        _DIGESTS[self.key] = (stamp, out)
+        return out
 
     def require(self, root: Optional[Path] = None) -> Path:
         if self.present(root):
