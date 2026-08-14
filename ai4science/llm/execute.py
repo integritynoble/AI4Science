@@ -31,6 +31,23 @@ class AgentResult(NamedTuple):
     cost: Dict[str, float] = {}          # {"usd_official", "usd_billed", "pwm"}
 
 
+def anthropic_available() -> bool:
+    """True iff `_run_anthropic` below could actually run: the `claude` CLI.
+
+    Deliberately NOT `ClaudeAgent.is_available()`, which also demands
+    `claude_agent_sdk` — correctly, because ITS executor (`_run_query`) imports
+    the SDK. This executor shells out to the CLI and never touches the SDK, so
+    borrowing that gate refused metered turns that would have run.
+
+    Kept next to the executor it describes so the two cannot drift apart again;
+    that drift was the defect. A stricter gate is not the safe direction here,
+    but a looser one is worse: claiming availability the executor lacks turns a
+    clean refusal into a failure mid-turn, after the call is billed. So this
+    checks exactly what `_run_anthropic` checks, and nothing more.
+    """
+    return shutil.which("claude") is not None
+
+
 def _run_anthropic(model: str, prompt: str, reasoning: str, timeout: int):
     claude = shutil.which("claude")
     if not claude:

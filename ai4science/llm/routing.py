@@ -58,8 +58,13 @@ def backend_available(backend: str) -> bool:
     """Is this LLM backend reachable on this host right now?"""
     try:
         if backend == "anthropic":
-            from ai4science.agents import ClaudeAgent
-            return ClaudeAgent().is_available()
+            # The executor this authorises is execute._run_anthropic, which
+            # shells out to the `claude` CLI. Ask what THAT needs — not
+            # ClaudeAgent.is_available(), whose extra claude_agent_sdk
+            # requirement belongs to the SDK path (_run_query) and was refusing
+            # metered turns this host could serve.
+            from ai4science.llm.execute import anthropic_available
+            return anthropic_available()
         if backend == "openai":
             from ai4science.agents import get_agent
             return get_agent("codex").is_available()
