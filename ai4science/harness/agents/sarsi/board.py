@@ -202,9 +202,11 @@ def groups(config: Config) -> str:
     body = ("<h1>groups</h1><p class=sub><a href='/'>all agents</a> · "
             "a research agent is one agent from outside and several members "
             "from inside</p>" + "".join(blocks) +
-            "<p class=why>This page computes the group ceiling and prints it. "
-            "It does not enforce it — making that rule bind would narrow what "
-            "every research agent may do, which is the owner's decision.</p>")
+            "<p class=why>This page computes the group ceiling and prints it; "
+            "<code>trust.capped()</code> is what enforces it, narrowing an "
+            "agent to its weakest member's ceiling before a tool call is "
+            "judged. That narrowing was the owner's decision, approved "
+            "2026-08-14; this page only reports it.</p>")
     return _page("sarsi · groups", body)
 
 
@@ -322,8 +324,14 @@ def economy(config: Config) -> str:
             f"<td>{s.author:g}</td><td>{s.provider:g}</td></tr>")
 
     if runs:
-        metered = ("<table><tr><th>model<th>in/out tokens<th>cost PWM"
-                   "<th>treasury 10%<th>author 5%<th>provider</tr>"
+        # "author 5%" over a column of zeroes is the same defect as the prose
+        # below: a label that only parses under some values. The author slice
+        # is earned only where a price share is configured, so 0 is correct
+        # and the heading has to admit it. The percentages are read from the
+        # product rather than typed here, for the reason E6 exists.
+        metered = (f"<table><tr><th>model<th>in/out tokens<th>cost PWM"
+                   f"<th>treasury {earn.TREASURY:.0%}"
+                   f"<th>author up to {earn.AUTHOR_SLICE:.0%}<th>provider</tr>"
                    + "".join(runs) + "</table>")
     else:
         # Why there is nothing here matters more than the emptiness. An empty
@@ -333,16 +341,51 @@ def economy(config: Config) -> str:
             src = _rt._select_source("anthropic")[0]
         except Exception:
             src = "unknown"
-        metered = (
-            f"<p>no metered run has been recorded on this machine.</p>"
-            f"<p class=why>Not an idle fleet — <b>blocked by design</b>. "
-            f"AI4Science has no free bring-your-own-key path: every turn is "
-            f"billed in PWM to a wallet-bound provider, and "
-            f"<code>routing._select_source()</code> answers "
-            f"<code>{escape(str(src))}</code> for every backend here, which "
-            f"blocks usage until a provider is registered with a wallet "
-            f"address. Registering one decides who gets paid, so it is the "
-            f"owner's, not this agent's.</p>")
+        # THREE different emptinesses, and they must not read alike. `none`
+        # means the machine cannot bill anyone, so nothing may run. A real
+        # source means a wallet-bound provider IS registered and simply has
+        # not been used. `unknown` is neither: it is the `except` above, where
+        # this page could not read routing at all and therefore knows nothing
+        # about registration in either direction.
+        #
+        # The original sentence was written when only the first could happen,
+        # and interpolating any other value into it produced prose that parsed
+        # as "a provider is registered, which blocks usage until a provider is
+        # registered". Splitting it in two fixed that and reintroduced the
+        # same fault one value over: it made `unknown` claim a provider is
+        # registered, which is a thing this page did not observe. A page may
+        # report a fact or report that it could not look; it may not convert
+        # the second into the first.
+        if src == "none":
+            metered = (
+                f"<p>no metered run has been recorded on this machine.</p>"
+                f"<p class=why>Not an idle fleet — <b>blocked by design</b>. "
+                f"AI4Science has no free bring-your-own-key path: every turn is "
+                f"billed in PWM to a wallet-bound provider, and "
+                f"<code>routing._select_source()</code> answers "
+                f"<code>none</code> for every backend here, which "
+                f"blocks usage until a provider is registered with a wallet "
+                f"address. Registering one decides who gets paid, so it is the "
+                f"owner's, not this agent's.</p>")
+        elif src == "unknown":
+            metered = (
+                f"<p>no metered run has been recorded on this machine.</p>"
+                f"<p class=why>Whether that is a block or simply an unused "
+                f"provider is <b>not known from here</b>: reading "
+                f"<code>routing._select_source()</code> raised, so this page "
+                f"cannot say whether a wallet-bound provider is registered. "
+                f"It is not reporting that one is, nor that none is — only "
+                f"that it could not look.</p>")
+        else:
+            metered = (
+                f"<p>no metered run has been recorded on this machine yet.</p>"
+                f"<p class=why>Not blocked, and not free either: "
+                f"<code>routing._select_source()</code> answers "
+                f"<code>{escape(str(src))}</code> for anthropic, so a "
+                f"wallet-bound provider is registered and a turn would be "
+                f"billed to it in PWM. The table is empty because nothing has "
+                f"been run and metered on this machine, which is a fact about "
+                f"its history rather than its access.</p>")
 
     # The split shown on a worked example, so the arithmetic is legible even
     # with no runs. Labelled as an example — it is not a measurement.

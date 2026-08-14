@@ -137,14 +137,20 @@ class Group:
         """Where the registry's ceiling and the group's disagree.
 
         `None` when they agree. This is the sentence the design predicts at
-        line 1536 — *"released to A2 by the back door"* — and printing it is
-        the entire point of computing a group ceiling nothing enforces yet.
+        line 1536 — *"released to A2 by the back door"* — and it is still
+        worth printing now that the rule binds: the two numbers still
+        disagree, and a reader needs to know which one is operative.
+
+        The wording tracks that. It said "nothing enforces the lower one yet"
+        until `trust.capped()` began to; a sentence describing the old
+        behaviour is worse than no sentence, because it is read as current.
         """
         if _rank(self.ceiling) == _rank(agent.ceiling):
             return None
         return (f"the registry releases {agent.id} to {agent.ceiling}; its "
-                f"members' lowest is {self.ceiling}. Nothing enforces the "
-                f"lower one yet, so the group acts at {agent.ceiling} today.")
+                f"members' lowest is {self.ceiling}, and that is the one that "
+                f"binds — trust.capped() narrows the group to {self.ceiling} "
+                f"before a tool call is judged.")
 
 
 #: The one worked example the design gives, lines 1541-1552 — computational
