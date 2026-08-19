@@ -53,6 +53,22 @@ def test_harness_available_via_proxy(monkeypatch):
     assert factory.harness_available("anthropic") is True
 
 
+def test_factory_passes_real_backend_through(monkeypatch):
+    # a turn must report the ACTUAL backend, not the OpenAIAdapter class default.
+    from ai4science.harness.adapters import factory, creds
+    from ai4science.harness.adapters.creds import CredInfo
+    from ai4science.harness.adapters.openai import OpenAIAdapter
+    monkeypatch.setattr(creds, "resolve",
+                        lambda b: CredInfo("openai_compat",
+                                           "https://physicsworldmodel.org/qwen/v1/chat/completions",
+                                           "k", "qwen3.8:27b"))
+    # force the local-credential path so no proxy/codex shortcut intervenes
+    monkeypatch.setattr(factory, "_local_available", lambda b: True)
+    a = factory.adapter_for("pwm_qwen")
+    assert isinstance(a, OpenAIAdapter)
+    assert a.backend == "pwm_qwen"        # real backend, not "openai"
+
+
 def test_stream_no_key_guard(tmp_path):
     # an adapter with no api_key raises RuntimeError (so the fallback chain fires)
     from ai4science.harness.adapters.openai import OpenAIAdapter

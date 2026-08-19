@@ -104,3 +104,179 @@ def test_openai_tool_call_extra_signature_roundtrip():
     out = a._translate_messages([Message(role="assistant", content="", tool_calls=[
         ToolCall("c0", "read", {"path": "a"}, extra={"google": {"thought_signature": "SIG"}})])])
     assert out[0]["tool_calls"][0]["extra_content"] == {"google": {"thought_signature": "SIG"}}
+
+
+# ── backend plumbing + ResponseMeta emission ───────────────────────────────
+def _is_meta(e):
+    # identify ResponseMeta without importing it (so RED fails on the missing
+    # FEATURE — an unemitted event — not on a module-level import error)
+    return type(e).__name__ == "ResponseMeta"
+
+
+def _adapter(backend="pwm_qwen"):
+    from ai4science.harness.adapters.openai import OpenAIAdapter
+    from ai4science.harness.adapters.creds import CredInfo
+    return OpenAIAdapter(creds=CredInfo("openai_compat",
+                                        "http://x/chat/completions", "k", "m"),
+                         backend=backend)
+
+
+def _run_stream(adapter, monkeypatch, sse_iter):
+    from ai4science.harness import transport
+    monkeypatch.setattr(transport, "sse_post",
+                        lambda url, headers, payload, timeout=600: sse_iter)
+    return list(adapter.stream([], [], model="req-model", reasoning="low"))
+
+
+def test_adapter_accepts_and_reports_backend():
+    from ai4science.harness.adapters.openai import OpenAIAdapter
+    assert OpenAIAdapter(backend="pwm_qwen").backend == "pwm_qwen"
+    assert OpenAIAdapter().backend == "openai"        # class default preserved
+
+
+def test_stream_emits_single_responsemeta_before_semantic(monkeypatch):
+    a = _adapter()
+    sse = iter([
+        {"id": "resp-1", "model": "qwen3.8:27b-observed",
+         "system_fingerprint": "fp-9",
+         "choices": [{"delta": {"content": "hi"}, "finish_reason": None}]},
+        {"choices": [{"delta": {}, "finish_reason": "stop"}],
+         "usage": {"prompt_tokens": 2, "completion_tokens": 1, "total_tokens": 3}},
+    ])
+    events = _run_stream(a, monkeypatch, sse)
+    metas = [e for e in events if _is_meta(e)]
+    assert len(metas) == 1                            # EXACTLY one
+    assert events[0] is metas[0]                      # BEFORE every semantic event
+    assert len(events) > 1                            # there ARE semantic events
+    m = metas[0]
+    assert m.backend == "pwm_qwen"
+    assert m.requested_model == "req-model"
+    assert m.observed_model == "qwen3.8:27b-observed"
+    assert m.system_fingerprint == "fp-9"
+    assert m.response_id == "resp-1"
+    assert m.transport == "sse"
+    # observed must come from the provider, never manufactured from the request
+    assert m.observed_model != m.requested_model
+
+
+def test_stream_responsemeta_none_when_provider_metadata_absent(monkeypatch):
+    # NEGATIVE FIXTURE 1: chunk with no id/model/system_fingerprint
+    a = _adapter()
+    sse = iter([{"choices": [{"delta": {"content": "hi"}, "finish_reason": "stop"}]}])
+    events = _run_stream(a, monkeypatch, sse)
+    metas = [e for e in events if _is_meta(e)]
+    assert len(metas) == 1
+    m = metas[0]
+    assert m.observed_model is None
+    assert m.system_fingerprint is None
+    assert m.response_id is None
+    assert m.requested_model == "req-model"           # request side still recorded
+
+
+def test_stream_empty_still_emits_one_responsemeta(monkeypatch):
+    # NEGATIVE FIXTURE 2: empty stream -> still exactly one ResponseMeta
+    a = _adapter()
+    events = _run_stream(a, monkeypatch, iter([]))
+    metas = [e for e in events if _is_meta(e)]
+    assert len(metas) == 1
+    assert events == metas                            # nothing but the meta
+    m = metas[0]
+    assert m.observed_model is None
+    assert m.system_fingerprint is None
+    assert m.response_id is None
+
+
+def test_stream_error_before_first_chunk_emits_meta_then_reraises(monkeypatch):
+    # NEGATIVE FIXTURE 3: pre-chunk failure -> one ResponseMeta, then the
+    # ORIGINAL exception (type AND message), not a wrapper
+    import pytest
+    from ai4science.harness import transport
+
+    class Boom(RuntimeError):
+        pass
+
+    def _raising():
+        raise Boom("kaboom-original")
+        yield  # pragma: no cover  (make this a generator)
+
+    a = _adapter()
+    monkeypatch.setattr(transport, "sse_post",
+                        lambda url, headers, payload, timeout=600: _raising())
+    collected = []
+    with pytest.raises(Boom) as ei:
+        for e in a.stream([], [], model="req-model", reasoning="low"):
+            collected.append(e)
+    assert str(ei.value) == "kaboom-original"         # original message, unwrapped
+    metas = [e for e in collected if _is_meta(e)]
+    assert len(metas) == 1
+    assert collected[0] is metas[0]                   # meta emitted before the raise
+
+
+# ── delayed metadata: accumulate across prelude chunks, emit once ───────────
+def test_stream_meta_from_empty_prelude_then_metadata_chunk(monkeypatch):
+    # The FIRST chunk is an empty prelude ({"choices": []}) that carries NO
+    # provider fields; id/model/system_fingerprint all arrive on the SECOND
+    # chunk. Reading only the first chunk loses them — the one ResponseMeta
+    # must still report all three.
+    a = _adapter()
+    sse = iter([
+        {"choices": []},
+        {"id": "resp-2", "model": "qwen3.8:27b-observed",
+         "system_fingerprint": "fp-7",
+         "choices": [{"delta": {"content": "hi"}, "finish_reason": None}]},
+        {"choices": [{"delta": {}, "finish_reason": "stop"}]},
+    ])
+    events = _run_stream(a, monkeypatch, sse)
+    metas = [e for e in events if _is_meta(e)]
+    assert len(metas) == 1                             # EXACTLY one
+    assert events[0] is metas[0]                       # BEFORE every semantic event
+    assert len(events) > 1                             # there ARE semantic events
+    m = metas[0]
+    assert m.response_id == "resp-2"
+    assert m.observed_model == "qwen3.8:27b-observed"
+    assert m.system_fingerprint == "fp-7"
+    assert m.observed_model != m.requested_model       # never copied from request
+
+
+def test_stream_meta_accumulates_fields_split_across_three_chunks(monkeypatch):
+    # id, model and system_fingerprint each arrive on a DIFFERENT prelude chunk;
+    # each is filled the first time it appears. A later chunk supplies a field an
+    # earlier chunk lacked. The single emitted meta carries all three, and is
+    # emitted immediately before the first semantic event (the text chunk).
+    a = _adapter()
+    sse = iter([
+        {"id": "resp-3", "choices": []},
+        {"model": "qwen3.8:27b-observed", "choices": []},
+        {"system_fingerprint": "fp-5", "choices": []},
+        {"choices": [{"delta": {"content": "hi"}, "finish_reason": "stop"}]},
+    ])
+    events = _run_stream(a, monkeypatch, sse)
+    metas = [e for e in events if _is_meta(e)]
+    assert len(metas) == 1
+    assert events[0] is metas[0]                       # precedes every semantic event
+    assert len(events) > 1
+    m = metas[0]
+    assert m.response_id == "resp-3"
+    assert m.observed_model == "qwen3.8:27b-observed"
+    assert m.system_fingerprint == "fp-5"
+    assert m.observed_model != m.requested_model
+
+
+def test_stream_meta_stays_none_across_chunks_without_provider_fields(monkeypatch):
+    # NEGATIVE: multiple chunks, none carrying id/model/system_fingerprint —
+    # observed fields must never be manufactured from the request even after
+    # accumulating across the whole stream.
+    a = _adapter()
+    sse = iter([
+        {"choices": [{"delta": {"content": "hi "}, "finish_reason": None}]},
+        {"choices": [{"delta": {"content": "there"}, "finish_reason": "stop"}]},
+    ])
+    events = _run_stream(a, monkeypatch, sse)
+    metas = [e for e in events if _is_meta(e)]
+    assert len(metas) == 1
+    assert events[0] is metas[0]
+    m = metas[0]
+    assert m.observed_model is None
+    assert m.system_fingerprint is None
+    assert m.response_id is None
+    assert m.requested_model == "req-model"            # request side still recorded

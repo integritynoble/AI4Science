@@ -5,14 +5,16 @@ from typing import Iterator, List
 
 from ai4science.harness.adapters.base import AgentAdapter
 from ai4science.harness.adapters._argsafe import loads_lenient
-from ai4science.harness.events import Message, ToolSpec, TextDelta, ToolCall, Usage, Done
+from ai4science.harness.events import (Message, ToolSpec, TextDelta, ToolCall,
+                                        Usage, Done, ResponseMeta)
 
 
 class OpenAIAdapter(AgentAdapter):
     backend = "openai"
 
-    def __init__(self, creds=None):
+    def __init__(self, creds=None, *, backend="openai"):
         self.creds = creds
+        self.backend = backend
 
     def _translate_tools(self, tools: List[ToolSpec]) -> list:
         return [{"type": "function",
@@ -108,5 +110,53 @@ class OpenAIAdapter(AgentAdapter):
         tool_specs = self._translate_tools(tools)
         if tool_specs:
             payload["tools"] = tool_specs
-        raw = transport.sse_post(c.base_url, headers, payload)
-        yield from self._parse_stream(dot(ch) for ch in raw)
+        requested_model = payload["model"]
+        yield from self._stream_with_meta(
+            lambda: transport.sse_post(c.base_url, headers, payload),
+            requested_model, dot)
+
+    def _stream_with_meta(self, open_stream, requested_model, dot):
+        """Emit EXACTLY ONE ResponseMeta immediately before the first semantic
+        event (or at clean end-of-stream if there is none).
+
+        Real OpenAI-compatible endpoints emit empty / metadata-less prelude
+        chunks (e.g. ``{"choices": []}``) before the fields land, so metadata is
+        ACCUMULATED per field across chunks: observed_model (chunk ``model``),
+        system_fingerprint, and response_id (chunk ``id``) are each filled the
+        FIRST time they appear and never overwritten afterwards. Absent values
+        stay None — nothing is ever manufactured from the request. A failure
+        (before the first chunk or mid-stream) still yields the one ResponseMeta
+        with whatever has accumulated so far, then re-raises the ORIGINAL error
+        unwrapped."""
+        observed = {"model": None, "system_fingerprint": None, "id": None}
+        emitted = False
+
+        def _meta():
+            return ResponseMeta(backend=self.backend, requested_model=requested_model,
+                                observed_model=observed["model"],
+                                system_fingerprint=observed["system_fingerprint"],
+                                response_id=observed["id"], transport="sse")
+
+        def _harvest():
+            for ch in open_stream():
+                d = dot(ch)
+                for src, key in (("model", "model"),
+                                 ("system_fingerprint", "system_fingerprint"),
+                                 ("id", "id")):
+                    if observed[key] is None:
+                        observed[key] = getattr(d, src, None)
+                yield d
+
+        try:
+            for ev in self._parse_stream(_harvest()):
+                if not emitted:                # flush the single meta lazily,
+                    emitted = True             # just before the first semantic event
+                    yield _meta()
+                yield ev
+        except Exception:                      # first-read OR mid-stream failure
+            if not emitted:
+                emitted = True
+                yield _meta()
+            raise                              # original object, type AND message, no wrapper
+        if not emitted:                        # empty / prelude-only stream: meta only
+            yield _meta()

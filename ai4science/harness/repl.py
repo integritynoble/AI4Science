@@ -817,6 +817,34 @@ def _registry_for_spec(spec, *, is_subagent, ctx):
     return build_registry_for(spec, is_subagent=is_subagent, ctx=ctx)
 
 
+def _route_adapter(backend: str, model: str, spec):
+    """The adapter a session actually speaks through.
+
+    A STRICT agent speaks only through the attestation guard: its output is
+    buffered until one ResponseMeta proves the route from OBSERVED response
+    fields, so no text reaches the terminal and no tool call reaches a real
+    tool on an unproven route. Ordinary agents get the bare adapter and keep
+    their existing behaviour byte for byte.
+
+    The REQUIRED route a strict guard enforces comes from the SPEC, never from
+    this function's `backend`/`model` arguments. The session sites pass what
+    was derived for the current route, but the `/model` switch passes its
+    DESTINATION: a guard built around the destination would attest whatever the
+    switch chose, so a second entry for a forbidden model in the menu would be
+    enough to get `attested: True` stamped on a route the strict spec forbids.
+    Reading the requirement from the spec makes that case HOLD instead, which
+    is the Amendment 61 behaviour.
+    """
+    adapter = adapter_for(backend)
+    if not getattr(spec, "strict_route", False):
+        return adapter
+    from ai4science.harness.route_attestation import AttestedAdapter
+    required_backend = getattr(spec, "default_backend", None) or backend
+    required_model = getattr(spec, "default_model", None) or model
+    return AttestedAdapter(adapter, backend=required_backend,
+                           model=required_model, strict=True)
+
+
 def _format_mode_menu() -> str:
     from ai4science.harness import tui as _tui
     lines = ["[agents]"]
@@ -1047,7 +1075,7 @@ def run_common_repl(
 
     def _child_session_factory(*, spec, ctx):
         child = AgentSession(
-            adapter=adapter_for(active_backend),
+            adapter=_route_adapter(active_backend, active_model, spec),
             model=active_model,
             backend=active_backend,
             workspace=workspace,
@@ -1067,7 +1095,7 @@ def run_common_repl(
 
     def _build_session() -> AgentSession:
         s = AgentSession(
-            adapter=adapter_for(active_backend),
+            adapter=_route_adapter(active_backend, active_model, active_spec),
             model=active_model,
             backend=active_backend,
             workspace=workspace,
@@ -1288,7 +1316,7 @@ def run_common_repl(
                     print(f"[harness] model unchanged: {active_model}", flush=True)
                     continue
                 try:
-                    session.set_brand(adapter_for(new_backend), new_model, new_backend)
+                    session.set_brand(_route_adapter(new_backend, new_model, active_spec), new_model, new_backend)
                     session.meter = _make_wrapped_meter(new_backend, new_model)
                     active_backend, active_model = new_backend, new_model
                     # User chose this brand explicitly — stop auto-healing away from it.
@@ -1535,7 +1563,7 @@ def run_common_repl(
                 print(f"\n[harness] {active_model} unavailable "
                       f"({_clean_turn_error(last)}) — switching to {nm}…", flush=True)
                 active_backend, active_model = nb, nm
-                session.set_brand(adapter_for(nb), nm, nb)
+                session.set_brand(_route_adapter(nb, nm, active_spec), nm, nb)
                 session.meter = _make_wrapped_meter(nb, nm)
                 # Roll back history to before the failed turn so run_turn()
                 # doesn't append a duplicate user message on the retry.

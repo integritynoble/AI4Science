@@ -38,6 +38,13 @@ BACKENDS: Dict[str, Dict] = {
         "key_envs": ("OPENAI_API_KEY",),
         "default_model": "gpt-5.5",
     },
+    "pwm_qwen": {   # Qwen served by the physicsworldmodel.org gateway (api-key).
+        # A SECOND, additional Qwen route — distinct from the Vertex MaaS "qwen"
+        # backend above, which stays untouched.
+        "base": "https://physicsworldmodel.org/qwen/v1",
+        "key_envs": ("PWM_QWEN_API_KEY",),
+        "default_model": "qwen3.8:27b",
+    },
 }
 
 
@@ -173,3 +180,40 @@ def chat(backend: str, messages: List[Dict[str, str]], model: Optional[str] = No
     except urllib.error.HTTPError as e:
         raise RuntimeError(f"HTTP {e.code}: {e.read()[:200].decode('utf-8', 'replace')}")
     return r["choices"][0]["message"]["content"], r.get("usage", {})
+
+
+def chat_with_meta(backend: str, messages: List[Dict[str, str]],
+                   model: Optional[str] = None,
+                   timeout: int = 120) -> Tuple[str, Dict, Dict]:
+    """Like chat(), but returns a THIRD value carrying provider response
+    metadata: (text, usage, meta). `meta` records the backend, the requested
+    model, and the observed_model / system_fingerprint / response_id reported by
+    the provider — each None when the response omits it (never manufactured from
+    the request). chat() keeps its two-value shape; use this when you need proof
+    of which model actually answered."""
+    key = resolve_key(backend)
+    if not key:
+        envs = BACKENDS.get(backend, {}).get("key_envs", ("<env>",))
+        raise RuntimeError(f"no API key for {backend} "
+                           f"(run `ai4science login` or set {envs[0]})")
+    base = resolve_base(backend)
+    requested = model or default_model(backend)
+    req = urllib.request.Request(
+        base.rstrip("/") + "/chat/completions",
+        data=json.dumps({"model": requested, "messages": messages}).encode("utf-8"),
+        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json",
+                 "User-Agent": "ai4science/0.1 (+https://physicsworldmodel.org)"},
+    )
+    try:
+        r = json.load(urllib.request.urlopen(req, timeout=timeout))
+    except urllib.error.HTTPError as e:
+        raise RuntimeError(f"HTTP {e.code}: {e.read()[:200].decode('utf-8', 'replace')}")
+    meta = {
+        "backend": backend,
+        "requested_model": requested,
+        "observed_model": r.get("model"),
+        "system_fingerprint": r.get("system_fingerprint"),
+        "response_id": r.get("id"),
+        "transport": "https",
+    }
+    return r["choices"][0]["message"]["content"], r.get("usage", {}), meta

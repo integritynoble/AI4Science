@@ -34,3 +34,5 @@ class AgentSpec:
     # Every agent is built + recursively self-improved in the ai4science platform; only mature
     # ones ship in singularity, via owner-signed promotion. Manager + Machine mature first.
     matured: bool = False
+    strict_route: bool = False              # this FUNCTION must prove its route (Amendment 61)
+    default_model: Optional[str] = None     # model the spec pins, paired with default_backend

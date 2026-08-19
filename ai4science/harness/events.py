@@ -50,6 +50,21 @@ class Usage:
 
 
 @dataclass
+class ResponseMeta:
+    """Provenance for one provider request, emitted once before any semantic
+    event. observed_model / system_fingerprint / response_id come ONLY from the
+    provider's response (None when absent) — they are never copied from
+    requested_model, so a ResponseMeta is proof of which model actually answered.
+    transport records how the request was made (e.g. "sse")."""
+    backend: str
+    requested_model: str
+    observed_model: Optional[str] = None
+    system_fingerprint: Optional[str] = None
+    response_id: Optional[str] = None
+    transport: Optional[str] = None
+
+
+@dataclass
 class Done:
     stop_reason: Optional[str] = None
 
