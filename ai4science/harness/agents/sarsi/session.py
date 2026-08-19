@@ -158,6 +158,16 @@ class MachineRuntime:
 #: drivable rather than quietly mis-driven.
 DRIVABLE_SPECS = {"claude-code", "codex", "opencode", "general-purpose"}
 
+#: Harness agent ID → openclaw agent ID for the three session agents that use
+#: the two-layer architecture (openclaw gateway tmux pane + ACP control).
+#: sarsi-worker in the harness maps to sarsi-claude in openclaw because the
+#: harness uses the registry name while openclaw uses a separate namespace.
+OPENCLAW_ACP_IDS: Dict[str, str] = {
+    "sarsi-worker": "sarsi-claude",
+    "sarsi-ai4sci": "sarsi-ai4sci",
+    "sarsi-open":   "sarsi-open",
+}
+
 
 def drivable(spec: str) -> bool:
     return spec in DRIVABLE_SPECS
@@ -202,19 +212,19 @@ def assign(config: Config, agent: Agent, task: tsk.Task, *,
     # at `release`, honestly, by refusing rather than pretending.
     secrets = _unlock(config, agent, task, vault_prompt)
 
-    # ACP sessions speak JSON-RPC over stdio — no screen to type at, no gate
-    # markers to read back. The harness delivers the brief as a prompt and gets
-    # a text response. Two specs use this transport:
-    #   opencode        → `opencode acp --pure`  (original ACP path)
-    #   general-purpose → `ai4science acp --pure --mode general-purpose`
-    # claude-code and everything else use tmux + gate markers.
+    # Three agents share a two-layer transport: the openclaw gateway manages
+    # the tool session in a tmux pane (human visibility) while the harness
+    # speaks ACP JSON-RPC to the gateway via `openclaw acp --session ID`
+    # (programmatic control). See OPENCLAW_ACP_IDS for the harness→openclaw
+    # ID mapping (they differ for sarsi-worker / sarsi-claude).
+    #
+    # Agents not in OPENCLAW_ACP_IDS (social, funding, jobs, etc.) run in a
+    # regular tmux session via MachineRuntime and are attended by the owner.
     if runtime is None:
-        if agent.spec == "opencode":
-            from ai4science.harness.agents.sarsi.acp import acp_runtime
-            runtime = acp_runtime()
-        elif agent.spec == "general-purpose":
-            from ai4science.harness.agents.sarsi.acp import ai4sci_acp_runtime
-            runtime = ai4sci_acp_runtime(agent.spec)
+        openclaw_id = OPENCLAW_ACP_IDS.get(agent.id)
+        if openclaw_id is not None:
+            from ai4science.harness.agents.sarsi.acp import openclaw_acp_runtime
+            runtime = openclaw_acp_runtime(openclaw_id)
         else:
             runtime = MachineRuntime()
     home = tsk.dir_of(agent, task.id)
@@ -282,10 +292,10 @@ def assign(config: Config, agent: Agent, task: tsk.Task, *,
                     "engine": getattr(runtime, "engine", "claude"),
                     # which transport owns this session: the routing helpers
                     # below read this to decide ACP round-trips vs tmux keystrokes.
-                    # `acp_spec` lets _rt() recover the right cached AcpRuntime.
-                    "transport": "acp" if agent.spec in {
-                        "opencode", "general-purpose"} else "tmux",
+                    # `openclaw_id` lets _rt() recover the right cached AcpRuntime.
+                    "transport": "acp" if getattr(runtime, "acp", False) else "tmux",
                     "acp_spec": agent.spec,
+                    "openclaw_id": OPENCLAW_ACP_IDS.get(agent.id),
                     "planner": agent.model}
     task.state = tsk.RUNNING
     # A count of failures belongs to the session that failed. Live: a task
@@ -633,16 +643,20 @@ def _kickoff_marker(text: str) -> str:
 
 
 def _rt(runtime: Optional[Any], task: tsk.Task) -> Any:
-    """The runtime that owns this task's session, by transport and spec."""
+    """The runtime that owns this task's session, by transport."""
     sess = task.session or {}
     if sess.get("transport") == "acp":
+        openclaw_id = sess.get("openclaw_id")
+        if openclaw_id:
+            from ai4science.harness.agents.sarsi.acp import openclaw_acp_runtime
+            return openclaw_acp_runtime(openclaw_id)
+        # Fallback for sessions started before openclaw_id was recorded.
         acp_spec = sess.get("acp_spec", "opencode")
         if acp_spec == "opencode":
             from ai4science.harness.agents.sarsi.acp import acp_runtime
             return acp_runtime()
-        else:
-            from ai4science.harness.agents.sarsi.acp import ai4sci_acp_runtime
-            return ai4sci_acp_runtime(acp_spec)
+        from ai4science.harness.agents.sarsi.acp import ai4sci_acp_runtime
+        return ai4sci_acp_runtime(acp_spec)
     return runtime or MachineRuntime()
 
 

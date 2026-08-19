@@ -269,27 +269,26 @@ def _validate_binding(b: Dict[str, Any], agents: Dict[str, Agent],
 #: permission-tight one, which is why abraham runs on it.
 _ROSTER = [
     {"id": "sarsi-machine", "role": MANAGER_ROLE, "spec": "manager"},
-    # The one general worker. It took over the general-work vocabulary from
-    # `work` when that retired — without it, "fix the failing test in the repo"
-    # matches nobody and routing answers "I cannot tell", which is worse than
-    # the answer it replaced. `email` and `mailbox` deliberately did NOT come
-    # across: the vocabulary follows the capability, and this agent has no
-    # mailbox to clear.
+    # The one general worker (Claude Code). Driven through openclaw's ACP
+    # bridge as `sarsi-claude` in openclaw.json (`openclaw acp --session
+    # sarsi-claude:main:main`). Same two-layer pattern as sarsi-ai4sci and
+    # sarsi-open: gateway tmux pane for visibility, ACP for programmatic
+    # control. `email` and `mailbox` deliberately did NOT come across from
+    # the retired `work` agent.
     {"id": "sarsi-worker", "role": WORKER_ROLE, "spec": "claude-code",
      "tools": ["shell", "editor", "browser"],
      "about": ["code", "data", "analysis", "script", "repo", "benchmark",
                "experiment"]},
-    # The ai4science worker: same general-work role, driven through the
-    # ai4science ACP server (qwen_local backend via nothink proxy). Uses
-    # `ai4science acp --pure --mode general-purpose` over JSON-RPC stdio,
-    # the same transport as opencode — fully drivable, not attended-only.
+    # The ai4science worker: same general-work role, driven through openclaw's
+    # ACP bridge (`openclaw acp --session sarsi-ai4sci:main:main`). The
+    # gateway manages the agent session in a tmux pane (human visibility) while
+    # the harness sends prompts over ACP JSON-RPC (programmatic control).
     {"id": "sarsi-ai4sci", "role": WORKER_ROLE, "spec": "general-purpose",
      "tools": ["shell", "editor", "browser"],
      "about": ["code", "data", "analysis", "script", "repo", "benchmark",
                "experiment"]},
-    # The OpenCode worker: the same general-work role, driven through the
-    # opencode TUI instead of Claude Code. Its spec launches `opencode`, which
-    # the supervision loop reads the same way (busy/idle/prompt markers).
+    # The OpenCode worker: same pattern as sarsi-ai4sci — openclaw manages its
+    # session in a tmux pane (`openclaw acp --session sarsi-open:main:main`).
     {"id": "sarsi-open", "role": WORKER_ROLE, "spec": "opencode",
      "tools": ["shell", "editor", "browser"],
      "about": ["code", "data", "analysis", "script", "repo", "benchmark",

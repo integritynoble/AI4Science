@@ -1,4 +1,4 @@
-"""Persistent ACP transport for opencode and ai4science sessions.
+"""Persistent ACP transport for openclaw-managed and ai4science sessions.
 
 The tmux loop types at a screen and reads it back; this talks the Agent
 Client Protocol directly over stdio JSON-RPC, so a prompt is a request with
@@ -6,12 +6,26 @@ an answer, not keystrokes followed by a guess. `AcpRuntime` exposes the same
 surface `MachineRuntime` does — `start`, `send`, `stop`, `set_ceiling` —
 plus `resume`, which re-opens a session after the gateway has died.
 
-The command that backs each runtime is parameterised:
-  - opencode:      ["opencode", "acp", "--pure"]
-  - ai4science:    ["/usr/local/bin/ai4science", "acp", "--pure", "--mode", MODE]
+Two transport commands are supported:
 
-`acp_runtime()` returns the singleton opencode runtime.
-`ai4sci_acp_runtime(mode)` returns a cached runtime for that mode.
+  openclaw agent (sarsi-claude, sarsi-open, sarsi-ai4sci):
+      ["openclaw", "acp", "--session", "{openclaw_agent_id}:main:main"]
+
+  ai4science direct (fallback when the openclaw gateway is unavailable):
+      ["/usr/local/bin/ai4science", "acp", "--pure", "--mode", MODE]
+
+`openclaw acp` is the ACP bridge: it speaks ACP JSON-RPC over stdin/stdout
+(NDJSON) and routes prompts through the OpenClaw Gateway (WebSocket) to the
+target agent session. The protocol surface is identical to a direct
+`opencode acp` server — `initialize`, `session/new`, `session/prompt`,
+`session/update` — but the gateway handles session lifecycle, tool
+permissions, and agent dispatch. The gateway also manages each agent's tmux
+pane, giving human visibility alongside programmatic control.
+
+`openclaw_acp_runtime(openclaw_agent_id)` returns a cached runtime that
+drives the named openclaw agent via the gateway ACP bridge.
+`ai4sci_acp_runtime(mode)` returns a cached runtime for a direct ai4science
+ACP session (no gateway, no tmux pane).
 """
 import json
 import queue
@@ -21,7 +35,7 @@ import time
 from typing import Any, Dict, List, Optional
 
 PROMPT_TIMEOUT = 600
-_CMD = ["opencode", "acp", "--pure"]
+_CMD = ["opencode", "acp", "--pure"]  # kept for legacy; use openclaw_acp_runtime()
 
 
 class AcpError(Exception):
@@ -215,7 +229,12 @@ class AcpRuntime:
 
     def __init__(self, cmd: Optional[List[str]] = None) -> None:
         self._cmd = cmd or _CMD
-        self.engine = "ai4science" if (cmd and "ai4science" in cmd[0]) else "opencode"
+        if cmd and "openclaw" in cmd[0]:
+            self.engine = "openclaw"
+        elif cmd and "ai4science" in cmd[0]:
+            self.engine = "ai4science"
+        else:
+            self.engine = "opencode"
         self._clients: Dict[str, AcpClient] = {}
 
     def start(self, name: str, cwd: str, **_: Any) -> Dict[str, Any]:
@@ -268,11 +287,33 @@ def _get_runtime(cmd: tuple) -> AcpRuntime:
 
 
 def acp_runtime() -> AcpRuntime:
-    """The ACP runtime for opencode sessions."""
+    """Legacy: ACP runtime for a direct opencode subprocess (no gateway)."""
     return _get_runtime(tuple(_CMD))
 
 
 def ai4sci_acp_runtime(mode: str = "general-purpose") -> AcpRuntime:
-    """An ACP runtime that drives `ai4science acp --pure --mode MODE` sessions."""
+    """ACP runtime that drives `ai4science acp --pure --mode MODE` directly.
+
+    Used as a fallback when the openclaw gateway is unavailable. Prefer
+    `openclaw_acp_runtime` for production sessions — it adds gateway-managed
+    tmux visibility alongside programmatic control.
+    """
     cmd = ("/usr/local/bin/ai4science", "acp", "--pure", "--mode", mode)
+    return _get_runtime(cmd)
+
+
+def openclaw_acp_runtime(openclaw_agent_id: str) -> AcpRuntime:
+    """ACP runtime that drives an agent through the openclaw gateway.
+
+    `openclaw acp --session AGENT_ID:main:main` speaks the same JSON-RPC
+    protocol over its stdin/stdout, but the gateway manages the agent's
+    session (in a tmux pane, with tool permissions, persistent history).
+    The harness gets programmatic ACP control; the owner gets a visible pane.
+
+    `openclaw_agent_id` is the agent's ID in openclaw.json (e.g.
+    "sarsi-claude", "sarsi-open", "sarsi-ai4sci").
+    """
+    import shutil
+    binary = shutil.which("openclaw") or "openclaw"
+    cmd = (binary, "acp", "--session", f"{openclaw_agent_id}:main:main")
     return _get_runtime(cmd)
