@@ -516,6 +516,19 @@ def _last_words(conn: Any, limit: int = 400) -> str:
 _WRITING_CEILINGS = {"A1", "A2", "A3"}
 
 
+def _default_wire():
+    """The governance writer — THE SAME ONE the tmux path uses.
+
+    Named here rather than imported at module scope so a test can see which
+    writer is in force, and so this file states the rule it depends on: two
+    governance writers would be two boundaries that can disagree, and the one
+    that disagrees quietly is the one that stops governing.
+    """
+    from ai4science.harness.agents.machine.claude_driver import (
+        ensure_governance_hook)
+    return ensure_governance_hook
+
+
 class AcpRuntime:
     """`MachineRuntime`'s interface, over ACP.
 
@@ -527,11 +540,13 @@ class AcpRuntime:
     engine = "acp"
 
     def __init__(self, *, agent_id: str = "", connect: Optional[Callable] = None,
-                 config_path=None, timeout: float = 900.0):
+                 config_path=None, timeout: float = 900.0,
+                 wire: Optional[Callable] = None):
         self.agent_id = agent_id
         self._connect = connect
         self._config_path = config_path
         self._timeout = timeout
+        self._wire = wire
 
     # -- lifecycle
     def start(self, name: str, cwd: str, *, govern: bool = True,
@@ -540,6 +555,36 @@ class AcpRuntime:
               ) -> Dict[str, Any]:
         """Open the ACP session. Returns an ACCEPTANCE, never a verdict."""
         allow = (ceiling or "").strip().upper() in _WRITING_CEILINGS
+        if govern:
+            # BEFORE the spawn. `claude` reads project settings when the
+            # session opens, so a hook written afterwards governs nothing —
+            # this is the same ordering the tmux path enforces, for the same
+            # reason.
+            #
+            # Proven on this channel before it was relied on: an acpx-spawned
+            # `claude` fires the project PreToolUse hook and a non-zero exit
+            # blocks the tool. The hook is a real control here, not an
+            # assumption carried over from tmux.
+            #
+            # The declared paths travel WITH the ceiling, so the hook and the
+            # sandbox draw ONE boundary rather than two that can disagree.
+            try:
+                (self._wire or _default_wire())(
+                    cwd, ceiling=ceiling, writable=writable)
+            except Exception as e:
+                # NOT swallowed, and the peer is NOT spawned. `govern=True` is
+                # a request to be honoured or refused, never dropped: a
+                # session that cannot be governed is not the session that was
+                # asked for. Returning `ok: True` here would hand every layer
+                # above an ungoverned executor they believe is governed —
+                # which on this channel is the ONLY boundary in force, because
+                # acpx answers permission requests with `approve-all`.
+                return {"ok": False, "outcome": ERRORED, "name": name,
+                        "runtime": "acp", "agent_id": self.agent_id,
+                        "reason": (f"could not govern the session: "
+                                   f"{type(e).__name__}: {e} — not started, "
+                                   f"because an ungoverned session is not the "
+                                   f"one that was asked for")}
         connect = self._connect or connect_stdio
         try:
             conn = connect(agent_id=self.agent_id, cwd=cwd, env=env,
