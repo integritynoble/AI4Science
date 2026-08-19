@@ -66,9 +66,19 @@ class AcpClient:
     # -- lifecycle ---------------------------------------------------------
 
     def connect(self, timeout: float = 30.0) -> None:
+        env = None
+        if self._cmd and "openclaw" in str(self._cmd[0]):
+            # openclaw is a Node.js script; ensure node is discoverable even
+            # when the harness runs without the user's full NVM PATH.
+            import os
+            node_bin = "/home/sarsi/.nvm/versions/node/v24.19.0/bin"
+            path = os.environ.get("PATH", "")
+            if node_bin not in path:
+                env = {**os.environ, "PATH": f"{node_bin}:{path}"}
         self._proc = subprocess.Popen(
             self._cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL, cwd=self.cwd, text=True, bufsize=1)
+            stderr=subprocess.DEVNULL, cwd=self.cwd, text=True, bufsize=1,
+            env=env)
         threading.Thread(target=self._read_loop, daemon=True).start()
         self._request("initialize", {
             "protocolVersion": 1,
@@ -313,7 +323,11 @@ def openclaw_acp_runtime(openclaw_agent_id: str) -> AcpRuntime:
     `openclaw_agent_id` is the agent's ID in openclaw.json (e.g.
     "sarsi-claude", "sarsi-open", "sarsi-ai4sci").
     """
+    import os
     import shutil
-    binary = shutil.which("openclaw") or "openclaw"
+    # Try current PATH first, then sarsi's NVM install as a fallback.
+    _fallback = "/home/sarsi/.nvm/versions/node/v24.19.0/bin/openclaw"
+    binary = shutil.which("openclaw") or (
+        _fallback if os.path.isfile(_fallback) else "openclaw")
     cmd = (binary, "acp", "--session", f"{openclaw_agent_id}:main:main")
     return _get_runtime(cmd)

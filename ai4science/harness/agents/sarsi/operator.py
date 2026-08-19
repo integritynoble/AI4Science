@@ -55,7 +55,7 @@ from ai4science.harness.agents.sarsi.registry import Agent, Config
 #: signal. A bare `✻` is not: it also heads FINISHED status lines — abraham's
 #: run sat at `✻ Brewed for 35s` and the loop reported `busy` forever at a
 #: session that had already stopped. A glyph is not a state.
-_BUSY = ("esc to interrupt",)
+_BUSY = ("esc to interrupt", "esc interrupt")
 
 #: Gates this loop is allowed to answer, and the option to press. Recognised by
 #: a phrase that only appears on that gate. Anything else waits for the owner.
@@ -73,7 +73,7 @@ _GATE_SHAPE = re.compile(r"^\s*❯?\s*1\.\s+\S", re.M)
 # prompt), and it must accept U+00A0 — Claude Code's TUI separates the `❯` from
 # the text with a NON-BREAKING space, which a plain `[ \t]` misses. The first
 # operator run reported `idle` at a visibly stranded screen for exactly that.
-_PROMPT_LINE = re.compile(r"^❯[^\S\r\n]+(?P<text>\S.*)$", re.M)
+_PROMPT_LINE = re.compile(r"^[❯┃][^\S\r\n]+(?P<text>\S.*)$", re.M)
 
 
 @dataclass(frozen=True)
@@ -515,7 +515,7 @@ def _busy(screen: str) -> bool:
 #: merely contains a quote, is left alone. The residual cost is an owner who
 #: types exactly `Try "…"` and leaves it stranded — they press Enter themselves,
 #: which is a far smaller harm than the loop inventing a prompt.
-_SUGGESTION = re.compile(r'^Try\s+"[^"]*"$', re.I)
+_SUGGESTION = re.compile(r'^(?:Try\s+"[^"]*"|Ask anything\.\.\.\s*"[^"]*")$', re.I)
 
 
 #: SGR **dim** — how Claude Code renders its own placeholder at the prompt, and
@@ -537,9 +537,10 @@ def _dim_at_prompt(styled: str) -> bool:
     actually reports, so that is what this reads.
     """
     for line in reversed((styled or "").splitlines()):
-        if "❯" not in line:
+        m = re.search(r"[❯┃]", line)
+        if not m:
             continue
-        after = line.split("❯", 1)[1]
+        after = line[m.end():]
         if not _SGR.sub("", after).strip():
             return False                      # an empty prompt is not a hint
         return _DIM in after

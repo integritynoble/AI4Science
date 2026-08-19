@@ -23,7 +23,7 @@ from __future__ import annotations
 import time
 from typing import Any, List, Optional
 
-from ai4science.harness.agents.sarsi import plan as pl, session as ses, task as tsk
+from ai4science.harness.agents.sarsi import memory, plan as pl, session as ses, task as tsk
 from ai4science.harness.agents.sarsi.registry import Agent, Config
 
 COMMANDS = ("/tasks", "/<task>", "/guided <task> <instruction>",
@@ -407,6 +407,10 @@ def _goal(config, agent, t, tail, runtime):
     # The plan was re-drafted for a different goal; none of the old per-phase
     # answers are about it.
     tsk.clear_phase(t, None)
+    memory.record(config, agent, "rollback",
+                  f"{t.id} rolled back: goal changed from {was[:120]!r}",
+                  f"the plan was re-drafted for the new goal: {goal[:200]}",
+                  now=time.time)
     if owner_criteria:
         t.criteria = owner_criteria           # the owner's words survive
         t.plan_owner_edited = True
@@ -462,6 +466,10 @@ def _edit(config, agent, t, tail, runtime):
     # That phase was judged against a standard that no longer exists. Keeping
     # the PASS would carry a verdict about a question nobody asks any more.
     tsk.clear_phase(t, index)
+    memory.record(config, agent, "rollback",
+                  f"{t.id} rolled back: phase {number} criterion replaced",
+                  f"the phase was judged against a standard that no longer exists; "
+                  f"it now reads: {criterion[:200]}", now=time.time)
     t.plan_stale = False               # an edit is the mission restated
     t.plan_owner_edited = True
     t.plan_agreed = True               # you have settled it; no more drafting
