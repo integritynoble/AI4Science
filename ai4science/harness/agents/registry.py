@@ -35,6 +35,7 @@ _AGENT_DIST: Dict[str, str] = {
     "unified-LLM": "pwm-agent-unified",
     "claude-code": "pwm-agent-claude-gpu",   # was keyed "claude-gpu"
     "codex": "pwm-agent-codex-gpu",           # was keyed "codex-gpu"
+    "opencode": "pwm-agent-opencode",
 }
 
 # First-party agents that ship as their own package (for install hints).

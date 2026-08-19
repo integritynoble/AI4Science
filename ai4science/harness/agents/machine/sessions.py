@@ -34,6 +34,15 @@ def _looks_like_claude(args: List[str]) -> bool:
     return False
 
 
+def _looks_like_opencode(args: List[str]) -> bool:
+    # the opencode CLI, launched directly or via node (argv has a path ending /opencode)
+    return any(a.rsplit("/", 1)[-1] == "opencode" for a in args)
+
+
+def _looks_like_managed(args: List[str]) -> bool:
+    return _looks_like_claude(args) or _looks_like_opencode(args)
+
+
 def _default_list_procs() -> List[Dict[str, Any]]:
     procs: List[Dict[str, Any]] = []
     try:
@@ -42,7 +51,7 @@ def _default_list_procs() -> List[Dict[str, Any]]:
         return procs
     for pid in pids:
         args = _proc_args(pid)
-        if not args or not _looks_like_claude(args):
+        if not args or not _looks_like_managed(args):
             continue
         try:
             cwd = os.readlink(f"/proc/{pid}/cwd")
