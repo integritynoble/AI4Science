@@ -38,6 +38,11 @@ BACKENDS: Dict[str, Dict] = {
         "key_envs": ("OPENAI_API_KEY",),
         "default_model": "gpt-5.5",
     },
+    "qwen_local": {   # owner's local Ollama-served Qwen via auth shim
+        "base": "http://localhost:11437/v1",
+        "key_envs": ("QWEN_LOCAL_API_KEY",),
+        "default_model": "qwen3.8:27b",
+    },
 }
 
 
