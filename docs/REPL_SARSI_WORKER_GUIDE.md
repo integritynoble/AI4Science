@@ -59,7 +59,7 @@ slash is read as an answer, so don't type commands here):
 ```
   goal:    write fib.py …
   agent:   sarsi-worker
-  backend: sarsi-pwm
+  backend: sarsi-ai4sci
   it will plan at A0 first, and stop for your grant
 
   create it? [Enter=yes / e=edit / p=plan / b=sarsi-claude / n=no]
@@ -70,7 +70,7 @@ slash is read as an answer, so don't type commands here):
 | Enter / `y` | create the task → `→ tsk_XXXXXXXXXX` |
 | `e` | edit the goal and send it again |
 | `p` | **you author the plan**: create the task, write a markdown plan (phases, a `Verified when:` line each, a `## Permissions needed` section), then `ai4science sarsi plan sarsi-worker <task-id> --set-from <file>.md`. It is agreed on arrival — no session may rewrite your criteria. Permissions still need granting. |
-| `b` | **switch the engine** for this task — toggles `sarsi-pwm` (PWM Code) ↔ `sarsi-claude` (real Claude Code) and re-shows the block so you can read the choice back. The backend belongs to the task, chosen here. |
+| `b` | **switch the engine** for this task — toggles `sarsi-ai4sci` (ai4science) ↔ `sarsi-claude` (real Claude Code) and re-shows the block so you can read the choice back. The backend belongs to the task, chosen here. |
 | `n` | drop it — the goal is read back so you can retype it |
 
 So to run a REPL-created task on real Claude Code: type the directive,
@@ -257,7 +257,7 @@ is what keeps `/task` showing only your test board.)
 
 1. `/agents` → `1` — prompt becomes `sarsi-worker ❯`.
 2. Type: `write fib.py in this folder that prints the first 10 Fibonacci numbers`
-3. The confirm block appears (`backend: sarsi-pwm`). Press Enter to accept —
+3. The confirm block appears (`backend: sarsi-ai4sci`). Press Enter to accept —
    expect `→ tsk_XXXXXXXXXX`. Note the id and its last 4 characters.
 4. `/tasks` — the task sits there `ready`.
 5. If instead you get *"I could not tell whether that is a goal"*, your

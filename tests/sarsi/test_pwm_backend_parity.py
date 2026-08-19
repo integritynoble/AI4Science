@@ -2,7 +2,17 @@
 
 `sarsi-claude` opens a tmux session running Anthropic's `claude` binary.
 `sarsi-pwm` opens one running **ai4science** — PWM Code — and is to be the
-default. The blocker was assumed to be architectural and is not: the
+default.
+
+NAMES, 2026-08-19. The backend was renamed `sarsi-pwm` -> `sarsi-ai4sci`, and
+this file keeps the old name in its filename and its prose ON PURPOSE. What it
+records is the TUI-parity work found by driving live `sarsi-pwm` runs — six
+defects, three supervised runs, all cited by that name in PROGRESS.md and in the
+run logs. Renaming the file would break every reference to the evidence and
+rewrite history that was true when it happened. The behaviour it guards is also
+now the LEGACY path: both backends are driven through OpenClaw ACP
+(`sarsi/acp.py`), which reads a structured stop reason instead of a screen. This
+file stays as the record of what screen-reading cost. The blocker was assumed to be architectural and is not: the
 supervision loop reads four things, two are already identical in both TUIs, and
 two differ in *string only*.
 

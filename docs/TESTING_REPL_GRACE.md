@@ -69,7 +69,7 @@ Stay in the REPL for Example B.
 $AI4S sarsi tasks sarsi-worker      # table shows the task, state "ready"
 ```
 
-A REPL-created task runs on the default backend `sarsi-pwm` (PWM Code)
+A REPL-created task runs on the default backend `sarsi-ai4sci` (ai4science)
 unless you say otherwise **at the confirmation**: pressing `b` there toggles
 the engine to `sarsi-claude` (real Claude Code) and re-shows the block so
 you can read the choice back before Enter. The backend belongs to the task,

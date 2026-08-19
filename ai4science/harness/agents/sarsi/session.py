@@ -152,6 +152,53 @@ class MachineRuntime:
         return supervisor.update(name, ceiling=ceiling) or {}
 
 
+def runtime_for(task: Any = None, *, backend: str = "") -> Any:
+    """The driver for this task — ACP, or the tmux runtime.
+
+    TWO QUESTIONS, and they have different answers.
+
+    A task with NO session yet is about to start one, and the answer comes from
+    its BACKEND: both named backends are ACP (`backends.driver_for`).
+
+    A task with a LIVE session is driven by whatever STARTED that session, read
+    off the session record. This is the same rule the backend itself follows —
+    "which engine ran this one is a fact about the task, recorded with it" —
+    one level down: which DRIVER is holding this session is a fact about the
+    session, recorded with it. Deciding from the backend instead would send a
+    tmux pane a stop it cannot hear the moment somebody switched the backend
+    mid-task, and the terminal would outlive the task. That failure has already
+    happened here once, by a different route, and
+    `test_a_runtime_that_cannot_stop_falls_back_to_the_real_one` is its guard.
+
+    A backend that cannot be resolved falls back to `MachineRuntime` rather
+    than raising: a corrupt backend field must not make a task impossible to
+    STOP.
+    """
+    from ai4science.harness.agents.sarsi import backends as _bk
+
+    live = getattr(task, "session", None)
+    if not backend and isinstance(live, dict) and live:
+        recorded = (live.get("runtime") or "").strip()
+        if recorded == "acp":
+            from ai4science.harness.agents.sarsi import acp as _acp
+            return _acp.AcpRuntime(agent_id=(live.get("agent_id") or ""))
+        # No driver recorded means the record predates ACP, and every one of
+        # those is a tmux session. Answering with anything else abandons a
+        # terminal that is still running.
+        return MachineRuntime()
+
+    name = (backend or getattr(task, "backend", "") or "").strip()
+    try:
+        chosen = _bk.resolve(name)
+        driver = _bk.driver_for(chosen)
+    except Exception:
+        return MachineRuntime()
+    if driver == "acp":
+        from ai4science.harness.agents.sarsi import acp as _acp
+        return _acp.AcpRuntime(agent_id=_bk.acp_agent_for(chosen))
+    return MachineRuntime()
+
+
 #: Specs whose interface the supervision loop can actually read. Its gate
 #: detection, stranded-prompt reading and busy marker are tuned to Claude
 #: Code's TUI; another interface may be STARTED, and is reported as not
@@ -227,7 +274,7 @@ def assign(config: Config, agent: Agent, task: tsk.Task, *,
     from ai4science.harness.agents.sarsi import backends as _bk
     # The BACKEND says which engine; the AGENT says which ai4science agent that
     # engine runs. Reading only the backend made every worker start on
-    # `unified-LLM` — the sarsi-pwm default — and the roster's own specs became
+    # `unified-LLM` — the sarsi-ai4sci default — and the roster's own specs became
     # dead configuration, so `social` would have run the generalist under the
     # social agent's name. That is exactly what `test_it_never_substitutes_a_
     # generalist` forbids.
@@ -239,10 +286,10 @@ def assign(config: Config, agent: Agent, task: tsk.Task, *,
     if _backend == "sarsi-claude":
         run_spec = _engine
     else:
-        # ...and `sarsi-pwm` means "NOT the vendor binary", so an agent whose
+        # ...and `sarsi-ai4sci` means "NOT the vendor binary", so an agent whose
         # spec is `claude-code` takes the ai4science default instead. Honouring
-        # it literally would make sarsi-pwm launch `claude`, which is the exact
-        # thing choosing sarsi-pwm says you do not want — and it would put the
+        # it literally would make sarsi-ai4sci launch `claude`, which is the
+        # exact thing choosing it says you do not want — and it would put the
         # vendor-CLI requirement back into the backend that exists to remove it.
         _own = (getattr(agent, "spec", "") or "").strip()
         run_spec = _engine if _own in ("", "claude-code") else _own
@@ -262,7 +309,7 @@ def assign(config: Config, agent: Agent, task: tsk.Task, *,
     # at `release`, honestly, by refusing rather than pretending.
     secrets = _unlock(config, agent, task, vault_prompt)
 
-    runtime = runtime or MachineRuntime()
+    runtime = runtime or runtime_for(task)
     home = tsk.dir_of(agent, task.id)
     home.mkdir(parents=True, exist_ok=True)
     # Where the session STANDS. `--workdir` says where the work happens, and a
@@ -346,6 +393,15 @@ def assign(config: Config, agent: Agent, task: tsk.Task, *,
                     # the work, not the one the worker planned with.
                     "engine": getattr(runtime, "engine", "claude"),
                     "planner": agent.model}
+    # The DURABLE handle, when the runtime has one. A tmux pane name means
+    # nothing once the pane is gone, and the loop then had only the SCREEN to
+    # ask about it — which is how an idle session and a dead one became the
+    # same reading. An ACP session id is recorded, and the gateway can still be
+    # asked about it after this process ends. Copied only when present, so the
+    # tmux path's record is unchanged.
+    for _k in ("runtime", "acp_session_id", "agent_id"):
+        if (started or {}).get(_k) is not None:
+            task.session[_k] = started[_k]
     task.state = tsk.RUNNING
     # A count of failures belongs to the session that failed. Live: a task
     # burned all three tries against a session `start_session` had reported and
@@ -654,7 +710,7 @@ def deliver_kickoff(config: Config, agent: Agent, task: tsk.Task, *,
         task.kickoff_undelivered = True
         return tsk._touch(agent, task, now)
 
-    out = (runtime or MachineRuntime()).send(
+    out = (runtime or runtime_for(task)).send(
         (task.session or {}).get("name", ""), pending) or {}
     if not out.get("ok", True):
         # The keystrokes never reached tmux — there is no such session. That is
@@ -717,7 +773,7 @@ def collect_plan(config: Config, agent: Agent, task: tsk.Task, *,
             # Same keystrokes, same unknown screen. The task stays `planning`
             # either way, which is what the owner acts on.
             return task
-        (runtime or MachineRuntime()).send(
+        (runtime or runtime_for(task)).send(
             (task.session or {}).get("name", ""),
             f"That plan cannot be used: {e}\n"
             f"Every phase must end in a `Verified when:` line that can be "
@@ -786,7 +842,7 @@ def release(config: Config, agent: Agent, task: tsk.Task, *,
     # The owner has seen the plan and granted what it declared, so the session
     # may now do more than read. Raised only to what this agent has EARNED.
     raised = _effective_ceiling(agent.ceiling)
-    rt = runtime or MachineRuntime()
+    rt = runtime or runtime_for(task)
     try:
         rt.set_ceiling((task.session or {}).get("name", ""), raised)
     except Exception as e:
@@ -858,7 +914,7 @@ def stop(config: Config, agent: Agent, task: tsk.Task, *,
         pass                          # a handoff that cannot be written must
                                       # not stop the task from stopping
 
-    runtime = runtime or MachineRuntime()
+    runtime = runtime or runtime_for(task)
     name = (task.session or {}).get("name")
     if name:
         try:
@@ -868,7 +924,7 @@ def stop(config: Config, agent: Agent, task: tsk.Task, *,
             # failure: it leaves a live terminal behind a stopped task. Fall
             # back to the real one rather than silently leaving it running.
             try:
-                MachineRuntime().stop(name)
+                runtime_for(task).stop(name)
             except Exception:
                 pass
         except Exception:
@@ -921,7 +977,7 @@ def release_session(config: Config, agent: Agent, task: tsk.Task, *,
         pass                          # the record matters more than the note
 
     try:
-        (runtime or MachineRuntime()).stop(name)
+        (runtime or runtime_for(task)).stop(name)
     except AttributeError:
         # The operator hands `verify` a `_Sender(pane)`, which can only TYPE.
         # Swallowing this cleared the record and left the terminal running —
@@ -931,7 +987,7 @@ def release_session(config: Config, agent: Agent, task: tsk.Task, *,
         # machine failure, so fall back to the real one. `ses.stop` has carried
         # this same fallback, for this same reason, since before I wrote this.
         try:
-            MachineRuntime().stop(name)
+            runtime_for(task).stop(name)
         except Exception:
             pass
     except Exception:
@@ -1059,7 +1115,7 @@ def guide(config: Config, agent: Agent, task: tsk.Task, instruction: str, *,
         raise OwnerHasTheWheel(
             f"you have the wheel on {task.id}; {agent.id} is standing by. "
             f"Hand it back with /resume {task.id}.")
-    (runtime or MachineRuntime()).send(name, instruction)
+    (runtime or runtime_for(task)).send(name, instruction)
     ledger.append(config, "reports",
                   {"agent": agent.id, "task": task.id,
                    "state": "guided-by-owner" if by_owner else "guided",
@@ -1319,7 +1375,7 @@ def verify(config: Config, agent: Agent, task: tsk.Task, *,
     # which the ledger below already reports honestly.
     if task.session and drivable(agent.spec):
         try:
-            (runtime or MachineRuntime()).send(
+            (runtime or runtime_for(task)).send(
                 task.session["name"],
                 f"The independent verifier says this is not done yet: {why}\n"
                 f"Address that specifically, then report the evidence again.")

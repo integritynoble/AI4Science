@@ -89,23 +89,23 @@ criteria and gates that stop anything reaching the world without you.
 
 **A session runs on one of two backends, and they are peers.**
 
-| | `sarsi-claude` | `sarsi-pwm` |
+| | `sarsi-claude` | `sarsi-ai4sci` |
 |---|---|---|
 | the session runs | Claude Code | **ai4science — PWM Code**, the agent you land in |
 | the model | Anthropic's | any the exchange gateway fronts |
 | compute | local | local, or a provider on the mesh |
 | the loop reads it | yes | yes — the two TUIs differ in two strings, not in shape |
 
-`sarsi-pwm` is the **default** for new tasks, and `sarsi-claude` is chosen at the
+`sarsi-ai4sci` is the **default** for new tasks, and `sarsi-claude` is chosen at the
 confirmation or switched on an existing task. Everywhere below that says
 `sarsi-claude`, read "the session backend": nothing in the loop, the gates or
 the verifier depends on which one it is.
 
 > **This is why the entering agent matters.** PWM Code *is* the ai4science TUI,
-> and `sarsi-pwm` opens a session running that same TUI — so the interface the
+> and `sarsi-ai4sci` opens a session running that same TUI — so the interface the
 > owner works in, the interface a worker's session runs, and the interface the
 > supervision loop reads are one interface. Had the entering agent been anything
-> else, `sarsi-pwm` would be a third interface to learn and a second dialect for
+> else, `sarsi-ai4sci` would be a third interface to learn and a second dialect for
 > the loop to parse.
 
 **What it does not have:** a manager, a server, a fleet, another machine. Those
@@ -115,7 +115,10 @@ rather than a client.
 ## 2. The invariant
 
 > **The agent you talk to does not execute. Only a worker touches a session
-> backend** — `sarsi-claude` or `sarsi-pwm`; the invariant does not care which.
+> backend** — `sarsi-claude` or `sarsi-ai4sci`; the invariant does not care which.
+>
+> (Renamed 2026-08-19 from `sarsi-pwm`. Tasks filed before that date carry the
+> old spelling in their records; it is never rewritten, and still resolves.)
 
 On one machine there is no network boundary to enforce this, so it is enforced
 as a code path: the machine agent plans, routes and answers, and `assign` raises

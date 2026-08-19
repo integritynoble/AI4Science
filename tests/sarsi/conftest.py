@@ -3,7 +3,7 @@
 `session.assign` refuses a spec that is not installed, and discovers what IS
 installed by reading the real `AGENT_REGISTRY` — which depends on what agent
 packages the machine running the tests happens to have. `unified-LLM` (the
-sarsi-pwm default engine) ships as `pwm-agent-unified` and is NOT a built-in
+sarsi-ai4sci default engine) ships as `pwm-agent-unified` and is NOT a built-in
 spec, so on a machine without it every `assign` of a default-backend task
 raises `SpecUnavailable` — and whether a given test passed depended on which
 earlier test had left the registry populated.

@@ -1,4 +1,4 @@
-"""`sarsi-pwm` and `sarsi-claude` as named, per-task session backends.
+"""`sarsi-ai4sci` and `sarsi-claude` as named, per-task session backends.
 
 A session already runs one of two things: `claude-code` launches Anthropic's
 `claude` binary, and every other spec launches `ai4science chat --mode <spec>`.
@@ -26,7 +26,7 @@ from ai4science.harness.agents.sarsi import backends
 def test_both_backends_exist_and_name_a_real_spec():
     from ai4science.harness.agents import registry as ar
     ar.reload()
-    for name in ("sarsi-claude", "sarsi-pwm"):
+    for name in ("sarsi-claude", "sarsi-ai4sci"):
         spec = backends.spec_for(name)
         assert spec, name
         assert ar.get(spec) is not None, (name, spec)
@@ -42,7 +42,7 @@ def test_sarsi_claude_runs_anthropics_binary():
 def test_sarsi_pwm_runs_ai4science():
     """PWM Code — the agent the owner lands in — in a tmux session, so the
     interface they work in and the one a worker's session runs are the same."""
-    assert backends.spec_for("sarsi-pwm") != "claude-code"
+    assert backends.spec_for("sarsi-ai4sci") != "claude-code"
 
 
 def test_the_default_is_named_once():
@@ -60,7 +60,7 @@ def test_the_refusal_lists_what_there_is():
     """A refusal that does not say what would satisfy it is a wall."""
     with pytest.raises(backends.NoSuchBackend) as e:
         backends.spec_for("typo")
-    assert "sarsi-pwm" in str(e.value) and "sarsi-claude" in str(e.value)
+    assert "sarsi-ai4sci" in str(e.value) and "sarsi-claude" in str(e.value)
 
 
 # ── which backend the loop can drive ──────────────────────────────────
@@ -91,7 +91,7 @@ def test_pwm_is_drivable_because_a_run_reached_a_verdict():
     screen is not the loop driving a session.
     """
     from ai4science.harness.agents.sarsi import session as ses
-    assert ses.drivable(backends.spec_for("sarsi-pwm")) is True
+    assert ses.drivable(backends.spec_for("sarsi-ai4sci")) is True
 
 
 def test_and_drivability_is_still_a_claim_about_evidence():
@@ -107,7 +107,7 @@ def test_a_backend_reports_what_it_actually_launches():
     """For the confirmation block: an owner choosing an engine should be told
     what will run, not just a label."""
     assert "claude" in backends.describe("sarsi-claude").lower()
-    assert "ai4science" in backends.describe("sarsi-pwm").lower()
+    assert "ai4science" in backends.describe("sarsi-ai4sci").lower()
 
 
 def test_describing_an_unknown_backend_does_not_raise():
@@ -223,9 +223,9 @@ def test_and_the_other_one_too(config):
 
     a = config.agents["sarsi-worker"]
     t = tsk.create(config, a, wk.Directive(agent_id=a.id, goal="g"),
-                   backend="sarsi-pwm")
+                   backend="sarsi-ai4sci")
     ses.assign(config, a, t, runtime=_RT(), installed=lambda: set())
-    assert seen["spec"] == backends.spec_for("sarsi-pwm")
+    assert seen["spec"] == backends.spec_for("sarsi-ai4sci")
 
 
 def test_a_task_written_before_backends_existed_still_runs(config):
@@ -252,7 +252,8 @@ def test_a_task_written_before_backends_existed_still_runs(config):
 # ── the declared workdir must reach the sandbox ───────────────────────
 
 def test_the_declared_workdir_is_passed_as_writable(config, tmp_path):
-    """The defect that stopped the first end-to-end `sarsi-pwm` run.
+    """The defect that stopped the first end-to-end `sarsi-pwm` run (the
+    backend now named `sarsi-ai4sci`; the run really was called that).
 
     `assign` built its writable list as "the evidence roots, EXCEPT the folder
     the session runs in" — on the assumption that a session's own cwd is
@@ -323,7 +324,7 @@ def test_and_the_task_folder_is_still_writable_too(config, tmp_path):
 
 def test_sarsi_pwm_runs_the_agents_own_spec(config):
     """`assign` computed `spec_for(resolve(task.backend))` and stopped there,
-    so EVERY worker started on `unified-LLM` — the sarsi-pwm default — and the
+    so EVERY worker started on `unified-LLM` — the sarsi-ai4sci default — and the
     roster's own specs became dead configuration. `social` would have run the
     generalist under the social agent's name, which is precisely what
     `test_it_never_substitutes_a_generalist` exists to forbid.
@@ -334,7 +335,7 @@ def test_sarsi_pwm_runs_the_agents_own_spec(config):
         ai4science;
       * the AGENT says which ai4science agent that engine runs.
 
-    So `sarsi-pwm` means "ai4science, running this worker's spec", and
+    So `sarsi-ai4sci` means "ai4science, running this worker's spec", and
     `unified-LLM` is only the fallback for a worker that names none.
     """
     from ai4science.harness.agents.sarsi import session as ses
@@ -352,7 +353,7 @@ def test_sarsi_pwm_runs_the_agents_own_spec(config):
     a = config.agents["sarsi-worker"]
     a.spec = "computational-imaging"
     t = tsk.create(config, a, wk.Directive(agent_id=a.id, goal="g"),
-                   backend="sarsi-pwm")
+                   backend="sarsi-ai4sci")
     ses.assign(config, a, t, runtime=_RT(), installed=lambda: set())
     assert seen["spec"] == "computational-imaging"
 
@@ -396,9 +397,9 @@ def test_a_worker_naming_no_spec_falls_back_to_the_default(config):
     a = config.agents["sarsi-worker"]
     a.spec = ""
     t = tsk.create(config, a, wk.Directive(agent_id=a.id, goal="g"),
-                   backend="sarsi-pwm")
+                   backend="sarsi-ai4sci")
     ses.assign(config, a, t, runtime=_RT(), installed=lambda: set())
-    assert seen["spec"] == backends.spec_for("sarsi-pwm")
+    assert seen["spec"] == backends.spec_for("sarsi-ai4sci")
 
 
 # ── choosing the backend from the CLI ─────────────────────────────────
@@ -425,4 +426,4 @@ def test_the_flag_refuses_an_unknown_backend_by_name(config):
     with _pytest.raises(backends.NoSuchBackend) as e:
         tsk.create(config, a, wk.Directive(agent_id=a.id, goal="g"),
                    backend="sarsi-gemini")
-    assert "sarsi-pwm" in str(e.value) and "sarsi-claude" in str(e.value)
+    assert "sarsi-ai4sci" in str(e.value) and "sarsi-claude" in str(e.value)

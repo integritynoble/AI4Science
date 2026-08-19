@@ -226,7 +226,7 @@ def describe(config: Config, agent: Agent) -> str:
     lines.append("")
     lines.append("I do not execute anything myself. I open a task, agree a plan "
                  "with you, and a session does the work — sarsi-claude runs "
-                 "Anthropic's claude binary, sarsi-pwm runs ai4science.")
+                 "Anthropic's claude binary, sarsi-ai4sci runs ai4science.")
     return "\n".join(lines)
 
 

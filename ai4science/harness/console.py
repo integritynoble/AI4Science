@@ -85,7 +85,7 @@ def confirm_block(goal: str, agent: str, backend: str = "") -> str:
     """What the owner reads before a task exists."""
     from ai4science.harness.agents.sarsi import backends as _bk
     chosen = _bk.resolve(backend)
-    other = next(n for n in _bk.NAMES if n != chosen)
+    other = _bk.next_after(chosen)
     return (f"\n  goal:    {goal}\n"
             f"  agent:   {agent}\n"
             f"  backend: {chosen}\n"
@@ -114,7 +114,7 @@ def route(line: str, mode: Mode, deps: dict) -> tuple:
             # changing the engine is not an answer about the goal.
             from ai4science.harness.agents.sarsi import backends as _bk
             chosen = _bk.resolve(mode.backend)
-            other = next(n for n in _bk.NAMES if n != chosen)
+            other = _bk.next_after(chosen)
             return Action("confirm", goal=mode.pending, agent=mode.name,
                           text=confirm_block(mode.pending, mode.name, other)), \
                 Mode(kind=mode.kind, name=mode.name, pending=mode.pending,
