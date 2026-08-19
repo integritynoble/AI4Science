@@ -50,7 +50,7 @@ it. Keep it, keep the non-finite-objective refusal, and keep the test.
 **2. The achievability bound must be re-measured before any claim.**
 `medical-physics.md` §0b reports patient 4's D99 floor as unreachable. That is a
 **2D** result. Nine beams on one plane is a far weaker delivery system than nine
-beams in 3D, so the ceiling will rise and the case may become feasible. Re-run
+beams in 3D, so the ceiling **may** move — and it must be re-measured rather than predicted. It was predicted here, and the prediction was wrong: the first 3D ceilings measured came out mostly LOWER, one at 26.29 Gy against the 66.5 floor. The cause was not dimensionality but collimation — the 3D operator used beamlets 2.5x wider than the 2D one, so the two numbers differed in more than the variable being reasoned about. At matched collimation the one completed case went 64.39 to 77.42 against 77.81 in 2D. Re-run
 the corner sweep on day one of the 3D work and rewrite §0b from the new numbers.
 Carrying the 2D conclusion into a 3D planner would be exactly the error this
 agent keeps making: a property of the measurement reported as a property of the

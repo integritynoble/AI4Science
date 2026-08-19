@@ -110,12 +110,21 @@ def _trust_gate(ws: Path) -> bool:
         return True
     console.print(f"\n[bold]Accessing workspace:[/bold]\n\n  [cyan]{ws}[/cyan]\n")
     console.print(
-        "Quick safety check: is this a folder you created or trust (your own code, "
-        "a well-known open-source project, or your team's work)? If not, review "
-        "what's in it first.\n")
+        # Worded to match Claude Code's, because the supervision loop answers
+        # gates from an ALLOWLIST keyed on this phrasing. A gate whose wording
+        # drifts is not refused loudly — it is left for the owner, and an
+        # unattended run stalls at a prompt nobody is watching.
+        "Quick safety check: Is this a project you created or one you trust "
+        "(your own code, a well-known open-source project, or your team's "
+        "work)? If not, review what's in it first.\n")
     console.print("[dim]AI4Science will be able to read, edit, and execute files here.[/dim]\n")
     from ai4science.harness import tui
-    idx = tui.select("", ["Yes, I trust this folder", "No, exit"])
+    # numbered=True: this is a GOVERNED gate. The supervision loop answers it
+    # from an allowlist, and it finds a gate by shape — `1.` on its own line.
+    # An arrow-key picker has no such line, so a picker here is a gate the loop
+    # cannot answer whatever its wording says.
+    idx = tui.select("", ["Yes, I trust this folder", "No, exit"],
+                     numbered=True)
     if idx == 0:
         _remember_trust(ws)
         return True

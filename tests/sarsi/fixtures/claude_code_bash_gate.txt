@@ -1,0 +1,45 @@
+
+[38;5;174m╭───[39m [38;5;174mClaude Code[39m [38;5;246mv2.1.224[39m [38;5;174m───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│[39m                                                    [2m[38;5;174m│[0m [1m[38;5;174mTips for getting started[0m                                                                      [38;5;174m│
+│[39m                [1mWelcome back Abraham![0m               [2m[38;5;174m│[0m Ask Claude to create a new app or clone a repository                                          [38;5;174m│
+│[39m                                                    [2m[38;5;174m│[0m [38;5;174m─────────────────────────────────────────────────────────────────────────────────────────────[39m [38;5;174m│
+│[39m                      [38;5;174m ▐[48;5;16m▛███▜[49m▌[39m                      [2m[38;5;174m│[0m [1m[38;5;174mWhat's new[0m                                                                                    [38;5;174m│
+│[39m                      [38;5;174m▝▜[48;5;16m█████[49m▛▘[39m                     [2m[38;5;174m│[0m Added self-hosted environments: `claude self-hosted-runner` turns your own machines or conta… [38;5;174m│
+│[39m                      [38;5;174m  ▘▘ ▝▝  [39m                     [2m[38;5;174m│[0m Added `archive` plugin source: install plugins from a zip over HTTPS without git or npm, wit… [38;5;174m│
+│[39m       [38;5;246mOpus 5 (1M context) · Claude Max · [39m          [2m[38;5;174m│[0m Added a cancel-and-confirm step when removing an unavailable paste changes a command's text   [38;5;174m│
+│[39m       [38;5;246mplatformaigpt@gmail.com's Organization[39m       [2m[38;5;174m│[0m [3m[38;5;246m/release-notes for more[0m                                                                       [38;5;174m│
+│[39m                     [38;5;246m~/parity2[39m                      [2m[38;5;174m│[0m                                                                                               [38;5;174m│
+╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+
+[38;5;239m[48;5;237m❯ [38;5;231mrun this exact shell command for me: du -sh /usr/share/doc[39m
+
+[49m  [38;5;246mListed [1m1[0m[38;5;246m directory [39m
+
+[38;5;231m●[39m [38;5;153m/usr/share/doc[39m is 36M.
+
+[38;5;246m✻[39m [38;5;246mSautéed for 20s[39m
+
+[38;5;239m[48;5;237m❯ [38;5;231mrun: touch /tmp/parity_probe_file[39m
+
+[38;5;246m[49m●[39m Running [1m1[0m shell command…
+[38;5;246m  ⎿  $ touch /tmp/parity_probe_file[39m
+
+[38;5;153m──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[39m [1m[38;5;153mBash command[0m
+
+   touch /tmp/parity_probe_file
+   [38;5;246mCreate empty file in /tmp[39m
+
+ Do you want to proceed?
+ [38;5;153m❯[39m [38;5;246m1. [38;5;153mYes[39m
+   [38;5;246m2. [39mYes, and always allow access to [1mtmp[0m/ from this project
+   [38;5;246m3. [39mNo
+
+ [38;5;246mEsc to cancel · Tab to amend · ctrl+e to explain[39m
+
+
+
+
+
+

@@ -203,8 +203,13 @@ def _inline_select(question: str, options):
             out.append(("", "\n"))
         for idx, opt in enumerate(options):
             cur = idx == sel["i"]
+            # Numbered like its two siblings (the full-screen panel and the
+            # typed prompt) and like Claude Code's own menus. Without the
+            # number the hint's "1-9 pick" points at digits the options never
+            # show — and a gate rendered here has no `1.` line, which is the
+            # one shape a supervision loop finds a gate by.
             out.append(("class:cur" if cur else "",
-                        f" {'❯' if cur else ' '} {opt}\n"))
+                        f" {'❯' if cur else ' '} {idx + 1}. {opt}\n"))
         out.append(("class:hint", " ↑/↓ or j/k move · 1-9 pick · ⏎/Tab select · Esc cancel"))
         return out
 
@@ -253,15 +258,24 @@ def _inline_select(question: str, options):
     return app.run()
 
 
-def select(question: str, options):
+def select(question: str, options, *, numbered: bool = False):
     """Arrow-key picker → 0-based index, or None if cancelled. Uses the
     full-screen picker when a composer owns the terminal, else a transient
-    inline picker (box mode), else a numbered text prompt (off / no TTY)."""
+    inline picker (box mode), else a numbered text prompt (off / no TTY).
+
+    `numbered=True` forces the typed-number rendering on every platform. Pass
+    it for a GOVERNED gate — one a supervision loop may have to answer. The
+    loop recognises a gate by its shape (`1.` on its own line), and an
+    arrow-key picker has no such line, so a gate rendered as a picker is one
+    the loop cannot answer however carefully its wording is matched. That is
+    not a hypothetical: the folder-trust gate had the right words and the
+    wrong shape, and the wording fix alone bought nothing.
+    """
     scr = _ACTIVE.get("screen")
     if scr is not None and getattr(scr, "request_choice", None):
-        return scr.request_choice(question, options)
+        return scr.request_choice(question, options, numbered=numbered)
     try:
-        if sys.stdin.isatty() and sys.stdout.isatty():
+        if not numbered and sys.stdin.isatty() and sys.stdout.isatty():
             import prompt_toolkit  # noqa: F401
             return _inline_select(question, options)
     except Exception:
@@ -848,13 +862,17 @@ class FullScreen:
         self._invalidate()
         return shown
 
-    def request_choice(self, question: str, options) -> int:
+    def request_choice(self, question: str, options, *,
+                       numbered: bool = False) -> int:
         """Block the worker while the user picks an option. POSIX uses the visual
-        ↑/↓ picker panel; Windows uses a typed-number prompt (see below)."""
+        ↑/↓ picker panel; Windows uses a typed-number prompt (see below).
+
+        `numbered=True` takes the typed path everywhere — see `select`.
+        """
         import queue
         if self._stream is not None:
             self._stream.commit_partial()       # flush any dangling partial line
-        if _use_typed_choice():
+        if numbered or _use_typed_choice():
             return self._request_choice_typed(question, list(options))
         q: "queue.Queue" = queue.Queue()
         self._choice = {"q": question, "options": list(options), "sel": 0,
@@ -938,7 +956,16 @@ class FullScreen:
         # region or lost.
         if self._stream is not None:
             self._stream.commit_partial()
-        if prompt and prompt not in ("❯ ", "> "):
+        if prompt and prompt.rstrip().endswith("❯"):
+            # A mode label ends in the prompt glyph and belongs IN the
+            # composer, in front of the cursor — it is the safety mechanism
+            # that says which program the next line feeds. Appended to the
+            # transcript it is a caption, one line above, scrolling away.
+            # The bare `❯ ` takes the label off again on leaving the mode.
+            if prompt != self.prompt:
+                self.prompt = prompt
+                self._invalidate()
+        elif prompt and prompt != "> ":
             self.append("\n" + prompt)           # e.g. permission questions
         self._status_extra = status
         self._busy = False
@@ -992,7 +1019,9 @@ class FullScreen:
         # Borderless, two-line input like Claude Code: a coral prompt line that
         # grows 1→N as you type, with a single info line beneath it (no box).
         ta = TextArea(multiline=True, wrap_lines=True,
-                      prompt=[("class:prompt", self.prompt)],
+                      # A callable, not a snapshot: read_input swaps the label
+                      # in and out as the owner enters and leaves a mode.
+                      prompt=lambda: [("class:prompt", self.prompt)],
                       history=FileHistory(str(hp)) if hp else None, style="class:input")
         ta.window.height = _grow_height(lambda: ta.text)
 
@@ -1009,7 +1038,15 @@ class FullScreen:
                 # Honking… (29s · ↓ 1.8k tokens · running grep)   — Claude-Code feel
                 star = (f"\x1b[38;5;173m{frame} {self._gerund}…\x1b[0m "
                         f"\x1b[38;5;245m({secs}s · ↓ {tok_s} tokens{act} · "
-                        f"esc to stop)\x1b[0m  ")
+                        # `esc to interrupt`, not `esc to stop`. This is the
+                        # ONE signal the supervision loop uses to tell a
+                        # running turn from a finished one, and the inline
+                        # renderer in commands/chat.py has always said
+                        # `interrupt` — the full-screen one drifted from its
+                        # own sibling. A session under this renderer looked
+                        # permanently idle to the loop, which is most of why
+                        # the ai4science TUI was assumed un-drivable.
+                        f"esc to interrupt)\x1b[0m  ")
             mode = f"\x1b[38;5;173mai4science · {_display_mode(self.mode)}\x1b[0m"
             extra = (f" · \x1b[38;5;245m{self._status_extra}\x1b[0m"
                      if self._status_extra else "")

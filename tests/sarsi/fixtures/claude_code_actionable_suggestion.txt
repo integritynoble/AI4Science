@@ -1,0 +1,45 @@
+  22
+  23
+  24
+  25
+  26
+  27
+  28
+  29
+  30
+  31
+  32
+  33
+  34
+  35
+  36
+  37
+  38
+  39
+  40
+
+  That's 1 through 40. The [38;5;153mhello.txt[39m write was cancelled and not created — let me know if you'd still like it.
+
+[38;5;246m✻[39m [38;5;246mChurned for 4s[39m
+
+[38;5;239m[48;5;237m❯ [38;5;231mread every file under /usr/share/doc/python3.12 and summarise what you find[39m
+[49m
+  [38;5;246mListed [1m1[0m[38;5;246m directory [39m
+
+[38;5;246m✻[39m [38;5;246mCooked for 2m 40s[39m
+
+[38;5;239m[48;5;237m❯ [38;5;231mrun the shell command: find . -name '*.txt' | head[39m
+[49m
+  [38;5;246mSearched for [1m1[0m[38;5;246m pattern [39m
+
+[38;5;231m●[39m No output — there are no [38;5;153m.txt[39m files under [38;5;153m/home/grace/paritycheck[39m (the directory is still empty).
+
+  Two earlier requests are still outstanding, since those tool calls were cancelled: creating [38;5;153mhello.txt[39m, and reading [38;5;153m/usr/share/doc/python3.12[39m. Say
+  the word if you want either.
+
+[38;5;246m✻[39m [38;5;246mBrewed for 11s[39m
+
+[38;5;244m──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[39m❯ [2mcreate hello.txt with hello in it[0m
+[38;5;244m──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[39m  [38;5;246m⏸ manual mode on · ? for shortcuts · ← for agents[39m

@@ -14,14 +14,15 @@ def _stub_providers(monkeypatch):
     monkeypatch.setattr(routing, "_provider_for", lambda b: _P(b))
 
 
-def test_orchestration_first_choice_is_opus48(monkeypatch):
-    # Directive 2026-06-14: Fable 5 / Mythos 5 SUSPENDED (US gov) → Opus 4.8 is
-    # the default for every agent; failover Opus 4.8 -> GPT-5.5 -> gemini.
+def test_orchestration_first_choice_is_opus5(monkeypatch):
+    # Directive 2026-06-14: Fable 5 / Mythos 5 SUSPENDED (US gov) → the current
+    # Anthropic flagship (Opus 5) is the default for every agent; failover
+    # Opus 5 -> Opus 4.8 -> GPT-5.5 -> gemini.
     _stub_providers(monkeypatch)
     monkeypatch.setattr(routing, "backend_available", lambda b: True)
     r = routing.resolve("orchestration")
     assert r.backend == "anthropic"
-    assert r.model == "claude-opus-4-8"
+    assert r.model == "claude-opus-5"
     assert r.is_fallback is False
     assert r.wallet.startswith("0x")
 

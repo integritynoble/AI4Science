@@ -32,6 +32,18 @@ import pytest
 from ai4science.harness.agents.sarsi import verifier as vf
 
 
+@pytest.fixture(autouse=True)
+def _search_only_the_sandbox_home(monkeypatch):
+    """Every test here sandboxes HOME — but `_BIN_DIRS` also names absolute
+    directories (`/usr/local/bin`, `/opt/homebrew/bin`) that HOME cannot
+    isolate. The day a root install put a real `claude` into /usr/local/bin,
+    six of these tests failed on that machine and no other: the machine
+    walked into the assertions. The search under test is the home-relative
+    one; the absolute directories are the machine's business, not this
+    file's."""
+    monkeypatch.setattr(vf, "_BIN_DIRS", ("~/.local/bin", "~/bin"))
+
+
 # ── the machine, not the shell ────────────────────────────────────────
 
 def test_a_judge_on_path_is_used(tmp_path):

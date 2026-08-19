@@ -27,7 +27,7 @@ CONFIG_NAME = "sarsi.json"
 #: What the seven run at unless the owner raises one. Named once: two places
 #: that both decide what "ordinary" means will disagree, and the one that
 #: disagrees quietly is the one that grants too much.
-EVERYDAY_CEILING = "A1"
+EVERYDAY_CEILING = "A2"
 MANAGER_ROLE = "manager"
 #: The exchange node. Its OWN role, deliberately — it is neither a manager nor
 #: a worker, and every refusal that keeps it away from the owner's work keys on
@@ -46,7 +46,7 @@ class Agent:
     id: str
     role: str
     model: Optional[str] = None
-    ceiling: str = "A1"
+    ceiling: str = EVERYDAY_CEILING
     self_aware: bool = True
     rsi: bool = True
     tools: List[str] = field(default_factory=list)
@@ -84,6 +84,22 @@ class Agent:
     def workspace(self) -> Path:
         """W_name — mission, plan, decisions. Append-only log plus a fold."""
         return self.agent_dir / "workspace"
+
+    @property
+    def work_dir(self) -> Path:
+        """Where this worker's tasks WORK — its desk, not its memory.
+
+        Deliberately not `workspace`, which above is W_name: mission, plan and
+        decisions, what the worker *knows*. One word for both is the "two
+        things, one name" confusion that has already cost this project real
+        time, so the thing a session stands in gets its own.
+
+        Per WORKER rather than per task, because that is what having a desk
+        means: it persists across the jobs done at it, and files left by the
+        last task are usually the point. A task needing isolation still passes
+        `--workdir`, which overrides.
+        """
+        return self.agent_dir / "work"
 
     @property
     def host(self) -> Path:
@@ -148,7 +164,7 @@ class Config:
             d.mkdir(parents=True, exist_ok=True)
         self.vault_dir.chmod(0o700)
         for agent in self.agents.values():
-            for d in (agent.workspace, agent.host, agent.tasks,
+            for d in (agent.workspace, agent.work_dir, agent.host, agent.tasks,
                       agent.sessions, agent.selfmodel):
                 d.mkdir(parents=True, exist_ok=True)
 
@@ -219,7 +235,7 @@ def _agent_from(entry: Dict[str, Any], defaults: Dict[str, Any], root: Path) -> 
         id=agent_id,
         role=role,
         model=pick("model", None),
-        ceiling=str(pick("ceiling", "A1")),
+        ceiling=str(pick("ceiling", EVERYDAY_CEILING)),
         self_aware=bool(pick("selfAware", True)),
         rsi=bool(pick("rsi", True)),
         tools=list(pick("tools", []) or []),
@@ -379,19 +395,26 @@ def default_config(owner_id: str = "", bot_tokens: Optional[Dict[str, str]] = No
                              "match": {"channel": channel, "accountId": a["id"]}})
     return {
         "agents": {
-            # A1 is the everyday ceiling: in-project writes, network, running
-            # and testing — the work a task was released to do. It is a
-            # CEILING, not a floor: planning still drops to A0, the outward
-            # acts still stop at the owner, and A3 stays capped until the trust
-            # ledger has earned it.
+            # A2 is the everyday ceiling, by the owner's decision on
+            # 2026-08-07: "the default is A2; users can set into A1 or A0."
+            # In-project writes, network, running and testing, AND consequential
+            # commands — `git push`, `pip install`, `sudo` — without stopping.
             #
-            # This used to be A2, so that "the loop answers the ordinary gates
-            # itself". The cost was that A2 became the ceiling of every
-            # ordinary released task — so "A2 may do consequential things"
-            # meant every run could, and A2 stopped being an elevated tier
-            # while still being described as one. A consequential command
-            # (`git push`, `pip install`, `sudo`) now stops for the owner,
-            # which is what consequential means.
+            # It is a CEILING, not a floor: planning still drops to A0, the
+            # outward acts still stop at the owner, and A3 stays capped until
+            # the trust ledger has earned it.
+            #
+            # This has now been both values, and the argument each way is worth
+            # keeping. It was lowered to A1 because A2-as-default made A2 the
+            # ceiling of every ordinary released task, so "A2 may do
+            # consequential things" meant every run could, and A2 stopped being
+            # an elevated tier while still being described as one. It is back
+            # at A2 because the owner wants ordinary work to finish without a
+            # gate at every consequential step, and because lowering it is one
+            # command: `sarsi rules` / admin.set_ceiling(agent, "A1").
+            #
+            # The cost is stated so nobody rediscovers it: at A2 an ordinary
+            # released task can push, install and sudo on its own.
             "defaults": {"model": "anthropic/claude-haiku-4-5",
                          "ceiling": EVERYDAY_CEILING,
                          "selfAware": True, "rsi": True, "maxConcurrentTasks": 3},

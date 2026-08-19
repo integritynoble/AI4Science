@@ -1,0 +1,45 @@
+  12
+  13
+  14
+  15
+  16
+  17
+  18
+  19
+  20
+  21
+  22
+  23
+  24
+  25
+  26
+  27
+  28
+  29
+  30
+  31
+  32
+  33
+  34
+  35
+  36
+  37
+  38
+  39
+  40
+
+  That's 1 through 40. The [38;5;153mhello.txt[39m write was cancelled and not created — let me know if you'd still like it.
+
+[38;5;246m✻[39m [38;5;246mChurned for 4s[39m
+
+[38;5;239m[48;5;237m❯ [38;5;231mread every file under /usr/share/doc/python3.12 and summarise what you find[39m
+[49m
+[38;5;246m●[39m Running [1m1[0m shell command…
+
+[38;5;174m✢[39m [38;5;174mBeboppin'… [38;5;246m(2s · ↓[39m [38;5;246m63 tokens · [38;5;249mthinking[38;5;246m)[39m
+[38;5;246m  ⎿  Tip: Use Plan Mode to prepare for a complex request before making changes. Press shift+tab twice to enable.[39m
+
+[38;5;244m──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[38;5;246m❯ [39m
+[38;5;244m──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[39m  [38;5;246m⏸ manual mode on · esc to interrupt · ← for agents[39m

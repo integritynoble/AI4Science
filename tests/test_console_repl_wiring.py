@@ -42,6 +42,34 @@ def test_every_action_kind_console_can_return_is_handled_by_repl():
         % sorted(missing))
 
 
+def _kinds_the_loop_branches_on() -> set:
+    """The elif chain in run_common_repl itself, read from its source.
+
+    The other half of I5: `_kinds_console_can_return` stopped the guard being
+    literal-vs-literal on the console side, but HANDLED_ACTIONS stayed a
+    hand-typed list that nothing compared to the LOOP's branches — a kind
+    added to console.py and to the list, but not to the chain, kept every
+    guard green while the command silently did nothing.
+    """
+    import inspect, re
+    src = inspect.getsource(repl.run_common_repl)
+    kinds = set(re.findall(r'_act\.kind\s*[!=]=\s*["\']([a-z-]+)["\']', src))
+    for group in re.findall(r'_act\.kind\s+in\s+\(([^)]*)\)', src):
+        kinds |= set(re.findall(r'["\']([a-z-]+)["\']', group))
+    return kinds
+
+
+def test_handled_actions_is_read_off_the_loop_not_off_a_list():
+    """`noop` alone has no branch ON PURPOSE: doing nothing is its handling,
+    the fall-through to `continue`. Everything else in HANDLED_ACTIONS must
+    be a branch the loop really takes — and every branch must be listed."""
+    branches = _kinds_the_loop_branches_on()
+    assert len(branches) >= 8, ("derivation found almost no branches — "
+                                "a hollow guard", sorted(branches))
+    assert repl.HANDLED_ACTIONS == branches | {"noop"}, (
+        sorted(repl.HANDLED_ACTIONS), sorted(branches))
+
+
 def test_deps_expose_every_key_route_reads():
     """route() indexes deps directly; a missing key is a KeyError inside the
     REPL loop, which is the one place nothing may raise."""
@@ -73,8 +101,30 @@ def test_the_attach_is_injectable_and_pauses_before_attaching():
     calls = []
     out = repl._attach_tmux("sarsi-worker-cd34",
                             run=lambda argv: calls.append(argv) or 0)
-    assert calls == [["tmux", "attach", "-t", "sarsi-worker-cd34"]]
+    assert ["tmux", "attach", "-t", "sarsi-worker-cd34"] in calls
     assert "sarsi-worker-cd34" in out
+
+
+def test_the_attach_offers_one_key_back_and_cleans_it_up():
+    """Ctrl-z detaches for the duration of the attach and ONLY for the
+    duration: the binding is set before the terminal is handed over and
+    removed after it comes back, whatever happened in between."""
+    calls = []
+    out = repl._attach_tmux("sarsi-worker-cd34",
+                            run=lambda argv: calls.append(argv) or 0)
+    assert calls[0] == ["tmux", "bind-key", "-n", "C-z", "detach-client"]
+    assert calls[-1] == ["tmux", "unbind-key", "-n", "C-z"]
+    assert "Ctrl-z" in out, "the way back is named where the owner reads it"
+
+
+def test_a_failed_bind_does_not_stop_the_attach():
+    """No binding is a degraded attach, not a failed one."""
+    def _run(argv):
+        if argv[1] == "bind-key":
+            raise FileNotFoundError("old tmux")
+        return 0
+    out = repl._attach_tmux("sarsi-worker-cd34", run=_run)
+    assert "back from sarsi-worker-cd34" in out
 
 
 def test_a_failed_attach_is_reported_not_raised():

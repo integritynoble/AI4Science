@@ -64,8 +64,53 @@ _KNOWN_GATES = (
      "the folder-trust prompt, for a folder this worker created"),
 )
 
-#: The wider option — "and don't ask again" — is never pressed.
-_STANDING_OPTION = re.compile(r"don'?t ask again|and stop asking", re.I)
+#: The wider option — a standing permission — is never pressed. That is the
+#: owner's to give, and an option granting it beyond this one call is the one
+#: thing an unattended loop must not take.
+#:
+#: **Matched structurally, not lexically.** Chasing wordings lost twice against
+#: real captures:
+#:
+#:     2. Yes, and don't ask again for bash this session      (ai4science)
+#:     2. Yes, allow all edits during this session            (Claude Code)
+#:     2. Yes, and always allow access to tmp/ from this project
+#:
+#: Three phrasings, no shared words, and a fourth is one release away. What they
+#: DO share is structure: option 1 is the narrow yes, and any LATER option
+#: beginning "yes" is a wider one. The loop presses 1 and must never be talked
+#: into a later yes, whatever it is called.
+#:
+#: The lexical patterns are kept as a second net for a menu whose numbering this
+#: does not see.
+_STANDING_LEXICAL = re.compile(
+    r"don'?t ask again"
+    r"|and stop asking"
+    r"|allow all\b"
+    r"|always allow"
+    r"|for (?:this|the) (?:whole )?session", re.I)
+
+#: A numbered option, its number and its text.
+_OPTION_LINE = re.compile(r"^\s*❯?\s*(?P<n>\d+)\.\s+(?P<text>\S.*?)\s*$", re.M)
+
+
+class _StandingOption:
+    """`.search(text)` — truthy when `text` offers a permission beyond this call.
+
+    Kept as a search()-compatible object so every existing caller and test is
+    unchanged; what changed is how it decides.
+    """
+
+    def search(self, text: str):
+        for m in _OPTION_LINE.finditer(text or ""):
+            n, body = m.group("n"), m.group("text")
+            if n == "1":
+                continue                      # the narrow yes the loop presses
+            if body.strip().lower().startswith("yes"):
+                return m                      # a LATER yes is a wider yes
+        return _STANDING_LEXICAL.search(text or "")
+
+
+_STANDING_OPTION = _StandingOption()
 
 _GATE_SHAPE = re.compile(r"^\s*❯?\s*1\.\s+\S", re.M)
 # `[^\S\r\n]` is "whitespace that is not a line break": it must not swallow the
@@ -74,6 +119,26 @@ _GATE_SHAPE = re.compile(r"^\s*❯?\s*1\.\s+\S", re.M)
 # the text with a NON-BREAKING space, which a plain `[ \t]` misses. The first
 # operator run reported `idle` at a visibly stranded screen for exactly that.
 _PROMPT_LINE = re.compile(r"^[❯┃][^\S\r\n]+(?P<text>\S.*)$", re.M)
+
+#: Runs of whitespace, including the line breaks a TUI inserts when it wraps.
+_WRAP = re.compile(r"\s+")
+
+
+def _unwrapped(screen: str) -> str:
+    """The screen with the terminal's own wrapping undone.
+
+    A TUI hard-wraps its prompt to the pane width, so a phrase the loop looks
+    for arrives with a newline somewhere in the middle of it — and *where*
+    depends on a pane width nobody chose. The first supervised `sarsi-pwm` run
+    sat at a correctly-worded, correctly-numbered folder-trust gate and
+    abstained twelve times, because a 49-column pane had broken
+    `... you created or one you trust` after "created".
+
+    Only the *text* patterns in `_KNOWN_GATES` read this. `_GATE_SHAPE` and
+    `_PROMPT_LINE` are line-anchored on purpose and keep reading the raw
+    screen: their whole job is to know which line a thing is on.
+    """
+    return _WRAP.sub(" ", screen)
 
 
 @dataclass(frozen=True)
@@ -86,7 +151,8 @@ def tick(config: Config, agent: Agent, task: tsk.Task, *, pane: Any,
          acts=None, runtime: Optional[Any] = None,
          verifier: Optional[Callable[..., dict]] = None,
          model: Optional[Callable[[str], str]] = None,
-         engine: Optional[str] = None, now=time.time) -> Action:
+         engine: Optional[str] = None, accept_seed: bool = False,
+         now=time.time) -> Action:
     """One supervision pass over one session, in this order:
 
     no session · already done · the owner has the wheel · **verify** · a gate ·
@@ -189,7 +255,14 @@ def tick(config: Config, agent: Agent, task: tsk.Task, *, pane: Any,
     # The ceiling has not lifted until `release` runs, so what A0 permits and
     # what the plan step is allowed to write both hold until then.
     released = task.released_at is not None
-    gate = _gate(screen, planning=planning, deletes=deletes, released=released)
+    # This session's CURRENT ceiling and declared paths, so a gate raised before
+    # `release` can be re-put to the same authority the hook uses. Read off the
+    # session record rather than the agent's configured value: the record is
+    # what `release` actually raised, and what the hook itself resolves against.
+    _ceiling = str((task.session or {}).get("ceiling") or "")
+    _writable = [str(pth) for pth in tsk.evidence_roots(agent, task)]
+    gate = _gate(screen, planning=planning, deletes=deletes, released=released,
+                 ceiling=_ceiling, writable=_writable)
     if gate is not None:
         answer, why = gate
         if answer is None:
@@ -290,6 +363,7 @@ def tick(config: Config, agent: Agent, task: tsk.Task, *, pane: Any,
             elif after.kickoff_pending:
                 stalled = Action("briefing", "waiting to see the brief land")
         after = ses.collect_plan(config, agent, task, runtime=_Sender(pane),
+                                 accept_seed=accept_seed,
                                  now=now)
         if after.state != tsk.PLANNING:
             return Action("planned",
@@ -323,13 +397,14 @@ def run(config: Config, agent: Agent, task: tsk.Task, *, pane: Any,
         verifier: Optional[Callable[..., dict]] = None,
         model: Optional[Callable[[str], str]] = None,
         engine: Optional[str] = None,
-        passes: int = 20, interval: float = 3.0, sleep=time.sleep) -> list:
+        passes: int = 20, interval: float = 3.0, accept_seed: bool = False,
+        sleep=time.sleep) -> list:
     """Supervise until the goal is verified, the owner takes over, or the budget
     runs out. Stops on a verdict — it does not keep guiding a finished session."""
     seen = []
     for i in range(passes):
         action = tick(config, agent, task, pane=pane, verifier=verifier,
-                      model=model, engine=engine)
+                      model=model, engine=engine, accept_seed=accept_seed)
         seen.append(action)
         # Three of these are states the loop has finished with. The other two
         # are things another pass cannot bring closer, and both were found by
@@ -370,13 +445,110 @@ _ONBOARDING = re.compile(r"Choose the option that looks best|Syntax theme:|"
 #: plan0.md?") and the loop abstained at the session writing the very file it
 #: had been told to write. Observed live, and the same shape as the `Try "…"`
 #: filter: a pattern written against assumed wording meeting the real one.
-_PLAN_WRITE = re.compile(r"\b(create|write|overwrite|edit|update)\b[^\n]*"
+#:
+#: `[^\n]*` was too strict for a second reason, found the same way. The path is
+#: long, so the TUI wraps it at the pane edge — mid-word, inside
+#: `sarsi-worke\nr/tasks/…` — and the verb and the filename end up on different
+#: PHYSICAL lines while being one logical line. The loop then abstained at the
+#: session writing the very plan it had just been briefed to write.
+#:
+#: So: tolerate up to three line breaks, non-greedily. That is what a wrap
+#: costs. It is deliberately not "anywhere on screen" — answering a write gate
+#: at A0 because `plan0.md` appeared somewhere above would grant a write the
+#: ceiling does not, which is the one mistake this rule must not make.
+_PLAN_WRITE = re.compile(r"\b(create|write|overwrite|edit|update)\b"
+                         r"[^\n]*(?:\n[^\n]*){0,3}?"
                          r"\bplan0(_\d+)?\.md\b",
                          re.I)
 
 
+#: The path a `write` gate is asking about: `Write <path>  (N lines)`. Read off
+#: the UNWRAPPED screen, because the same terminal that broke the folder-trust
+#: prompt breaks a long path mid-word.
+#: Two shapes, because the two TUIs print different ones. The ai4science TUI
+#: gives an absolute path — `Write /home/grace/pwmv2/DONE.md  (1 line)` — and
+#: Claude Code gives a bare name: `Do you want to create hello.txt?`. Matching
+#: only the first meant defect 6's rule could never fire on `sarsi-claude`, the
+#: backend the loop was built for.
+_GATE_WRITE = re.compile(
+    r"\b(?:write|edit|create|update|overwrite)\s+"
+    r"(?P<path>/\S+|[\w.\-]+\.[A-Za-z0-9]{1,8})", re.I)
+
+
+def _gate_write_path(screen: str) -> str:
+    """The file a write gate names — an absolute path, or a bare name to be
+    resolved against the declared roots. '' when there is none. Never raises."""
+    m = _GATE_WRITE.search(_unwrapped(screen))
+    return (m.group("path") if m else "").rstrip(".,;:)?")
+
+
+def _ceiling_would_allow(screen: str, ceiling: str, writable) -> bool:
+    """Would the governance hook allow this write NOW?
+
+    The loop does not decide; it ASKS — `decide_tool_call` is the same function
+    the hook itself runs. That matters twice over:
+
+      * a gate the hook would allow is stale by definition, because the hook
+        only ever asks about what it would not allow. Raising a ceiling does
+        not retroactively answer a prompt already on screen, so a session can
+        sit for ever at a question that has since been settled;
+      * and a gate the hook would STILL ask about is not answered here, which
+        is exactly the objection that withdrew an earlier version of this rule.
+        Nothing is second-guessed when the same authority is consulted.
+
+    Fails closed on any error: an unreadable path, an import failure, or a
+    decision this does not understand all leave the gate for the owner.
+    """
+    path = _gate_write_path(screen)
+    if not path or not ceiling:
+        return False
+    # NEVER the plan file. It lives in the task folder, which is a declared
+    # writable root, so the ceiling permits writing it and this rule would
+    # happily approve a rewrite of the very thing the owner agreed to. The plan
+    # is the AGREEMENT, not the work: an agent that rewrites it mid-run with the
+    # loop's approval gets judged against criteria the owner never read.
+    #
+    # Answering a plan write DURING planning is a different rule (`_PLAN_WRITE`)
+    # and stays -- there, writing it is exactly what the session was asked to do.
+    import os as _os
+    if _os.path.basename(path).startswith(("plan0", ".plan-seed")):
+        return False
+    # Containment is checked HERE, not delegated. `decide_tool_call` decides
+    # "in-project" against `project_dir`, and this loop has no project dir to
+    # give it — passing None made every path look in-project, which would let a
+    # gate name any file on the machine and be answered. Widening is not
+    # something a gate gets to arrange.
+    import os
+    try:
+        roots = [os.path.realpath(str(w)) for w in (writable or []) if str(w).strip()]
+        if path.startswith("/"):
+            candidates = [os.path.realpath(path)]
+        else:
+            # A BARE name — what Claude Code prints. It has no directory of its
+            # own, so it is resolved against the declared roots and nothing
+            # else. This cannot reach outside them: every candidate is built
+            # from a root, and containment is still checked below.
+            candidates = [os.path.realpath(os.path.join(r, path)) for r in roots]
+    except Exception:
+        return False
+    inside = [t for t in candidates
+              if any(t == r or t.startswith(r.rstrip("/") + "/") for r in roots)]
+    if not inside:
+        return False
+    target = inside[0]
+    try:
+        from ai4science.harness.agents.machine.session import decide_tool_call
+        verdict = decide_tool_call(
+            {"tool_name": "Write", "tool_input": {"file_path": path}},
+            ceiling=ceiling, project_dir=None,
+            writable=[str(w) for w in (writable or [])])
+        return verdict.get("decision") == "allow"
+    except Exception:
+        return False
+
+
 def _gate(screen: str, *, planning: bool = False, deletes=None,
-          released: bool = False):
+          released: bool = False, ceiling: str = "", writable=None):
     """(answer, why) when a gate is on screen; (None, why) when unrecognised.
 
     `deletes` is `(root, granted)` when this task has a declared working
@@ -385,8 +557,11 @@ def _gate(screen: str, *, planning: bool = False, deletes=None,
     """
     if not _GATE_SHAPE.search(screen):
         return None
+    if _already_answered(screen):
+        return None
+    flat = _unwrapped(screen)
     for pattern, answer, why in _KNOWN_GATES:
-        if pattern.search(screen):
+        if pattern.search(flat):
             return (answer, why)
     if deletes is not None:
         command = _gate_command(screen)
@@ -410,6 +585,13 @@ def _gate(screen: str, *, planning: bool = False, deletes=None,
     if still_planning and _PLAN_WRITE.search(screen):
         return ("1", "writing this task's own plan file, which is exactly what "
                      "it was asked to do")
+    # Scoped to before-release ON PURPOSE, and it was worth re-deriving: after
+    # `release` the ceiling has already been raised, so a gate STILL on screen
+    # means the hook judged the command to be beyond that raised ceiling.
+    # Answering it because the classifier calls it read-only would second-guess
+    # the decision the release just made. (Proposed as a fix on 2026-08-07 and
+    # withdrawn — `test_once_the_task_is_released_this_rule_is_gone` states the
+    # reasoning and is right.)
     if still_planning:
         # A0 is "reads allowed, everything else asks", but the governance hook
         # gates EVERY bash — so six supervision passes in a row abstained at a
@@ -427,6 +609,12 @@ def _gate(screen: str, *, planning: bool = False, deletes=None,
             if is_read_only_bash(command):
                 return ("1", f"a read-only command, which A0 already allows: "
                              f"{command[:80]}")
+    # A gate raised BEFORE the ceiling went up. `release` cannot answer a
+    # question already on screen, so the session waits at one the hook would now
+    # allow — fifteen abstentions in one run, at a write the owner had granted.
+    if released and _ceiling_would_allow(screen, ceiling, writable):
+        return ("1", f"a write the {ceiling} ceiling now allows, asked before "
+                     f"the task was released")
     if _ONBOARDING.search(screen):
         # Recognised, and still not answered. Clicking through a setup wizard on
         # the owner's behalf is the guess the allowlist forbids — but a fresh
@@ -447,6 +635,68 @@ _GATE_HEADER = re.compile(r"^(?P<indent>\s*)(Bash command|\$\s+\S.*)\s*$", re.M)
 #: description in and the gate unanswered; getting it wrong the other way would
 #: judge a truncated command, so the test is deliberately strict.
 _GATE_PROSE = re.compile(r"^[A-Za-z][A-Za-z0-9 ,.'\u2019]*$")
+
+#: The same description line when it names a PATH. Claude Code writes
+#: `Create empty file in /tmp` under the command, and the rule above forbids
+#: `/`, so it was glued onto the command and handed to `is_read_only_bash` --
+#: which can then never prove the command read-only, and the loop abstains
+#: where it could have answered.
+#:
+#: A path alone is not enough to call a line prose: `cat /etc/passwd` has one
+#: too. What separates them is that a description is a SENTENCE -- it starts
+#: with a capital and runs to several words -- while a command starts with its
+#: verb in lower case. Both conditions are required, and shell metacharacters
+#: and flags still disqualify a line entirely.
+_GATE_PROSE_PATH = re.compile(
+    r"^[A-Z][A-Za-z0-9 ,.'\u2019/]*$")
+
+
+def _is_gate_description(line: str) -> bool:
+    """Is this the human-readable description rather than part of the command?"""
+    if _GATE_PROSE.match(line):
+        return True
+    return bool(_GATE_PROSE_PATH.match(line)) and len(line.split()) >= 3
+
+
+def _already_answered(screen: str) -> bool:
+    """Has the last gate on screen already been answered?
+
+    Claude Code redraws when a gate is answered and its options disappear. The
+    ai4science TUI leaves them in the transcript, so the loop kept seeing `1.`
+    on a line — a gate SHAPE — long after `❯ 1` had answered it. Once the
+    identifying prompt text scrolled out of the captured pane there was no rule
+    left to match either, so it reported "an option menu this loop has no rule
+    for" and abstained on every pass. A live sarsi-pwm run abstained nine times
+    in one supervise pass and five in the next, and the session was never
+    briefed.
+
+    The discriminator was already in this module. A gate that has been answered
+    is followed by an ECHO — a line that starts with `❯` and has text after it,
+    which is exactly `_PROMPT_LINE`. A pending gate ends at
+    `Type a number (1-N) and press Enter ❯`, where the `❯` is not at the start
+    of the line.
+
+    True for both TUIs: where Claude Code's block vanishes there is nothing to
+    match, and this returns False for want of a gate shape at all.
+    """
+    options = list(re.finditer(r"^\s*❯?\s*(?P<n>\d+)\.\s+(?P<text>\S.*?)\s*$",
+                               screen, re.M))
+    if not options:
+        return False
+    last = options[-1]
+    numbers = {m.group("n") for m in options}
+    texts = {m.group("text").lower() for m in options}
+
+    # An echo is the option NUMBER or the option TEXT — nothing else. A `❯`
+    # line carrying anything else is a STRANDED PROMPT, which is the opposite
+    # situation: the trust gate is on screen precisely BECAUSE the kickoff
+    # could not run, and treating that as an answer would leave the loop
+    # ignoring a gate that is genuinely waiting.
+    for m in _PROMPT_LINE.finditer(screen, last.end()):
+        echoed = m.group("text").strip().rstrip(".").lower()
+        if echoed in numbers or echoed in texts:
+            return True
+    return False
 
 
 def _gate_command(screen: str) -> str:
@@ -479,7 +729,7 @@ def _gate_command(screen: str) -> str:
         if indent <= header_indent:
             break                      # the block ended — `Hook …`, `A0 …`
         lines.append(raw.strip())
-    if len(lines) > 1 and _GATE_PROSE.match(lines[-1]):
+    if len(lines) > 1 and _is_gate_description(lines[-1]):
         lines.pop()                    # the human-readable description
     return " ".join(lines).strip()
 

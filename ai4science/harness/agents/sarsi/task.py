@@ -18,6 +18,7 @@ Four properties, each of them a rule from the spec rather than a convenience:
 from __future__ import annotations
 
 import json
+import re
 import time
 import uuid
 from dataclasses import asdict, dataclass, field, replace as dataclasses_replace
@@ -59,6 +60,10 @@ class Task:
     agent_id: str
     goal: str
     state: str = PLANNING
+    #: Short owner-facing name, shown on boards as `<name>---task`. The id
+    #: stays the identity — sessions, folders and references key on it; the
+    #: name is what a human scans a board by, and it is renamable.
+    name: str = ""
     directive: Dict[str, Any] = field(default_factory=dict)
     plan_version: Optional[str] = None
     criteria: List[str] = field(default_factory=list)
@@ -66,7 +71,18 @@ class Task:
     grants: List[str] = field(default_factory=list)
     blocked_by: Optional[str] = None
     verdict: Optional[Dict[str, Any]] = None
+    #: A PRE-ACTION forecast: the probability this task will be verified, with
+    #: when it was made and why. Recorded only before a verdict exists —
+    #: `forecast.record` refuses afterwards, because a number written after the
+    #: outcome scores perfectly and means nothing.
+    forecast: Optional[Dict[str, Any]] = None
     session: Optional[Dict[str, Any]] = None
+    #: Which session backend runs this task — `sarsi-pwm` or `sarsi-claude`.
+    #: It belongs to the TASK, not the agent: one worker runs many tasks, and
+    #: "which engine ran this one" is a fact about the task. Blank on records
+    #: written before backends were named, which `backends.resolve` reads as
+    #: the default rather than an error.
+    backend: str = ""
     #: the owner has the wheel — the worker must not type over them
     steering_paused: bool = False
     #: the plan no longer matches what is being done; its criteria are withheld
@@ -136,6 +152,12 @@ class Task:
     #: Where the work happens, from the plan's `Working directory:` line.
     #: Evidence is gathered from here; empty means the task's own folder.
     work_root: Optional[str] = None
+    #: When the owner last hand-drove this session (interact mode). A plan
+    #: drafted before this is stale — see `session.plan_is_stale`.
+    interact_at: Optional[float] = None
+    #: When the current plan was drafted, and when the goal was last set.
+    plan_at: Optional[float] = None
+    set_at: Optional[float] = None
     #: Per-phase verdicts, keyed by phase index as a STRING (JSON has no int
     #: keys). A phase is complete when the verifier said so ABOUT THAT PHASE —
     #: not when the session claims it and not when the loop moves on. Without
@@ -156,14 +178,82 @@ class Task:
 
 # ── creating and reading ──────────────────────────────────────────────
 
-def create(config: Config, agent: Agent, directive: Directive, *,
+#: Words that carry no scent of WHICH task this is. The leading verb stays —
+#: `count-md` and `write-fib` read better than two bare nouns.
+_NAME_NOISE = {"the", "a", "an", "in", "on", "at", "of", "to", "for", "this",
+               "that", "these", "those", "with", "under", "into", "and",
+               "please", "me", "my", "your", "it", "its", "is", "are", "be",
+               "folder", "directory", "file", "files", "called", "named",
+               "exactly", "whose", "first", "line", "working"}
+
+
+def slug_of(goal: str, *, limit: int = 3) -> str:
+    """A short scannable name from a goal: `write fib.py …` → `write-fib`.
+
+    Deterministic and lossy on purpose — the goal stays the goal; the name
+    only has to tell tasks apart on a board.
+    """
+    words = re.findall(r"[A-Za-z][A-Za-z0-9]*", (goal or "").lower())
+    kept = [w for w in words if w not in _NAME_NOISE][:limit]
+    return "-".join(kept)[:24].rstrip("-")
+
+
+def _unique_name(config: Config, agent: Agent, base: str) -> str:
+    """`base`, or `base-2`/`base-3`… if a live task already wears it."""
+    if not base:
+        return ""
+    taken = {t.name for t in all_of(config, agent) if t.name}
+    if base not in taken:
+        return base
+    n = 2
+    while f"{base}-{n}" in taken:
+        n += 1
+    return f"{base}-{n}"
+
+
+def rename(config: Config, agent: Agent, task: Task, wanted: str, *,
            now=time.time) -> Task:
+    """Give the task the name the owner asked for — slugged, kept unique.
+
+    Refuses emptiness rather than inventing: a rename to nothing is a
+    question, not an instruction.
+    """
+    base = slug_of(wanted, limit=4)
+    if not base:
+        raise ValueError(f"{wanted!r} has no letters to make a name from")
+    task.name = _unique_name(config, agent, base)
+    return _touch(agent, task, now)
+
+
+def create(config: Config, agent: Agent, directive: Directive, *,
+           backend: str = "", now=time.time) -> Task:
     _require_worker(agent)
+    from ai4science.harness.agents.sarsi import backends as _bk
+    # Resolved and CHECKED here, so a wrong name is refused before the task
+    # exists — rather than at run time, when the owner has already confirmed
+    # and walked away.
+    chosen = _bk.resolve(backend)
+    _bk.spec_for(chosen)
     stamp = _iso(now())
     task = Task(id=f"tsk_{uuid.uuid4().hex[:10]}", agent_id=agent.id,
                 goal=directive.goal, state=PLANNING,
-                directive=directive.as_record(),
+                name=_unique_name(config, agent, slug_of(directive.goal)),
+                directive=directive.as_record(), backend=chosen,
                 created_at=stamp, updated_at=stamp)
+    # A worker HAS a desk. `--workdir` was a flag the owner had to remember, and
+    # a task created without it had no declared working directory at all --
+    # which meant the session stood in its task folder and every write outside
+    # it was a question. Defaulting to the worker's own `work_dir` is what makes
+    # a task created from the REPL, where no flag exists, work at all.
+    #
+    # Explicit still wins: a directive naming a directory keeps it.
+    if not task.work_root:
+        task.work_root = str(agent.work_dir)
+        try:
+            agent.work_dir.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            pass          # a desk that cannot be made is reported by the run,
+                          # not by refusing to file the task
     _save(agent, task)
     return task
 
@@ -377,7 +467,13 @@ def attach_plan(config: Config, agent: Agent, task: Task, plan: pl.Plan, *,
     path.write_text(plan.render())
     task.plan_version = plan.version
     task.criteria = plan.criteria()
-    task.work_root = plan.work_root
+    # Only when the plan NAMES one. A plan that says nothing about a working
+    # directory is not a plan that says "nowhere" -- and this assigned
+    # unconditionally, so a drafted plan (which declares none) erased the
+    # worker's desk that `create` had just set. Every task made through the
+    # REPL came out with no working directory; the unit test passed because it
+    # called `create` alone, and the keyboard did not.
+    task.work_root = plan.work_root or task.work_root
     task.may_touch = list(plan.may_touch)
     task.max_steps, task.max_minutes = plan.max_steps, plan.max_minutes
     task.max_plan_steps = plan.max_plan_steps
@@ -412,6 +508,46 @@ def _mark_work_start(agent: Agent, task: Task, acts=None, now=time.time) -> None
         pass
 
 
+def set_owner_plan(config: Config, agent: Agent, task: Task, text: str, *,
+                   now=time.time) -> Task:
+    """The owner writes the plan, and it becomes the standard.
+
+    The design says the owner may author the plan; in practice the session
+    drafted and the owner could only grant or refuse, and `e=edit` at the
+    confirmation edits the GOAL. Every piece needed for this already existed --
+    `plan.parse`, `adopt_plan`, and the `plan_owner_edited` flag that
+    `adopt_plan` honours by refusing to let a session rewrite criteria the owner
+    authored. What was missing was the way in.
+
+    Three things this does that a session-written plan does not:
+
+      * **the file on disk is the owner's own words**, not a re-render. The
+        session reads that file, and a plan that comes back paraphrased is not
+        the plan the owner wrote;
+      * **it is agreed on arrival.** There is nobody left to settle it with;
+      * **it is marked the owner's**, which is what stops a session later
+        replacing the criteria a verdict is measured against. That has
+        happened: a session replaced the owner's criterion with one requiring a
+        cited source that did not exist.
+
+    Writing the plan is NOT granting what it declares. `awaiting` is set from
+    the plan's permissions exactly as it would be for a drafted one -- the owner
+    authors the standard, and the grant stays a separate, deliberate act.
+
+    Raises `pl.BadPlan` if the text will not parse, before it can become the
+    standard a verdict is measured against.
+    """
+    plan = pl.parse(text)                      # refuses here, not later
+    task = adopt_plan(config, agent, task, plan, now=now)
+    dir_of(agent, task.id).mkdir(parents=True, exist_ok=True)
+    (dir_of(agent, task.id) / f"{task.plan_version}.md").write_text(text)
+    task.criteria = plan.criteria()
+    task.plan_owner_edited = True
+    task.plan_agreed = True
+    task.plan_stale = False
+    return _touch(agent, task, now)
+
+
 def adopt_plan(config: Config, agent: Agent, task: Task, plan: pl.Plan, *,
                now=time.time) -> Task:
     """Take a plan the SESSION wrote, without rewriting the file it wrote.
@@ -420,7 +556,13 @@ def adopt_plan(config: Config, agent: Agent, task: Task, plan: pl.Plan, *,
     already exists on disk, so the session's own wording survives intact.
     """
     task.plan_version = plan.version
-    task.work_root = plan.work_root
+    # Only when the plan NAMES one. A plan that says nothing about a working
+    # directory is not a plan that says "nowhere" -- and this assigned
+    # unconditionally, so a drafted plan (which declares none) erased the
+    # worker's desk that `create` had just set. Every task made through the
+    # REPL came out with no working directory; the unit test passed because it
+    # called `create` alone, and the keyboard did not.
+    task.work_root = plan.work_root or task.work_root
     task.may_touch = list(plan.may_touch)
     task.max_steps, task.max_minutes = plan.max_steps, plan.max_minutes
     task.max_plan_steps = plan.max_plan_steps
@@ -530,6 +672,30 @@ def finish(config: Config, agent: Agent, task: Task, *,
     # a run that succeeded should not carry its earlier failures forward
     task.retries = 0
     return _touch(agent, task, now)
+
+
+def set_backend(config: Config, agent: Agent, task: Task, name: str, *,
+                now=time.time) -> str:
+    """Switch which engine runs this task NEXT time. Returns what to tell the
+    owner.
+
+    It deliberately does not migrate a running session. Moving a live session
+    between engines mid-plan would silently change who wrote what, and the plan
+    record is the one thing that must stay attributable — so the switch takes
+    effect on the next `run`, and says so while a session is still up.
+    """
+    from ai4science.harness.agents.sarsi import backends as _bk
+    chosen = _bk.resolve(name)
+    _bk.spec_for(chosen)                 # refuses an unknown name
+    task.backend = chosen
+    _touch(agent, task, now)
+    live = (task.session or {}).get("name") if isinstance(task.session, dict) else None
+    if live:
+        return (f"{task.id} will run on {chosen} from the next run — the "
+                f"session already up ({live}) keeps the engine it started on, "
+                f"because moving a plan between engines mid-run would change "
+                f"who wrote what")
+    return f"{task.id} will run on {chosen} on the next run"
 
 
 def turn_off(config: Config, agent: Agent, task: Task, *, now=time.time) -> Task:

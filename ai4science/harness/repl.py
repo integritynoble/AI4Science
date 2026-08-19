@@ -67,7 +67,7 @@ def known_commands() -> set:
 #: can return, because an action the console produces and the loop does not
 #: handle is a command that silently does nothing.
 HANDLED_ACTIONS = {"answer", "say", "confirm", "create", "guide", "attach",
-                   "enter", "leave", "noop"}
+                   "enter", "leave", "noop", "task-verb"}
 
 
 def _prompt_for(state: dict) -> str:
@@ -91,22 +91,49 @@ def _attach_tmux(session: str, *, task: str = "", agent: str = "", run=None) -> 
     line points at the CLI door that does (`sarsi ask <agent> "/resume …"`)
     rather than a command that would 404.
     """
+    import os
     import subprocess
-    argv = ["tmux", "attach", "-t", session]
-    caller = run or (lambda a: subprocess.call(a))
+    # $TMUX stripped so the attach works when the REPL itself runs inside
+    # tmux — without this, nesting is refused outright (exit 1) and the
+    # owner never even reaches the session.
+    _env = {k: v for k, v in os.environ.items() if k != "TMUX"}
+    caller = run or (lambda a: subprocess.call(a, env=_env))
+
+    # ONE key back: Ctrl-z detaches, for the duration of this attach only.
+    # The prefix chord (Ctrl-b d) still works standalone, but nested inside
+    # another tmux the OUTER server eats the prefix — Ctrl-z is not a prefix,
+    # so it reaches the inner server either way. Bound before the terminal is
+    # handed over, unbound after it comes back: a root-table binding left
+    # behind would turn Ctrl-z into detach for every session on this server.
+    bound = False
     try:
-        rc = caller(argv)
-    except Exception as e:
-        return (f"could not attach {session} — {type(e).__name__}: {e}\n"
-                f"  attach it yourself: tmux attach -t {session}")
-    if rc:
-        return (f"tmux would not attach {session} (exit {rc})\n"
-                f"  is it still running? ai4science sarsi tasks <agent>")
+        try:
+            caller(["tmux", "bind-key", "-n", "C-z", "detach-client"])
+            bound = True
+        except Exception:
+            pass                # no binding is a degraded attach, not a failed one
+        if bound:
+            print(f"entering {session} — press Ctrl-z to come back here",
+                  flush=True)
+        try:
+            rc = caller(["tmux", "attach", "-t", session])
+        except Exception as e:
+            return (f"could not attach {session} — {type(e).__name__}: {e}\n"
+                    f"  attach it yourself: tmux attach -t {session}")
+        if rc:
+            return (f"tmux would not attach {session} (exit {rc})\n"
+                    f"  is it still running? ai4science sarsi tasks <agent>")
+    finally:
+        if bound:
+            try:
+                caller(["tmux", "unbind-key", "-n", "C-z"])
+            except Exception:
+                pass
     if agent and task:
-        return (f"back from {session}. {task} is paused — the worker will "
-                f"not steer it again until you resume it:\n"
+        return (f"back from {session} (Ctrl-z came home). {task} is paused — "
+                f"the worker will not steer it again until you resume it:\n"
                 f"  ai4science sarsi ask {agent} \"/resume {task}\"")
-    return f"back from {session}."
+    return f"back from {session} (Ctrl-z came home)."
 
 
 def _console_deps(state: dict) -> dict:
@@ -130,7 +157,7 @@ def _console_deps(state: dict) -> dict:
         except Exception:
             return ""
 
-    def _create(agent_id: str, goal: str) -> str:
+    def _create(agent_id: str, goal: str, backend: str = "") -> str:
         try:
             from ai4science.harness.agents.sarsi import (plan as pl, task as tsk,
                                                          worker as wk)
@@ -139,7 +166,7 @@ def _console_deps(state: dict) -> dict:
             if agent is None:
                 return f"{agent_id} is not on this machine"
             d = wk.Directive(agent_id=agent.id, goal=goal)
-            t = tsk.create(config, agent, d)
+            t = tsk.create(config, agent, d, backend=backend)
             t = tsk.attach_plan(config, agent, t, pl.draft(d))
             return t.id
         except Exception as e:
@@ -192,14 +219,117 @@ def _console_deps(state: dict) -> dict:
             t.steering_paused = True
             t.plan_stale = True          # the owner may abandon phases by hand
             t.criteria = []              # a stale plan's criteria are withheld
+            # And the TIMESTAMP the design names. `plan_stale` is a flag someone
+            # has to remember to clear; `interact_at` is a fact, and staleness
+            # derives from it — `plan_at < max(set_at, interact_at)` — so a plan
+            # drafted AFTER the owner drove is fresh again without anyone
+            # resetting anything. The flag stays: it is what today's readers use.
+            from ai4science.harness.agents.sarsi import session as _ses
+            _ses.took_the_wheel(config, agent, t, now=_time.time)
             tsk._touch(agent, t, _time.time)
             return agent.id
         except Exception:
             return ""
 
+    def _about_self(agent_id: str) -> str:
+        """What this worker can truthfully say about itself, or "".
+
+        Never raises: this text reaches the prompt the owner is standing in, and
+        a raise there would drop the REPL.
+        """
+        try:
+            from ai4science.harness.agents.sarsi import selfaware
+            config = _config()
+            agent = config.agents.get(agent_id)
+            if agent is None:
+                return ""
+            return selfaware.describe(config, agent)
+        except Exception:
+            return ""
+
+    def _task_status(task_id: str) -> str:
+        """The task's record, for a question asked in guided mode — with the
+        one fact the guided prompt otherwise hides: nothing was sent."""
+        try:
+            config = _config()
+            agent, t = _find_task(config, task_id)
+        except Exception as e:
+            return f"could not read {task_id}: {e}"
+        if t is None:
+            return f"{task_id} is not a task on this machine — /task lists them"
+        lines = [task_view(config, agent, t)]
+        try:
+            from ai4science.harness.agents.sarsi import task as tsk
+            plan = tsk.read_plan(config, agent, t)
+            if plan:
+                lines.append("  plan:")
+                lines.extend("    " + ln for ln in plan.render().splitlines())
+            else:
+                lines.append("  no plan yet — the session drafts one at A0")
+        except Exception:
+            pass
+        for key in sorted((t.phase_verdicts or {}), key=str):
+            v = (t.phase_verdicts or {}).get(key) or {}
+            reason = str(v.get("reason", ""))[:120]
+            lines.append(f"  phase {int(key) + 1 if str(key).isdigit() else key}"
+                         f": {str(v.get('state', '?')).upper()}"
+                         + (f" — {reason}" if reason else ""))
+        lines.append(
+            "  (answered from the task's record — nothing went to the "
+            "session.\n"
+            "   steer it: say it as an instruction · watch it: "
+            "/interact --print\n"
+            f"   full verdicts: ai4science sarsi why {agent.id} {t.id})")
+        return "\n".join(lines)
+
+    def _task_verb(verb: str, task_id: str, rest: str) -> str:
+        """The owner's lifecycle acts, from the REPL — the same library calls
+        the CLI verbs make, so the two doors cannot drift."""
+        try:
+            config = _config()
+            agent, t = _find_task(config, task_id)
+        except Exception as e:
+            return f"could not read {task_id}: {e}"
+        if t is None:
+            return f"{task_id} is not a task on this machine — /task lists them"
+        from ai4science.harness.agents.sarsi import (chat as sarsi_chat,
+                                                     session as ses,
+                                                     task as tsk)
+        label = f"{t.name}---task" if t.name else t.id
+        try:
+            if verb == "stop":
+                ses.stop(config, agent, t)
+                return (f"{label} stopped — its slot is free. Pick it up "
+                        f"again: ai4science sarsi run {agent.id} {t.id}")
+            if verb == "archive":
+                ses.stop(config, agent, t, archive=True)
+                return f"{label} archived — off the board, and kept"
+            if verb == "reopen":
+                if t.state != tsk.ARCHIVED:
+                    return f"{label} is not archived — it is {t.state}"
+                tsk.reopen(config, agent, t)
+                return f"{label} is back on the board, stopped"
+            if verb == "goal":
+                if not rest:
+                    return "usage: /goal [task] <the new goal, one sentence>"
+                return sarsi_chat.handle(config, agent,
+                                         f"/goal {t.id} {rest}", surface="cli")
+            if verb == "rename":
+                if not rest:
+                    return "usage: /rename [task] <new name>"
+                tsk.rename(config, agent, t, rest)
+                return f"{t.id} is now {t.name}---task"
+        except ValueError as e:
+            return str(e)
+        except Exception as e:
+            return f"could not {verb} {label}: {type(e).__name__}: {e}"
+        return f"/{verb} is not an owner act this REPL knows"
+
     return {"resolve": resolve_name, "find_task": _find, "suggest": _suggest,
             "create": _create, "guide": _guide, "session_of": _session_of,
-            "pause_for_interact": _pause_for_interact, "unknown": slash_answer}
+            "pause_for_interact": _pause_for_interact, "unknown": slash_answer,
+            "about_self": _about_self, "task_status": _task_status,
+            "task-verb": _task_verb}
 
 
 def _source() -> str:
@@ -274,6 +404,9 @@ def resolve_name(name: str):
         return "command", low
     if low.startswith("tsk_"):
         return "task", low
+    named = _task_by_name(low)
+    if named:
+        return "task", named
     spec = low in {s.lower() for s in _chat_specs()}
     roster = low in {a.lower() for a in _roster_agents()}
     if spec and roster:
@@ -285,6 +418,22 @@ def resolve_name(name: str):
     if roster:
         return "roster", low
     return "unknown", low
+
+
+def _task_by_name(low: str) -> str:
+    """The task id wearing this name, or "". Names lose to everything that
+    resolves earlier (commands, `tsk_` ids) — a name may not shadow either."""
+    if not low or low.startswith("tsk_"):
+        return ""
+    try:
+        from ai4science.harness.agents.sarsi import registry as reg
+        config = reg.load()
+        for _agent, t in all_tasks(config):
+            if (t.name or "").lower() == low:
+                return t.id
+    except Exception:
+        pass
+    return ""
 
 
 def slash_answer(line: str) -> str:
@@ -337,6 +486,10 @@ def _dispatch_slash(line: str, state: dict) -> tuple[bool, str]:
                       "/agent [name|specific <q>] /do <goal> /tasks /login "
                       "/whoami /feedback <text> /readonly /yes /default "
                       "/cost /files /subagents /exit\n"
+                      "  tasks: /task (all boards) /<task-name> or /tsk_… "
+                      "(open, guided) /interact (its terminal — Ctrl-z back) "
+                      "/rename /goal /stop /archive /reopen [task] — owner "
+                      "acts on the task named, or the one you stand in\n"
                       "  /do hands the goal to this agent's sarsi worker "
                       "(task + plan + sarsi-claude) instead of answering here\n"
                       "  /subagents lists the nested delegation types the "
@@ -370,7 +523,7 @@ def _dispatch_slash(line: str, state: dict) -> tuple[bool, str]:
                                     for n, p in sorted(SUBAGENTS.items())]
         return True, "\n".join(lines)
     if cmd in ("do", "tasks"):
-        return True, _sarsi_bridge(cmd, _arg.strip(), state.get("agent") or "")
+        return True, _sarsi_bridge(cmd, _arg.strip(), _bridge_target(state))
 
     # `/<roster-agent> do <goal>` and `/<roster-agent> tasks`. `/do` reaches the
     # sarsi worker whose id matches the CHAT AGENT's name, so a roster agent
@@ -416,7 +569,8 @@ def task_view(config, agent, task) -> str:
     would leave the owner at the edge of the thing they asked to enter.
     """
     session = (task.session or {}).get("name") if isinstance(task.session, dict) else None
-    lines = [f"{task.id} — {task.state} — {agent.id}",
+    label = f"{task.name}---task ({task.id})" if task.name else task.id
+    lines = [f"{label} — {task.state} — {agent.id}---agent",
              f"  {(task.goal or '')[:160]}"]
     if task.blocked_by:
         lines.append(f"  waiting on: {task.blocked_by}")
@@ -452,8 +606,12 @@ def _task_slash(cmd: str, arg: str) -> str:
         rows = all_tasks(config)
         if not rows:
             return "no tasks on this machine yet — /<agent> do <goal> starts one"
-        return "\n".join(f"  {t.id}  {t.state:<14} {a.id:<22} "
-                          f"{(t.goal or '')[:60]}" for a, t in rows)
+        # The NAME is the row's handle — `/write-fib` opens it. The id still
+        # exists (task view shows it); a board is for scanning, not quoting.
+        return "\n".join(
+            f"  {(t.name + '---task' if t.name else t.id):<26} "
+            f"{t.state:<12} {a.id + '---agent':<28} "
+            f"{(t.goal or '')[:50]}" for a, t in rows)
 
     agent, t = _find_task(config, cmd)
     if t is None:
@@ -600,20 +758,23 @@ def _next_available_brand(current: Optional[str]):
 #  • Every other agent gets the cross-provider flagship menu and can switch freely.
 # Selecting an entry switches BOTH backend and model.
 _LOCKED_MENU = {
-    "anthropic": [("Opus 4.8", "anthropic", "claude-opus-4-8"),
+    "anthropic": [("Opus 5", "anthropic", "claude-opus-5"),
+                  ("Opus 4.8", "anthropic", "claude-opus-4-8"),
                   ("Sonnet 4.6", "anthropic", "claude-sonnet-4-6"),
                   ("Haiku 4.5", "anthropic", "claude-haiku-4-5")],
     "openai":    [("ChatGPT 5.5", "openai", "gpt-5.5"),
                   ("ChatGPT 5.5 Codex", "openai", "gpt-5.5-codex")],
 }
-_FLAGSHIP_MENU = [("Opus 4.8", "anthropic", "claude-opus-4-8"),
+_FLAGSHIP_MENU = [("Opus 5", "anthropic", "claude-opus-5"),
+                  ("Opus 4.8", "anthropic", "claude-opus-4-8"),
                   ("ChatGPT 5.5", "openai", "gpt-5.5"),
                   ("Gemini 3.1 Pro", "gemini", "gemini-3.1-pro-preview")]
 
 # Typed shortcuts (`/model haiku`, `/model gpt`, …) → model id, resolved within
 # whatever menu the active agent allows.
 _TYPED_ALIASES = {
-    "opus": "claude-opus-4-8", "opus-4-8": "claude-opus-4-8", "fable": "claude-opus-4-8",
+    "opus": "claude-opus-5", "opus-5": "claude-opus-5",
+    "opus-4-8": "claude-opus-4-8", "fable": "claude-opus-5",
     "sonnet": "claude-sonnet-4-6", "haiku": "claude-haiku-4-5",
     "gpt": "gpt-5.5", "chatgpt": "gpt-5.5", "gpt-5.5": "gpt-5.5", "gpt5.5": "gpt-5.5",
     "codex": "gpt-5.5-codex",
@@ -683,7 +844,7 @@ def _pick_brand(backend: Optional[str], model: Optional[str]):
             if b == backend:
                 return backend, m
         # Backend not in orchestration chain — use a default model.
-        return backend, "claude-opus-4-8"
+        return backend, "claude-opus-5"
 
     if model:
         # Only a model id given — infer its backend so `--model gemini-…` works.
@@ -1017,7 +1178,8 @@ def run_common_repl(
     # Clean Claude-Code-style welcome header (coral accent), instead of noisy
     # [harness] log lines.
     _coral, _dim, _rst = "\x1b[38;5;173m", "\x1b[2m", "\x1b[0m"
-    _friendly = {"claude-opus-4-8": "Opus 4.8", "claude-sonnet-4-6": "Sonnet 4.6",
+    _friendly = {"claude-opus-5": "Opus 5",
+                 "claude-opus-4-8": "Opus 4.8", "claude-sonnet-4-6": "Sonnet 4.6",
                  "claude-haiku-4-5": "Haiku 4.5", "gpt-5.5": "ChatGPT 5.5",
                  "gpt-5.5-codex": "ChatGPT 5.5 Codex",
                  "gemini-3.1-pro-preview": "Gemini 3.1 Pro"}
@@ -1098,9 +1260,13 @@ def run_common_repl(
                 if _act.text:
                     print(_act.text, flush=True)
             elif _act.kind == "create":
-                print(f"→ {_deps['create'](_act.agent, _act.goal)}", flush=True)
+                print(f"→ {_deps['create'](_act.agent, _act.goal, _act.backend)}",
+                      flush=True)
             elif _act.kind == "guide":
                 print(_deps["guide"](_act.task, _act.text), flush=True)
+            elif _act.kind == "task-verb":
+                print(_deps["task-verb"](_act.verb, _act.task, _act.text),
+                      flush=True)
             elif _act.kind == "attach":
                 _agent_id = _deps["pause_for_interact"](_act.task)
                 print(_attach_tmux(_act.session, task=_act.task,
@@ -1223,17 +1389,34 @@ def run_common_repl(
                     specific = sorted(agent_registry.specific_agents(),
                                       key=lambda s: (s.order, s.name))
                     pick = list(core) + list(specific)
-                    labels = [
-                        f"{_tui._display_mode(s.name)} — {s.description}"
-                        + ("  ← current" if s.name == active_spec.name else "")
-                        + ("  [domain]" if s in specific else "")
-                        for s in pick
-                    ]
-                    idx = _tui.select("Select an agent", labels)
+                    # The sarsi WORKERS belong in this list too. The owner
+                    # opened `/agents`, read sixteen chat specs, and could not
+                    # find `sarsi-worker` — the agent the machine is built
+                    # around — because workers live in the other registry. That
+                    # distinction is real and it is not the owner's problem.
+                    from ai4science.harness import console as _c
+                    workers = _sarsi_worker_choices()
+                    entries = _c.agent_menu(
+                        core=[(_tui._display_mode(s.name), s.description)
+                              for s in core],
+                        specific=[(_tui._display_mode(s.name), s.description)
+                                  for s in specific],
+                        workers=workers,
+                        active=_tui._display_mode(active_spec.name))
+                    idx = _tui.select("Select an agent",
+                                      [e.label for e in entries])
                     if idx is None:
                         print("[harness] (cancelled)", flush=True)
                         continue
-                    target = pick[idx]
+                    chosen = entries[idx]
+                    if chosen.kind == "worker":
+                        # Entering a worker is a different act from switching
+                        # this repl's spec — same list, said out loud on the row.
+                        state["mode"] = _c.Mode(kind="agent", name=chosen.name)
+                        print(f"now addressing {chosen.name}", flush=True)
+                        continue
+                    # workers were prepended, so shift back into `pick`
+                    target = pick[idx - len(workers)]
                 else:
                     parts = arg.split(None, 1)
                     if parts[0] == "specific":
@@ -1473,3 +1656,53 @@ def run_common_repl(
             _note = _console_deps(state)["suggest"](line)
             if _note:
                 print(_note, flush=True)
+
+
+def _sarsi_worker_choices():
+    """`(id, description)` for every sarsi worker, `sarsi-worker` first.
+
+    Returns `[]` on any failure — a machine with no sarsi registry still gets
+    its spec list, and a broken registry must not take down the picker the
+    owner is standing in.
+    """
+    try:
+        from ai4science.harness.agents.sarsi import registry as reg
+        config = reg.load()
+    except Exception:
+        return []
+    rows = []
+    for agent_id, agent in (config.agents or {}).items():
+        if getattr(agent, "role", "") != "worker":
+            continue
+        if getattr(agent, "retired", False):
+            continue
+        # `about` is a list on some roster entries and a string on others —
+        # a picker must not care which, and must never raise into the loop.
+        about = getattr(agent, "about", "") or ""
+        if isinstance(about, (list, tuple)):
+            about = " ".join(str(x) for x in about)
+        rows.append((agent_id, str(about).strip()
+                     or "a sarsi worker: holds tasks and drives sessions"))
+    # `sarsi-worker` first: it is the general one, and the owner reaches for it.
+    rows.sort(key=lambda r: (r[0] != "sarsi-worker", r[0]))
+    return rows
+
+
+def _bridge_target(state: dict) -> str:
+    """Which sarsi worker `/do` and `/tasks` act on.
+
+    The mode FIRST. This passed `state["agent"]` — the chat spec — so the owner
+    standing in `sarsi-worker ❯` typed `/tasks` and read "claude-code has no
+    sarsi worker". The prompt said one thing and the command did another, which
+    makes the mode label a lie rather than a safety mechanism.
+
+    Only `kind == "agent"` counts: standing in a TASK is not standing in a
+    worker, and there is no worker name to take from it. Falls back to the chat
+    spec, which is the original behaviour and still right at the top.
+    """
+    mode = state.get("mode")
+    if mode is not None and getattr(mode, "kind", "") == "agent":
+        name = (getattr(mode, "name", "") or "").strip()
+        if name:
+            return name
+    return state.get("agent") or ""

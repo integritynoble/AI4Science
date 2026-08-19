@@ -183,15 +183,27 @@ def test_e_reopens_the_goal_for_editing():
     assert mode.pending is None, "editing clears it; the next line is the new goal"
 
 
-def test_anything_else_drops_it_rather_than_guessing():
-    """A pending goal answered with prose is a user who has moved on. Creating
-    the task anyway would be the one outcome nobody asked for."""
+def test_anything_else_never_creates_the_pending_goal():
+    """The invariant this test was written for, unchanged: prose at a
+    confirmation must NOT create the pending task. Creating it anyway would be
+    the one outcome nobody asked for.
+
+    What changed is what happens to the prose. It used to be discarded, and
+    that cost the owner a whole typed goal, twice in one session — see
+    `test_a_new_goal_at_a_confirmation_is_not_thrown_away`. So the prose is now
+    routed as what it is, which for `actually never mind` means it is offered
+    back as a goal.
+
+    That is mildly silly and entirely recoverable: it is one `n` away, and the
+    abandoned goal is named. Losing typed work is neither.
+    """
     made = []
     m = console.Mode(kind="agent", name="sarsi-worker", pending="do the thing")
     act, mode = console.route("actually never mind", m,
                               _deps(create=lambda a, g: made.append(g) or "x"))
     assert made == []
-    assert mode.pending is None
+    assert mode.pending != "do the thing"
+    assert "do the thing" in act.text
 
 
 def test_plain_text_at_the_top_is_answered_not_confirmed():
@@ -265,3 +277,349 @@ def test_and_the_arguments_survive():
     act, _ = console.route("/agent sarsi-worker", console.Mode(), deps)
     assert act.kind == "answer"
     assert act.text == "/agent sarsi-worker"
+
+
+# ── `/agents` must list the workers, not only the chat specs ──────────
+
+def test_the_agent_menu_lists_workers_first():
+    """The owner opened `/agents`, saw sixteen chat specs, and could not find
+    `sarsi-worker` — the agent the whole machine is built around.
+
+    It was absent because `/agents` listed one registry (chat specs: what THIS
+    repl runs) and workers live in another (the sarsi roster: who holds tasks).
+    That distinction is real and it is not the owner's problem. One door.
+
+    Workers come first because that is what the owner reaches for.
+    """
+    from ai4science.harness import console
+
+    entries = console.agent_menu(
+        core=[("unified-LLM", "General coding assistant")],
+        specific=[("imaging", "CASSI reconstruction")],
+        workers=[("sarsi-worker", "the general worker"),
+                 ("jobs", "job search")],
+        active="unified-LLM")
+
+    assert [e.name for e in entries][:2] == ["sarsi-worker", "jobs"], \
+        [e.name for e in entries]
+    assert entries[0].kind == "worker"
+    assert entries[0].name == "sarsi-worker"
+
+
+def test_a_worker_entry_is_marked_as_one():
+    """Selecting a worker ENTERS it; selecting a spec SWITCHES this repl. Two
+    different acts in one list, so the list has to say which is which."""
+    from ai4science.harness import console
+    entries = console.agent_menu(core=[("unified-LLM", "d")], specific=[],
+                                 workers=[("sarsi-worker", "w")],
+                                 active="unified-LLM")
+    worker = [e for e in entries if e.kind == "worker"][0]
+    spec = [e for e in entries if e.kind == "spec"][0]
+    assert "worker" in worker.label.lower()
+    assert "← current" in spec.label
+
+
+def test_the_current_spec_is_still_marked():
+    from ai4science.harness import console
+    entries = console.agent_menu(core=[("a", "d1"), ("b", "d2")], specific=[],
+                                 workers=[], active="b")
+    assert "← current" in [e for e in entries if e.name == "b"][0].label
+    assert "← current" not in [e for e in entries if e.name == "a"][0].label
+
+
+def test_no_workers_configured_is_not_an_error():
+    """A machine with no sarsi registry still gets its spec list."""
+    from ai4science.harness import console
+    entries = console.agent_menu(core=[("a", "d")], specific=[], workers=[],
+                                 active="a")
+    assert [e.name for e in entries] == ["a"]
+
+
+# ── A2 · a pending confirmation must not EAT the next line ────────────
+
+def _deps_ok():
+    return {"resolve": lambda n: ("unknown", ""), "session_of": lambda t: "",
+            "find_task": lambda t: (None, None), "create": lambda a, g: "tsk_x",
+            "guide": lambda t, x: "sent", "suggest": lambda t: "",
+            "unknown": lambda l: "not a command"}
+
+
+def test_a_new_goal_at_a_confirmation_is_not_thrown_away():
+    """The owner lost the same sentence twice:
+
+        ❯ can you plan at A2?
+          create it? [Enter=yes / e=edit / n=no]
+        ❯ please write a gap-tv algorithm for cassi based on python
+        dropped — nothing was created
+
+    The gap-TV line was read as the ANSWER, was not Enter/e/n, and was
+    discarded. "Honoured or refused, never dropped" — that refuses AND drops.
+
+    A line that is plainly not an answer cancels the pending goal and is then
+    routed as what it is. Nothing typed disappears.
+    """
+    from ai4science.harness import console
+    pending = console.Mode(kind="agent", name="sarsi-worker",
+                           pending="can you plan at A2?")
+    act, mode = console.route(
+        "please write a gap-tv algorithm for cassi based on python",
+        pending, _deps_ok())
+    assert act.kind == "confirm", act
+    assert act.goal == "write a gap-tv algorithm for cassi based on python"
+    assert mode.pending == act.goal
+    assert "can you plan at A2?" in act.text, (
+        "the abandoned goal must be named, not silently forgotten")
+
+
+def test_an_explicit_no_still_drops_it():
+    from ai4science.harness import console
+    pending = console.Mode(kind="agent", name="w", pending="build a thing")
+    act, mode = console.route("n", pending, _deps_ok())
+    assert act.kind == "say" and "build a thing" in act.text
+    assert mode.pending is None
+
+
+def test_enter_still_creates_and_e_still_edits():
+    from ai4science.harness import console
+    pending = console.Mode(kind="agent", name="w", pending="g")
+    assert console.route("", pending, _deps_ok())[0].kind == "create"
+    assert console.route("e", pending, _deps_ok())[0].kind == "say"
+
+
+# ── A3 · not every line is a goal ─────────────────────────────────────
+
+def test_a_greeting_is_answered_not_turned_into_a_task():
+    """`hi` became a task goal. A greeting is not a directive."""
+    from ai4science.harness import console
+    m = console.Mode(kind="agent", name="sarsi-worker")
+    act, mode = console.route("hi", m, _deps_ok())
+    assert act.kind == "answer", act
+    assert mode.pending is None
+
+
+def test_a_question_about_the_system_is_answered():
+    """`can you plan at A2?` became a task goal. A question about what the
+    worker can do is a question, and answering it is the whole of B1's first
+    row — the owner is talking to the worker and getting a form."""
+    from ai4science.harness import console
+    m = console.Mode(kind="agent", name="sarsi-worker")
+    act, _ = console.route("can you plan at A2?", m, _deps_ok())
+    assert act.kind == "answer"
+
+
+def test_the_answer_says_how_to_make_it_a_task_anyway():
+    """A directive phrased as a question must not become unreachable. Nothing
+    is lost: the line is answered AND the way to task it is named."""
+    from ai4science.harness import console
+    m = console.Mode(kind="agent", name="sarsi-worker")
+    act, _ = console.route("could you write a gap-tv algorithm?", m, _deps_ok())
+    assert act.kind == "answer"
+    assert "/do" in act.text
+
+
+def test_a_directive_still_becomes_a_goal():
+    from ai4science.harness import console
+    m = console.Mode(kind="agent", name="sarsi-worker")
+    act, mode = console.route("write a gap-tv algorithm for cassi", m, _deps_ok())
+    assert act.kind == "confirm" and mode.pending
+    assert act.goal == "write a gap-tv algorithm for cassi"
+
+
+def test_the_framing_does_not_become_the_goal():
+    """`the goal is please write X` used to file a task whose goal was
+    "the goal is please write X"."""
+    from ai4science.harness import console
+    act, mode = console.route(
+        "the goal is please write a GAP-TV solver for CASSI",
+        console.Mode(kind="agent", name="sarsi-worker"), _deps_ok())
+    assert act.kind == "confirm"
+    assert act.goal == "write a GAP-TV solver for CASSI", act.goal
+    assert mode.pending == act.goal
+
+
+# ── A1 · /tasks and /do must read the mode you are standing in ────────
+
+def test_the_sarsi_bridge_uses_the_mode_not_the_chat_spec():
+    """The owner stood in `sarsi-worker ❯`, typed `/tasks`, and read:
+
+        [harness] claude-code has no sarsi worker — it answers here instead
+
+    `repl.py` passed `state["agent"]` — the CHAT SPEC — to the sarsi bridge and
+    never looked at `state["mode"]`. So the mode was displayed and not
+    consulted, which makes the prompt label a lie. `/sarsi-worker tasks` worked,
+    because that path passes the name explicitly; bare `/tasks` in worker mode
+    did not.
+    """
+    from ai4science.harness import repl, console
+    assert repl._bridge_target({"agent": "claude-code",
+                                "mode": console.Mode(kind="agent",
+                                                     name="sarsi-worker")}) \
+        == "sarsi-worker"
+
+
+def test_at_the_top_it_still_uses_the_chat_spec():
+    """Outside a worker there is no mode to read, and `/do` from a chat agent
+    to its own counterpart is the original, correct behaviour."""
+    from ai4science.harness import repl, console
+    assert repl._bridge_target({"agent": "unified-LLM",
+                                "mode": console.Mode()}) == "unified-LLM"
+
+
+def test_task_mode_falls_back_to_the_chat_spec():
+    """Standing in a TASK is not standing in a worker; there is no worker name
+    to use, and guessing one would be worse than the message."""
+    from ai4science.harness import repl, console
+    assert repl._bridge_target({"agent": "unified-LLM",
+                                "mode": console.Mode(kind="task",
+                                                     name="tsk_1")}) == "unified-LLM"
+
+
+def test_a_missing_mode_key_is_not_a_crash():
+    from ai4science.harness import repl
+    assert repl._bridge_target({"agent": "unified-LLM"}) == "unified-LLM"
+
+
+# ── the worker answers questions about itself ─────────────────────────
+
+def test_a_question_about_the_worker_is_answered_from_its_own_state():
+    """`can you plan at A2?` became a task goal, because the worker had nothing
+    to answer from. Now it does: `selfaware.describe` derives the answer from
+    the registry, the trust ledger and the task store — each claim linked to
+    the store it came from.
+    """
+    from ai4science.harness import console
+    deps = dict(_deps_ok())
+    deps["about_self"] = lambda name: "I am sarsi-worker, a worker on this machine."
+    m = console.Mode(kind="agent", name="sarsi-worker")
+    act, mode = console.route("can you plan at A2?", m, deps)
+    assert act.kind == "say", act
+    assert "sarsi-worker" in act.text
+    assert mode.pending is None, "a question must not become a pending goal"
+
+
+def test_a_question_about_the_world_still_reaches_the_model():
+    """A router that guesses is worse than one that is quiet. A canned page
+    standing in for a real answer is the failure mode here."""
+    from ai4science.harness import console
+    deps = dict(_deps_ok())
+    deps["about_self"] = lambda name: "SHOULD NOT BE USED"
+    m = console.Mode(kind="agent", name="sarsi-worker")
+    act, _ = console.route("how does GAP-TV work?", m, deps)
+    assert act.kind == "answer", act
+    assert "SHOULD NOT" not in act.text
+
+
+def test_an_agent_that_is_not_self_aware_falls_through():
+    """`describe` returns "" when the flag is off; the line must then be
+    answered as before rather than becoming an empty reply."""
+    from ai4science.harness import console
+    deps = dict(_deps_ok())
+    deps["about_self"] = lambda name: ""
+    m = console.Mode(kind="agent", name="sarsi-worker")
+    act, _ = console.route("what can you do?", m, deps)
+    assert act.kind == "answer", act
+
+
+# ── the confirmation offers the backend ───────────────────────────────
+#
+# backends.py's own charter: "what was missing is a name the owner can choose
+# at the confirmation". The CLI got `--backend`; the confirmation never did —
+# the one surface where every task is actually created.
+
+def test_the_confirm_block_names_the_backend_and_the_switch():
+    text = console.confirm_block("write a solver", "sarsi-worker")
+    assert "sarsi-pwm" in text, "the default backend must be shown, not implied"
+    assert "b=" in text, "and the block must say how to choose the other one"
+
+
+def test_b_switches_the_backend_and_keeps_the_goal():
+    m = console.Mode(kind="agent", name="sarsi-worker", pending="do the thing")
+    act, mode = console.route("b", m, _deps())
+    assert act.kind == "confirm"
+    assert "sarsi-claude" in act.text
+    assert mode.pending == "do the thing", "switching must not drop the goal"
+    assert mode.backend == "sarsi-claude"
+
+
+def test_b_again_switches_back():
+    m = console.Mode(kind="agent", name="sarsi-worker", pending="do the thing",
+                     backend="sarsi-claude")
+    act, mode = console.route("b", m, _deps())
+    assert mode.backend == "sarsi-pwm"
+    assert mode.pending == "do the thing"
+
+
+def test_yes_carries_the_chosen_backend():
+    m = console.Mode(kind="agent", name="sarsi-worker", pending="do the thing",
+                     backend="sarsi-claude")
+    act, mode = console.route("", m, _deps())
+    assert act.kind == "create"
+    assert act.backend == "sarsi-claude"
+    assert mode.pending is None
+
+
+def test_the_default_confirm_carries_no_backend():
+    """An empty backend means task.create resolves the default in ONE place —
+    the confirmation must not become a second author of the default."""
+    m = console.Mode(kind="agent", name="sarsi-worker", pending="do the thing")
+    act, _ = console.route("", m, _deps())
+    assert act.kind == "create"
+    assert act.backend == ""
+
+
+def test_a_question_in_task_mode_is_answered_not_steered():
+    """The owner asking ABOUT the task is not steering it. 'what is process
+    now' went into a live session as steering and the owner read the silence
+    as 'no reasoning ability' — the answer must come from the task's record,
+    and say that nothing was sent."""
+    m = console.Mode(kind="task", name="tsk_ab12cd34")
+    act, mode = console.route(
+        "what is the process now", m,
+        _deps(task_status=lambda t: f"{t} — running — status text"))
+    assert act.kind == "say"
+    assert "tsk_ab12cd34" in act.text
+    assert mode == m, "asking does not change where you are standing"
+
+
+def test_a_question_mark_in_task_mode_is_answered_not_steered():
+    m = console.Mode(kind="task", name="tsk_ab12cd34")
+    act, _ = console.route("did it finish?", m,
+                           _deps(task_status=lambda t: "state line"))
+    assert act.kind == "say" and "state line" in act.text
+
+
+def test_task_mode_without_a_status_dep_still_steers():
+    """A console wired before task_status existed keeps its old behavior —
+    a missing dep must not turn every question into a crash or a swallow."""
+    m = console.Mode(kind="task", name="tsk_ab12cd34")
+    act, _ = console.route("what is the process now", m, _deps())
+    assert act.kind == "guide"
+
+
+def test_stop_in_task_mode_acts_on_the_standing_task():
+    m = console.Mode(kind="task", name="tsk_ab12cd34")
+    act, mode = console.route("/stop", m, _deps())
+    assert act.kind == "task-verb" and act.verb == "stop"
+    assert act.task == "tsk_ab12cd34"
+    assert mode == m
+
+
+def test_goal_with_an_explicit_task_works_from_anywhere():
+    act, _ = console.route("/goal tsk_ab12cd34 count only tracked files",
+                           console.Mode(), _deps())
+    assert act.kind == "task-verb" and act.verb == "goal"
+    assert act.task == "tsk_ab12cd34"
+    assert act.text == "count only tracked files"
+
+
+def test_rename_keeps_the_words_after_the_task_token():
+    m = console.Mode(kind="task", name="tsk_ab12cd34")
+    act, _ = console.route("/rename gen", m, _deps())
+    assert act.kind == "task-verb" and act.verb == "rename"
+    assert act.task == "tsk_ab12cd34" and act.text == "gen"
+
+
+def test_a_lifecycle_verb_with_no_task_anywhere_says_so():
+    act, _ = console.route("/archive", console.Mode(), _deps())
+    assert act.kind == "say"
+    assert "needs a task" in act.text

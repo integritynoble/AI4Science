@@ -32,7 +32,9 @@ _FORBIDDEN = [
     r"\brm\s+-[a-z]*r[a-z]*f?\s+/(\s|$|\*)",  # rm -rf /
     r"\bmkfs\b", r"\bdd\b[^|]*of=/dev/",
     r">\s*/dev/sd", r"\bchmod\s+-R?\s*777\s+/",
-    r"/etc/shadow", r"\b(shutdown|reboot|halt|poweroff)\b",
+    # (?<!-) / (?!-) : a flag like `-halt-on-error` or a path like
+    # /var/run/reboot-required is not an invocation of the command.
+    r"/etc/shadow", r"(?<!-)\b(shutdown|reboot|halt|poweroff)\b(?!-)",
 ]
 _CONSEQUENTIAL = [
     r"\bsudo\b", r"\brm\s+-[a-z]*r", r"\b(curl|wget)\b[^|]*\|\s*(sudo\s+)?(sh|bash|zsh)\b",
@@ -49,7 +51,7 @@ _SAFE_HEADS = {
     "ls", "cat", "head", "tail", "grep", "rg", "egrep", "fgrep", "find", "pwd",
     "echo", "printf", "wc", "which", "type", "date", "whoami", "id", "uname",
     "hostname", "file", "stat", "du", "df", "tree", "basename", "dirname",
-    "true", "false", "test", "sort", "uniq", "cut", "diff",
+    "true", "false", "test", "sort", "uniq", "cut", "tr", "diff",
     "cd", "sleep", "seq", "cmp", "realpath", "readlink", "git",
 }
 

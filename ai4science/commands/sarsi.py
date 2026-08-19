@@ -9,11 +9,13 @@ from __future__ import annotations
 from typing import List, Optional
 
 import json
+import pathlib
 import typer
 from rich.console import Console
 from rich.table import Table
 
 from ai4science.harness.agents.sarsi import admin, registry as reg
+from ai4science.harness.agents.sarsi import backends as backends_mod
 
 app = typer.Typer(help="sarsi worker agents on this machine.", no_args_is_help=True)
 console = Console()
@@ -175,7 +177,11 @@ def do(agent_id: str = typer.Argument(..., help="Worker id, e.g. sarsi-worker"),
        minutes: Optional[int] = typer.Option(None, "--minutes",
                                              help="Stop after this many minutes (no default)."),
        after: List[str] = typer.Option(None, "--after",
-                                       help="Wait until <agent>/<task> is VERIFIED (repeatable).")) -> None:
+                                       help="Wait until <agent>/<task> is VERIFIED (repeatable)."),
+       backend: str = typer.Option("", "--backend",
+                                   help="Which engine runs the session: "
+                                        "sarsi-pwm (ai4science, the default) or "
+                                        "sarsi-claude (Anthropic's claude binary).")) -> None:
     from pathlib import Path
 
     from ai4science.harness.agents.sarsi import worker
@@ -248,7 +254,15 @@ def do(agent_id: str = typer.Argument(..., help="Worker id, e.g. sarsi-worker"),
                          max_plan_steps=plan_steps,
                          max_plan_minutes=plan_minutes,
                          depends_on=draft.depends_on)
-    t = tsk.attach_plan(config, agent, tsk.create(config, agent, directive), draft)
+    # The backend belongs to the TASK: one worker runs many, and which engine
+    # ran a given one is a fact about that one. Refused here rather than at run
+    # time, when the owner has confirmed and walked away.
+    try:
+        made = tsk.create(config, agent, directive, backend=backend)
+    except backends_mod.NoSuchBackend as e:
+        console.print(str(e), style="red", markup=False, highlight=False)
+        raise typer.Exit(code=1)
+    t = tsk.attach_plan(config, agent, made, draft)
     t = tsk.start(config, agent, t)
     console.print(f"{agent_id} holds {t.id} — {t.state}", markup=False, highlight=False)
     if root:
@@ -902,12 +916,74 @@ def _load_task(agent_id: str, task_id: str):
     return config, agent, _task_or_exit(config, agent, task_id)
 
 
-@app.command("plan", help="Show one task's plan — its phases, criteria, and declared permissions.")
+@app.command("forecast", help="Say how likely this task is to be VERIFIED — before it is.")
+def forecast_cmd(agent_id: str = typer.Argument(..., help="Worker id"),
+                 task_id: str = typer.Argument(..., help="Task id, e.g. tsk_…"),
+                 p: float = typer.Argument(..., help="Probability in [0, 1]"),
+                 why: str = typer.Option("", "--why",
+                                         help="What that number rests on.")) -> None:
+    """A forecast is only evidence if it precedes the outcome, so this refuses
+    once the task has been judged rather than recording a number that would
+    score perfectly and mean nothing."""
+    from ai4science.harness.agents.sarsi import forecast as _fc
+
+    config = _load()
+    agent = _worker_or_exit(config, agent_id)
+    t = _task_or_exit(config, agent, task_id)
+    try:
+        t = _fc.record(config, agent, t, p, why=why)
+    except (_fc.TooLate, ValueError) as e:
+        console.print(str(e), style="red", markup=False, highlight=False)
+        raise typer.Exit(code=2)
+    console.print(f"{t.id} — forecast {p:.0%} recorded before the verdict",
+                  markup=False, highlight=False)
+    cal = _fc.calibration(config, agent)
+    if cal:
+        console.print(f"  so far: {_fc.render(cal)}", style="dim",
+                      markup=False, highlight=False)
+
+
+@app.command("plan", help="Show one task's plan — or write it yourself with --set-from.")
 def plan_cmd(agent_id: str = typer.Argument(..., help="Worker id"),
-             task_id: str = typer.Argument(..., help="Task id, e.g. tsk_…")) -> None:
+             task_id: str = typer.Argument(..., help="Task id, e.g. tsk_…"),
+             set_from: str = typer.Option(
+                 "", "--set-from",
+                 help="A markdown plan file YOU wrote. It becomes the standard: "
+                      "agreed on arrival, and a session may not rewrite its "
+                      "criteria. Its permissions still need granting.")) -> None:
     from ai4science.harness.agents.sarsi import task as tsk
 
     config = _load()
+    if set_from:
+        # The owner's half of "here is the plan, follow it". Refused here rather
+        # than at run time, because this text becomes the standard a verdict is
+        # measured against.
+        from ai4science.harness.agents.sarsi import plan as _pl
+        agent = _worker_or_exit(config, agent_id)
+        t = _task_or_exit(config, agent, task_id)
+        try:
+            text = pathlib.Path(set_from).read_text()
+        except OSError as e:
+            console.print(f"could not read {set_from}: {e}", style="red",
+                          markup=False, highlight=False)
+            raise typer.Exit(code=2)
+        try:
+            t = tsk.set_owner_plan(config, agent, t, text)
+        except _pl.BadPlan as e:
+            console.print(f"that file is not a plan: {e}", style="red",
+                          markup=False, highlight=False)
+            raise typer.Exit(code=2)
+        console.print(f"{t.id} now follows the plan you wrote — "
+                      f"{t.plan_version}.md, agreed.", markup=False,
+                      highlight=False)
+        if t.awaiting:
+            console.print("it still declares permissions to grant:",
+                          markup=False, highlight=False)
+            for perm in t.awaiting:
+                console.print(f"  sarsi grant {agent.id} {t.id} \"{perm}\"",
+                              style="dim", markup=False, highlight=False)
+        return
+
     agent = _worker_or_exit(config, agent_id)
     t = tsk.get(config, agent, task_id)
     if t is None:
@@ -964,7 +1040,9 @@ def _worker_or_exit(config: reg.Config, agent_id: str):
     return agent
 
 
-@app.command("run", help="Hand a task's plan to sarsi-claude — starts its governed session.")
+@app.command("run", help="Hand a task's plan to its backend — sarsi-claude or "
+                         "sarsi-pwm, whichever the task carries — and start "
+                         "the governed session.")
 def run_cmd(agent_id: str = typer.Argument(..., help="Worker id"),
             task_id: str = typer.Argument(..., help="Task id"),
             deny_secrets: bool = typer.Option(False, "--deny-secrets",
@@ -1283,7 +1361,13 @@ def supervise_cmd(agent_id: str = typer.Argument(..., help="Worker id"),
                   no_verify: bool = typer.Option(False, "--no-verify",
                                                  help="Do not verify; unstick and steer only."),
                   no_steer: bool = typer.Option(False, "--no-steer",
-                                                help="Do not compose instructions; unstick only.")) -> None:
+                                                help="Do not compose instructions; unstick only."),
+                  accept_seed: bool = typer.Option(
+                      False, "--accept-seed",
+                      help="Take the worker's own seed plan when the session "
+                           "never improved it. Deliberate: collecting a seed "
+                           "the session ignored launders the worker's draft "
+                           "as the session's work.")) -> None:
     from ai4science.harness.agents.sarsi import (composer as cp, operator as op,
                                                  verifier as vf)
 
@@ -1297,7 +1381,8 @@ def supervise_cmd(agent_id: str = typer.Argument(..., help="Worker id"),
     actions = op.run(config, agent, t, pane=op.TmuxPane(),
                      verifier=None if no_verify else vf.default_verifier(),
                      model=None if no_steer else cp.claude_model(),
-                     engine=engine, passes=passes, interval=interval)
+                     engine=engine, passes=passes, interval=interval,
+                     accept_seed=accept_seed)
     for action in actions:
         console.print(f"  {action.kind}"
                       + (f" — {action.detail}" if action.detail else ""),

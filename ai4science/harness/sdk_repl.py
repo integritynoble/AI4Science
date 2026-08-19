@@ -32,9 +32,11 @@ from ai4science.harness.pwm_gate import BASE_TOOLS, PwmGate
 AGENT_NAME = "claude-code"
 
 _MODEL_ALIASES = {
-    # Fable 5 suspended (US gov directive 2026-06-14) → alias resolves to Opus 4.8.
-    "fable": "claude-opus-4-8", "fable-5": "claude-opus-4-8",
-    "opus": "claude-opus-4-8", "opus-4-8": "claude-opus-4-8",
+    # Fable 5 suspended (US gov directive 2026-06-14) → alias resolves to the
+    # current Anthropic flagship (Opus 5).
+    "fable": "claude-opus-5", "fable-5": "claude-opus-5",
+    "opus": "claude-opus-5", "opus-5": "claude-opus-5",
+    "opus-4-8": "claude-opus-4-8",
     "sonnet": "claude-sonnet-4-6", "sonnet-4-6": "claude-sonnet-4-6",
     "haiku": "claude-haiku-4-5", "haiku-4-5": "claude-haiku-4-5",
 }
@@ -83,7 +85,7 @@ def _pwm_for(model_usage: dict, fallback_model: Optional[str]) -> Tuple[float, s
     same whether served by the SDK engine or the native loop."""
     from ai4science.llm import pricing
     total = 0.0
-    last_model = fallback_model or "claude-opus-4-8"
+    last_model = fallback_model or "claude-opus-5"
     for model, u in (model_usage or {}).items():
         ud = u if isinstance(u, dict) else getattr(u, "__dict__", {}) or {}
         usage = {"input": ud.get("input_tokens") or ud.get("inputTokens") or 0,
@@ -284,7 +286,7 @@ async def _loop(workspace: Path, *, auto_yes: bool, read_only: bool,
                 if is_tty:
                     print(_rule(), flush=True)
                     from ai4science.harness import tui
-                    _st = f"{model or 'claude-opus-4-8'} · {workspace.name or workspace}"
+                    _st = f"{model or 'claude-opus-5'} · {workspace.name or workspace}"
                     line = await asyncio.get_event_loop().run_in_executor(
                         None, lambda: tui.read_input("❯ ", "claude-code", _st))
                 else:
@@ -310,7 +312,8 @@ async def _loop(workspace: Path, *, auto_yes: bool, read_only: bool,
             if low.startswith("/model"):
                 arg = line[len("/model"):].strip().lower()
                 # Claude is Anthropic-locked.
-                _MENU = [("Opus 4.8", "claude-opus-4-8"),
+                _MENU = [("Opus 5", "claude-opus-5"),
+                         ("Opus 4.8", "claude-opus-4-8"),
                          ("Sonnet 4.6", "claude-sonnet-4-6"),
                          ("Haiku 4.5", "claude-haiku-4-5")]
                 if not arg:

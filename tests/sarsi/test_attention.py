@@ -102,14 +102,22 @@ def _task(config, agent, goal="finish the export", secrets=()):
 
 
 def _with_session(config, agent, goal="finish the export"):
+    # `installed` is injected for the same reason `live` is (see below): left
+    # as None it asks the REAL agent registry, and whether `unified-LLM` is
+    # installed on the machine running the tests walks into the assertion.
     return ses.assign(config, agent, _task(config, agent, goal),
-                      runtime=FakeRuntime())
+                      runtime=FakeRuntime(), installed=lambda: set())
 
 
 # ── nothing waiting ───────────────────────────────────────────────────
+#
+# `live` is injected in every test here, not only the unclaimed ones: left as
+# None it asks the REAL tmux, and a session someone else started on this
+# machine walks into the assertion. A live `sarsi-worker-…` did exactly that,
+# and made this whole file red on the machine that runs the fleet.
 
 def test_an_empty_worker_needs_nothing(config, agent):
-    assert att.needs(config, agent, pane=Pane()).items == []
+    assert att.needs(config, agent, pane=Pane(), live=lambda: set()).items == []
 
 
 def test_a_busy_session_is_not_asking_for_you(config, agent):
@@ -117,14 +125,16 @@ def test_a_busy_session_is_not_asking_for_you(config, agent):
     the list."""
     t = _with_session(config, agent)
     pane = Pane({t.session["name"]: BUSY})
-    assert att.needs(config, agent, pane=pane).items == []
+    assert att.needs(config, agent, pane=pane,
+                     live=lambda: {t.session["name"]}).items == []
 
 
 # ── a gate, with the command ──────────────────────────────────────────
 
 def test_a_gate_is_reported(config, agent):
     t = _with_session(config, agent)
-    got = att.needs(config, agent, pane=Pane({t.session["name"]: GATE}))
+    got = att.needs(config, agent, pane=Pane({t.session["name"]: GATE}),
+                    live=lambda: {t.session["name"]})
     assert [i.kind for i in got.items] == ["gate"]
     assert got.items[0].task_id == t.id
 
@@ -133,7 +143,8 @@ def test_the_gate_carries_the_actual_command(config, agent):
     """'A gate is waiting' sends the owner to look; the command tells them
     whether they need to."""
     t = _with_session(config, agent)
-    got = att.needs(config, agent, pane=Pane({t.session["name"]: GATE}))
+    got = att.needs(config, agent, pane=Pane({t.session["name"]: GATE}),
+                    live=lambda: {t.session["name"]})
     assert "rm -f result.json" in got.items[0].detail
 
 
@@ -141,7 +152,7 @@ def test_the_gate_carries_the_actual_command(config, agent):
 
 def test_an_ungranted_permission_is_waiting_on_you(config, agent):
     _task(config, agent, "read my mail", secrets=["mail.read"])
-    got = att.needs(config, agent, pane=Pane())
+    got = att.needs(config, agent, pane=Pane(), live=lambda: set())
     assert [i.kind for i in got.items] == ["grant"]
     assert "mail.read" in got.items[0].detail
 
@@ -152,7 +163,7 @@ def test_an_exhausted_retry_is_waiting_on_you(config, agent):
     t.retries = rty.MAX_RETRIES
     t.verdict = {"verdict": "FAIL", "reason": "export.csv still has 0 rows"}
     tsk._touch(agent, t, __import__("time").time)
-    got = att.needs(config, agent, pane=Pane())
+    got = att.needs(config, agent, pane=Pane(), live=lambda: set())
     assert [i.kind for i in got.items] == ["exhausted"]
     assert "0 rows" in got.items[0].detail
 
@@ -161,7 +172,8 @@ def test_a_stale_plan_is_waiting_on_you(config, agent):
     t = _task(config, agent)
     t.plan_stale = True
     tsk._touch(agent, t, __import__("time").time)
-    assert [i.kind for i in att.needs(config, agent, pane=Pane()).items] == ["stale"]
+    assert [i.kind for i in att.needs(config, agent, pane=Pane(),
+                                      live=lambda: set()).items] == ["stale"]
 
 
 def test_an_undelivered_kickoff_is_waiting_on_you(config, agent):
@@ -169,7 +181,8 @@ def test_an_undelivered_kickoff_is_waiting_on_you(config, agent):
     t.kickoff_undelivered = True
     tsk._touch(agent, t, __import__("time").time)
     kinds = [i.kind for i in att.needs(config, agent,
-                                       pane=Pane({t.session["name"]: BUSY})).items]
+                                       pane=Pane({t.session["name"]: BUSY}),
+                                       live=lambda: {t.session["name"]}).items]
     assert "undelivered" in kinds
 
 
@@ -179,7 +192,8 @@ def test_a_record_pointing_at_a_dead_terminal_is_reported(config, agent):
     """Sessions outlive the process that started them. Reporting state that
     was true when it was written is how the board lies."""
     t = _with_session(config, agent)
-    got = att.needs(config, agent, pane=Pane({}))     # the pane is simply gone
+    got = att.needs(config, agent, pane=Pane({}),     # the pane is simply gone
+                    live=lambda: set())
     assert [i.kind for i in got.items] == ["dead-session"]
     assert t.session["name"] in got.items[0].detail
 
@@ -192,8 +206,11 @@ def test_an_unreadable_pane_is_never_reported_as_fine(config, agent):
         def capture(self, name):
             raise OSError("tmux is not running")
 
+    def broken():
+        raise OSError("tmux is not running")
+
     t = _with_session(config, agent)
-    got = att.needs(config, agent, pane=Broken())
+    got = att.needs(config, agent, pane=Broken(), live=broken)
     assert got.items and got.items[0].kind == "unreadable"
     assert "is not there" not in got.items[0].detail
 
@@ -206,25 +223,28 @@ def test_the_most_blocking_thing_is_first(config, agent):
     stale.plan_stale = True
     tsk._touch(agent, stale, __import__("time").time)
     gated = _with_session(config, agent, "job two")
-    got = att.needs(config, agent, pane=Pane({gated.session["name"]: GATE}))
+    got = att.needs(config, agent, pane=Pane({gated.session["name"]: GATE}),
+                    live=lambda: {gated.session["name"]})
     assert [i.kind for i in got.items] == ["gate", "stale"]
 
 
 def test_it_summarises_in_one_line(config, agent):
     t = _with_session(config, agent)
-    got = att.needs(config, agent, pane=Pane({t.session["name"]: GATE}))
+    got = att.needs(config, agent, pane=Pane({t.session["name"]: GATE}),
+                    live=lambda: {t.session["name"]})
     assert "1" in got.summary and "gate" in got.summary.lower()
 
 
 def test_the_summary_says_so_when_nothing_is_waiting(config, agent):
-    assert "nothing" in att.needs(config, agent, pane=Pane()).summary.lower()
+    assert "nothing" in att.needs(config, agent, pane=Pane(),
+                                  live=lambda: set()).summary.lower()
 
 
 def test_an_archived_task_never_asks_for_attention(config, agent):
     t = _task(config, agent)
     t.plan_stale = True
     tsk.archive(config, agent, t)
-    assert att.needs(config, agent, pane=Pane()).items == []
+    assert att.needs(config, agent, pane=Pane(), live=lambda: set()).items == []
 
 
 # ── across every worker ───────────────────────────────────────────────
@@ -243,7 +263,7 @@ def test_the_fleet_view_names_which_agent(config):
 
 def test_the_manager_holds_no_tasks_and_is_not_scanned(config):
     """It drives nothing, so it can be blocked on nothing."""
-    rows = att.across(config, pane=Pane())
+    rows = att.across(config, pane=Pane(), live=lambda: set())
     assert all(r.agent_id != "sarsi-machine" for r in rows.items)
 
 
@@ -260,7 +280,8 @@ def test_a_session_still_running_after_the_task_ended_is_an_orphan(config, agent
     t = _with_session(config, agent)
     t = tsk.finish(config, agent, t,
                    verdict={"state": "PASS", "why": "all criteria met"})
-    got = att.needs(config, agent, pane=Pane({t.session["name"]: BUSY}))
+    got = att.needs(config, agent, pane=Pane({t.session["name"]: BUSY}),
+                    live=lambda: {t.session["name"]})
     assert [i.kind for i in got.items] == ["orphan"]
     assert t.session["name"] in got.items[0].detail
 
@@ -270,21 +291,24 @@ def test_an_orphan_is_reported_after_a_failed_task_too(config, agent):
     t.state = tsk.OFF
     tsk._touch(agent, t, __import__("time").time)
     kinds = [i.kind for i in att.needs(config, agent,
-                                       pane=Pane({t.session["name"]: BUSY})).items]
+                                       pane=Pane({t.session["name"]: BUSY}),
+                                       live=lambda: {t.session["name"]}).items]
     assert kinds == ["orphan"]
 
 
 def test_the_orphan_says_how_to_close_it(config, agent):
     t = _with_session(config, agent)
     t = tsk.finish(config, agent, t, verdict={"state": "PASS", "why": "done"})
-    got = att.needs(config, agent, pane=Pane({t.session["name"]: BUSY}))
+    got = att.needs(config, agent, pane=Pane({t.session["name"]: BUSY}),
+                    live=lambda: {t.session["name"]})
     assert f"stop {agent.id}" in got.items[0].action
 
 
 def test_a_running_task_with_a_live_session_is_not_an_orphan(config, agent):
     """That is just work happening."""
     t = _with_session(config, agent)
-    assert att.needs(config, agent, pane=Pane({t.session["name"]: BUSY})).items == []
+    assert att.needs(config, agent, pane=Pane({t.session["name"]: BUSY}),
+                     live=lambda: {t.session["name"]}).items == []
 
 
 def test_a_finished_task_whose_terminal_is_gone_is_not_an_orphan(config, agent):
@@ -292,7 +316,8 @@ def test_a_finished_task_whose_terminal_is_gone_is_not_an_orphan(config, agent):
     is tidiness, not safety — and attention is for what needs the owner."""
     t = _with_session(config, agent)
     t = tsk.finish(config, agent, t, verdict={"state": "PASS", "why": "done"})
-    assert att.needs(config, agent, pane=Pane({})).items == []
+    assert att.needs(config, agent, pane=Pane({}),
+                     live=lambda: set()).items == []
 
 
 def test_an_orphan_outranks_a_stale_plan(config, agent):
@@ -301,7 +326,8 @@ def test_an_orphan_outranks_a_stale_plan(config, agent):
     t.plan_stale = True
     tsk._touch(agent, t, __import__("time").time)
     kinds = [i.kind for i in att.needs(config, agent,
-                                       pane=Pane({t.session["name"]: BUSY})).items]
+                                       pane=Pane({t.session["name"]: BUSY}),
+                                       live=lambda: {t.session["name"]}).items]
     assert kinds.index("orphan") < kinds.index("stale")
 
 

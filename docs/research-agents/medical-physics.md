@@ -313,10 +313,14 @@ patients — including when the owner asks it to.
 
 > **2 must be re-measured, not carried.** The finding that one case is
 > unreachable is a **2D** result. Nine coplanar beams are a far weaker delivery
-> system than nine beams in 3D, so the ceiling will rise and the case may become
-> feasible. Carrying that conclusion into a 3D planner would be exactly the
-> error this agent keeps making: a property of the measurement reported as a
-> property of the world.
+> system than nine beams in 3D, so the ceiling **may** move — and it must be
+> re-measured rather than predicted. **It was predicted here, and the
+> prediction was wrong.** The first 3D ceilings measured came out mostly
+> *lower*, one at 26.29 Gy against the 66.5 floor. Not because of
+> dimensionality: the 3D operator used in-plane beamlets 2.5x wider than the
+> 2D one, so the two numbers differed in more than the variable being reasoned
+> about. At matched collimation the one completed case went 64.39 to 77.42,
+> against 77.81 in 2D. Which is this page's own lesson, applied to this page.
 
 > **Blocked by, and unblocks.** The order *is* the dependency graph: each rung
 > is blocked by the ones above it and unblocks the ones below. They are not

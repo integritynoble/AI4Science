@@ -84,8 +84,29 @@ the machine agent.
 ## 1. What ai4science is (Point 10)
 
 A set of agents that live on your machine, hold tasks, plan them, and get them
-done through governed `sarsi-claude` sessions — with a verifier that judges the
-plan's own criteria and gates that stop anything reaching the world without you.
+done through governed sessions — with a verifier that judges the plan's own
+criteria and gates that stop anything reaching the world without you.
+
+**A session runs on one of two backends, and they are peers.**
+
+| | `sarsi-claude` | `sarsi-pwm` |
+|---|---|---|
+| the session runs | Claude Code | **ai4science — PWM Code**, the agent you land in |
+| the model | Anthropic's | any the exchange gateway fronts |
+| compute | local | local, or a provider on the mesh |
+| the loop reads it | yes | yes — the two TUIs differ in two strings, not in shape |
+
+`sarsi-pwm` is the **default** for new tasks, and `sarsi-claude` is chosen at the
+confirmation or switched on an existing task. Everywhere below that says
+`sarsi-claude`, read "the session backend": nothing in the loop, the gates or
+the verifier depends on which one it is.
+
+> **This is why the entering agent matters.** PWM Code *is* the ai4science TUI,
+> and `sarsi-pwm` opens a session running that same TUI — so the interface the
+> owner works in, the interface a worker's session runs, and the interface the
+> supervision loop reads are one interface. Had the entering agent been anything
+> else, `sarsi-pwm` would be a third interface to learn and a second dialect for
+> the loop to parse.
 
 **What it does not have:** a manager, a server, a fleet, another machine. Those
 belong to the app, and their absence is what makes this a complete product
@@ -93,8 +114,8 @@ rather than a client.
 
 ## 2. The invariant
 
-> **The agent you talk to does not execute. Only a worker touches
-> `sarsi-claude`.**
+> **The agent you talk to does not execute. Only a worker touches a session
+> backend** — `sarsi-claude` or `sarsi-pwm`; the invariant does not care which.
 
 On one machine there is no network boundary to enforce this, so it is enforced
 as a code path: the machine agent plans, routes and answers, and `assign` raises
@@ -662,6 +683,52 @@ owner's other agents have learned.
 
 A **bot token is a vault secret**, not a config value: an agent that held its own
 token could be moved, and then spoken to somewhere the owner is not looking.
+
+### Reaching a worker through the CLI door: modes
+
+The CLI door had a gap the table above hides. `/agent <id>` switches the **chat
+agent** — the thing that answers you in the session. A **worker** is a different
+kind of thing: it holds tasks and drives sessions. `/do` looked up its worker by
+the *chat agent's* name, and no chat spec is called `sarsi-worker`, so the REPL
+would list eight workers and offer no way to address one of them.
+
+So `/<name>` now resolves to whatever the name is, and a worker or a task can be
+**entered**:
+
+| where you are | prompt | plain text does |
+|---|---|---|
+| top | `❯` | asks the chat agent — **PWM Code**, the agent you land in |
+| agent | `sarsi-worker ❯` | proposes a **goal**, and waits for you |
+| task | `tsk_… (guided) ❯` | **steers** that task, ahead of the worker |
+
+**The prompt is the safety mechanism, not decoration.** Plain text means three
+different things in three places, so the label has to name where the words are
+going; a mode that did not show itself would be a trap.
+
+Two invariants keep this from widening anything:
+
+* **entering costs nothing.** `/sarsi-worker` and `/tsk_…` create no task, start
+  no session and spend nothing. Only the confirmation creates — and it exists
+  because a task starts a session and spends PWM, so a sentence must not become
+  one by accident.
+* **mode never widens authority.** Task mode grants nothing. A guided
+  instruction takes the path `sarsi guide` already uses, with the ceiling and
+  the grants untouched. This is the same rule as *a surface is a door, not a
+  scope*, one level in: a mode is a door too.
+
+> **Verb forms do not move you.** `/sarsi-worker do <goal>` and
+> `/tsk_… <instruction>` act and leave you where you were; only a bare name
+> enters. That distinction was worth stating because the first implementation
+> silently swallowed both — they parsed the rest of the line and never read it,
+> which broke the exact command this design's own guide tells owners to type.
+
+**`/interact` is the second way into a task**, and the one this design cannot
+fully verify: it releases the terminal to a child process. `--print` always
+exists beside it, printing the `tmux attach` line and attaching nothing, because
+a hand-off that misbehaves on some terminal still needs a way through.
+
+The Telegram door is unchanged. Modes are a CLI affordance; the agent, its
+`W_name` and its sessions are the same whichever door was used.
 
 ## 11. The market (Points 1 and 2)
 

@@ -96,8 +96,15 @@ def main():
     # Deviation from prescription is penalised in both directions now, which is
     # what a clinical objective does and why uniformity is stated as D99 >= 95%
     # AND D1 <= 107% rather than a floor alone.
-    def grad_and_cost(w, wt):
-        g = np.zeros(K)
+    def _terms(w, wt, want_grad):
+        """Cost, and the gradient only when it is asked for.
+
+        The backtracking line search needs the cost of a trial point and nothing
+        else. Computing the gradient there too doubled the matvecs in the
+        hottest loop in the program — one wasted `Am @ vec` per structure per
+        trial, several trials per iteration, hundreds of iterations per plan.
+        """
+        g = np.zeros(K) if want_grad else None
         cost = 0.0
         for n, Am in At.items():
             resid = (w @ Am) - proto[n]["prescription"]       # BOTH directions
@@ -106,7 +113,8 @@ def main():
             # D99 at 62.2 against a 66.5 floor — uniform, and uniformly too
             # cold, because the cold tail counts no more than the warm one.
             wgt = np.where(resid < 0, wt["under"], 1.0)
-            g += 2.0 * (Am @ (wgt * resid)) / max(Am.shape[1], 1)
+            if want_grad:
+                g += 2.0 * (Am @ (wgt * resid)) / max(Am.shape[1], 1)
             cost += float((wgt * resid ** 2).mean())
             # A COLD-TAIL term, on the constraint as it is actually written.
             #
@@ -125,17 +133,26 @@ def main():
             floor = proto[n].get("D99_min")
             if floor:
                 cold = np.clip(floor - (w @ Am), 0.0, None)
-                g += -wt["cold"] * 2.0 * (Am @ cold) / max(Am.shape[1], 1)
+                if want_grad:
+                    g += -wt["cold"] * 2.0 * (Am @ cold) / max(Am.shape[1], 1)
                 cost += wt["cold"] * float((cold ** 2).mean())
         for n, Am in Ao.items():
             lim = proto[n].get("Dmax") or proto[n].get("Dmean")
             over = np.clip((w @ Am) - lim * 0.85, 0, None)
-            g += wt["oar"] * 2.0 * (Am @ over) / max(Am.shape[1], 1)
+            if want_grad:
+                g += wt["oar"] * 2.0 * (Am @ over) / max(Am.shape[1], 1)
             cost += wt["oar"] * float((over ** 2).mean())
         hot = np.clip((w @ Ab) - rx * 1.07, 0, None)
-        g += wt["hot"] * 2.0 * (Ab @ hot) / max(Ab.shape[1], 1)
+        if want_grad:
+            g += wt["hot"] * 2.0 * (Ab @ hot) / max(Ab.shape[1], 1)
         cost += wt["hot"] * float((hot ** 2).mean())
         return g, cost
+
+    def grad_and_cost(w, wt):
+        return _terms(w, wt, True)
+
+    def cost_only(w, wt):
+        return _terms(w, wt, False)[1]
 
     def optimise(weights):
         """One fluence optimisation at a fixed set of trade-off weights.
@@ -174,7 +191,7 @@ def main():
             s = step
             for _ in range(40):                 # backtrack until it descends
                 trial = np.clip(w + s * d, 0.0, None)
-                _, tcost = grad_and_cost(trial, weights)
+                tcost = cost_only(trial, weights)
                 if tcost < cost:
                     break
                 s *= 0.5

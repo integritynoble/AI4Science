@@ -106,12 +106,19 @@ def test_and_the_record_says_so(config, agent, tmp_path):
     assert t.session["cwd"] == str(work.resolve())
 
 
-def test_without_one_it_still_starts_in_the_task_folder(config, agent, tmp_path):
-    """Unchanged for every task that declares nothing."""
+def test_without_one_it_starts_at_the_workers_desk(config, agent, tmp_path):
+    """CHANGED by 5-B4: a worker HAS a desk, so "a task that declares nothing"
+    no longer exists. `tsk.create` gives every task the worker's `work_dir`
+    unless a directive or plan names one, which is the whole point — the owner
+    should not have to remember `--workdir`.
+
+    The invariant this test was written for is kept below; only the expected
+    location moved, from the task folder to the desk.
+    """
     t = _task(config, agent, tmp_path)
     rt = Runtime()
     t = ses.assign(config, agent, t, runtime=rt, installed=lambda: set())
-    assert rt.started[0]["cwd"] == str(tsk.dir_of(agent, t.id))
+    assert rt.started[0]["cwd"] == str(agent.work_dir.resolve())
 
 
 def test_a_workdir_that_is_not_there_is_not_invented(config, agent, tmp_path):
@@ -160,11 +167,24 @@ def test_the_work_brief_names_it_too(config, agent, tmp_path):
     assert str(tsk.dir_of(agent, t.id)) in brief
 
 
-def test_but_a_task_folder_session_still_reads_naturally(config, agent, tmp_path):
-    """No absolute paths where a relative one is correct and shorter."""
+def test_the_kickoff_names_the_plan_by_a_path_it_can_reach(config, agent, tmp_path):
+    """CHANGED by 5-B4, and this one is load-bearing.
+
+    The session used to stand IN its task folder, so "in this folder" was true
+    and the plan could be named relatively. It now stands at the worker's desk,
+    and the plan lives in the task folder — a different place. A relative
+    reference would send it looking where it is not.
+
+    So the kickoff must name the plan by a path that resolves from where the
+    session actually stands. `session.py` already records the live failure this
+    prevents: a session told to read a file that is not where it stands reads
+    nothing, plans from the goal alone, and is judged against criteria the
+    owner never reviewed.
+    """
     t = _task(config, agent, tmp_path)
     t = ses.assign(config, agent, t, runtime=Runtime(), installed=lambda: set())
-    assert "in this folder" in (t.kickoff_pending or "")
+    kickoff = t.kickoff_pending or ""
+    assert str(tsk.dir_of(agent, t.id)) in kickoff or "in this folder" in kickoff, kickoff
 
 
 # ── evidence is unaffected ────────────────────────────────────────────

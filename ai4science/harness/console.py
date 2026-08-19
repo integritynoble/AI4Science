@@ -29,6 +29,16 @@ class Mode:
     kind: str = "top"          # top | agent | task
     name: str = ""             # agent id or task id
     pending: Optional[str] = None   # a goal awaiting confirmation
+    #: The backend the pending confirmation will create with. Empty means
+    #: `task.create` resolves the default — the confirmation shows the choice
+    #: but must not become a second author of what the default IS.
+    backend: str = ""
+    #: The last substantive thing the owner said here. Kept because a line the
+    #: worker could not place is usually the goal the NEXT line points at:
+    #: "please create the task for me according to this goal" refers to
+    #: something already on screen, and having to ask for it again is the
+    #: worker failing to read what it was just told.
+    recent: str = ""
 
 
 @dataclass(frozen=True)
@@ -40,6 +50,8 @@ class Action:
     agent: Any = None
     task: Any = None
     session: str = ""
+    backend: str = ""          # read by "create": which engine runs the task
+    verb: str = ""             # read by "task-verb": stop|archive|reopen|goal|rename
 
 
 def prompt_label(mode: Mode) -> str:
@@ -69,12 +81,16 @@ def _is_slash(line: str) -> bool:
     return "/" not in first[1:] and "." not in first[1:]
 
 
-def confirm_block(goal: str, agent: str) -> str:
+def confirm_block(goal: str, agent: str, backend: str = "") -> str:
     """What the owner reads before a task exists."""
-    return (f"\n  goal:   {goal}\n"
-            f"  agent:  {agent}\n"
+    from ai4science.harness.agents.sarsi import backends as _bk
+    chosen = _bk.resolve(backend)
+    other = next(n for n in _bk.NAMES if n != chosen)
+    return (f"\n  goal:    {goal}\n"
+            f"  agent:   {agent}\n"
+            f"  backend: {chosen}\n"
             f"  it will plan at A0 first, and stop for your grant\n\n"
-            f"  create it? [Enter=yes / e=edit / n=no]")
+            f"  create it? [Enter=yes / e=edit / p=plan / b={other} / n=no]")
 
 
 def route(line: str, mode: Mode, deps: dict) -> tuple:
@@ -89,11 +105,53 @@ def route(line: str, mode: Mode, deps: dict) -> tuple:
     if mode.pending is not None:
         settled = Mode(kind=mode.kind, name=mode.name, pending=None)
         if line == "" or line.lower() in ("y", "yes"):
-            return Action("create", goal=mode.pending, agent=mode.name), settled
+            return Action("create", goal=mode.pending, agent=mode.name,
+                          backend=mode.backend), settled
+        if line.lower() == "b":
+            # The owner chooses the engine at the one surface every task
+            # passes through. A switch re-shows the block — the choice must
+            # be READ back, not trusted to have landed — and keeps the goal:
+            # changing the engine is not an answer about the goal.
+            from ai4science.harness.agents.sarsi import backends as _bk
+            chosen = _bk.resolve(mode.backend)
+            other = next(n for n in _bk.NAMES if n != chosen)
+            return Action("confirm", goal=mode.pending, agent=mode.name,
+                          text=confirm_block(mode.pending, mode.name, other)), \
+                Mode(kind=mode.kind, name=mode.name, pending=mode.pending,
+                     recent=mode.recent, backend=other)
         if line.lower() == "e":
             return Action("say", text=f"edit it and send again:\n  {mode.pending}"), \
                 settled
-        return Action("say", text="dropped — nothing was created"), settled
+        if line.lower() == "p":
+            # The owner writes the plan. `e` edits the GOAL, which is a
+            # different thing and was the only thing on offer -- the design says
+            # the owner may author the plan and no surface let them.
+            return Action("say", text=(
+                f"write the plan yourself, then point the task at it:\n"
+                f"  1. create it:  the goal stays \"{mode.pending}\"\n"
+                f"  2. write a markdown plan -- phases, a `Verified when:` "
+                f"line each, and a `## Permissions needed` section\n"
+                f"  3. ai4science sarsi plan {mode.name} <task-id> "
+                f"--set-from <your-file>.md\n"
+                f"it is agreed on arrival and no session may rewrite its "
+                f"criteria. Its permissions still need granting.")), settled
+        if line.lower() in ("n", "no"):
+            # Named, so a dropped goal is a thing the owner can read back and
+            # retype. "dropped — nothing was created" said neither what was
+            # dropped nor what it said.
+            return Action("say", text=f"dropped — nothing was created:\n"
+                                      f"  {mode.pending}"), settled
+        # Anything else was never an answer to `[Enter=yes / e=edit / n=no]`.
+        # It used to be read as one, refused, and DISCARDED: the owner typed a
+        # whole goal at a stale confirmation and watched it vanish, twice in one
+        # session. Honoured or refused, never dropped — so the pending goal is
+        # abandoned OUT LOUD and the new line is routed as whatever it actually
+        # is, which is usually the next goal.
+        import dataclasses
+        act, after = route(line, settled, deps)
+        note = f"not created: {mode.pending}"
+        text = f"{note}\n{act.text}" if act.text else note
+        return dataclasses.replace(act, text=text), after
 
     if not line:
         return Action("noop"), mode
@@ -106,6 +164,23 @@ def route(line: str, mode: Mode, deps: dict) -> tuple:
             if mode.kind == "top":
                 return Action("say", text="already at the top"), mode
             return Action("leave"), Mode()
+
+        if name.lower() in ("stop", "archive", "reopen", "goal", "rename"):
+            # Owner acts on ONE task, from wherever they stand. The task is
+            # the first word of the rest when it names one (id or task name),
+            # else the task they are standing in — never a guess.
+            verb = name.lower()
+            token, _, tail = rest.partition(" ")
+            kind, detail = deps["resolve"](token) if token else ("", "")
+            if kind == "task":
+                return Action("task-verb", verb=verb, task=detail,
+                              text=tail.strip()), mode
+            if mode.kind == "task":
+                return Action("task-verb", verb=verb, task=mode.name,
+                              text=rest), mode
+            return Action("say", text=f"/{verb} needs a task — /{verb} "
+                          f"<task> …, or open one with /<task> first. "
+                          f"/task lists them."), mode
 
         if name.lower() == "interact":
             if mode.kind != "task":
@@ -162,11 +237,129 @@ def route(line: str, mode: Mode, deps: dict) -> tuple:
                                            "the model")(line)), mode
 
     if mode.kind == "agent":
-        return Action("confirm", goal=line, agent=mode.name,
-                      text=confirm_block(line, mode.name)), \
-            Mode(kind="agent", name=mode.name, pending=line)
+        from ai4science.harness.agents.sarsi import intent as _intent
+        got = _intent.classify(line)
+
+        def _remember(text: str) -> Mode:
+            """Carry forward what was said, so a later back-reference resolves.
+
+            Greetings and questions are NOT remembered: `hi` must never become
+            the goal a later "make a task for this" points at.
+            """
+            return Mode(kind=mode.kind, name=mode.name, pending=mode.pending,
+                        recent=text or mode.recent)
+
+        if got.kind == "question":
+            about = deps.get("about_self")
+            if about is not None:
+                from ai4science.harness.agents.sarsi import selfaware as _sa
+                if _sa.is_about_self(line):
+                    text = about(mode.name) or ""
+                    if text:
+                        return Action("say", text=text), mode
+            return Action("answer",
+                          text=f"{line}\n\n(to make that a task instead: "
+                               f"/do {line})"), mode
+
+        if got.kind == "greeting":
+            return Action("answer",
+                          text=f"{line}\n\n(to make that a task instead: "
+                               f"/do {line})"), mode
+
+        # A request to MAKE a task is not a goal, and a line this cannot place
+        # is not one either. Both ask, and both say what was unclear -- the row
+        # of the design's table that was missing.
+        if got.kind == "meta" and mode.recent:
+            # It asked for a task and pointed at a goal it did not restate ---
+            # and the goal is one line up. Offering it beats asking for a
+            # sentence the owner has already typed. Said out loud, because
+            # filing a goal they did not type on THIS line without saying where
+            # it came from is the loop putting words in their mouth.
+            goal = mode.recent
+            return Action("confirm", goal=goal, agent=mode.name,
+                          text=(f"using what you said earlier as the goal:\n"
+                                f"  {goal}\n"
+                                + confirm_block(goal, mode.name))), \
+                Mode(kind="agent", name=mode.name, pending=goal,
+                     recent=mode.recent)
+
+        if got.kind in ("meta", "ambiguous"):
+            # Nothing to point at, or nothing placeable. Ask, and say what was
+            # unclear. An ambiguous line is still worth remembering: it is
+            # usually the goal the next line refers to.
+            return Action("say", text=got.why), _remember(
+                line if got.kind == "ambiguous" else "")
+
+        # `got.goal`, not `line`: the framing is not part of the goal.
+        # "the goal is please write X" files as "write X", instead of reading
+        # back as noise in every listing thereafter.
+        return Action("confirm", goal=got.goal, agent=mode.name,
+                      text=confirm_block(got.goal, mode.name)), \
+            Mode(kind="agent", name=mode.name, pending=got.goal,
+                 recent=got.goal)
 
     if mode.kind == "task":
+        # Asking ABOUT the task is not steering it. "what is process now"
+        # went into a live session as raw steering, the session answered on
+        # its own screen, and the owner — who never saw that screen — read
+        # the silence as the worker having no reasoning at all. A question is
+        # answered from the task's record, and says so; only an instruction
+        # goes in ahead of the worker.
+        if _is_question(line) and "task_status" in deps:
+            return Action("say", text=deps["task_status"](mode.name)), mode
         return Action("guide", task=mode.name, text=line), mode
 
     return Action("answer", text=line), mode
+
+
+#: First words that make a line a question even without the "?" the owner
+#: rarely types. Deliberately small: a word like "check" or "run" must stay
+#: an instruction.
+_ASKING = {"what", "whats", "why", "how", "where", "when", "who", "which",
+           "is", "are", "was", "were", "does", "do", "did", "has", "have",
+           "can", "could", "should", "status", "progress"}
+
+
+def _is_question(line: str) -> bool:
+    text = (line or "").strip().lower()
+    if text.endswith("?"):
+        return True
+    words = re.findall(r"[a-z][\w'-]*", text)
+    return bool(words) and words[0] in _ASKING
+
+
+@dataclass(frozen=True)
+class MenuEntry:
+    """One row of the `/agents` picker."""
+    name: str
+    kind: str          # "worker" — entering it; "spec" — switching this repl
+    label: str
+
+
+def agent_menu(*, core, specific, workers, active: str):
+    """Rows for `/agents`, workers first.
+
+    Two registries meet here. Chat SPECS are what this repl runs; sarsi WORKERS
+    hold tasks and drive sessions. The distinction is real and it is not the
+    owner's problem — they opened `/agents`, read sixteen specs, and could not
+    find `sarsi-worker`, the agent the machine is built around.
+
+    So: one door. Workers first, because that is what the owner reaches for,
+    and each row says which act it performs — selecting a worker ENTERS it,
+    selecting a spec SWITCHES this repl. Same list, two verbs, said out loud.
+
+    `core`, `specific` and `workers` are each `(name, description)` pairs, so
+    this stays a pure function over two registries it does not import.
+    """
+    rows = []
+    for name, desc in workers:
+        rows.append(MenuEntry(name, "worker",
+                              f"{name} — {desc}  [worker · enter it]"))
+    for name, desc in core:
+        rows.append(MenuEntry(name, "spec", f"{name} — {desc}"
+                              + ("  ← current" if name == active else "")))
+    for name, desc in specific:
+        rows.append(MenuEntry(name, "spec", f"{name} — {desc}"
+                              + ("  ← current" if name == active else "")
+                              + "  [domain]"))
+    return rows

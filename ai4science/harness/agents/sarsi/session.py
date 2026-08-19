@@ -112,9 +112,20 @@ class MachineRuntime:
         import shlex
         extra = "".join(f" --writable {shlex.quote(str(w))}"
                         for w in (writable or []) if w)
+        # `writable=` as well as the flags. They are TWO channels, not one: the
+        # flags bound the sandbox, and `writable=` is what `ensure_governance_hook`
+        # turns into `PWM_WRITABLE` for the hook that ASKS. This branch built the
+        # flags and then omitted the argument, so the sandbox knew the declared
+        # path and the hook did not — and a task standing in its own declared
+        # working directory, granted and released to A1, had every write gated
+        # by the boundary that had never heard of it.
+        #
+        # `claude_driver` already states the rule: the declared paths go to the
+        # hook "so the hook and the sandbox draw the same boundary." Two
+        # boundaries that disagree are one boundary and one blind spot.
         self.engine = spec
         return sessions.start_session(
-            name, cwd, govern=govern, ceiling=ceiling,
+            name, cwd, govern=govern, ceiling=ceiling, writable=writable,
             claude_bin=f"ai4science chat --mode {spec}{extra}")
 
     def send(self, name: str, text: str, *, _send=None) -> Dict[str, Any]:
@@ -156,7 +167,41 @@ class MachineRuntime:
 #: detection, stranded-prompt reading and busy marker are tuned to Claude
 #: Code's TUI; another interface may be STARTED, and is reported as not
 #: drivable rather than quietly mis-driven.
-DRIVABLE_SPECS = {"claude-code", "codex", "opencode", "general-purpose"}
+DRIVABLE_SPECS = {"claude-code", "codex", "opencode", "general-purpose", "unified-LLM"}
+#: `unified-LLM` has been in this set three times. Twice it was taken out; the
+#: third time it stayed, and the difference is what the entry means.
+#:
+#: **2026-08-07, first attempt — reverted the same day.** The evidence was one
+#: screen capture in which the loop's matchers recognised the folder-trust gate.
+#: A driven run then showed that is not the same thing: the ai4science TUI
+#: leaves an answered gate's options in the transcript where Claude Code redraws
+#: and they vanish, so the loop kept seeing a gate SHAPE after the gate was
+#: answered, and once the identifying text scrolled away there was no rule to
+#: match. Nine abstentions in one supervise run, five in the next.
+#:
+#: The comment then set the bar in two parts: **an answered gate must stop
+#: looking like a pending one, AND a full run must be driven to a verdict.**
+#:
+#: **2026-08-07, third attempt — both parts met, and this is the evidence.**
+#:
+#:   * `operator._already_answered` distinguishes an answered gate from a
+#:     pending one, by the echo line the TUI leaves after it;
+#:   * task `tsk_d07da8e72e` on grace ran cold start → trust gate answered →
+#:     brief delivered → plan-write gate answered → plan collected →
+#:     awaiting-grant → released → `answered — a write the A2 ceiling now
+#:     allows, asked before the task was released` → **`verified — the goal is
+#:     met`**, with ZERO abstentions. The file it was asked for exists, 20
+#:     bytes, first line exactly right.
+#:
+#: Five defects had to be fixed to get there, and every one of them was a
+#: parity gap found by driving rather than by a test: a gate whose text the
+#: terminal had wrapped, a multi-line brief submitted one line per prompt, a
+#: plan path wrapped mid-word, a declared workdir never passed as writable, the
+#: governance hook never told the declared paths, and a gate raised at A0 left
+#: pending after the ceiling rose.
+#:
+#: The mistake worth not repeating is still the original one: **a matcher
+#: succeeding on one captured screen is not the loop driving a session.**
 
 #: Harness agent ID → openclaw agent ID for the three session agents that use
 #: the two-layer architecture (openclaw gateway tmux pane + ACP control).
@@ -196,13 +241,39 @@ def assign(config: Config, agent: Agent, task: tsk.Task, *,
     if task.session:
         return task                          # one task, one session
 
-    # The spec this agent is built on has to be here. Substituting a generalist
-    # would run the wrong agent under the right label, which is worse than not
-    # starting at all.
+    # Which engine runs this task. The BACKEND is the task's — one worker runs
+    # many tasks, and which engine ran a given one is a fact about that task.
+    # A blank backend is an old record, and reads as the default rather than
+    # as an error.
+    from ai4science.harness.agents.sarsi import backends as _bk
+    # The BACKEND says which engine; the AGENT says which ai4science agent that
+    # engine runs. Reading only the backend made every worker start on
+    # `unified-LLM` — the sarsi-pwm default — and the roster's own specs became
+    # dead configuration, so `social` would have run the generalist under the
+    # social agent's name. That is exactly what `test_it_never_substitutes_a_
+    # generalist` forbids.
+    #
+    # `sarsi-claude` is the one backend that really does decide, because it
+    # launches a vendor binary and no ai4science spec applies to it.
+    _backend = _bk.resolve(getattr(task, "backend", ""))
+    _engine = _bk.spec_for(_backend)
+    if _backend == "sarsi-claude":
+        run_spec = _engine
+    else:
+        # ...and `sarsi-pwm` means "NOT the vendor binary", so an agent whose
+        # spec is `claude-code` takes the ai4science default instead. Honouring
+        # it literally would make sarsi-pwm launch `claude`, which is the exact
+        # thing choosing sarsi-pwm says you do not want — and it would put the
+        # vendor-CLI requirement back into the backend that exists to remove it.
+        _own = (getattr(agent, "spec", "") or "").strip()
+        run_spec = _engine if _own in ("", "claude-code") else _own
+
+    # The spec has to be here. Substituting a generalist would run the wrong
+    # agent under the right label, which is worse than not starting at all.
     available = (installed or installed_specs)()
-    if available and agent.spec not in available:
+    if available and run_spec not in available:
         raise SpecUnavailable(
-            f"{agent.id} is built on the {agent.spec!r} agent, which is not "
+            f"{task.id} runs on the {run_spec!r} agent, which is not "
             f"installed here. Installed: {', '.join(sorted(available))}")
 
     # VLT for the secrets the DIRECTIVE declared. It has to be here rather than
@@ -265,11 +336,30 @@ def assign(config: Config, agent: Agent, task: tsk.Task, *,
     # The TASK FOLDER is in here whenever the session is standing somewhere
     # else: `plan0.md` lives there and the planning step exists to edit it, so a
     # sandbox permitting only the cwd would refuse the one write it is for.
+    # INCLUDING the folder the session runs in. It used to be excluded, on the
+    # assumption that a session's own cwd is writable by construction — true of
+    # Claude Code's sandbox, false of PWM Code, where `--writable` is the only
+    # declaration the governance hook reads (`_declared_writable` reads
+    # `PWM_WRITABLE` and nothing else).
+    #
+    # Live, that assumption cost a whole run: the session stood in
+    # `/home/grace/p3test`, the plan said write `DONE.md` there, the owner
+    # granted exactly that, and every write was gated for ever. `release`
+    # cannot repair it — `--writable` is fixed at launch and the hook reads an
+    # environment that is already running.
+    #
+    # This widens nothing. It is the directory the owner typed into
+    # `--workdir`, already an evidence root and already a blast-radius path.
+    # Only a DECLARED directory is added. With none declared the workdir IS the
+    # task folder, and passing it would turn "nothing was declared" into a flag
+    # — `test_a_task_with_no_declared_directory_passes_none` is right that those
+    # are different permissions.
+    _declared = bool((task.work_root or "").strip())
     writable = [str(p) for p in tsk.evidence_roots(agent, task)
-                if str(p) != str(workdir)]
+                if _declared or str(p) != str(workdir)]
     writable += [str(p) for p in (task.may_touch or [])]
     started = runtime.start(name, str(workdir), govern=True, ceiling=ceiling,
-                            env=secrets, spec=agent.spec,
+                            env=secrets, spec=run_spec,
                             writable=writable or None)
     if not (started or {}).get("ok"):
         reason = (started or {}).get("reason") or "the session would not start"
@@ -1140,7 +1230,54 @@ def guide(config: Config, agent: Agent, task: tsk.Task, instruction: str, *,
                   {"agent": agent.id, "task": task.id,
                    "state": "guided-by-owner" if by_owner else "guided",
                    "evidence": [instruction[:200]]}, now=now)
+    # And into the SHARED history. It used to go to the ledger alone, while the
+    # worker's workspace reads the ownerlog — so the one thing the owner said by
+    # hand was the one thing the worker could not see, and the composer could
+    # write the next prompt straight against it. Two drivers, one session: what
+    # either does has to be visible to the other.
+    try:
+        from ai4science.harness.agents.sarsi import ownerlog as _ol, router as _rt
+        _ol.append(config, agent, instruction,
+                   surface=getattr(_rt, "CLI_CHANNEL", "cli"),
+                   mode="guided" if by_owner else "worker-guided", now=now)
+    except Exception:
+        pass          # a history that cannot be written must not stop the steer
     return task
+
+
+def took_the_wheel(config: Config, agent: Agent, task: tsk.Task, *,
+                   now=time.time) -> tsk.Task:
+    """The owner has started hand-driving this session — stamp it.
+
+    Pausing the operator stops it COLLIDING with the owner; it does not stop it
+    steering wrong afterwards. Relaying never touches the goal, so `set_at` does
+    not move and the plan still looks fresh — and the next pass drives
+    confidently through phases the owner has just overridden by hand.
+
+    The plan is WITHHELD, not deleted: `plan_version` survives, because deleting
+    it would lose what the owner agreed to.
+    """
+    task.interact_at = float(now())
+    tsk._save(agent, task)
+    return task
+
+
+def plan_is_stale(task: tsk.Task) -> bool:
+    """`plan_at < max(set_at, interact_at)` — the same protection a re-set goal
+    already had, extended to being hand-driven.
+
+    The no-plan guard is borrowed from the proven implementation
+    (`singularity web/runtime_agent.py:plan_is_stale`), which returns False when
+    there is no plan file at all. "Stale" means WRITTEN FOR AN EARLIER GOAL; a
+    task that has not planned yet is not stale, it has nothing — and without the
+    guard every reader asking "should I withhold the plan?" gets a yes about a
+    plan that does not exist.
+    """
+    if not getattr(task, "plan_version", 0):
+        return False
+    drafted = float(getattr(task, "plan_at", 0) or 0)
+    return drafted < max(float(getattr(task, "set_at", 0) or 0),
+                         float(getattr(task, "interact_at", 0) or 0))
 
 
 def kickoff(task: tsk.Task, plan: Optional[pl.Plan],
@@ -1182,6 +1319,27 @@ def kickoff(task: tsk.Task, plan: Optional[pl.Plan],
         facts = _shared.render_for(agent)
         if facts:
             lines.append(facts)
+
+        # WHERE IT STANDS. The kickoff said what to do and never what the
+        # session was allowed to do — at exactly the moment the ceiling had just
+        # changed, because `release` is what sends this. A session that does not
+        # know its ceiling bumps into gates instead of planning around them, and
+        # the loop has to nurse it through each one.
+        #
+        # The letter alone answers nothing, so the permission is spelled out;
+        # this is the same table `selfaware` renders for the worker, because two
+        # descriptions of one ladder will disagree.
+        #
+        # Silent when no ceiling is recorded: an invented one is worse than
+        # none, since the session would plan against it.
+        _ceiling = str((task.session or {}).get("ceiling") or "")
+        if _ceiling:
+            from ai4science.harness.agents.sarsi import selfaware as _sa
+            _permits = _sa.PERMITS.get(_ceiling)
+            if _permits:
+                lines.append(f"You are at ceiling {_ceiling}. You may "
+                             f"{_permits}. Anything beyond that stops for the "
+                             f"owner — ask rather than work around it.")
 
         # The host facts every session would otherwise rediscover. Told, rather
         # than bumped into.
