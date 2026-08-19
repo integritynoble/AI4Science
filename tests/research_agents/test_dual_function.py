@@ -219,7 +219,17 @@ def test_an_exhausted_budget_ends_the_loop(tmp_path):
 
 
 def test_the_loop_works_the_field_map_and_does_not_repeat_itself(tmp_path):
-    """The map is what makes the second night differ from the first."""
+    """A no-improvement night must leave the field map unchanged.
+
+    Before the fix, autonomous_loop called reproduced(agrees=False) on any
+    night that found no improvement, falsely marking the claim SETTLED. A
+    claim the agent never actually disproved became 'did NOT reproduce' in
+    the field map — permanent and wrong.
+
+    After the fix, reproduced() is only called when an improvement survives
+    the full gauntlet. A night that finds nothing leaves the claim open so a
+    future night with better methodology can work it honestly.
+    """
     agent = build("drug-design")
     agent.switch.owner_turn_on(Budget("drug-design", units=20.0), by="owner")
     before = agent.field_map.next_work().key
@@ -228,7 +238,9 @@ def test_the_loop_works_the_field_map_and_does_not_repeat_itself(tmp_path):
                     workspace_root=tmp_path / "ws", rounds=2, seeds=(0,),
                     cost_per_seed=0.5)
     after = agent.field_map.next_work()
-    assert after is None or after.key != before
+    # The claim that was worked must remain open: no improvement survived,
+    # so nothing entitled the loop to write a refutation.
+    assert after is not None and after.key == before
 
 
 # ------------------------------------------------------ the three ledgers

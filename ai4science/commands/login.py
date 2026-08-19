@@ -86,7 +86,10 @@ def _finish_own(provider: str, auth: str, api_key: Optional[str]) -> None:
                       + (f" — {hint}" if hint else ""))
     elif auth == "api_key":
         console.print("[dim]  key stored (chmod 600); not test-called.[/dim]")
-    if provider in ("kimi", "qwen"):
+    # "qwen" removed 2026-08-16: it IS routed (routing.py "fast" ladder, and
+    # execute.py's _oc_executor covers it), so the note was stale. "kimi" stays —
+    # it appears in neither BACKENDS nor routing.py, so for kimi it is still true.
+    if provider == "kimi":
         console.print(f"[yellow]  note: {provider} backend isn't wired into routing yet "
                       "(stored as your preference).[/yellow]")
 

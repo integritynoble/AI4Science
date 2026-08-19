@@ -33,6 +33,22 @@ BACKENDS: Dict[str, Dict] = {
         "location": "global",      # Qwen MaaS is served from the global endpoint
         "default_model": "qwen/qwen3-235b-a22b-instruct-2507-maas",
     },
+    # The owner's own Qwen (A26/A30), NOT the Vertex MaaS "qwen" above. Deliberately
+    # a second name: "qwen" already means Vertex MaaS, and redefining it would
+    # silently change anything relying on that path. Underscored, not hyphenated,
+    # because resolve_key/resolve_base build AI4SCIENCE_<BACKEND>_* env names and a
+    # hyphen would produce an unusable variable.
+    # Endpoint is OpenAI-compatible; served by ollama (system_fingerprint fp_ollama).
+    # Credentials live at /home/spiritai/pwm/llm_api/ — never copied into this repo.
+    # NOTE: this model returns a separate `reasoning` field; with a small
+    # max_tokens the visible `content` can come back EMPTY with
+    # finish_reason="length". Give it room, and do not read an empty content as
+    # a failed call.
+    "pwm_qwen": {
+        "base": "https://physicsworldmodel.org/qwen/v1",
+        "key_envs": ("PWM_QWEN_API_KEY",),
+        "default_model": "qwen3.8:27b",
+    },
     "openai": {   # api-key path (alternative to the codex subscription)
         "base": "https://api.openai.com/v1",
         "key_envs": ("OPENAI_API_KEY",),

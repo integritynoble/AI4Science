@@ -465,7 +465,15 @@ def autonomous_round(agent, bench: DomainBenchmark, *, client_factory,
             baseline_reproduced=True, held_out=True,
             comparisons=v["validation_tests_this_night"],
             corrected_p=v.get("corrected_p"),
-            mechanism="", verifier_passed=True,
+            mechanism=(
+                "parameter search (%s): %s" % (
+                    res.get("origin", "search"),
+                    ", ".join("%s %s\u2192%s" % (k, incumbent.get(k), v)
+                              for k, v in res["params"].items()
+                              if v != incumbent.get(k))
+                    or ("incumbent already optimal on %s"
+                        % (res.get("objective") or bench.objective or "metric"))
+                )), verifier_passed=True,
             seeds=[SeedResult(s, i, c) for s, i, c
                    in zip(v["seeds"], v["incumbent"], v["candidate"])])
         if not r.improvement.survives():
@@ -528,11 +536,11 @@ def autonomous_loop(agent, bench: DomainBenchmark, *, client_factory,
             break
         # A claim that has been checked is not checked again: the map is how the
         # second night differs from the first.
-        if r.claim:
+        if r.claim and r.improvement and r.improvement.survives():
             for key, c in agent.field_map.claims.items():
                 if c.statement == r.claim:
                     agent.field_map.reproduced(
                         key, evidence="ran %d seeds of %s" % (len(seeds), bench.agent),
-                        agrees=bool(r.improvement and r.improvement.survives()))
+                        agrees=True)
                     break
     return out
