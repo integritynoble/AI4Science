@@ -862,6 +862,245 @@ METHYLAGE = DomainBenchmark(
     usable_seeds=(0, 1, 2, 4, 5, 9, 12),
 )
 
+
+# --------------------------------------------------- the human-brain benchmark
+#
+# Encoding models of language cortex, scored on SUBJECTS the model never saw. The
+# scoring lives here, in this process, against the answer key the sandbox never
+# received — the same shape as the six above — but every number is routed through
+# `brainlang` so a bare correlation cannot come into existence: the floor is
+# fitted without the candidate in hand, the size-matched control is a random
+# representation of the candidate's own width, the ceiling is MEASURED from
+# repeats, and the figure that comes back is a `BrainScore`, whose __post_init__
+# refuses to hold a correlation that has no floor and no ceiling beside it.
+#
+# NOT runnable end to end yet. `payload/brainlang/` has generate.py but no
+# run_solver.py, so nothing produces the candidate feature matrices the
+# deliverables below name; and generate.py itself refuses until a real brain
+# corpus is on the machine (see brainlang.py). This registration states the
+# contract the solver half must satisfy, and is deliberately left un-runnable
+# rather than wired to simulated data.
+
+
+def _score_brainlang(seed_ws: Path, run_ws: Path) -> Dict[str, float]:
+    """The candidate's encoding score on held-out subjects, with the floor, the
+    size-matched control and the measured noise ceiling beside it.
+
+    Every measure is computed through `brainlang` on the withheld responses, so
+    what comes back is a `BrainScore` and not a loose correlation. The candidate
+    hands in FEATURES per window — its representation of the text — and the linear
+    readout is fitted here, outside the sandbox, through the identical path as the
+    floor and the control; that is what makes the three comparable and what makes
+    the subject split enforceable.
+    """
+    import json
+
+    from . import brainlang
+
+    split = json.loads((seed_ws / "data" / "split.json").read_text())
+    train_subjects = [str(s) for s in split["train_subjects"]]
+    test_subjects = [str(s) for s in split["test_subjects"]]
+
+    # Recorded for the judge before it is enforced here. The overlap is the
+    # metric the judge refuses on; the `validate_subject_disjoint` call below is
+    # the hard second check generate.py asks for — "checked where the split is
+    # made, and again where it is scored" — so a split that drifted between the
+    # two raises here rather than being quietly scored on the person it was fit to.
+    subject_overlap = float(len(set(train_subjects) & set(test_subjects)))
+    brainlang.validate_subject_disjoint(train_subjects, test_subjects)
+
+    # The stimulus-only descriptors for the held-out windows: word rate, length,
+    # frequency, position. Shared across subjects, so loaded once.
+    heldout_desc = np.load(seed_ws / "data" / "heldout_features.npy")
+
+    # The candidate's own features, one row per window, for the training windows
+    # AND the held-out ones. Both are named in `deliverables` and both are read:
+    # requiring features over the whole session — not only the scored windows —
+    # keeps the candidate from special-casing the held-out material, which is the
+    # final k of the sequence and therefore guessable. The train matrix is not
+    # scored (the held-out subjects' training responses are not the candidate's to
+    # see); it is held to the same width as the held-out matrix, so the
+    # representation the candidate is scored on is the one it committed to.
+    cand_train = np.load(run_ws / "results" / "features_train.npy")
+    cand_heldout = np.load(run_ws / "results" / "features_heldout.npy")
+    if cand_train.ndim != 2 or cand_heldout.ndim != 2:
+        raise ValueError("candidate features must be (n_windows, n_features); "
+                         "got train %r and held-out %r"
+                         % (cand_train.shape, cand_heldout.shape))
+    if cand_train.shape[1] != cand_heldout.shape[1]:
+        raise ValueError(
+            "candidate handed in %d-wide features for the training windows and "
+            "%d-wide for the held-out ones; a representation fitted on one width "
+            "and scored on another is two models wearing one name"
+            % (cand_train.shape[1], cand_heldout.shape[1]))
+    candidate_dim = int(cand_heldout.shape[1])
+
+    # THE ANSWER KEY: the held-out subjects' responses over the held-out windows,
+    # and their repeated presentations. Never staged into the sandbox; read here.
+    responses = np.load(seed_ws / "data" / "test_responses.npz")
+    repeats = np.load(seed_ws / "data" / "test_repeats.npz")
+
+    floors, controls, cands, ceilings = [], [], [], []
+    for s in test_subjects:
+        resp = np.asarray(responses[s])
+        floors.append(brainlang.fit_stimulus_only_floor(heldout_desc, resp))
+        # Matched to the candidate's WIDTH, so the bar is "beats a random
+        # representation of the same size" rather than "beats random".
+        controls.append(brainlang.size_matched_control(
+            heldout_desc, resp, n_features=candidate_dim, seed=0))
+        cands.append(brainlang.fit_candidate_score(cand_heldout, resp))
+        # Measured from the repeats, never assumed. `noise_ceiling` refuses a
+        # single presentation, so a subject with no repeats cannot reach a score.
+        ceilings.append(brainlang.noise_ceiling(np.asarray(repeats[s])))
+
+    floor = float(np.mean(floors))
+    control = float(np.mean(controls))
+    correlation = float(np.mean(cands))
+    ceiling = float(np.mean(ceilings))
+    # The bar is the HIGHER of the two; see BrainScore.is_improvement.
+    bar = max(floor, control)
+
+    # The one object a correlation is allowed to exist as here. Its __post_init__
+    # rejects a missing or non-finite floor or ceiling, so a bare number cannot
+    # leave this function even by accident.
+    score = brainlang.BrainScore(correlation=correlation, floor=bar,
+                                 ceiling=ceiling, n_subjects=len(test_subjects))
+    try:
+        normalized = float(score.normalized)
+    except ValueError:
+        # floor at or above the ceiling: no band to normalise into. The judge
+        # reads `noise_ceiling` against `bar` and refuses; here it is a NaN
+        # rather than a raise so the remaining metrics still reach the report.
+        normalized = float("nan")
+
+    return {"correlation": correlation,
+            "stimulus_floor": floor,
+            "size_matched_control": control,
+            "bar": bar,
+            "noise_ceiling": ceiling,
+            "normalized": normalized,
+            "is_improvement": float(score.is_improvement),
+            "n_subjects": float(len(test_subjects)),
+            "subject_overlap": subject_overlap,
+            "n_heldout_windows": float(heldout_desc.shape[0]),
+            "candidate_dim": float(candidate_dim)}
+
+
+def _judge_brainlang(m: Dict[str, float]) -> Verdict:
+    reasons, ok = [], True
+
+    # A split that puts one person on both sides scores the model on the person it
+    # was fitted to, which is not generalisation. `_score_brainlang` already
+    # raises on this through `validate_subject_disjoint`; the check is repeated
+    # here on the metric so the refusal survives a scorer that some day forgets to
+    # make it — whichever of the two the reader does not look at is the one that
+    # matters.
+    if m["subject_overlap"] > 0:
+        return Verdict(False, (
+            "%d subject(s) span the train/test split — the model is being scored "
+            "on the people it was fitted to, not on anyone new"
+            % int(m["subject_overlap"]),), m)
+
+    # A correlation with no measured ceiling is unreadable: r = 0.12 is either
+    # most of what the signal permits or almost none of it. The ceiling is
+    # estimated from repeats or it is not reported, and a ceiling at or below the
+    # floor leaves no band the result can be read in.
+    if not np.isfinite(m["noise_ceiling"]):
+        return Verdict(False, (
+            "no noise ceiling was measured, so the correlation cannot be read: "
+            "against a ceiling of 0.42 an r of 0.12 is most of the signal and "
+            "against 0.85 it is a seventh, and nothing here says which",), m)
+    if m["noise_ceiling"] <= m["bar"]:
+        return Verdict(False, (
+            "the noise ceiling (%.4g) is at or below the floor (%.4g): the "
+            "stimulus-only model already reaches what the repeats say the data "
+            "can support, so there is no band left for a language model to fill "
+            "and the number cannot be read as a fraction of it"
+            % (m["noise_ceiling"], m["bar"]),), m)
+
+    # The bar is the HIGHER of the stimulus-only floor and a random
+    # representation of the candidate's own width. A model that clears the first
+    # but ties the second has demonstrated its dimensionality, not its account of
+    # language.
+    if m["correlation"] <= m["stimulus_floor"]:
+        ok = False
+        reasons.append("encoding r %.4g does not clear the stimulus-only floor "
+                       "%.4g — word rate, length and frequency already reach it, "
+                       "and no model of meaning was needed"
+                       % (m["correlation"], m["stimulus_floor"]))
+    if m["correlation"] <= m["size_matched_control"]:
+        ok = False
+        reasons.append("encoding r %.4g does not clear a random representation of "
+                       "the same width %.4g (%d features) — this is the "
+                       "candidate's dimensionality talking, not its features"
+                       % (m["correlation"], m["size_matched_control"],
+                          int(m["candidate_dim"])))
+    if ok:
+        reasons.append("encoding r %.4g clears both the stimulus-only floor %.4g "
+                       "and a size-matched random control %.4g, at %.0f%% of the "
+                       "measured noise ceiling %.4g"
+                       % (m["correlation"], m["stimulus_floor"],
+                          m["size_matched_control"], 100 * m["normalized"],
+                          m["noise_ceiling"]))
+    reasons.append("scored on %d subjects who contributed nothing to the fit"
+                   % int(m["n_subjects"]))
+    # Said on every run, pass or fail. An encoding correlation is evidence about a
+    # representation, never about what the person understood.
+    reasons.append("an encoding correlation is not comprehension. This measures "
+                   "how much of a brain response a representation predicts, not "
+                   "what was understood, and licenses no claim about the person")
+    return Verdict(ok, tuple(reasons), m)
+
+
+# CRITICAL: HUMANBRAIN is NOT added to the BENCHMARKS registry below, on purpose.
+# `corpus.ALL` has no "brain-language" key — it is {tcga-survival, dude, open-kbp,
+# kvasir-capsule, ldct, cave, methylation-age} — and conftest.py::needs_corpus
+# resolves `corpus.ALL[bench.corpus]` for every benchmark it parametrises over.
+# Putting HUMANBRAIN in BENCHMARKS would turn that lookup into a KeyError, so
+# every pre-existing parametrised test would ERROR instead of SKIP on the absent
+# corpus. Registering the corpus key is an edit to corpus.py, which is the owner's
+# call once a real dataset is chosen; until then this benchmark stands defined but
+# unregistered.
+HUMANBRAIN = DomainBenchmark(
+    agent="human-brain-llm",
+    goal="predict held-out subjects' language-cortex responses and report the "
+         "correlation against its floor and the measured noise ceiling",
+    package="brainlang",
+    # The candidate's per-window features for the training and held-out windows.
+    # There is NO run_solver.py in payload/brainlang yet — only generate.py — so
+    # no on-disk convention exists to inherit; these names are chosen here, and
+    # this benchmark is therefore NOT runnable end to end until the solver half of
+    # the package is written to produce them.
+    deliverables=("results/features_train.npy", "results/features_heldout.npy"),
+    # Withheld from the sandbox: the held-out subjects' responses (the thing the
+    # encoding model is scored against) and the repeats the ceiling is measured
+    # from. The repeats belong in the key too — they ARE held-out responses, and a
+    # solver that read them could both reconstruct the answer and manufacture a
+    # ceiling. Workspace-relative posix paths, matching the six above and the
+    # staging loop in `run_domain_task`.
+    answer_key=("data/test_responses.npz", "data/test_repeats.npz"),
+    score=_score_brainlang, judge=_judge_brainlang, corpus="brain-language",
+    # The readable figure — where the correlation sits between the floor and what
+    # the repeats say the data can support. Higher is better.
+    objective="normalized", objective_higher_is_better=True,
+    # No guardrails, and no parameters. The two bars the correlation must clear —
+    # the stimulus-only floor and the size-matched control — are enforced in the
+    # JUDGE, because they are floors to BEAT rather than metrics to preserve while
+    # something else improves, which is what a guardrail is for. And `brainlang`
+    # exposes no tunable knob: the candidate IS its representation, not a method
+    # with a scalar to search, so there is no sweep for a guardrail to protect.
+    criteria=("encoding correlation on subjects held out entirely, above the "
+              "stimulus-only floor of word rate, length, frequency and position",
+              "and above a random representation of the candidate's own width",
+              "reported against a noise ceiling MEASURED from repeated "
+              "presentations, never a guessed one",
+              "the split is by subject — a person never appears on both sides",
+              "an encoding correlation is not comprehension; no claim about the "
+              "person"),
+    # No usable_seeds: the corpus is absent, so no seed generates anything, and a
+    # declared range would imply a runnable benchmark.
+)
+
 # The registry lives at the end of the file so that adding a benchmark below an
 # existing one cannot silently leave it unregistered — which is exactly what
 # happened when METHYLAGE was appended after this line sat in the middle.
