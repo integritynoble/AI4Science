@@ -1,18 +1,26 @@
 from __future__ import annotations
 
 import json
+from enum import Enum, auto
 from typing import Iterator, List
 
 from ai4science.harness.adapters.base import AgentAdapter
 from ai4science.harness.adapters._argsafe import loads_lenient
-from ai4science.harness.events import Message, ToolSpec, TextDelta, ToolCall, Usage, Done
+from ai4science.harness.events import (Done, Message, ResponseMeta, TextDelta,
+                                       ToolCall, ToolSpec, Usage)
+
+
+class _MetaPhase(Enum):
+    COLLECTING = auto()
+    EMITTED = auto()
 
 
 class OpenAIAdapter(AgentAdapter):
     backend = "openai"
 
-    def __init__(self, creds=None):
+    def __init__(self, creds=None, *, backend: str = "openai"):
         self.creds = creds
+        self.backend = backend
 
     def _translate_tools(self, tools: List[ToolSpec]) -> list:
         return [{"type": "function",
@@ -51,62 +59,120 @@ class OpenAIAdapter(AgentAdapter):
                      getattr(u, "completion_tokens", None),
                      getattr(u, "total_tokens", None))
 
-    def _parse_stream(self, chunks) -> Iterator[object]:
+    def _events_from_chunk(self, ch, acc: dict) -> Iterator[object]:
+        # With stream_options={"include_usage": True}, OpenAI sends a final
+        # chunk carrying usage with an EMPTY choices list — handle it before
+        # indexing into choices[0].
+        choices = getattr(ch, "choices", None) or []
+        if not choices:
+            u = getattr(ch, "usage", None)
+            if u:
+                yield self._usage_from(u)
+            return
+        choice = choices[0]
+        delta = choice.delta
+        if getattr(delta, "content", None):
+            yield TextDelta(delta.content)
+        for tcd in (getattr(delta, "tool_calls", None) or []):
+            slot = acc.setdefault(tcd.index, {"id": None, "name": "", "args": "", "extra": None})
+            if getattr(tcd, "id", None):
+                slot["id"] = tcd.id
+            ec = getattr(tcd, "extra_content", None)   # Gemini thought_signature etc.
+            if ec is not None:
+                slot["extra"] = ec.unwrap() if hasattr(ec, "unwrap") else ec
+            fn = getattr(tcd, "function", None)
+            if fn and getattr(fn, "name", None):
+                slot["name"] = fn.name
+            if fn and getattr(fn, "arguments", None):
+                slot["args"] += fn.arguments
+        if getattr(choice, "finish_reason", None):
+            for slot in acc.values():
+                args = loads_lenient(slot["args"])
+                yield ToolCall(slot["id"] or "call_0", slot["name"], args,
+                               extra=slot.get("extra"))
+            u = getattr(ch, "usage", None)
+            if u:
+                yield self._usage_from(u)
+            yield Done(choice.finish_reason)
+
+    def _parse_stream(self, chunks, requested_model: str = "") -> Iterator[object]:
         acc: dict = {}   # index -> {id, name, args}
-        for ch in chunks:
-            # With stream_options={"include_usage": True}, OpenAI sends a final
-            # chunk carrying usage with an EMPTY choices list — handle it before
-            # indexing into choices[0].
-            choices = getattr(ch, "choices", None) or []
-            if not choices:
-                u = getattr(ch, "usage", None)
-                if u:
-                    yield self._usage_from(u)
-                continue
-            choice = choices[0]
-            delta = choice.delta
-            if getattr(delta, "content", None):
-                yield TextDelta(delta.content)
-            for tcd in (getattr(delta, "tool_calls", None) or []):
-                slot = acc.setdefault(tcd.index, {"id": None, "name": "", "args": "", "extra": None})
-                if getattr(tcd, "id", None):
-                    slot["id"] = tcd.id
-                ec = getattr(tcd, "extra_content", None)   # Gemini thought_signature etc.
-                if ec is not None:
-                    slot["extra"] = ec.unwrap() if hasattr(ec, "unwrap") else ec
-                fn = getattr(tcd, "function", None)
-                if fn and getattr(fn, "name", None):
-                    slot["name"] = fn.name
-                if fn and getattr(fn, "arguments", None):
-                    slot["args"] += fn.arguments
-            if getattr(choice, "finish_reason", None):
-                for slot in acc.values():
-                    args = loads_lenient(slot["args"])
-                    yield ToolCall(slot["id"] or "call_0", slot["name"], args,
-                                   extra=slot.get("extra"))
-                u = getattr(ch, "usage", None)
-                if u:
-                    yield self._usage_from(u)
-                yield Done(choice.finish_reason)
+        phase = _MetaPhase.COLLECTING
+        observed = {
+            "observed_model": None,
+            "system_fingerprint": None,
+            "response_id": None,
+        }
+
+        def absorb_metadata(ch) -> None:
+            for field, attr in (("observed_model", "model"),
+                                ("system_fingerprint", "system_fingerprint"),
+                                ("response_id", "id")):
+                if observed[field] is None:
+                    value = getattr(ch, attr, None)
+                    if value is not None:
+                        observed[field] = value
+
+        def metadata_event() -> ResponseMeta:
+            return ResponseMeta(
+                backend=self.backend,
+                requested_model=requested_model,
+                observed_model=observed["observed_model"],
+                system_fingerprint=observed["system_fingerprint"],
+                response_id=observed["response_id"],
+            )
+
+        try:
+            for ch in chunks:
+                if phase is _MetaPhase.COLLECTING:
+                    absorb_metadata(ch)
+                for event in self._events_from_chunk(ch, acc):
+                    if phase is _MetaPhase.COLLECTING:
+                        phase = _MetaPhase.EMITTED
+                        yield metadata_event()
+                    yield event
+        except Exception:
+            if phase is _MetaPhase.COLLECTING:
+                phase = _MetaPhase.EMITTED
+                yield metadata_event()
+            raise
+        if phase is _MetaPhase.COLLECTING:
+            yield metadata_event()
 
     def stream(self, messages: List[Message], tools: List[ToolSpec], *,
                model: str, reasoning: str) -> Iterator[object]:
-        if not (self.creds and self.creds.api_key):
-            raise RuntimeError(f"no API key configured for {self.backend or 'openai'} backend")
-        from ai4science.harness import transport
-        from ai4science.harness.adapters._dotdict import dot
         c = self.creds
-        headers = {"Authorization": f"Bearer {c.api_key}"}
-        payload = {
-            "model": model or c.model,
-            "stream": True,
-            "messages": self._translate_messages(messages),
-            "stream_options": {"include_usage": True},
-        }
-        # Omit `tools` when empty — some OpenAI-compat endpoints (Gemini AI-Studio,
-        # older Azure) 400 on an empty tools array.
-        tool_specs = self._translate_tools(tools)
-        if tool_specs:
-            payload["tools"] = tool_specs
-        raw = transport.sse_post(c.base_url, headers, payload)
-        yield from self._parse_stream(dot(ch) for ch in raw)
+        # Read off the request, never off a response: this is the *requested*
+        # model, and it must never reach an observed field.
+        requested_model = model or getattr(c, "model", None) or ""
+
+        def chunks():
+            # Everything that can fail lives inside the lazy generator — the
+            # lazy module imports and the missing-credential precondition
+            # included — so every failure is sequenced through _parse_stream and
+            # still emits the one required None-observation ResponseMeta before
+            # propagating unchanged. A `raise` (or a failing import) in the
+            # enclosing generator body would fire outside that sequencing and
+            # leave a strict route guard with no event to read on exactly the
+            # Amendment 61 "Qwen missing" hold.
+            from ai4science.harness import transport
+            from ai4science.harness.adapters._dotdict import dot
+            if not (c and c.api_key):
+                raise RuntimeError(
+                    f"no API key configured for {self.backend or 'openai'} backend")
+            headers = {"Authorization": f"Bearer {c.api_key}"}
+            payload = {
+                "model": requested_model,
+                "stream": True,
+                "messages": self._translate_messages(messages),
+                "stream_options": {"include_usage": True},
+            }
+            # Omit `tools` when empty — some OpenAI-compat endpoints (Gemini
+            # AI-Studio, older Azure) 400 on an empty tools array.
+            tool_specs = self._translate_tools(tools)
+            if tool_specs:
+                payload["tools"] = tool_specs
+            for ch in transport.sse_post(c.base_url, headers, payload):
+                yield dot(ch)
+
+        yield from self._parse_stream(chunks(), requested_model=requested_model)

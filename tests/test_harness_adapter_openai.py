@@ -1,4 +1,5 @@
-from ai4science.harness.events import Message, ToolSpec, TextDelta, ToolCall, Usage, Done
+from ai4science.harness.events import (Done, Message, ResponseMeta, TextDelta,
+                                       ToolCall, ToolSpec, Usage)
 from ai4science.harness.adapters.openai import OpenAIAdapter
 
 
@@ -70,8 +71,13 @@ def test_openai_stream_sse_endtoend(monkeypatch):
     from ai4science.harness.adapters.creds import CredInfo
     from ai4science.harness import transport
     from ai4science.harness.events import TextDelta, Done
-    a = OpenAIAdapter(creds=CredInfo("openai_compat", "http://x/chat/completions", "k", "gpt-5.5"))
-    sse = [{"choices": [{"delta": {"content": "hi"}, "finish_reason": None}], "usage": None},
+    a = OpenAIAdapter(
+        creds=CredInfo("openai_compat", "http://x/chat/completions", "k", "gpt-5.5"),
+        backend="openai",
+    )
+    sse = [{"id": "chatcmpl-9", "model": "gpt-5.5",
+            "system_fingerprint": "fp_openai",
+            "choices": [{"delta": {"content": "hi"}, "finish_reason": None}], "usage": None},
            {"choices": [{"delta": {}, "finish_reason": "stop"}], "usage": {"prompt_tokens": 4, "completion_tokens": 1, "total_tokens": 5}}]
     captured = {}
     def _fake_sse(url, headers, payload, timeout=600):
@@ -81,6 +87,9 @@ def test_openai_stream_sse_endtoend(monkeypatch):
     events = list(a.stream([], [], model="gpt-5.5", reasoning="low"))
     assert any(isinstance(e, TextDelta) for e in events)
     assert any(isinstance(e, Done) for e in events)
+    metas = [e for e in events if isinstance(e, ResponseMeta)]
+    assert metas == [ResponseMeta(
+        "openai", "gpt-5.5", "gpt-5.5", "fp_openai", "chatcmpl-9", "direct")]
     # the request was built correctly
     assert captured["url"] == "http://x/chat/completions"
     assert captured["headers"]["Authorization"] == "Bearer k"

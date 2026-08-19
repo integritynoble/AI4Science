@@ -150,6 +150,7 @@ _EXECUTORS = {
     "gemini": _run_gemini,
     "deepseek": _oc_executor("deepseek"),
     "qwen": _oc_executor("qwen"),
+    "pwm_qwen": _oc_executor("pwm_qwen"),
 }
 
 

@@ -66,7 +66,7 @@ def backend_available(backend: str) -> bool:
         if backend == "gemini":
             from ai4science.llm import gemini
             return gemini.is_available()
-        if backend in ("deepseek", "qwen"):
+        if backend in ("deepseek", "qwen", "pwm_qwen"):
             from ai4science.llm import openai_compat
             return openai_compat.is_available(backend)
     except Exception:

@@ -15,12 +15,22 @@ def _residual_from_verdict(verdict):
 class LLMImagingPlanner:
     """Recalls the CPU CASSI solver menu from algorithm_base, asks an LLM to select one, and runs the
     vendored GAP-TV with the recalled config; on repeated failure it delegates to a deterministic
-    fallback (GAP-TV) so the agent always delivers."""
+    fallback (GAP-TV) so the agent always delivers.
+
+    `strict=True` (Amendment 61) withdraws that guarantee on purpose. A strict
+    route has exactly one lawful provider, so an adapter or attestation failure
+    is re-raised as a visible hold rather than rewritten into a deterministic
+    GAP-TV step — a silent fallback there is indistinguishable, in every
+    artefact the run leaves behind, from a research step that really happened.
+    A selection the LLM simply got wrong is a different thing and still counts
+    as an attempt.
+    """
     def __init__(self, adapter, model: str, *, fallback=None, max_llm_attempts: int = 2,
-                 reasoning: str = "medium", solvers=None):
+                 reasoning: str = "medium", solvers=None, strict: bool = False):
         self.adapter = adapter
         self.model = model
         self.reasoning = reasoning
+        self.strict = bool(strict)
         self.max_llm_attempts = max_llm_attempts
         self._fallback = fallback if fallback is not None else ReferenceImagingPlanner()
         self._solvers = solvers if solvers is not None else recall_cpu_cassi_solvers()
@@ -39,6 +49,8 @@ class LLMImagingPlanner:
                     parts.append(text)
             return extract_solver_key("".join(parts), self._by_key.keys())
         except Exception:
+            if self.strict:
+                raise
             return None
 
     def next_step(self, state) -> PlanStep:

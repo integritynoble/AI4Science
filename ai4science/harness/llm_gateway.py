@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import os
+from enum import Enum, auto
 
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import StreamingResponse
@@ -25,7 +26,13 @@ from pydantic import BaseModel
 
 from ai4science.harness import proxy_proto as proto
 from ai4science.harness.adapters.factory import adapter_for, harness_available
+from ai4science.harness.events import ResponseMeta
 from ai4science.llm import pricing, routing
+
+class _GatewayMetaPhase(Enum):
+    WAITING = auto()
+    SENT = auto()
+
 
 TOKEN = os.environ.get("AI4SCIENCE_GATEWAY_TOKEN", "")
 HOST = os.environ.get("AI4SCIENCE_GATEWAY_HOST", "172.17.0.1")
@@ -46,7 +53,7 @@ class StreamReq(BaseModel):
 def health() -> dict:
     return {"ok": True,
             "backends": {b: harness_available(b)
-                         for b in ("anthropic", "openai", "gemini")}}
+                         for b in ("anthropic", "openai", "gemini", "pwm_qwen")}}
 
 
 @app.post("/v1/stream")
@@ -63,19 +70,44 @@ def stream(req: StreamReq, x_bridge_token: str = Header(default="")):
 
     def _gen():
         in_tok = out_tok = 0
+        phase = _GatewayMetaPhase.WAITING
+
+        def fallback_meta_line() -> str:
+            # The gateway knows only the request on this path. Provider
+            # observations deliberately remain None.
+            return json.dumps(proto.event_to_wire(ResponseMeta(
+                backend=req.backend, requested_model=req.model))) + "\n"
+
         try:
             for ev in adapter.stream(messages, tools, model=req.model,
                                      reasoning=req.reasoning):
+                if isinstance(ev, ResponseMeta):
+                    if phase is _GatewayMetaPhase.SENT:
+                        raise RuntimeError("duplicate or late response metadata")
+                    line = json.dumps(proto.event_to_wire(ev)) + "\n"
+                    phase = _GatewayMetaPhase.SENT
+                    yield line
+                    continue
                 w = proto.event_to_wire(ev)
+                if w.get("t") == "ignore":
+                    continue
+                if phase is _GatewayMetaPhase.WAITING:
+                    phase = _GatewayMetaPhase.SENT
+                    yield fallback_meta_line()
                 if w.get("t") == "usage":
                     in_tok = w.get("input") or in_tok
                     out_tok = w.get("output") or out_tok
-                if w.get("t") != "ignore":
-                    yield json.dumps(w) + "\n"
+                yield json.dumps(w) + "\n"
         except Exception as exc:  # surface as a text event, never 500 mid-stream
+            if phase is _GatewayMetaPhase.WAITING:
+                phase = _GatewayMetaPhase.SENT
+                yield fallback_meta_line()
             yield json.dumps({"t": "text",
                               "text": f"[gateway error: {type(exc).__name__}: {exc}]"}) + "\n"
             yield json.dumps({"t": "done", "stop_reason": "error"}) + "\n"
+        if phase is _GatewayMetaPhase.WAITING:
+            phase = _GatewayMetaPhase.SENT
+            yield fallback_meta_line()
         # final billing line the backend reads to charge PWM
         usage = {"input": in_tok, "output": out_tok}
         pwm = pricing.price_call(req.model, usage)["pwm"]

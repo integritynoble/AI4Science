@@ -28,6 +28,16 @@ class Message:
 
 # ---- stream events (adapter -> loop) ----
 @dataclass
+class ResponseMeta:
+    backend: str
+    requested_model: str
+    observed_model: Optional[str] = None
+    system_fingerprint: Optional[str] = None
+    response_id: Optional[str] = None
+    transport: str = "direct"
+
+
+@dataclass
 class TextDelta:
     text: str
 

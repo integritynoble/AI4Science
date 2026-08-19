@@ -58,7 +58,7 @@ def adapter_for(backend: str):
     c = _creds.resolve(backend)
     if c.kind == "anthropic":
         return AnthropicAdapter(creds=c)
-    return OpenAIAdapter(creds=c)   # gemini/deepseek/qwen (+ openai api-key) are OpenAI-compatible
+    return OpenAIAdapter(creds=c, backend=backend)  # OpenAI-compatible providers
 
 
 def _local_available(backend: str) -> bool:

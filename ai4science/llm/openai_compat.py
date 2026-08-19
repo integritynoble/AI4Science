@@ -15,6 +15,8 @@ import urllib.error
 import urllib.request
 from typing import Dict, List, Optional, Tuple
 
+from ai4science.harness.events import ResponseMeta
+
 # backend → endpoint defaults (base URL + env var names + default model).
 # Model defaults are overridable with AI4SCIENCE_<BACKEND>_MODEL — adjust if the
 # provider renames models.
@@ -32,6 +34,22 @@ BACKENDS: Dict[str, Dict] = {
         "vertex": True,
         "location": "global",      # Qwen MaaS is served from the global endpoint
         "default_model": "qwen/qwen3-235b-a22b-instruct-2507-maas",
+    },
+    # The owner's own Qwen (A26/A30), NOT the Vertex MaaS "qwen" above. Deliberately
+    # a second name: "qwen" already means Vertex MaaS, and redefining it would
+    # silently change anything relying on that path. Underscored, not hyphenated,
+    # because resolve_key/resolve_base build AI4SCIENCE_<BACKEND>_* env names and a
+    # hyphen would produce an unusable variable.
+    # Endpoint is OpenAI-compatible; served by ollama (system_fingerprint fp_ollama).
+    # Credentials live at /home/spiritai/pwm/llm_api/ — never copied into this repo.
+    # NOTE: this model returns a separate `reasoning` field; with a small
+    # max_tokens the visible `content` can come back EMPTY with
+    # finish_reason="length". Give it room, and do not read an empty content as
+    # a failed call.
+    "pwm_qwen": {
+        "base": "https://physicsworldmodel.org/qwen/v1",
+        "key_envs": ("PWM_QWEN_API_KEY",),
+        "default_model": "qwen3.8:27b",
     },
     "openai": {   # api-key path (alternative to the codex subscription)
         "base": "https://api.openai.com/v1",
@@ -149,27 +167,42 @@ def is_available(backend: str) -> bool:
     return bool(resolve_key(backend) and resolve_base(backend))
 
 
-def chat(backend: str, messages: List[Dict[str, str]], model: Optional[str] = None,
-         timeout: int = 120) -> Tuple[str, Dict]:
-    """Send a chat completion to an OpenAI-compatible backend. Returns
-    (text, usage). Raises RuntimeError if no key or on HTTP error."""
+def chat_with_meta(backend: str, messages: List[Dict[str, str]],
+                   model: Optional[str] = None, timeout: int = 120
+                   ) -> Tuple[str, Dict, ResponseMeta]:
+    """Send a chat completion and return provider-observed response metadata."""
     key = resolve_key(backend)
     if not key:
         envs = BACKENDS.get(backend, {}).get("key_envs", ("<env>",))
         raise RuntimeError(f"no API key for {backend} "
                            f"(run `ai4science login` or set {envs[0]})")
     base = resolve_base(backend)
-    model = model or default_model(backend)
+    requested_model = model or default_model(backend)
     req = urllib.request.Request(
         base.rstrip("/") + "/chat/completions",
-        data=json.dumps({"model": model, "messages": messages}).encode("utf-8"),
+        data=json.dumps({"model": requested_model, "messages": messages}).encode("utf-8"),
         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json",
                  # Some gateways (Together via Cloudflare) reject the default
                  # urllib UA with 403/1010; present a normal client UA.
                  "User-Agent": "ai4science/0.1 (+https://physicsworldmodel.org)"},
     )
     try:
-        r = json.load(urllib.request.urlopen(req, timeout=timeout))
+        response = json.load(urllib.request.urlopen(req, timeout=timeout))
     except urllib.error.HTTPError as e:
         raise RuntimeError(f"HTTP {e.code}: {e.read()[:200].decode('utf-8', 'replace')}")
-    return r["choices"][0]["message"]["content"], r.get("usage", {})
+    meta = ResponseMeta(
+        backend=backend,
+        requested_model=requested_model,
+        observed_model=response.get("model"),
+        system_fingerprint=response.get("system_fingerprint"),
+        response_id=response.get("id"),
+    )
+    return (response["choices"][0]["message"]["content"],
+            response.get("usage", {}), meta)
+
+
+def chat(backend: str, messages: List[Dict[str, str]], model: Optional[str] = None,
+         timeout: int = 120) -> Tuple[str, Dict]:
+    """Backward-compatible chat call returning only ``(text, usage)``."""
+    text, usage, _meta = chat_with_meta(backend, messages, model=model, timeout=timeout)
+    return text, usage

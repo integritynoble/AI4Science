@@ -20,6 +20,8 @@ class AgentSpec:
     extra_tools: Optional[Callable] = None      # ctx -> list[Tool], optional custom tools
     aliases: Tuple[str, ...] = ()               # old/alt names that resolve to this spec
     default_backend: Optional[str] = None       # preferred LLM backend when user gives none
+    default_model: Optional[str] = None         # exact preferred model when one is required
+    strict_route: bool = False                  # reject overrides and disable fallback when true
     order: int = 100                            # display order in the /agent menu (lower first)
     # Plug-and-play extensions (manifest plug-ins; builtin specs leave these empty):
     wallet: Optional[str] = None                # PWM address that charges for using this agent

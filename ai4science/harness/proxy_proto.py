@@ -9,8 +9,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, Iterable, List
 
-from ai4science.harness.events import (Done, Message, TextDelta, ToolCall,
-                                       ToolSpec, Usage)
+from ai4science.harness.events import (Done, Message, ResponseMeta, TextDelta,
+                                       ToolCall, ToolSpec, Usage)
 
 
 # ── request: messages + tools → wire dicts and back ────────────────────────
@@ -46,6 +46,16 @@ def tool_from_wire(d: Dict[str, Any]) -> ToolSpec:
 # ── response events → wire dicts and back ──────────────────────────────────
 
 def event_to_wire(ev: object) -> Dict[str, Any]:
+    if isinstance(ev, ResponseMeta):
+        return {
+            "t": "meta",
+            "backend": ev.backend,
+            "requested_model": ev.requested_model,
+            "observed_model": ev.observed_model,
+            "system_fingerprint": ev.system_fingerprint,
+            "response_id": ev.response_id,
+            "transport": ev.transport,
+        }
     if isinstance(ev, TextDelta):
         return {"t": "text", "text": ev.text}
     if isinstance(ev, ToolCall):
@@ -58,8 +68,38 @@ def event_to_wire(ev: object) -> Dict[str, Any]:
     return {"t": "ignore"}
 
 
+_META_FIELDS = frozenset({
+    "backend", "requested_model", "observed_model",
+    "system_fingerprint", "response_id", "transport",
+})
+
+
+def response_meta_from_wire(d: Dict[str, Any]) -> ResponseMeta:
+    missing = _META_FIELDS.difference(d)
+    if missing:
+        raise ValueError(f"missing fields: {', '.join(sorted(missing))}")
+    for field in ("backend", "requested_model", "transport"):
+        value = d[field]
+        if not isinstance(value, str) or not value:
+            raise ValueError(f"{field} must be a non-empty string")
+    for field in ("observed_model", "system_fingerprint", "response_id"):
+        value = d[field]
+        if value is not None and not isinstance(value, str):
+            raise ValueError(f"{field} must be a string or null")
+    return ResponseMeta(
+        backend=d["backend"],
+        requested_model=d["requested_model"],
+        observed_model=d["observed_model"],
+        system_fingerprint=d["system_fingerprint"],
+        response_id=d["response_id"],
+        transport=d["transport"],
+    )
+
+
 def event_from_wire(d: Dict[str, Any]) -> object:
     k = d.get("t")
+    if k == "meta":
+        return response_meta_from_wire(d)
     if k == "text":
         return TextDelta(d.get("text", ""))
     if k == "tool":

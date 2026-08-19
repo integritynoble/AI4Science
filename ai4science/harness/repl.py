@@ -16,6 +16,7 @@ Session history is persisted per turn and reseeded via --continue / --resume.
 """
 from __future__ import annotations
 
+from dataclasses import replace
 import os
 import pathlib
 import re
@@ -764,6 +765,7 @@ _LOCKED_MENU = {
                   ("Haiku 4.5", "anthropic", "claude-haiku-4-5")],
     "openai":    [("ChatGPT 5.5", "openai", "gpt-5.5"),
                   ("ChatGPT 5.5 Codex", "openai", "gpt-5.5-codex")],
+    "pwm_qwen":  [("Qwen 3.8 27B", "pwm_qwen", "qwen3.8:27b")],
 }
 _FLAGSHIP_MENU = [("Opus 5", "anthropic", "claude-opus-5"),
                   ("Opus 4.8", "anthropic", "claude-opus-4-8"),
@@ -860,6 +862,24 @@ def _pick_brand(backend: Optional[str], model: Optional[str]):
 
     # Nothing reachable — fall back to Gemini.
     return "gemini", "gemini-3.1-pro-preview"
+
+
+def effective_route(spec, backend, model):
+    required_backend = getattr(spec, "default_backend", None)
+    required_model = getattr(spec, "default_model", None)
+    strict = bool(getattr(spec, "strict_route", False))
+    if strict:
+        if not required_backend or not required_model:
+            raise ValueError(f"strict agent {spec.name!r} has no exact backend/model")
+        if ((backend is None) != (model is None)
+                or (backend is not None
+                    and (backend != required_backend or model != required_model))):
+            raise ValueError(
+                f"{spec.name} requires {required_backend}/{required_model}")
+        return required_backend, required_model, False
+    eff_backend = backend or (required_backend if model is None else None)
+    selected_backend, selected_model = _pick_brand(eff_backend, model)
+    return selected_backend, selected_model, backend is None and model is None and eff_backend is None
 
 
 # NOTE: legacy/unused at runtime — research mode's LIVE system prompt is
@@ -1044,17 +1064,10 @@ def run_common_repl(
     _confirm = make_confirm(_tui_read, mode_label)
 
     active_spec = agent_registry.get(mode_label) or agent_registry.get("unified-LLM")
-    # A mode may prefer a backend (e.g. 'codex' → openai, 'claude-code' →
-    # anthropic). Honor it only when the user pinned nothing, so an explicit
-    # --backend/--model always wins.
-    eff_backend = backend
-    if eff_backend is None and model is None and active_spec.default_backend:
-        eff_backend = active_spec.default_backend
-    active_backend, active_model = _pick_brand(eff_backend, model)
-    # The brand was truly auto-detected (self-heal allowed) only when nothing —
-    # not even a mode default — pinned it. A mode that requires its backend
-    # (codex) must not silently self-heal to a different brand.
-    brand_autodetected = backend is None and model is None and eff_backend is None
+    # Agent defaults apply only when the caller did not pin a route. Strict agents
+    # require both their exact backend/model and never enter the fallback chain.
+    active_backend, active_model, brand_autodetected = effective_route(
+        active_spec, backend, model)
     fell_back = {"v": False}
 
     # Mutable state dict — tracks modes and slash-command flags.
@@ -1117,21 +1130,58 @@ def run_common_repl(
 
         return _meter
 
+    def _route_adapter(backend: str, model: str, spec):
+        """The adapter a session actually speaks through.
+
+        A STRICT agent speaks only through the attestation guard: its output is
+        buffered until one ResponseMeta proves the route from OBSERVED response
+        fields, so no text reaches the terminal and no tool call reaches a tool
+        on an unproven route. Ordinary agents get the bare adapter and keep
+        their existing behaviour byte for byte.
+
+        The REQUIRED route a strict guard enforces comes from the SPEC, never
+        from this function's `backend`/`model` arguments. Two of the three call
+        sites pass exactly what `effective_route` derived from that same spec,
+        so nothing changes for them. The third is the `/model` switch, which
+        passes its DESTINATION: a guard built around the destination would
+        attest whatever the switch chose, so a second `pwm_qwen` entry in
+        `_LOCKED_MENU` would be enough to get `attested: True` stamped on a
+        model the strict spec forbids. Reading the requirement from the spec
+        makes that case HOLD instead, which is the Amendment 61 behaviour.
+        """
+        adapter = adapter_for(backend)
+        if not getattr(spec, "strict_route", False):
+            return adapter
+        from ai4science.harness.route_attestation import AttestedAdapter
+        required_backend = getattr(spec, "default_backend", None) or backend
+        required_model = getattr(spec, "default_model", None) or model
+        return AttestedAdapter(adapter, backend=required_backend,
+                               model=required_model, strict=True)
+
     def _child_session_factory(*, spec, ctx):
+        pinned = (getattr(spec, "default_backend", None)
+                  or getattr(spec, "strict_route", False))
+        if pinned:
+            child_backend, child_model, _ = effective_route(spec, None, None)
+        else:
+            child_backend, child_model, _ = effective_route(
+                spec, active_backend, active_model)
+        child_ctx = replace(
+            ctx, brand_provider=lambda: (child_backend, child_model))
         child = AgentSession(
-            adapter=adapter_for(active_backend),
-            model=active_model,
-            backend=active_backend,
+            adapter=_route_adapter(child_backend, child_model, spec),
+            model=child_model,
+            backend=child_backend,
             workspace=workspace,
             writable_roots=writable_roots,
             read_only=state["read_only"],
             auto_yes=True,                      # sub-agents auto-approve
             confirm=_confirm,
             on_text=on_text,
-            meter=_make_wrapped_meter(active_backend, active_model),
+            meter=_make_wrapped_meter(child_backend, child_model),
             on_tool=lambda name: turn_tools.add(name),
             on_tool_start=_show_tool_start, on_tool_end=_show_tool_end,
-            registry=build_registry_for(spec, is_subagent=True, ctx=ctx),
+            registry=build_registry_for(spec, is_subagent=True, ctx=child_ctx),
         )
         if spec.system_prompt:
             child.history.insert(0, Message(role="system", content=spec.system_prompt))
@@ -1139,7 +1189,7 @@ def run_common_repl(
 
     def _build_session() -> AgentSession:
         s = AgentSession(
-            adapter=adapter_for(active_backend),
+            adapter=_route_adapter(active_backend, active_model, active_spec),
             model=active_model,
             backend=active_backend,
             workspace=workspace,
@@ -1363,7 +1413,9 @@ def run_common_repl(
                     print(f"[harness] model unchanged: {active_model}", flush=True)
                     continue
                 try:
-                    session.set_brand(adapter_for(new_backend), new_model, new_backend)
+                    session.set_brand(
+                        _route_adapter(new_backend, new_model, active_spec),
+                        new_model, new_backend)
                     session.meter = _make_wrapped_meter(new_backend, new_model)
                     active_backend, active_model = new_backend, new_model
                     # User chose this brand explicitly — stop auto-healing away from it.
@@ -1437,16 +1489,21 @@ def run_common_repl(
                     continue
                 active_spec = target
                 state["agent"] = target.name       # `/do` follows the switch
-                # Enforce the agent's provider lock: Codex → OpenAI (ChatGPT),
-                # Claude → Anthropic. Switch the brand to that provider's flagship
-                # so a Codex session never runs on Claude (and vice-versa). Other
-                # agents are cross-provider and keep the current backend/model.
-                _lock = getattr(target, "default_backend", None)
-                if _lock and active_backend != _lock:
-                    _, active_backend, active_model = _agent_model_menu(target)[0]
-                    brand_autodetected = False
+                # A pinned agent selects its own route; cross-provider agents keep
+                # the current route and retain its existing fallback policy.
+                if (getattr(target, "default_backend", None)
+                        or getattr(target, "strict_route", False)):
+                    new_backend, new_model, new_fallback = effective_route(
+                        target, None, None)
+                else:
+                    new_backend, new_model, _ = effective_route(
+                        target, active_backend, active_model)
+                    new_fallback = brand_autodetected
+                if (new_backend, new_model) != (active_backend, active_model):
+                    active_backend, active_model = new_backend, new_model
                     print(f"[harness] backend → {active_backend} (model {active_model})",
                           flush=True)
+                brand_autodetected = new_fallback
                 session = _build_session()
                 # keep the full-TUI info line ("ai4science · <agent>") in sync
                 _scr = getattr(_tui, "_ACTIVE", {}).get("screen")
@@ -1597,33 +1654,47 @@ def run_common_repl(
             _intr.clear()
             print("\n[harness] turn stopped — type a new message.", flush=True)
         except Exception as exc:
-            # Walk the orchestration chain automatically: Opus 4.8 → GPT-5.5 →
-            # Gemini (see routing.AGENT_CHAINS). If the primary model is
-            # unavailable (overloaded, quota, no key), switch silently and retry
-            # without interrupting the user.
-            from ai4science.harness.adapters.factory import harness_available
-            last = exc
-            rest = [(b, m) for b, m in routing.AGENT_CHAINS.get("orchestration", [])
-                    if (b, m) != (active_backend, active_model) and harness_available(b)]
-            served = False
-            for nb, nm in rest:
-                print(f"\n[harness] {active_model} unavailable "
-                      f"({_clean_turn_error(last)}) — switching to {nm}…", flush=True)
-                active_backend, active_model = nb, nm
-                session.set_brand(adapter_for(nb), nm, nb)
-                session.meter = _make_wrapped_meter(nb, nm)
-                # Roll back history to before the failed turn so run_turn()
-                # doesn't append a duplicate user message on the retry.
-                del session.history[_history_len_before_turn:]
-                try:
-                    _do_turn()
-                    served = True
-                    break
-                except Exception as e2:
-                    last = e2
-            if not served:
-                print(f"\n[harness] all models are temporarily unavailable "
-                      f"({_clean_turn_error(last)}). Retry in a moment.", flush=True)
+            # Amendment 61: a STRICT agent has exactly one lawful route. If the
+            # turn failed — the route was missing, unavailable, or could not be
+            # PROVEN from observed response metadata — it holds visibly. It does
+            # not consult another backend: `adapter_for()` is not reached on this
+            # path at all, and that is the property the tests pin.
+            if getattr(active_spec, "strict_route", False):
+                from ai4science.harness import route_attestation
+                reason = _clean_turn_error(exc)
+                route_attestation.record_hold(
+                    agent=active_spec.name, backend=active_backend,
+                    model=active_model, reason=reason)
+                print(f"\n[harness] research task held: {reason}", flush=True)
+            else:
+                # Walk the orchestration chain automatically: Opus 4.8 → GPT-5.5 →
+                # Gemini (see routing.AGENT_CHAINS). If the primary model is
+                # unavailable (overloaded, quota, no key), switch silently and retry
+                # without interrupting the user.
+                from ai4science.harness.adapters.factory import harness_available
+                last = exc
+                rest = ([(b, m) for b, m in routing.AGENT_CHAINS.get("orchestration", [])
+                         if (b, m) != (active_backend, active_model) and harness_available(b)]
+                        if brand_autodetected else [])
+                served = False
+                for nb, nm in rest:
+                    print(f"\n[harness] {active_model} unavailable "
+                          f"({_clean_turn_error(last)}) — switching to {nm}…", flush=True)
+                    active_backend, active_model = nb, nm
+                    session.set_brand(adapter_for(nb), nm, nb)
+                    session.meter = _make_wrapped_meter(nb, nm)
+                    # Roll back history to before the failed turn so run_turn()
+                    # doesn't append a duplicate user message on the retry.
+                    del session.history[_history_len_before_turn:]
+                    try:
+                        _do_turn()
+                        served = True
+                        break
+                    except Exception as e2:
+                        last = e2
+                if not served:
+                    print(f"\n[harness] all models are temporarily unavailable "
+                          f"({_clean_turn_error(last)}). Retry in a moment.", flush=True)
         finally:
             if _prev_sigint is not None:
                 try:

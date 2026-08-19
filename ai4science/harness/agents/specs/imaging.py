@@ -9,6 +9,9 @@ AGENT = AgentSpec(
     keywords=("cassi", "reconstruction", "computational imaging", "optics"),
     supported_profiles=("I0", "I1", "I2"),
     default_profile="I1",
+    default_backend="pwm_qwen",
+    default_model="qwen3.8:27b",
+    strict_route=True,
     approval_required_for=("publish", "deploy", "spend"),
 )
 

@@ -71,3 +71,103 @@ def test_residual_from_verdict_reaches_next_prompt():
     # injected feedback sentence itself, not the bare word "residual".
     assert "your previous solver" not in captured[0].lower()
     assert "0.13" in captured[1]                            # judge feedback reached the LLM
+
+
+def test_strict_planner_reraises_an_attestation_failure_without_falling_back():
+    """Amendment 61: an unproven route must not be quietly rewritten into a
+    deterministic GAP-TV answer. A silent fallback here would look exactly like
+    a successful research step in every artefact the run produces."""
+    import pytest
+    from ai4science.harness.route_attestation import StrictRouteError
+
+    class Held:
+        def stream(self, *_args, **_kwargs):
+            raise StrictRouteError(
+                "strict route pwm_qwen/qwen3.8:27b is unproven: "
+                "the response carried no observed model")
+            yield                                   # pragma: no cover
+
+    fb = FallbackSpy()
+    p = LLMImagingPlanner(Held(), model="qwen3.8:27b", solvers=SOLVERS,
+                          fallback=fb, strict=True)
+
+    with pytest.raises(StrictRouteError, match="unproven"):
+        p.next_step(_state())
+
+    assert fb.next_called == 0
+
+
+def test_strict_planner_reraises_a_plain_adapter_failure_too():
+    import pytest
+
+    class Broken:
+        def stream(self, *_args, **_kwargs):
+            raise RuntimeError("no API key configured for pwm_qwen backend")
+            yield                                   # pragma: no cover
+
+    fb = FallbackSpy()
+    p = LLMImagingPlanner(Broken(), model="qwen3.8:27b", solvers=SOLVERS,
+                          fallback=fb, strict=True)
+
+    with pytest.raises(RuntimeError, match="no API key configured"):
+        p.next_step(_state())
+
+    assert fb.next_called == 0
+
+
+def test_non_strict_planner_keeps_its_deterministic_fallback():
+    """The other half of the rule: an ordinary run still always delivers."""
+    class Broken:
+        def stream(self, *_args, **_kwargs):
+            raise RuntimeError("overloaded")
+            yield                                   # pragma: no cover
+
+    fb = FallbackSpy()
+    p = LLMImagingPlanner(Broken(), model="stub", solvers=SOLVERS, fallback=fb,
+                          max_llm_attempts=1)
+
+    assert p.next_step(_state()).summary == "GAP-TV fallback"
+    assert fb.next_called == 1
+
+
+def test_strict_planner_accepts_a_selection_that_proved_its_route():
+    """Positive control, through the real guard: a proven route still plans."""
+    from ai4science.harness.events import ResponseMeta
+    from ai4science.harness.route_attestation import AttestedAdapter
+
+    guarded = AttestedAdapter(
+        StubAdapter([[ResponseMeta("pwm_qwen", "qwen3.8:27b", "qwen3.8:27b",
+                                   "fp_ollama", "r1"),
+                      TextDelta(text='```json\n{"solver": "best_quality"}\n```')]]),
+        backend="pwm_qwen", model="qwen3.8:27b", strict=True)
+    fb = FallbackSpy()
+    p = LLMImagingPlanner(guarded, model="qwen3.8:27b", solvers=SOLVERS,
+                          fallback=fb, strict=True)
+
+    step = p.next_step(_state())
+
+    assert step.flagged_kind == "preference_fork"
+    assert step.command[-2:] == ["--tv-weight", "0.01"]
+    assert fb.next_called == 0
+
+
+def test_strict_planner_holds_when_the_guard_finds_a_mismatched_model():
+    """End to end through the guard: the provider answered, and answered well,
+    but on the wrong model. The good-looking answer must not become a step."""
+    import pytest
+    from ai4science.harness.events import ResponseMeta
+    from ai4science.harness.route_attestation import (AttestedAdapter,
+                                                      StrictRouteError)
+
+    guarded = AttestedAdapter(
+        StubAdapter([[ResponseMeta("pwm_qwen", "qwen3.8:27b", "qwen2.5:7b"),
+                      TextDelta(text='```json\n{"solver": "best_quality"}\n```')]]),
+        backend="pwm_qwen", model="qwen3.8:27b", strict=True)
+    fb = FallbackSpy()
+    p = LLMImagingPlanner(guarded, model="qwen3.8:27b", solvers=SOLVERS,
+                          fallback=fb, strict=True)
+
+    with pytest.raises(StrictRouteError, match="observed model"):
+        p.next_step(_state())
+
+    assert fb.next_called == 0
