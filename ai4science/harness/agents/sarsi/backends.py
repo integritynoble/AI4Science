@@ -9,11 +9,38 @@ a migration.
 |---|---|---|
 | runs | Anthropic's `claude` binary | ai4science |
 | the model | Anthropic's | any the exchange gateway fronts |
-| needs installed | the `claude` CLI, logged in | nothing beyond ai4science |
+| needs installed | the `claude` CLI, logged in | a reachable `ai4science` |
 
-`sarsi-ai4sci` is the default because it asks less of the owner: a supervised
-session on `sarsi-claude` requires a vendor CLI installed and signed in, and on
-`sarsi-ai4sci` it does not.
+`sarsi-ai4sci` is the DEFAULT, and the reason once given for that was false.
+
+The claim was that it "needs nothing beyond ai4science" and so "asks less of
+the owner" than a backend wanting a vendor CLI installed and signed in. That
+reads as though one prerequisite were free. It is not; it is merely implicit,
+and an implicit prerequisite is the kind that goes unnoticed until it fails.
+
+Measured on this fleet, 2026-08-19, and the reverse of the claim:
+
+  * `claude` is present on all ten accounts.
+  * `import ai4science` succeeds from a login shell on FOUR of them, and fails
+    with `ModuleNotFoundError` on the other six — including the account named
+    `ai4science`.
+  * `/usr/local/bin/ai4science` is a shim beginning `#!/usr/bin/python3`, the
+    system interpreter, which has no such package. Where the backend works, it
+    works through a per-account venv that a LOGIN shell puts on PATH.
+  * `MachineRuntime.start` launches through `tmux new-session`, which inherits
+    the tmux server's environment — a non-login shell. So the launch path does
+    not even get the PATH that makes those four accounts work.
+
+The three failure modes compound: a missing package, a shim that shadows the
+working one, and a launcher that discards the PATH resolving it. None announces
+itself, because `start_session` reports `ok: True` either way.
+
+DEFAULT is left as it is rather than quietly flipped — which engine a fleet
+lands on by default is the owner's call, not a docstring's, and the ACP path
+now bypasses this launcher for both backends anyway. What is fixed here is the
+justification, which no longer claims something untrue. Whoever decides the
+default next should decide it knowing the vendor CLI is the prerequisite this
+fleet actually satisfies.
 
 RENAMED, 2026-08-19 — `sarsi-pwm` -> `sarsi-ai4sci`
     The backend used to carry the product name PWM Code while the session it
