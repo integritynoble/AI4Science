@@ -17,6 +17,7 @@ from ai4science.harness.agents.research_agents.dual import (
     BENCHMARK, Ledgers, OWNER_SET, SELF_DIRECTED, autonomous_loop,
     autonomous_round, run_user_task,
 )
+from ai4science.harness.agents.research_agents.fieldmap import SETTLED
 from .conftest import bench_or_skip as benchmark_for  # skips, not fails, when a corpus
 # is absent — see conftest for why the two test files used to disagree about that.
 
@@ -218,17 +219,50 @@ def test_an_exhausted_budget_ends_the_loop(tmp_path):
     assert agent.switch.budget.exhausted() or rounds[-1].stopped
 
 
-def test_the_loop_works_the_field_map_and_does_not_repeat_itself(tmp_path):
-    """The map is what makes the second night differ from the first."""
+def test_a_night_that_found_nothing_leaves_the_claim_exactly_as_it_was(tmp_path):
+    """A night writes the map only from evidence about the CLAIM.
+
+    The loop never runs the claim's statement: it searches parameters against
+    its own incumbent, which answers "did my candidate win?" and not "does the
+    published result reproduce here?". Those are different questions, and the
+    loop used to answer the second with the first — it called
+    `reproduced(agrees=<did the candidate win?>)`, so every night that failed to
+    beat its incumbent marked a published claim untrusted, SETTLED and "did NOT
+    reproduce" on no evidence at all.
+
+    This test used to assert that the loop had moved on to a different claim,
+    and it passed *because* of that bug: the falsely refuted claim became
+    SETTLED, dropped out of `open_claims()`, and so `next_work()` returned
+    something else. The rule it protects now is the opposite one. A night with
+    nothing to say about the claim says nothing: same claim, same status, still
+    untrusted, and no refutation recorded that no experiment supports."""
     agent = build("drug-design")
     agent.switch.owner_turn_on(Budget("drug-design", units=20.0), by="owner")
-    before = agent.field_map.next_work().key
-    autonomous_loop(agent, benchmark_for("drug-design"),
-                    client_factory=lambda s: Sim(tmp_path / ("y%d" % s)),
-                    workspace_root=tmp_path / "ws", rounds=2, seeds=(0,),
-                    cost_per_seed=0.5)
-    after = agent.field_map.next_work()
-    assert after is None or after.key != before
+    worked = agent.field_map.next_work()
+    key, status_before, note_before = worked.key, worked.status, worked.note
+    settled_before = agent.field_map.summary()[SETTLED]
+
+    rounds = autonomous_loop(agent, benchmark_for("drug-design"),
+                             client_factory=lambda s: Sim(tmp_path / ("y%d" % s)),
+                             workspace_root=tmp_path / "ws", rounds=2, seeds=(0,),
+                             cost_per_seed=0.5)
+    assert not any(r.improvement and r.improvement.survives() for r in rounds), \
+        "a parameter sweep supplies no mechanism, so no candidate from this " \
+        "loop can clear the bar — that is every night here, not this benchmark"
+
+    c = agent.field_map.claims[key]
+    assert c.status == status_before != SETTLED, \
+        "an unchecked claim is still unchecked, and never terminal"
+    assert not c.trusted, "nothing here reproduced it, so nothing may trust it"
+    assert c.note == note_before
+    assert "did NOT reproduce" not in c.note
+
+    # And the map as a whole records no refutation that no experiment supports.
+    assert agent.field_map.summary()[SETTLED] == settled_before
+    assert not any("did NOT reproduce" in x.note
+                   for x in agent.field_map.claims.values())
+    assert agent.field_map.next_work().key == key, \
+        "the claim is still the open work it was before the night ran"
 
 
 # ------------------------------------------------------ the three ledgers

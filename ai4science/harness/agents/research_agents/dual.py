@@ -460,6 +460,15 @@ def autonomous_round(agent, bench: DomainBenchmark, *, client_factory,
         # test for the size of the search would be double-counting.
         agent._validations = v["validation_tests_this_night"]
         agent._incumbent = dict(res["params"])
+        # `mechanism=""` below is deliberate, and it is not a gap to fill in.
+        # A parameter sweep has no account of WHY the winning setting wins: it
+        # found a number, and a number with no mechanism is a lead for a person
+        # to follow rather than a finding. The consequence is that a candidate
+        # from this loop can never clear the bar on its own — `survives()` will
+        # always report the missing mechanism — and that refusal is the correct
+        # behaviour rather than an oversight. Writing a plausible sentence here
+        # would weaken the gauntlet from the outside instead of meeting it. A
+        # person supplies the mechanism, and only then is this a finding.
         r.improvement = Improvement(
             agent=agent.name, candidate=res["origin"], metric=res["objective"],
             baseline_reproduced=True, held_out=True,
@@ -526,13 +535,25 @@ def autonomous_loop(agent, bench: DomainBenchmark, *, client_factory,
                                      "incumbent; another round would re-test "
                                      "the same candidates and cost a correction"))
             break
-        # A claim that has been checked is not checked again: the map is how the
-        # second night differs from the first.
-        if r.claim:
-            for key, c in agent.field_map.claims.items():
-                if c.statement == r.claim:
-                    agent.field_map.reproduced(
-                        key, evidence="ran %d seeds of %s" % (len(seeds), bench.agent),
-                        agrees=bool(r.improvement and r.improvement.survives()))
-                    break
+        # The map is deliberately NOT written here.
+        #
+        # This block used to call `field_map.reproduced(..., agrees=<did my
+        # candidate beat the incumbent?>)`, which answers a different question
+        # from the one that method asks. `reproduced()` asks whether the
+        # PUBLISHED claim reproduced here, and `agrees=False` marks the claim
+        # untrusted, moves it to SETTLED — terminal — and writes "did NOT
+        # reproduce" against it. So every night that merely failed to beat its
+        # own incumbent permanently refuted somebody's published result, on no
+        # evidence whatever: the night never ran the claim's statement even
+        # once. It looked right because the refuted claim then dropped out of
+        # `open_claims()`, so the loop appeared to be working through the map.
+        #
+        # Advancing a claim takes a reproduction test this loop does not run.
+        # `reproduced()` and `compared()` are the two routes, and both want
+        # evidence about the CLAIM — whether its statement holds here, and
+        # whether it has been put on a common footing with its rivals — not
+        # evidence about a candidate parameter set. A night that found no
+        # improvement has established nothing about the claim, so it leaves the
+        # map exactly as it found it. An unchanged map is the honest outcome
+        # here, not a gap waiting to be filled.
     return out
