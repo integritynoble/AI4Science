@@ -280,9 +280,9 @@ _ROSTER = [
      "about": ["code", "data", "analysis", "script", "repo", "benchmark",
                "experiment"]},
     # The ai4science worker: same general-work role, driven through the
-    # ai4science TUI (qwen_local backend via nothink proxy). Attended only —
-    # the supervision loop reads Claude Code markers; ai4science's REPL does
-    # not emit them, so operate/check are not wired.
+    # ai4science ACP server (qwen_local backend via nothink proxy). Uses
+    # `ai4science acp --pure --mode general-purpose` over JSON-RPC stdio,
+    # the same transport as opencode — fully drivable, not attended-only.
     {"id": "sarsi-ai4sci", "role": WORKER_ROLE, "spec": "general-purpose",
      "tools": ["shell", "editor", "browser"],
      "about": ["code", "data", "analysis", "script", "repo", "benchmark",

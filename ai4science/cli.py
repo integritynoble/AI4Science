@@ -155,6 +155,10 @@ app.command("register-agent", help="Self-register a plug-in agent/tool you autho
 from ai4science.commands import sarsi as sarsi_cmd
 app.add_typer(sarsi_cmd.app, name="sarsi", help="sarsi worker agents on this machine.")
 
+from ai4science.commands import acp as acp_cmd
+app.add_typer(acp_cmd.app, name="acp",
+              help="ACP JSON-RPC stdio server — driven by the sarsi harness (internal).")
+
 from ai4science.commands import feedback as feedback_cmd
 app.command("feedback", help="Give feedback on an ai4science agent and earn PWM for useful, novel signal (Track 2).")(feedback_cmd.feedback)
 app.command("report-bug", help="Report a bug in an ai4science agent and earn PWM if it's real + reproducible. Attach the error via --log or by piping it in.")(feedback_cmd.report_bug)
@@ -680,7 +684,7 @@ def main() -> None:
         "init", "contribute", "validate", "judge", "overseer", "package",
         "submit", "status", "version", "agents", "chat", "compute", "llm",
         "stake", "plugins", "tools", "login", "whoami", "logout", "prefer", "update",
-        "register-agent", "feedback", "report-bug", "sarsi",
+        "register-agent", "feedback", "report-bug", "sarsi", "acp",
     }
     if any(tok in _subcommands for tok in argv_raw):
         app()
@@ -701,7 +705,7 @@ def main() -> None:
             "init", "contribute", "validate", "judge", "overseer",
             "package", "submit", "status", "version", "agents", "chat",
             "compute", "llm", "stake", "plugins", "tools", "login", "whoami", "logout",
-            "prefer", "update", "register-agent", "sarsi",
+            "prefer", "update", "register-agent", "sarsi", "acp",
         }
         if argv[0] not in registered:
             # A mistyped subcommand (e.g. `ai4science dispatch --provider …`,

@@ -25,7 +25,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
-from ai4science.harness.agents.sarsi import ledger, plan as pl, task as tsk
+from ai4science.harness.agents.sarsi import ledger, memory, plan as pl, task as tsk
 from ai4science.harness.agents.sarsi.registry import Agent, Config
 from ai4science.harness.agents.sarsi.worker import NotAWorker
 
@@ -86,6 +86,15 @@ class MachineRuntime:
             # The secret reaches the local session and nothing that outlives it.
             import os
             os.environ.update({_env_key(k): v for k, v in env.items()})
+        if spec == "opencode":
+            # OpenCode has no PreToolUse hook mechanism: `govern` is a
+            # Claude-Code-only boundary, and wiring it would either fail or
+            # write a hook the engine never reads. OpenCode sessions start
+            # ungoverned — the ceiling is recorded for the supervisor, not
+            # enforced by a hook.
+            self.engine = "opencode"
+            return sessions.start_session(name, cwd, govern=False,
+                                          ceiling=ceiling, claude_bin="opencode")
         # `claude-code` is Claude Code itself; anything else runs through the
         # ai4science harness in that mode.
         binary = "claude" if spec == "claude-code" else None
@@ -93,6 +102,7 @@ class MachineRuntime:
             # `writable` reaches Claude Code through the governance hook rather
             # than a launch flag — it has no `--writable`, and the hook is the
             # only boundary a claude-code session actually has.
+            self.engine = "claude"
             return sessions.start_session(name, cwd, govern=govern,
                                           ceiling=ceiling, writable=writable)
         # The plan's working directory reaches the sandbox as a launch flag, so
@@ -102,6 +112,7 @@ class MachineRuntime:
         import shlex
         extra = "".join(f" --writable {shlex.quote(str(w))}"
                         for w in (writable or []) if w)
+        self.engine = spec
         return sessions.start_session(
             name, cwd, govern=govern, ceiling=ceiling,
             claude_bin=f"ai4science chat --mode {spec}{extra}")
@@ -145,7 +156,7 @@ class MachineRuntime:
 #: detection, stranded-prompt reading and busy marker are tuned to Claude
 #: Code's TUI; another interface may be STARTED, and is reported as not
 #: drivable rather than quietly mis-driven.
-DRIVABLE_SPECS = {"claude-code", "codex"}
+DRIVABLE_SPECS = {"claude-code", "codex", "opencode", "general-purpose"}
 
 
 def drivable(spec: str) -> bool:
@@ -191,7 +202,21 @@ def assign(config: Config, agent: Agent, task: tsk.Task, *,
     # at `release`, honestly, by refusing rather than pretending.
     secrets = _unlock(config, agent, task, vault_prompt)
 
-    runtime = runtime or MachineRuntime()
+    # ACP sessions speak JSON-RPC over stdio — no screen to type at, no gate
+    # markers to read back. The harness delivers the brief as a prompt and gets
+    # a text response. Two specs use this transport:
+    #   opencode        → `opencode acp --pure`  (original ACP path)
+    #   general-purpose → `ai4science acp --pure --mode general-purpose`
+    # claude-code and everything else use tmux + gate markers.
+    if runtime is None:
+        if agent.spec == "opencode":
+            from ai4science.harness.agents.sarsi.acp import acp_runtime
+            runtime = acp_runtime()
+        elif agent.spec == "general-purpose":
+            from ai4science.harness.agents.sarsi.acp import ai4sci_acp_runtime
+            runtime = ai4sci_acp_runtime(agent.spec)
+        else:
+            runtime = MachineRuntime()
     home = tsk.dir_of(agent, task.id)
     home.mkdir(parents=True, exist_ok=True)
     # Where the session STANDS. `--workdir` says where the work happens, and a
@@ -255,6 +280,12 @@ def assign(config: Config, agent: Agent, task: tsk.Task, *,
                     # drives. Independence is a claim about the engine that did
                     # the work, not the one the worker planned with.
                     "engine": getattr(runtime, "engine", "claude"),
+                    # which transport owns this session: the routing helpers
+                    # below read this to decide ACP round-trips vs tmux keystrokes.
+                    # `acp_spec` lets _rt() recover the right cached AcpRuntime.
+                    "transport": "acp" if agent.spec in {
+                        "opencode", "general-purpose"} else "tmux",
+                    "acp_spec": agent.spec,
                     "planner": agent.model}
     task.state = tsk.RUNNING
     # A count of failures belongs to the session that failed. Live: a task
@@ -431,7 +462,7 @@ def planning_kickoff(config: Config, agent: Agent, task: tsk.Task) -> str:
         # mistake the history records — and asks again for a permission the
         # owner already refused.
         ws.render(config, agent, task),
-        "",
+        *(_memory_block(config, agent) or []),
         f"FIRST, PLAN — together. I have already written an initial "
         f"plan at {where}: the goal, what I know it needs, and the "
         f"shape a plan takes here. It is a sketch, not an instruction.",
@@ -521,6 +552,14 @@ def deliver_kickoff(config: Config, agent: Agent, task: tsk.Task, *,
     if not pending:
         return task
 
+    # ACP sessions have no screen to read back: delivery is the round-trip
+    # itself, so the marker/acting heuristics below do not apply. The brief is
+    # sent as a prompt, and on failure the session is resumed and re-briefed at
+    # its first unverified phase rather than retyped at a screen.
+    if (task.session or {}).get("transport") == "acp":
+        return _deliver_kickoff_acp(config, agent, task, pending, runtime=runtime,
+                                    now=now)
+
     # Two confirmations, and the second is why the first is not enough.
     #
     # The MARKER is a fragment of the brief seen on screen. Cheap, immediate,
@@ -593,6 +632,119 @@ def _kickoff_marker(text: str) -> str:
     return (text or "")[:40]
 
 
+def _rt(runtime: Optional[Any], task: tsk.Task) -> Any:
+    """The runtime that owns this task's session, by transport and spec."""
+    sess = task.session or {}
+    if sess.get("transport") == "acp":
+        acp_spec = sess.get("acp_spec", "opencode")
+        if acp_spec == "opencode":
+            from ai4science.harness.agents.sarsi.acp import acp_runtime
+            return acp_runtime()
+        else:
+            from ai4science.harness.agents.sarsi.acp import ai4sci_acp_runtime
+            return ai4sci_acp_runtime(acp_spec)
+    return runtime or MachineRuntime()
+
+
+def _memory_block(config: Config, agent: Agent) -> Optional[List[str]]:
+    """The lesson index, spliced into a brief when there is one.
+
+    A lesson written by a trigger is only useful if the next brief carries it:
+    the trap the memory exists for is the one repeated in a fresh session.
+    """
+    try:
+        text = memory.load_index(config, agent)
+    except Exception:
+        return None
+    if not text:
+        return None
+    return ["", text]
+
+
+def _deliver_kickoff_acp(config: Config, agent: Agent, task: tsk.Task,
+                         pending: str, *, runtime: Optional[Any] = None,
+                         now=time.time) -> tsk.Task:
+    """Deliver the kickoff brief to an ACP session.
+
+    ACP delivery is a round-trip: the brief is a prompt, and the response is
+    the confirmation. No screen to read, no marker to find. On failure the
+    session is resumed and re-briefed at its first unverified phase.
+    """
+    if task.kickoff_tries >= MAX_KICKOFF_TRIES:
+        task.kickoff_undelivered = True
+        return tsk._touch(agent, task, now)
+
+    name = (task.session or {}).get("name", "")
+    cwd = (task.session or {}).get("cwd", "")
+    rt = _rt(runtime, task)
+
+    out = rt.send(name, pending) or {}
+    if out.get("ok", True):
+        task.kickoff_pending = None
+        task.acts_at_kickoff = None
+        task.kickoff_unreachable = False
+        task.kickoff_tries += 1
+        return tsk._touch(agent, task, now)
+
+    task.kickoff_unreachable = True
+    memory.record(config, agent, "refusal",
+                  f"{task.id} kickoff undelivered: session {name!r} refused the brief",
+                  "The ACP session declined the kickoff prompt; a resume was attempted.",
+                  now=now)
+    try:
+        rt.resume(name, cwd)
+    except Exception:
+        pass
+    brief = _acp_resume_brief(config, agent, task)
+    out2 = rt.send(name, brief) or {}
+    if out2.get("ok", True):
+        task.kickoff_pending = None
+        task.acts_at_kickoff = None
+        task.kickoff_unreachable = False
+        task.kickoff_tries += 1
+        return tsk._touch(agent, task, now)
+    memory.record(config, agent, "refusal",
+                  f"{task.id} kickoff undelivered: session {name!r} refused the resume brief",
+                  "The ACP session declined the resume brief after a resume attempt.",
+                  now=now)
+    task.kickoff_tries += 1
+    if task.kickoff_tries >= MAX_KICKOFF_TRIES:
+        task.kickoff_undelivered = True
+    return tsk._touch(agent, task, now)
+
+
+def _acp_resume_brief(config: Config, agent: Agent, task: tsk.Task) -> str:
+    """A resume brief: the goal, the first unverified phase, and its criterion.
+
+    Not the original kickoff — that was for a fresh session. A resumed session
+    already has the context; it needs to know WHERE to pick up.
+    """
+    lines = [f"Goal: {task.goal}", ""]
+    lines += _memory_block(config, agent) or []
+    # A resumed session is about to act on what it last saw. Show it what is
+    # true on disk right now, so it re-observes before it edits.
+    try:
+        stale = memory.staleness(config, agent, task)
+    except Exception:
+        stale = ""
+    if stale:
+        lines += [stale, ""]
+    plan = tsk.read_plan_or_none(config, agent, task)
+    index = tsk.earliest_incomplete(task)
+    if plan and index is not None and index < len(plan.phases):
+        phase = plan.phases[index]
+        lines.append(f"Resume at phase {index + 1}: {phase.title}")
+        if phase.verified_when:
+            lines.append(f"Verified when: {phase.verified_when}")
+        if phase.body:
+            lines.append(phase.body)
+        lines.append("")
+        lines.append("Continue from where it stands. Do not redo completed phases.")
+    else:
+        lines.append("Continue from where it stands. Do not redo completed phases.")
+    return "\n".join(lines)
+
+
 def collect_plan(config: Config, agent: Agent, task: tsk.Task, *,
                  runtime: Optional[Any] = None, session_idle: bool = False,
                  accept_seed: bool = False, now=time.time) -> tsk.Task:
@@ -627,7 +779,7 @@ def collect_plan(config: Config, agent: Agent, task: tsk.Task, *,
             # Same keystrokes, same unknown screen. The task stays `planning`
             # either way, which is what the owner acts on.
             return task
-        (runtime or MachineRuntime()).send(
+        _rt(runtime, task).send(
             (task.session or {}).get("name", ""),
             f"That plan cannot be used: {e}\n"
             f"Every phase must end in a `Verified when:` line that can be "
@@ -696,7 +848,7 @@ def release(config: Config, agent: Agent, task: tsk.Task, *,
     # The owner has seen the plan and granted what it declared, so the session
     # may now do more than read. Raised only to what this agent has EARNED.
     raised = _effective_ceiling(agent.ceiling)
-    rt = runtime or MachineRuntime()
+    rt = _rt(runtime, task)
     try:
         rt.set_ceiling((task.session or {}).get("name", ""), raised)
     except Exception as e:
@@ -768,7 +920,7 @@ def stop(config: Config, agent: Agent, task: tsk.Task, *,
         pass                          # a handoff that cannot be written must
                                       # not stop the task from stopping
 
-    runtime = runtime or MachineRuntime()
+    runtime = _rt(runtime, task)
     name = (task.session or {}).get("name")
     if name:
         try:
@@ -831,7 +983,7 @@ def release_session(config: Config, agent: Agent, task: tsk.Task, *,
         pass                          # the record matters more than the note
 
     try:
-        (runtime or MachineRuntime()).stop(name)
+        _rt(runtime, task).stop(name)
     except AttributeError:
         # The operator hands `verify` a `_Sender(pane)`, which can only TYPE.
         # Swallowing this cleared the record and left the terminal running —
@@ -969,7 +1121,7 @@ def guide(config: Config, agent: Agent, task: tsk.Task, instruction: str, *,
         raise OwnerHasTheWheel(
             f"you have the wheel on {task.id}; {agent.id} is standing by. "
             f"Hand it back with /resume {task.id}.")
-    (runtime or MachineRuntime()).send(name, instruction)
+    _rt(runtime, task).send(name, instruction)
     ledger.append(config, "reports",
                   {"agent": agent.id, "task": task.id,
                    "state": "guided-by-owner" if by_owner else "guided",
@@ -1152,6 +1304,9 @@ def verify(config: Config, agent: Agent, task: tsk.Task, *,
     task.state = tsk.RUNNING
     task = tsk._touch(agent, task, now)
     why = verdict.get("why") or "the verifier was not satisfied"
+    memory.record(config, agent, "refuted_prediction",
+                  f"{task.id} refuted: {task.goal[:120]}",
+                  f"the verifier said: {why[:800]}", now=now)
     steered = False
     # Not at an interface this loop cannot read. `check` on an attended agent
     # was typing this paragraph at whatever screen happened to be showing —
@@ -1161,7 +1316,7 @@ def verify(config: Config, agent: Agent, task: tsk.Task, *,
     # which the ledger below already reports honestly.
     if task.session and drivable(agent.spec):
         try:
-            (runtime or MachineRuntime()).send(
+            _rt(runtime, task).send(
                 task.session["name"],
                 f"The independent verifier says this is not done yet: {why}\n"
                 f"Address that specifically, then report the evidence again.")
