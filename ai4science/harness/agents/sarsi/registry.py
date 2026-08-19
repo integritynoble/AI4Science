@@ -279,6 +279,21 @@ _ROSTER = [
      "tools": ["shell", "editor", "browser"],
      "about": ["code", "data", "analysis", "script", "repo", "benchmark",
                "experiment"]},
+    # The ai4science worker: same general-work role, driven through the
+    # ai4science TUI (qwen_local backend via nothink proxy). Attended only —
+    # the supervision loop reads Claude Code markers; ai4science's REPL does
+    # not emit them, so operate/check are not wired.
+    {"id": "sarsi-ai4sci", "role": WORKER_ROLE, "spec": "general-purpose",
+     "tools": ["shell", "editor", "browser"],
+     "about": ["code", "data", "analysis", "script", "repo", "benchmark",
+               "experiment"]},
+    # The OpenCode worker: the same general-work role, driven through the
+    # opencode TUI instead of Claude Code. Its spec launches `opencode`, which
+    # the supervision loop reads the same way (busy/idle/prompt markers).
+    {"id": "sarsi-open", "role": WORKER_ROLE, "spec": "opencode",
+     "tools": ["shell", "editor", "browser"],
+     "about": ["code", "data", "analysis", "script", "repo", "benchmark",
+               "experiment"]},
     # RETIRED 2026-08-05: the owner asked for one general worker to begin
     # with. `sarsi-worker` is it. This entry stays so its 32 archived tasks
     # remain readable, and `mail` deliberately did NOT move across — a single
