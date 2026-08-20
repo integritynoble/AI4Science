@@ -47,7 +47,8 @@ def _shortcwd(p) -> str:
 #: they need the live session. A resolver built only from the dispatcher would
 #: call these unknown — the same defect wearing a helpful face.
 _LOOP_COMMANDS = ("model", "agent", "mode", "cost", "files", "agents", "mcp",
-                  "feedback", "login", "whoami")
+                  "feedback", "login", "whoami",
+                  "install-agent", "uninstall-agent")
 
 _COMMAND_WORD = re.compile(r"^/([A-Za-z][A-Za-z0-9_-]*)(\s|$)")
 
@@ -486,6 +487,8 @@ def _dispatch_slash(line: str, state: dict) -> tuple[bool, str]:
                       "/agent [name|specific <q>] /do <goal> /tasks /login "
                       "/whoami /feedback <text> /readonly /yes /default "
                       "/cost /files /subagents /exit\n"
+                      "  agents: /install-agent [name] (add to /agent picker) "
+                      "/uninstall-agent [name] (remove from picker)\n"
                       "  tasks: /task (all boards) /<task-name> or /tsk_… "
                       "(open, guided) /interact (its terminal — Ctrl-z back) "
                       "/rename /goal /stop /archive /reopen [task] — owner "
@@ -524,6 +527,12 @@ def _dispatch_slash(line: str, state: dict) -> tuple[bool, str]:
         return True, "\n".join(lines)
     if cmd in ("do", "tasks"):
         return True, _sarsi_bridge(cmd, _arg.strip(), _bridge_target(state))
+
+    if cmd == "install-agent":
+        return True, _install_agent_cmd(_arg.strip())
+
+    if cmd == "uninstall-agent":
+        return True, _uninstall_agent_cmd(_arg.strip())
 
     # `/<roster-agent> do <goal>` and `/<roster-agent> tasks`. `/do` reaches the
     # sarsi worker whose id matches the CHAT AGENT's name, so a roster agent
@@ -1658,8 +1667,83 @@ def run_common_repl(
                 print(_note, flush=True)
 
 
+def _install_agent_cmd(arg: str) -> str:
+    """`/install-agent [name]` — list available or install one."""
+    import difflib as _dl
+    from ai4science.harness import installed_agents as _ia
+    try:
+        from ai4science.harness.agents.sarsi import registry as _sreg
+        config = _sreg.load()
+        agents_dict = config.agents or {}
+    except Exception:
+        return "install-agent: could not read agent registry"
+
+    installed = _ia.load()
+    available = []
+    for aid, agent in agents_dict.items():
+        if getattr(agent, "role", "") != "worker":
+            continue
+        if getattr(agent, "retired", False):
+            continue
+        if aid in installed:
+            continue
+        about = getattr(agent, "about", "") or ""
+        if isinstance(about, (list, tuple)):
+            about = " ".join(str(x) for x in about)
+        available.append((aid, str(about).strip()))
+
+    if not arg:
+        if not available:
+            return "install-agent: all roster workers are already installed"
+        lines = ["available agents (not yet installed):"]
+        for aid, about in sorted(available):
+            lines.append(f"  {aid}" + (f" — {about}" if about else ""))
+        lines.append("")
+        lines.append("install one: /install-agent <name>")
+        return "\n".join(lines)
+
+    name = arg.lower()
+    aid_map = {a[0].lower(): a[0] for a in available}
+    installed_lower = {x.lower(): x for x in installed}
+    if name in installed_lower:
+        return f"install-agent: {installed_lower[name]} is already installed"
+    if name not in aid_map:
+        close = _dl.get_close_matches(name, sorted(aid_map), n=2, cutoff=0.6)
+        hint = (" did you mean " + " or ".join(close) + "?") if close else ""
+        return (f"install-agent: {name!r} not found.{hint} "
+                f"/install-agent (no args) lists what is available")
+    actual = aid_map[name]
+    _ia.install(actual)
+    return f"installed {actual} — it now appears in /agent"
+
+
+def _uninstall_agent_cmd(arg: str) -> str:
+    """`/uninstall-agent [name]` — list installed (removable) or remove one."""
+    from ai4science.harness import installed_agents as _ia
+    installed = _ia.load()
+    removable = sorted(installed - set(_ia._DEFAULT_INSTALLED))
+
+    if not arg:
+        if not removable:
+            return ("uninstall-agent: no removable agents installed "
+                    "(sarsi-worker is permanent)")
+        lines = ["installed agents (removable):"]
+        lines += [f"  {aid}" for aid in removable]
+        lines.append("remove one: /uninstall-agent <name>")
+        return "\n".join(lines)
+
+    name = arg.lower()
+    id_map = {aid.lower(): aid for aid in installed}
+    if name not in id_map:
+        return f"uninstall-agent: {name!r} is not installed"
+    actual = id_map[name]
+    if not _ia.uninstall(actual):
+        return f"uninstall-agent: {actual} is a default agent and cannot be removed"
+    return f"uninstalled {actual} — removed from /agent"
+
+
 def _sarsi_worker_choices():
-    """`(id, description)` for every sarsi worker, `sarsi-worker` first.
+    """`(id, description)` for every installed sarsi worker, `sarsi-worker` first.
 
     Returns `[]` on any failure — a machine with no sarsi registry still gets
     its spec list, and a broken registry must not take down the picker the
@@ -1667,7 +1751,9 @@ def _sarsi_worker_choices():
     """
     try:
         from ai4science.harness.agents.sarsi import registry as reg
+        from ai4science.harness import installed_agents as _ia
         config = reg.load()
+        installed = _ia.load()
     except Exception:
         return []
     rows = []
@@ -1675,6 +1761,8 @@ def _sarsi_worker_choices():
         if getattr(agent, "role", "") != "worker":
             continue
         if getattr(agent, "retired", False):
+            continue
+        if agent_id not in installed:
             continue
         # `about` is a list on some roster entries and a string on others —
         # a picker must not care which, and must never raise into the loop.
