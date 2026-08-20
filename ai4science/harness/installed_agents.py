@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-_DEFAULT_INSTALLED: frozenset[str] = frozenset({"sarsi-worker"})
+_DEFAULT_INSTALLED: frozenset[str] = frozenset({"sarsi-worker", "sarsi-machine"})
 
 
 def _path() -> Path:

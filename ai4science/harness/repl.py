@@ -377,15 +377,20 @@ def _chat_specs() -> set:
 def _roster_agents() -> set:
     """Roster ids, from this machine's registry when it has one and from the
     shipped roster when it does not. A box that never ran `sarsi init` should
-    still be able to explain what the name means."""
+    still be able to explain what the name means.
+
+    The hostname is included as an alias for sarsi-machine so that
+    `/<hostname>` is recognised as a roster command [A21(b)]."""
     from ai4science.harness.agents.sarsi import registry as reg
     try:
-        return set(reg.load().agents)
+        names = set(reg.load().agents)
     except Exception:
         try:
-            return {a["id"] for a in reg._ROSTER}
+            names = {a["id"] for a in reg._ROSTER}
         except Exception:
-            return set()
+            names = set()
+    names.add(_machine_hostname())
+    return names
 
 
 def resolve_name(name: str):
@@ -662,6 +667,10 @@ def _sarsi_bridge(cmd: str, arg: str, agent_name: str) -> str:
         return f"could not read the sarsi registry: {e}"
 
     agent = config.agents.get(agent_name)
+    if agent is None:
+        # Hostname is the display name for sarsi-machine [A21(b)] — resolve it.
+        if agent_name == _machine_hostname():
+            agent = config.agents.get("sarsi-machine")
     if agent is None:
         return (f"{agent_name or 'this agent'} has no sarsi worker — it answers "
                 f"here instead of delegating.\n  workers with a task board: "
@@ -1763,8 +1772,21 @@ def _uninstall_agent_cmd(arg: str) -> str:
     return f"uninstalled {actual} — removed from /agent"
 
 
+def _machine_hostname() -> str:
+    """Short hostname — no domain suffix."""
+    try:
+        import socket
+        return socket.gethostname().split(".")[0]
+    except Exception:
+        return "this-machine"
+
+
 def _sarsi_worker_choices():
-    """`(id, description)` for every sarsi worker, `sarsi-worker` first.
+    """`(display_name, description)` for every installed sarsi agent.
+
+    Workers are listed by their own id.  The machine agent (manager role) is
+    listed by the machine's hostname per spec [A21(b)].  `sarsi-worker` sorts
+    first; the machine agent sorts second.
 
     Returns `[]` on any failure — a machine with no sarsi registry still gets
     its spec list, and a broken registry must not take down the picker the
@@ -1775,23 +1797,25 @@ def _sarsi_worker_choices():
         config = reg.load()
     except Exception:
         return []
+    hostname = _machine_hostname()
     rows = []
     for agent_id, agent in (config.agents or {}).items():
-        if getattr(agent, "role", "") != "worker":
-            continue
         if getattr(agent, "retired", False):
             continue
         if not getattr(agent, "installed", False):
             continue
-        # `about` is a list on some roster entries and a string on others —
-        # a picker must not care which, and must never raise into the loop.
+        role = getattr(agent, "role", "")
         about = getattr(agent, "about", "") or ""
         if isinstance(about, (list, tuple)):
             about = " ".join(str(x) for x in about)
-        rows.append((agent_id, str(about).strip()
-                     or "a sarsi worker: holds tasks and drives sessions"))
-    # `sarsi-worker` first: it is the general one, and the owner reaches for it.
-    rows.sort(key=lambda r: (r[0] != "sarsi-worker", r[0]))
+        about = str(about).strip()
+        if role == "worker":
+            rows.append((agent_id, about or "a sarsi worker: holds tasks and drives sessions"))
+        elif role == "manager":
+            # Machine agent shown by hostname [A21(b)].
+            rows.append((hostname, about or "the machine agent — coordinates workers on this machine"))
+    # sarsi-worker first, machine agent second, rest alphabetical.
+    rows.sort(key=lambda r: (r[0] != "sarsi-worker", r[0] != hostname, r[0]))
     return rows
 
 
