@@ -393,37 +393,27 @@ def workspace_context(config: Config, agent: Agent, surface: str = "cli") -> str
     except Exception:
         pass
 
-    # ── full conversation log (capped by chars, not count) ─────────────────
-    # The owner's question may relate to something said many sessions ago, so
-    # we inject ALL recorded exchanges and let the LLM decide relevance.
-    # A character budget (not an entry count) keeps the injection bounded even
-    # as the log grows; the most recent entries are kept when trimming.
+    # ── full conversation log ───────────────────────────────────────────────
+    # sarsi-worker is a manager that directs sarsi-claude and sarsi-ai4sci.
+    # Every decision it makes must be grounded in the full project history,
+    # so ALL exchanges are injected — no count or character cap. The log file
+    # path is also included so the LLM can re-read it directly if needed.
     try:
         from ai4science.harness.agents.sarsi import log as _log
+        log_path = _log._path(agent.agent_dir, surface)
         entries = _log.read(agent.agent_dir, surface, limit=0)  # all entries
+        log_lines = [f"conversation history ({len(entries)} exchanges)"
+                     f" — full log: {log_path}:"]
         if entries:
-            _CHAR_BUDGET = 6000
-            log_lines = [f"conversation history ({len(entries)} exchanges):"]
-            # Build from oldest to newest; if over budget, drop oldest first.
-            rendered = []
             for e in entries:
                 ts = str(e.get("at", ""))[:16]
                 inp = str(e.get("in", "")).strip()
                 out = str(e.get("out", "")).strip()
-                rendered.append(f"  [{ts}] you: {inp}\n           worker: {out}")
-            # Trim oldest entries until within budget.
-            while rendered:
-                block = "\n".join(rendered)
-                if len(block) <= _CHAR_BUDGET:
-                    break
-                rendered.pop(0)
-            if rendered:
-                if len(rendered) < len(entries):
-                    log_lines.append(
-                        f"  (oldest {len(entries) - len(rendered)} entries omitted "
-                        f"to fit context budget)")
-                log_lines.extend(rendered)
-                parts.append("\n".join(log_lines))
+                log_lines.append(f"  [{ts}] you: {inp}")
+                log_lines.append(f"           worker: {out}")
+        else:
+            log_lines.append("  (no exchanges recorded yet)")
+        parts.append("\n".join(log_lines))
     except Exception:
         pass
 

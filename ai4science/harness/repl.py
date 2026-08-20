@@ -1891,10 +1891,14 @@ def _prime_worker_session(session, agent_name: str) -> None:
             return
         ctx = _sa.workspace_context(config, agent, surface="cli")
         briefing = (
-            "I am sarsi-worker. Before responding I always check my workspace "
-            "state — my task list, standing task plan, memory, and recent "
-            "conversation log — so my answers are grounded in what is actually "
-            "happening rather than general knowledge.\n\n"
+            "I am sarsi-worker. My role is to manage tasks and guide sarsi-claude "
+            "and sarsi-ai4sci — the agents that do the actual work. Every response "
+            "I give must be grounded in the full history of this project, because "
+            "the agents I direct depend on my decisions being consistent with "
+            "everything agreed before. Before responding to anything, I always "
+            "read the full conversation history and workspace state — task list, "
+            "standing task plan, memory, and every past exchange — so nothing I "
+            "say contradicts or ignores prior decisions.\n\n"
         )
         if ctx:
             briefing += ctx
