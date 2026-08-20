@@ -114,8 +114,9 @@ def test_the_session_is_started_with_the_agents_spec(config):
 
     This asserted `claude-code` for `work`, whose roster spec is `claude-code`.
     The owner then set the default the other way: "when sarsi-worker makes a
-    task, give the choice sarsi-claude or sarsi-pwm — **default is sarsi-pwm**",
-    and sarsi-pwm means "ai4science, not the vendor binary". An agent whose spec
+    task, give the choice sarsi-claude or sarsi-ai4sci — **default is
+    sarsi-ai4sci**", and it means "ai4science, not the vendor binary". An agent
+    whose spec
     is `claude-code` therefore takes the ai4science default unless the task
     explicitly chooses `sarsi-claude`.
 
@@ -129,7 +130,7 @@ def test_the_session_is_started_with_the_agents_spec(config):
     agent = config.agents["work"]
     rt = FakeRuntime()
     ses.assign(config, agent, _task(config, agent), runtime=rt)
-    assert rt.started[0]["spec"] == "unified-LLM"
+    assert rt.started[0]["spec"] == "ai4sci"   # sarsi-ai4sci's canonical spec
 
     from ai4science.harness.agents.sarsi import task as _t
     t = _task(config, agent); t.backend = "sarsi-claude"

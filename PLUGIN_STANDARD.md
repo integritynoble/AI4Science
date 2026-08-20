@@ -173,7 +173,8 @@ ai4science plugins test ./my-tool.json --free      # offline dev, no PWM
 
 ## 8. Tiers & the moat
 
-- `open` agents (`claude-code`, `codex`, `unified-LLM`) are the base coding
+- `open` agents (`claude-code`, `codex`, `ai4sci` — formerly `unified-LLM`, which
+  still works as an alias) are the base coding
   assistants: **main-only** (never sub-agents), no PWM tools.
 - `science` agents (`research`, `paper`, `computational-imaging`, and your
   plug-ins) reach PWM data + the reconstruction algorithm base, and compose each

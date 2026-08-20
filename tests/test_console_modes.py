@@ -528,7 +528,7 @@ def test_an_agent_that_is_not_self_aware_falls_through():
 
 def test_the_confirm_block_names_the_backend_and_the_switch():
     text = console.confirm_block("write a solver", "sarsi-worker")
-    assert "sarsi-pwm" in text, "the default backend must be shown, not implied"
+    assert "sarsi-ai4sci" in text, "the default backend must be shown, not implied"
     assert "b=" in text, "and the block must say how to choose the other one"
 
 
@@ -545,7 +545,7 @@ def test_b_again_switches_back():
     m = console.Mode(kind="agent", name="sarsi-worker", pending="do the thing",
                      backend="sarsi-claude")
     act, mode = console.route("b", m, _deps())
-    assert mode.backend == "sarsi-pwm"
+    assert mode.backend == "sarsi-ai4sci"
     assert mode.pending == "do the thing"
 
 

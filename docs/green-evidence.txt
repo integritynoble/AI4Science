@@ -1,0 +1,13 @@
+test_a_spawn_that_acknowledges_is_running_and_carries_its_handle (tests.sarsi.test_acp_spawn_report.ACleanSpawnReportsRunning.test_a_spawn_that_acknowledges_is_running_and_carries_its_handle) ... ok
+test_a_lost_ack_over_a_finished_session_is_finished (tests.sarsi.test_acp_spawn_report.ATimeoutWhereTheSessionFinishedReportsFinished.test_a_lost_ack_over_a_finished_session_is_finished) ... ok
+test_a_lost_ack_over_a_live_session_is_running_not_a_bare_timeout (tests.sarsi.test_acp_spawn_report.ATimeoutWhereTheSessionIsLiveReportsRunning.test_a_lost_ack_over_a_live_session_is_running_not_a_bare_timeout) ... ok
+test_a_lookup_that_raises_does_not_become_never_started (tests.sarsi.test_acp_spawn_report.NeverStartedIsNeverGuessedWithoutEvidence.test_a_lookup_that_raises_does_not_become_never_started) ... ok
+test_no_lookup_configured_does_not_become_never_started (tests.sarsi.test_acp_spawn_report.NeverStartedIsNeverGuessedWithoutEvidence.test_no_lookup_configured_does_not_become_never_started) ... ok
+test_a_genuine_negative_lookup_reports_never_started (tests.sarsi.test_acp_spawn_report.NeverStartedIsOnlyClaimedOnANegativeLookup.test_a_genuine_negative_lookup_reports_never_started) ... ok
+test_a_spawn_timeout_returns_a_status_rather_than_raising (tests.sarsi.test_acp_spawn_report.SpawnNeverPropagatesABareTimeout.test_a_spawn_timeout_returns_a_status_rather_than_raising) ... ok
+test_running_finished_never_started_are_three_different_strings (tests.sarsi.test_acp_spawn_report.TheThreeStatusesAreDistinct.test_running_finished_never_started_are_three_different_strings) ... ok
+
+----------------------------------------------------------------------
+Ran 8 tests in 0.002s
+
+OK

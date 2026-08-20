@@ -32,6 +32,10 @@ _AGENT_DIST: Dict[str, str] = {
     "computational-imaging": "pwm-agent-imaging",
     "drug-design": "pwm-agent-drug",
     "cancer": "pwm-agent-cancer",
+    # The mode formerly named "unified-LLM" is now canonically "ai4sci". Both map
+    # to the same distribution so install hints work whichever name the installed
+    # pwm-agent-unified package declares.
+    "ai4sci": "pwm-agent-unified",
     "unified-LLM": "pwm-agent-unified",
     "claude-code": "pwm-agent-claude-gpu",   # was keyed "claude-gpu"
     "codex": "pwm-agent-codex-gpu",           # was keyed "codex-gpu"
@@ -250,6 +254,19 @@ def reload(specs_dir: Optional[Path] = None, *, load_plugins: bool = True) -> Di
             continue
         merged = tuple(dict.fromkeys(spec.capabilities + tuple(bundles)))
         found[target] = dataclasses.replace(spec, capabilities=merged)
+
+    # ── mode-rename compat: 'unified-LLM' → 'ai4sci' ──
+    # The canonical AgentSpec name is whatever the INSTALLED pwm-agent-unified
+    # package declares — it is not in this repo, so it may ship as EITHER name.
+    # Seed the missing one as an alias of the one that is actually present, so
+    # both {'ai4sci', 'unified-LLM'} always resolve to the same spec.
+    _MODE_COMPAT = ("ai4sci", "unified-LLM")
+    present = [n for n in _MODE_COMPAT if n in found]
+    if len(present) == 1:
+        canonical = present[0]
+        for other in _MODE_COMPAT:
+            if other != canonical and other not in found:
+                aliases.setdefault(other, canonical)
 
     AGENT_REGISTRY.clear()
     AGENT_REGISTRY.update(found)

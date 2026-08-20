@@ -77,7 +77,9 @@ class Task:
     #: outcome scores perfectly and means nothing.
     forecast: Optional[Dict[str, Any]] = None
     session: Optional[Dict[str, Any]] = None
-    #: Which session backend runs this task — `sarsi-pwm` or `sarsi-claude`.
+    #: Which session backend runs this task — `sarsi-ai4sci` or `sarsi-claude`.
+    #: Records written before 2026-08-19 say `sarsi-pwm`; that spelling is
+    #: never rewritten and `backends.canonical` keeps it resolving.
     #: It belongs to the TASK, not the agent: one worker runs many tasks, and
     #: "which engine ran this one" is a fact about the task. Blank on records
     #: written before backends were named, which `backends.resolve` reads as

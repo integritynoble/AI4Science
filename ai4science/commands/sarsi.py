@@ -180,8 +180,10 @@ def do(agent_id: str = typer.Argument(..., help="Worker id, e.g. sarsi-worker"),
                                        help="Wait until <agent>/<task> is VERIFIED (repeatable)."),
        backend: str = typer.Option("", "--backend",
                                    help="Which engine runs the session: "
-                                        "sarsi-pwm (ai4science, the default) or "
-                                        "sarsi-claude (Anthropic's claude binary).")) -> None:
+                                        "sarsi-ai4sci (ai4science, the default) or "
+                                        "sarsi-claude (Anthropic's claude binary). "
+                                        "The old spelling sarsi-pwm is still "
+                                        "accepted and records as sarsi-ai4sci.")) -> None:
     from pathlib import Path
 
     from ai4science.harness.agents.sarsi import worker
@@ -1041,7 +1043,7 @@ def _worker_or_exit(config: reg.Config, agent_id: str):
 
 
 @app.command("run", help="Hand a task's plan to its backend — sarsi-claude or "
-                         "sarsi-pwm, whichever the task carries — and start "
+                         "sarsi-ai4sci, whichever the task carries — and start "
                          "the governed session.")
 def run_cmd(agent_id: str = typer.Argument(..., help="Worker id"),
             task_id: str = typer.Argument(..., help="Task id"),

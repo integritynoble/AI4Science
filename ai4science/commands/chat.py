@@ -178,7 +178,27 @@ def _maybe_offer_login() -> None:
 #: Tried in order when the requested mode is not installed. The requested mode
 #: itself is skipped — offering it as its own fallback is what produced
 #: "Unknown --mode 'unified-LLM'; using 'unified-LLM'".
-_FALLBACK_MODES = ("unified-LLM", "general-purpose")
+_FALLBACK_MODES = ("ai4sci", "general-purpose")
+
+
+#: Modes renamed but still accepted (old name -> new canonical name). Passing an
+#: old name explicitly (via --mode or AI4SCIENCE_MODE) prints ONE deprecation
+#: line; internal resolution never warns.
+_DEPRECATED_MODES = {"unified-llm": "ai4sci"}
+_warned_deprecated_modes: set = set()
+
+
+def _warn_deprecated_mode(raw: Optional[str]) -> None:
+    """Loud-but-once: warn the first time a user explicitly passes a renamed
+    mode name in this process, and never for internal alias resolution."""
+    if not raw:
+        return
+    key = raw.strip().lower()
+    new = _DEPRECATED_MODES.get(key)
+    if new and key not in _warned_deprecated_modes:
+        _warned_deprecated_modes.add(key)
+        console.print(f"[yellow]Note: mode '{raw}' has been renamed to '{new}'; "
+                      f"the old name still works but is deprecated.[/yellow]")
 
 
 def _resolve_spec(mode, registry):
@@ -261,8 +281,9 @@ def chat(
     ),
     mode: Optional[str] = typer.Option(
         None, "--mode",
-        help="Session mode: 'unified-LLM' (general assistant across Claude/ChatGPT/Gemini; "
-             "'common' is an alias), 'research', 'paper', 'claude code', 'codex', or a "
+        help="Session mode: 'ai4sci' (general assistant across Claude/ChatGPT/Gemini; "
+             "'unified-LLM' and 'common' are accepted aliases), 'research', 'paper', "
+             "'claude code', 'codex', or a "
              "'specific' domain agent. Defaults to AI4SCIENCE_MODE, else research. "
              "Switch live with /agent.",
     ),
@@ -304,9 +325,13 @@ def chat(
     # Resolve --mode against the agent registry. The active AgentSpec drives the
     # session (registry + system prompt) inside run_common_repl; here we only pass
     # mode_label and the spec's prompt as a harmless fallback.
-    # Default agent is UNIFIED-LLM (pure coding assistant, no PWM). Override
-    # per-session with --agent/--mode or AI4SCIENCE_MODE (e.g. research, claude, codex).
-    mode = (mode or os.environ.get("AI4SCIENCE_MODE") or "unified-LLM").lower()
+    # Default agent is AI4SCI (formerly 'unified-LLM'; pure coding assistant, no
+    # PWM). Override per-session with --agent/--mode or AI4SCIENCE_MODE (e.g.
+    # research, claude, codex). An explicitly-passed old name still works but
+    # earns a one-line deprecation notice; the default never warns.
+    _raw_mode = mode or os.environ.get("AI4SCIENCE_MODE")
+    _warn_deprecated_mode(_raw_mode)
+    mode = (_raw_mode or "ai4sci").lower()
     backend = backend or os.environ.get("AI4SCIENCE_BACKEND")
     from ai4science.harness.tui import resolve_mode
     mode = resolve_mode(mode)          # display name (e.g. 'claude') → id 'claude-code'
@@ -767,7 +792,7 @@ def _print_welcome(workspace: Path, read_only: bool, auto_yes: bool,
                    memory_file: Optional[Path] = None,
                    continue_session: bool = False,
                    model: Optional[str] = None,
-                   session_mode: str = "unified-LLM") -> None:
+                   session_mode: str = "ai4sci") -> None:
     if plan_mode:
         toolmode = "plan"
     elif read_only:
@@ -869,7 +894,7 @@ def _print_help() -> None:
         ("/files",             "list workspace artifact files"),
         ("/commands",          "list custom (user-defined) slash commands"),
         ("/plan <request>",    "single-turn plan mode (no edits, agent returns a plan)"),
-        ("/agent",             "switch agent: research / claude / codex / unified-LLM / computational-imaging / paper / specific"),
+        ("/agent",             "switch agent: research / claude / codex / ai4sci / computational-imaging / paper / specific"),
         ("/model",             "pick the model from a menu (or /model <name> to switch directly)"),
         ("/validate",          "run `ai4science validate` (deterministic)"),
         ("/judge",             "run the CASSI Physics Judge"),

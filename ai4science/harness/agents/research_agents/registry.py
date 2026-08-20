@@ -17,9 +17,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, Optional, Tuple
 
+from dataclasses import field as dataclass_field
+
 from .budget import Budget, Switch
 from .charter import Charter
 from .fieldmap import Claim, FieldMap, UNTRIED
+from .group import FLOOR, Group
 from .selfmodel import Dimension, SelfModel
 
 
@@ -33,6 +36,11 @@ class ResearchAgent:
     #: What a night's standing grant should cover, in the agent's own units.
     night: Tuple[float, str]
     field_map: FieldMap
+    #: The group this agent presents outward as one thing — the nine floor
+    #: members by default (no bodies; nothing embodied is built). Its ceiling
+    #: caps the agent's, because the ceiling belongs to the act.
+    group: Group = dataclass_field(
+        default_factory=lambda: Group("research", FLOOR))
 
     @property
     def name(self) -> str:
@@ -57,7 +65,7 @@ class ResearchAgent:
 
     def report(self) -> str:
         return "\n\n".join([self.charter.describe(), self.self_model.report(),
-                            self.field_map.report()])
+                            self.field_map.report(), self.group.report()])
 
 
 def _agent(charter: Charter, dims: Tuple[Dimension, ...], limits: Tuple[str, ...],
@@ -65,7 +73,8 @@ def _agent(charter: Charter, dims: Tuple[Dimension, ...], limits: Tuple[str, ...
     return ResearchAgent(charter=charter,
                          self_model=SelfModel(charter.name, dims, limits),
                          switch=Switch(charter.name), night=night,
-                         field_map=FieldMap(charter.name, claims))
+                         field_map=FieldMap(charter.name, claims),
+                         group=Group(charter.name, FLOOR))
 
 
 # --------------------------------------------------------------------------

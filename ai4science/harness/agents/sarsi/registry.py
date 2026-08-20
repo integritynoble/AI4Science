@@ -326,7 +326,7 @@ _ROSTER = [
      "tools": ["browser", "documents"],
      "about": ["grant", "fellowship", "funding", "programme", "proposal",
                "award"]},
-    {"id": "jobs", "role": WORKER_ROLE, "spec": "unified-LLM",
+    {"id": "jobs", "role": WORKER_ROLE, "spec": "ai4sci",
      "tools": ["browser", "documents"],
      "about": ["cv", "resume", "job", "vacancy", "interview", "recruiter"]},
     # The first research agent the owner can address. Everything else about it

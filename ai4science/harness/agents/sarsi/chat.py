@@ -329,7 +329,7 @@ def _guided(config, agent, t, instruction, runtime):
                 f"screen. Deliver it yourself:\n"
                 f"  tmux attach -t {t.session['name']}\n"
                 f"  {instruction}")
-    (runtime or ses.MachineRuntime()).send(t.session["name"], instruction)
+    (runtime or ses.runtime_for(t)).send(t.session["name"], instruction)
     return f"steered {t.id}: {instruction}"
 
 

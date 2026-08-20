@@ -268,11 +268,48 @@ def _ask(reason): return {"decision": "ask", "reason": reason, "tripwire": False
 def _deny(reason, tripwire=False): return {"decision": "deny", "reason": reason, "tripwire": tripwire}
 
 
+def _capped_by_group(ceiling: str, group) -> str:
+    """The declared ceiling, capped by the group's — never widened by it.
+
+    A research agent is a group, and "the ceiling belongs to the act, and the act
+    with a body sets it": a group holding one embodied member sits at A0 however
+    the agent was declared. Until now `Group.capped` was consulted only by the
+    two renderers (`commands/research.py`, `sarsi/board.py`), so the rule was
+    DESCRIPTIVE — a sentence printed on a board while the grant path went on
+    honoring the agent's own letter. A rule only a renderer reads is not a
+    ceiling; this is where it stops being descriptive.
+
+    Duck-typed on purpose: anything with `.capped(str) -> str` will do. Nothing
+    from `research_agents` may be imported here — `group.py` imports
+    `_CEILING_ORDER` FROM this module, so importing back is a cycle.
+
+    A malformed group must never widen authority, so a `.capped()` that raises,
+    or that answers with something outside `_CEILING_ORDER`, falls back to the
+    DECLARED ceiling rather than to anything higher. Same shape as the
+    `_trust.effective_ceiling` cap in `hook.py`, which lowers A3 to A2 when A3 is
+    not unlocked: a cap applied to the ceiling before any level is read from it.
+    """
+    try:
+        capped = group.capped(ceiling)
+    except Exception:
+        return ceiling
+    if capped not in _CEILING_ORDER:
+        return ceiling
+    # belt and braces: take the lower of the two, so a `capped()` that answers
+    # upward is ignored rather than obeyed.
+    return min((ceiling, capped),
+               key=lambda c: _CEILING_ORDER.get(c, 1))
+
+
 def decide_tool_call(call: Dict[str, Any], *, ceiling: str = "A1",
                      project_dir: Optional[str] = None,
-                     writable=None) -> Dict[str, Any]:
+                     writable=None, group=None) -> Dict[str, Any]:
     tool = call.get("tool_name") or call.get("tool") or ""
     inp = call.get("tool_input") or call.get("input") or {}
+    # The cap lands BEFORE `lvl` — every branch below reads `lvl`, so a cap
+    # applied anywhere later would be a cap on some decisions and not others.
+    if group is not None:
+        ceiling = _capped_by_group(ceiling, group)
     lvl = _CEILING_ORDER.get(ceiling, 1)
 
     if tool in READ_ONLY_TOOLS:
@@ -331,18 +368,33 @@ class SessionDriver:
     """Adjudicates a live Claude Code session's tool calls, halting on a tripwire."""
 
     def __init__(self, *, ceiling: str = "A1", project_dir: Optional[str] = None,
-                 audit: Optional[Callable[[Dict], None]] = None):
+                 audit: Optional[Callable[[Dict], None]] = None, group=None):
         self.ceiling = ceiling
         self.project_dir = project_dir
         self.audit = audit
+        #: Optional group whose ceiling caps this session's — duck-typed,
+        #: `.capped(str) -> str`. See `_capped_by_group`.
+        self.group = group
         self.tripped = False
         self.log: List[Dict] = []
+
+    def effective_ceiling(self) -> str:
+        """What this session actually runs at — the declared ceiling capped by
+        the group's, if it has one. Named for `trust.effective_ceiling`, which
+        does the same job for the trust ledger: what was asked for is not
+        necessarily what is in force, and a caller that wants to SAY the ceiling
+        should say this one."""
+        if self.group is None:
+            return self.ceiling
+        return _capped_by_group(self.ceiling, self.group)
 
     def drive(self, call: Dict[str, Any]) -> Dict[str, Any]:
         if self.tripped:
             verdict = _deny("session halted by an earlier tripwire", tripwire=True)
         else:
-            verdict = decide_tool_call(call, ceiling=self.ceiling, project_dir=self.project_dir)
+            verdict = decide_tool_call(call, ceiling=self.ceiling,
+                                       project_dir=self.project_dir,
+                                       group=self.group)
             if verdict.get("tripwire"):
                 self.tripped = True
         entry = {"tool": call.get("tool_name") or call.get("tool"), "verdict": verdict}

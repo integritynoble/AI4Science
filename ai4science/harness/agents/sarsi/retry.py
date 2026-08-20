@@ -67,7 +67,7 @@ def retry(config: Config, agent: Agent, task: tsk.Task, *,
             f"fails: {reason or 'no reason given'}. Stopping rather than "
             f"spending — this one wants you.")
 
-    runtime = runtime or ses.MachineRuntime()
+    runtime = runtime or ses.runtime_for(task)
     if not (task.session or {}).get("name"):
         # A FAIL usually arrives after the session has been released; start a
         # fresh one rather than sending into a name that no longer exists.

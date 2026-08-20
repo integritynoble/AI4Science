@@ -1,0 +1,106 @@
+test_a_spawn_that_acknowledges_is_running_and_carries_its_handle (tests.sarsi.test_acp_spawn_report.ACleanSpawnReportsRunning.test_a_spawn_that_acknowledges_is_running_and_carries_its_handle) ... ERROR
+test_a_lost_ack_over_a_finished_session_is_finished (tests.sarsi.test_acp_spawn_report.ATimeoutWhereTheSessionFinishedReportsFinished.test_a_lost_ack_over_a_finished_session_is_finished) ... ERROR
+test_a_lost_ack_over_a_live_session_is_running_not_a_bare_timeout (tests.sarsi.test_acp_spawn_report.ATimeoutWhereTheSessionIsLiveReportsRunning.test_a_lost_ack_over_a_live_session_is_running_not_a_bare_timeout) ... ERROR
+test_a_lookup_that_raises_does_not_become_never_started (tests.sarsi.test_acp_spawn_report.NeverStartedIsNeverGuessedWithoutEvidence.test_a_lookup_that_raises_does_not_become_never_started) ... ERROR
+test_no_lookup_configured_does_not_become_never_started (tests.sarsi.test_acp_spawn_report.NeverStartedIsNeverGuessedWithoutEvidence.test_no_lookup_configured_does_not_become_never_started) ... ERROR
+test_a_genuine_negative_lookup_reports_never_started (tests.sarsi.test_acp_spawn_report.NeverStartedIsOnlyClaimedOnANegativeLookup.test_a_genuine_negative_lookup_reports_never_started) ... ERROR
+test_a_spawn_timeout_returns_a_status_rather_than_raising (tests.sarsi.test_acp_spawn_report.SpawnNeverPropagatesABareTimeout.test_a_spawn_timeout_returns_a_status_rather_than_raising) ... ERROR
+test_running_finished_never_started_are_three_different_strings (tests.sarsi.test_acp_spawn_report.TheThreeStatusesAreDistinct.test_running_finished_never_started_are_three_different_strings) ... ERROR
+
+======================================================================
+ERROR: test_a_spawn_that_acknowledges_is_running_and_carries_its_handle (tests.sarsi.test_acp_spawn_report.ACleanSpawnReportsRunning.test_a_spawn_that_acknowledges_is_running_and_carries_its_handle)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/tina1/work/spawnfix/tests/sarsi/test_acp_spawn_report.py", line 89, in test_a_spawn_that_acknowledges_is_running_and_carries_its_handle
+    rt = _runtime(conn=FakeConnection(session_id="sid-live"))
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/tina1/work/spawnfix/tests/sarsi/test_acp_spawn_report.py", line 69, in _runtime
+    return acp.AcpRuntime(connect=lambda **_: conn, agent_id="sarsi-ai4sci",
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: AcpRuntime.__init__() got an unexpected keyword argument 'lookup'
+
+======================================================================
+ERROR: test_a_lost_ack_over_a_finished_session_is_finished (tests.sarsi.test_acp_spawn_report.ATimeoutWhereTheSessionFinishedReportsFinished.test_a_lost_ack_over_a_finished_session_is_finished)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/tina1/work/spawnfix/tests/sarsi/test_acp_spawn_report.py", line 116, in test_a_lost_ack_over_a_finished_session_is_finished
+    rt = _runtime(conn=FailingConnection(),
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/tina1/work/spawnfix/tests/sarsi/test_acp_spawn_report.py", line 69, in _runtime
+    return acp.AcpRuntime(connect=lambda **_: conn, agent_id="sarsi-ai4sci",
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: AcpRuntime.__init__() got an unexpected keyword argument 'lookup'
+
+======================================================================
+ERROR: test_a_lost_ack_over_a_live_session_is_running_not_a_bare_timeout (tests.sarsi.test_acp_spawn_report.ATimeoutWhereTheSessionIsLiveReportsRunning.test_a_lost_ack_over_a_live_session_is_running_not_a_bare_timeout)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/tina1/work/spawnfix/tests/sarsi/test_acp_spawn_report.py", line 104, in test_a_lost_ack_over_a_live_session_is_running_not_a_bare_timeout
+    rt = _runtime(conn=FailingConnection(), lookup=lookup)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/tina1/work/spawnfix/tests/sarsi/test_acp_spawn_report.py", line 69, in _runtime
+    return acp.AcpRuntime(connect=lambda **_: conn, agent_id="sarsi-ai4sci",
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: AcpRuntime.__init__() got an unexpected keyword argument 'lookup'
+
+======================================================================
+ERROR: test_a_lookup_that_raises_does_not_become_never_started (tests.sarsi.test_acp_spawn_report.NeverStartedIsNeverGuessedWithoutEvidence.test_a_lookup_that_raises_does_not_become_never_started)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/tina1/work/spawnfix/tests/sarsi/test_acp_spawn_report.py", line 140, in test_a_lookup_that_raises_does_not_become_never_started
+    rt = _runtime(conn=FailingConnection(), lookup=lookup)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/tina1/work/spawnfix/tests/sarsi/test_acp_spawn_report.py", line 69, in _runtime
+    return acp.AcpRuntime(connect=lambda **_: conn, agent_id="sarsi-ai4sci",
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: AcpRuntime.__init__() got an unexpected keyword argument 'lookup'
+
+======================================================================
+ERROR: test_no_lookup_configured_does_not_become_never_started (tests.sarsi.test_acp_spawn_report.NeverStartedIsNeverGuessedWithoutEvidence.test_no_lookup_configured_does_not_become_never_started)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/tina1/work/spawnfix/tests/sarsi/test_acp_spawn_report.py", line 148, in test_no_lookup_configured_does_not_become_never_started
+    rt = _runtime(conn=FailingConnection(), lookup=None)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/tina1/work/spawnfix/tests/sarsi/test_acp_spawn_report.py", line 69, in _runtime
+    return acp.AcpRuntime(connect=lambda **_: conn, agent_id="sarsi-ai4sci",
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: AcpRuntime.__init__() got an unexpected keyword argument 'lookup'
+
+======================================================================
+ERROR: test_a_genuine_negative_lookup_reports_never_started (tests.sarsi.test_acp_spawn_report.NeverStartedIsOnlyClaimedOnANegativeLookup.test_a_genuine_negative_lookup_reports_never_started)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/tina1/work/spawnfix/tests/sarsi/test_acp_spawn_report.py", line 126, in test_a_genuine_negative_lookup_reports_never_started
+    rt = _runtime(conn=FailingConnection(), lookup=lambda key: None)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/tina1/work/spawnfix/tests/sarsi/test_acp_spawn_report.py", line 69, in _runtime
+    return acp.AcpRuntime(connect=lambda **_: conn, agent_id="sarsi-ai4sci",
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: AcpRuntime.__init__() got an unexpected keyword argument 'lookup'
+
+======================================================================
+ERROR: test_a_spawn_timeout_returns_a_status_rather_than_raising (tests.sarsi.test_acp_spawn_report.SpawnNeverPropagatesABareTimeout.test_a_spawn_timeout_returns_a_status_rather_than_raising)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/tina1/work/spawnfix/tests/sarsi/test_acp_spawn_report.py", line 160, in test_a_spawn_timeout_returns_a_status_rather_than_raising
+    rt = _runtime(conn=FailingConnection(), lookup=lambda key: None)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/tina1/work/spawnfix/tests/sarsi/test_acp_spawn_report.py", line 69, in _runtime
+    return acp.AcpRuntime(connect=lambda **_: conn, agent_id="sarsi-ai4sci",
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: AcpRuntime.__init__() got an unexpected keyword argument 'lookup'
+
+======================================================================
+ERROR: test_running_finished_never_started_are_three_different_strings (tests.sarsi.test_acp_spawn_report.TheThreeStatusesAreDistinct.test_running_finished_never_started_are_three_different_strings)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/tina1/work/spawnfix/tests/sarsi/test_acp_spawn_report.py", line 83, in test_running_finished_never_started_are_three_different_strings
+    names = [acp.RUNNING, acp.FINISHED, acp.NEVER_STARTED]
+             ^^^^^^^^^^^
+AttributeError: module 'ai4science.harness.agents.sarsi.acp' has no attribute 'RUNNING'
+
+----------------------------------------------------------------------
+Ran 8 tests in 0.007s
+
+FAILED (errors=8)
