@@ -1303,12 +1303,24 @@ def run_common_repl(
             try:
                 from ai4science.harness.agents.sarsi import (
                     registry as _sr, selfaware as _sa)
-                _cfg = _sr.load()
-                _wk = _cfg.agents.get(getattr(_mode, "name", "") or "")
-                if _wk is not None:
-                    _ctx = _sa.workspace_context(_cfg, _wk, surface="cli")
-                    if _ctx:
-                        line = _ctx + line
+                _name = getattr(_mode, "name", "") or ""
+                _ctx = ""
+                try:
+                    _cfg = _sr.load()
+                    _wk = _cfg.agents.get(_name)
+                    if _wk is not None:
+                        _ctx = _sa.workspace_context(_cfg, _wk, surface="cli")
+                except Exception:
+                    # No harness registry on this account -- most of this fleet.
+                    # That must not cost the worker its workspace entirely: fall
+                    # back to openclaw's, which needs only the agent id and is
+                    # where the lessons actually live. Answering from none was
+                    # the silent outcome before.
+                    _ctx = ""
+                if not _ctx and _name:
+                    _ctx = _sa.openclaw_workspace_context(_name)
+                if _ctx:
+                    line = _ctx + line
             except Exception:
                 pass
 

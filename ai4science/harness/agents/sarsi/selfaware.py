@@ -240,6 +240,87 @@ _ABOUT = ("ceiling", "a0", "a1", "a2", "a3", "permission", "grant", "task",
           "can", "may", "able", "holding", "doing", "role", "agent")
 
 
+def _lessons_from(indexes) -> list:
+    """The lesson lines of every MEMORY.md given, deduped, in order.
+
+    One reader for both callers. The registry-free path and the full
+    `workspace_context` used to carry a private copy of this filter each; two
+    copies of a rule about what counts as a lesson is one copy too many, and
+    the worker would have answered differently depending on which door it came
+    through.
+
+    A file that will not open loses only itself, never the others.
+    """
+    out, seen = [], set()
+    for idx in indexes:
+        try:
+            if not idx.exists():
+                continue
+            text = idx.read_text().strip()
+        except Exception:
+            continue
+        for line in text.splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if line in seen:      # the same lesson in both trees is ONE lesson
+                continue
+            seen.add(line)
+            out.append(line)
+    return out
+
+
+def openclaw_workspace_context(agent_id: str) -> str:
+    """The workspace snapshot obtainable with NOTHING but an agent id.
+
+    The full `workspace_context` needs the harness registry
+    (`~/.sarsi/sarsi.json`) to resolve tasks and plans -- and that registry is
+    absent on most accounts of this fleet, where the REPL's caller swallows the
+    resulting error and adds no context at all. Silently: no lessons, no board,
+    no warning.
+
+    openclaw's workspace needs no registry. It is keyed by agent id alone, it
+    exists wherever the agent does, and it is where this fleet's lessons are
+    actually written. So a worker with no harness state still answers with its
+    charter and its experience rather than with none.
+
+    Returns "" when there is nothing to say, so a caller can concatenate it
+    unconditionally.
+    """
+    import os
+    from pathlib import Path
+    ws = (Path(os.path.expanduser("~")) / ".openclaw"
+          / ("workspace-" + str(agent_id or "")))
+    lessons = _lessons_from([ws / "MEMORY.md"])
+    if not lessons:
+        return ""
+    body = "memory (lessons):\n" + "\n".join(f"  {l}" for l in lessons[:8])
+    return "[sarsi-worker workspace]\n" + body + "\n[/workspace]\n\n"
+
+
+def _memory_indexes(config: Config, agent: Agent) -> list:
+    """Every MEMORY.md this worker might have, harness tree first.
+
+    Harness first because it is the one this process writes; openclaw's is
+    read as a peer rather than a fallback -- on most accounts it is the only
+    one that exists, and on this fleet it is the one with the lessons in it.
+    """
+    out = []
+    try:
+        from ai4science.harness.agents.sarsi import memory as _mem
+        out.append(_mem.index_path(config, agent))
+    except Exception:
+        pass
+    try:
+        import os
+        from pathlib import Path
+        out.append(Path(os.path.expanduser("~")) / ".openclaw"
+                   / ("workspace-" + str(getattr(agent, "id", ""))) / "MEMORY.md")
+    except Exception:
+        pass
+    return out
+
+
 def workspace_context(config: Config, agent: Agent, surface: str = "cli") -> str:
     """A compact workspace snapshot to prepend to LLM answers in agent mode.
 
@@ -289,19 +370,26 @@ def workspace_context(config: Config, agent: Agent, surface: str = "cli") -> str
     except Exception:
         pass
 
-    # ── memory index ───────────────────────────────────────────────────────
+    # ── memory index, from BOTH workspaces ─────────────────────────────────
+    # A sarsi-worker has two homes on this fleet and neither is wrong:
+    #
+    #   ~/.sarsi/agents/<id>/          the harness's — tasks, plans, memory/
+    #   ~/.openclaw/workspace-<id>/    openclaw's    — AGENTS.md, MEMORY.md
+    #
+    # Reading only the first was silently half-blind: measured on a live
+    # account the harness index did not exist while openclaw's held 29
+    # lessons, so the worker could see WHAT it was doing and not WHAT IT HAD
+    # LEARNED -- including lessons its own workspace wrote. A missing file is
+    # not an error, so nothing reported it.
+    #
+    # Both are read. Which tree a lesson was written into is an accident of
+    # the door the work came through, and the worker should not be made to
+    # care.
     try:
-        from ai4science.harness.agents.sarsi import memory as _mem
-        idx = _mem.index_path(config, agent)
-        if idx.exists():
-            text = idx.read_text().strip()
-            if text:
-                # strip the header line, keep the lesson lines (max 8)
-                lesson_lines = [l for l in text.splitlines()
-                                if l.strip() and not l.startswith("#")][:8]
-                if lesson_lines:
-                    parts.append("memory (lessons):\n" + "\n".join(
-                        f"  {l}" for l in lesson_lines))
+        lesson_lines = _lessons_from(_memory_indexes(config, agent))
+        if lesson_lines:
+            parts.append("memory (lessons):\n" + "\n".join(
+                f"  {l}" for l in lesson_lines[:8]))
     except Exception:
         pass
 
