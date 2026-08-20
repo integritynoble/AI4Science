@@ -240,6 +240,92 @@ _ABOUT = ("ceiling", "a0", "a1", "a2", "a3", "permission", "grant", "task",
           "can", "may", "able", "holding", "doing", "role", "agent")
 
 
+def workspace_context(config: Config, agent: Agent, surface: str = "cli") -> str:
+    """A compact workspace snapshot to prepend to LLM answers in agent mode.
+
+    The LLM answering a question in sarsi-worker mode has no idea what tasks the
+    worker holds, what the current standing task is, or what lessons the agent has
+    recorded. This injects that context so the answer is grounded in the actual
+    workspace rather than generic model knowledge.
+
+    Returns "" when no context is available so the caller can skip the prefix.
+    """
+    parts: list = []
+
+    # ── task board ─────────────────────────────────────────────────────────
+    try:
+        from ai4science.harness.agents.sarsi import task as tsk, entry as _entry
+        rows = tsk.all_of(config, agent)
+        standing_id = _entry.current(config, agent, surface=surface)
+        if rows:
+            board = ["tasks held:"]
+            for t in rows[:6]:
+                marker = " ← current" if t.id == standing_id else ""
+                goal_snip = (t.goal or "")[:60]
+                board.append(f"  {t.id}  [{t.state}]  {goal_snip}{marker}")
+            if len(rows) > 6:
+                board.append(f"  … {len(rows) - 6} more — /tasks lists them")
+            parts.append("\n".join(board))
+        else:
+            parts.append("tasks held: none")
+    except Exception:
+        pass
+
+    # ── standing task plan (brief) ──────────────────────────────────────────
+    try:
+        from ai4science.harness.agents.sarsi import task as tsk, entry as _entry
+        standing_id = _entry.current(config, agent, surface=surface)
+        if standing_id:
+            t = tsk.get(config, agent, standing_id)
+            if t:
+                plan = tsk.read_plan(config, agent, t)
+                if plan:
+                    rendered = plan.render()
+                    # keep first 400 chars — enough for context without overwhelming
+                    snip = rendered[:400].strip()
+                    if len(rendered) > 400:
+                        snip += " …"
+                    parts.append(f"current task plan ({standing_id}):\n{snip}")
+    except Exception:
+        pass
+
+    # ── memory index ───────────────────────────────────────────────────────
+    try:
+        from ai4science.harness.agents.sarsi import memory as _mem
+        idx = _mem.index_path(config, agent)
+        if idx.exists():
+            text = idx.read_text().strip()
+            if text:
+                # strip the header line, keep the lesson lines (max 8)
+                lesson_lines = [l for l in text.splitlines()
+                                if l.strip() and not l.startswith("#")][:8]
+                if lesson_lines:
+                    parts.append("memory (lessons):\n" + "\n".join(
+                        f"  {l}" for l in lesson_lines))
+    except Exception:
+        pass
+
+    # ── recent conversation log ─────────────────────────────────────────────
+    try:
+        from ai4science.harness.agents.sarsi import log as _log
+        entries = _log.read(agent.agent_dir, surface, limit=4)
+        if entries:
+            log_lines = ["recent exchanges:"]
+            for e in entries:
+                ts = str(e.get("at", ""))[:16]
+                inp = str(e.get("in", ""))[:60]
+                out = str(e.get("out", ""))[:80]
+                log_lines.append(f"  [{ts}] you: {inp}")
+                log_lines.append(f"           worker: {out}")
+            parts.append("\n".join(log_lines))
+    except Exception:
+        pass
+
+    if not parts:
+        return ""
+    return "[sarsi-worker workspace]\n" + "\n\n".join(parts) + "\n[/workspace]\n\n"
+
+
 def is_about_self(line: str) -> bool:
     """Is this a question the agent can answer from its own state?
 

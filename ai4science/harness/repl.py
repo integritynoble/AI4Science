@@ -1294,6 +1294,24 @@ def run_common_repl(
             continue
         line = _act.text
 
+        # In agent mode (sarsi-worker) the LLM has no idea what tasks the worker
+        # holds, what the standing task is, or what lessons are recorded. Prepend
+        # a workspace snapshot so the answer is grounded in the actual state. [§12]
+        _mode = state.get("mode")
+        if (getattr(_mode, "kind", "") == "agent"
+                and not line.startswith("/")):
+            try:
+                from ai4science.harness.agents.sarsi import (
+                    registry as _sr, selfaware as _sa)
+                _cfg = _sr.load()
+                _wk = _cfg.agents.get(getattr(_mode, "name", "") or "")
+                if _wk is not None:
+                    _ctx = _sa.workspace_context(_cfg, _wk, surface="cli")
+                    if _ctx:
+                        line = _ctx + line
+            except Exception:
+                pass
+
         if line.startswith("/"):
             cmd, _, arg = line[1:].partition(" ")
             cmd = cmd.lower().strip()
