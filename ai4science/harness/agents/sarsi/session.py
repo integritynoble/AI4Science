@@ -399,6 +399,14 @@ def assign(config: Config, agent: Agent, task: tsk.Task, *,
                     "acp_spec": agent.spec,
                     "openclaw_id": OPENCLAW_ACP_IDS.get(agent.id),
                     "planner": agent.model}
+    # The DURABLE HANDLE. An ACP session id is recorded so the gateway can still
+    # be asked about this session after the process that made it has gone.
+    # Copied only when present, so the tmux path's record is unchanged.
+    # (Ported from the rename line; taking main's `assign` wholesale dropped it,
+    # and without it a spawn's verdict cannot be recovered later at all.)
+    for _k in ("runtime", "acp_session_id", "agent_id"):
+        if (started or {}).get(_k) is not None:
+            task.session[_k] = started[_k]
     task.state = tsk.RUNNING
     # A count of failures belongs to the session that failed. Live: a task
     # burned all three tries against a session `start_session` had reported and
@@ -759,6 +767,35 @@ def _rt(runtime: Optional[Any], task: tsk.Task) -> Any:
             return acp_runtime()
         from ai4science.harness.agents.sarsi.acp import ai4sci_acp_runtime
         return ai4sci_acp_runtime(acp_spec)
+    # No session yet -- so dispatch by the task's BACKEND instead. Without this
+    # a FRESH task on an ACP backend falls through to MachineRuntime and runs on
+    # tmux, which cannot tell a refusal from a crash from a success. The revert
+    # would be silent: the task still runs, and only the transport changes.
+    #
+    # (Ported from the rename line's `runtime_for`, which dispatched on backend
+    # alone; this keeps the session-based path above as the authority when a
+    # session exists, because the driver is a fact about the SESSION.)
+    if runtime is None:
+        # No session yet, so the answer comes from the task's BACKEND. Ported
+        # verbatim in spirit from the rename line's `runtime_for`: resolve the
+        # backend, ask whether its driver is ACP, and only then spawn. Without
+        # this a FRESH task on an ACP backend falls through to MachineRuntime
+        # and silently runs on tmux, which cannot tell a refusal from a crash
+        # from a success.
+        #
+        # The BACKEND runtime, not the transport one: the transport attaches to
+        # a session the gateway already owns, and a fresh task has none.
+        from ai4science.harness.agents.sarsi import backends as _bk
+        name = (getattr(task, "backend", "") or "").strip()
+        if name:
+            try:
+                chosen = _bk.resolve(name)
+                driver = _bk.driver_for(chosen)
+            except Exception:
+                chosen, driver = "", ""
+            if driver == "acp":
+                from ai4science.harness.agents.sarsi import acp_backend as _ab
+                return _ab.AcpRuntime(agent_id=_bk.acp_agent_for(chosen))
     return runtime or MachineRuntime()
 
 

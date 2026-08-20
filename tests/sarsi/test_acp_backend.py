@@ -33,7 +33,15 @@ import time
 
 import pytest
 
-from ai4science.harness.agents.sarsi import (acp, backends, registry as reg,
+# This file tests the BACKEND implementation, which the reconciliation moved
+# to `acp_backend.py`; `acp.py` is now the transport. Imported under the
+# name `acp` so the body reads unchanged.
+from ai4science.harness.agents.sarsi import acp_backend as acp
+# `_rt` dispatch returns the TRANSPORT runtime (acp.py); the backend runtime
+# is a different class since the reconciliation. Both are real; assert the
+# one the dispatcher actually hands back.
+from ai4science.harness.agents.sarsi import acp as acp_transport
+from ai4science.harness.agents.sarsi import (backends, registry as reg,
                                              session as ses, task as tsk,
                                              worker as wk)
 
@@ -232,7 +240,7 @@ def test_assign_records_the_acp_handle_on_the_task(config, monkeypatch):
     a = config.agents["sarsi-worker"]
     t = tsk.create(config, a, wk.Directive(agent_id=a.id, goal="g"))
     t.plan_agreed = True
-    t = ses.assign(config, a, t, runtime=ses.runtime_for(t),
+    t = ses.assign(config, a, t, runtime=ses._rt(None, t),
                    installed=lambda: set())
 
     record = json.loads((tsk.dir_of(a, t.id) / tsk.RECORD_NAME).read_text())
@@ -259,7 +267,7 @@ def test_runtime_for_a_task_is_the_acp_runtime(config):
     for backend in ("sarsi-ai4sci", "sarsi-claude", "sarsi-pwm"):
         t = tsk.create(config, a, wk.Directive(agent_id=a.id, goal="g"),
                        backend=backend)
-        rt = ses.runtime_for(t)
+        rt = ses._rt(None, t)
         assert isinstance(rt, acp.AcpRuntime), backend
         assert rt.agent_id == backends.acp_agent_for(backend)
 
