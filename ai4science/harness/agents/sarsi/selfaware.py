@@ -305,19 +305,37 @@ def workspace_context(config: Config, agent: Agent, surface: str = "cli") -> str
     except Exception:
         pass
 
-    # ── recent conversation log ─────────────────────────────────────────────
+    # ── full conversation log (capped by chars, not count) ─────────────────
+    # The owner's question may relate to something said many sessions ago, so
+    # we inject ALL recorded exchanges and let the LLM decide relevance.
+    # A character budget (not an entry count) keeps the injection bounded even
+    # as the log grows; the most recent entries are kept when trimming.
     try:
         from ai4science.harness.agents.sarsi import log as _log
-        entries = _log.read(agent.agent_dir, surface, limit=4)
+        entries = _log.read(agent.agent_dir, surface, limit=0)  # all entries
         if entries:
-            log_lines = ["recent exchanges:"]
+            _CHAR_BUDGET = 6000
+            log_lines = [f"conversation history ({len(entries)} exchanges):"]
+            # Build from oldest to newest; if over budget, drop oldest first.
+            rendered = []
             for e in entries:
                 ts = str(e.get("at", ""))[:16]
-                inp = str(e.get("in", ""))[:60]
-                out = str(e.get("out", ""))[:80]
-                log_lines.append(f"  [{ts}] you: {inp}")
-                log_lines.append(f"           worker: {out}")
-            parts.append("\n".join(log_lines))
+                inp = str(e.get("in", "")).strip()
+                out = str(e.get("out", "")).strip()
+                rendered.append(f"  [{ts}] you: {inp}\n           worker: {out}")
+            # Trim oldest entries until within budget.
+            while rendered:
+                block = "\n".join(rendered)
+                if len(block) <= _CHAR_BUDGET:
+                    break
+                rendered.pop(0)
+            if rendered:
+                if len(rendered) < len(entries):
+                    log_lines.append(
+                        f"  (oldest {len(entries) - len(rendered)} entries omitted "
+                        f"to fit context budget)")
+                log_lines.extend(rendered)
+                parts.append("\n".join(log_lines))
     except Exception:
         pass
 

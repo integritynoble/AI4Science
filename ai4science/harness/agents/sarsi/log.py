@@ -36,15 +36,21 @@ def append(agent_dir: Path, surface: str, user_in: str, worker_out: str) -> None
         pass
 
 
-def read(agent_dir: Path, surface: str = "cli", limit: int = 50) -> List[Dict[str, Any]]:
-    """Return the last `limit` exchanges. Returns [] if no log yet."""
+def read(agent_dir: Path, surface: str = "cli",
+         limit: int = 50) -> List[Dict[str, Any]]:
+    """Return the last `limit` exchanges, or all entries when limit=0.
+
+    Entries are returned oldest-first so the reader sees them in chronological
+    order; use [-N:] on the result to get the most recent N.
+    """
     try:
         p = _path(agent_dir, surface)
         if not p.exists():
             return []
         lines = p.read_text().splitlines()
+        tail = lines if limit == 0 else lines[-limit:]
         rows = []
-        for ln in lines[-limit:]:
+        for ln in tail:
             try:
                 rows.append(json.loads(ln))
             except Exception:
