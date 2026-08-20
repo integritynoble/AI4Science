@@ -164,6 +164,16 @@ def render(agent_dir: Path) -> str:
         age_str = f" (age {age}s)" if age is not None else ""
         stale_str = " [STALE]" if stale else ""
         lines.append(f"  {name}{stale_str}{age_str}: {json.dumps(val)}")
+
+    # Prediction calibration (M3)
+    try:
+        from ai4science.harness.agents.sarsi import prediction as _pred
+        cal_text = _pred.render(agent_dir)
+        if cal_text:
+            lines.append(f"  {cal_text}")
+    except Exception:
+        pass
+
     return "\n".join(lines)
 
 

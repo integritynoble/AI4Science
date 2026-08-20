@@ -299,6 +299,22 @@ def assign(config: Config, agent: Agent, task: tsk.Task, *,
     except Exception:
         pass
 
+    # Register a prediction before spawning — what we expect and how to check it.
+    _pred_id: Optional[str] = None
+    try:
+        from ai4science.harness.agents.sarsi import prediction as _pred
+        index = tsk.earliest_incomplete(task)
+        phase_str = f"phase {index + 1}" if index is not None else "final verification"
+        pred_entry = _pred.register(
+            agent.agent_dir, task.id,
+            action=f"assign session for {task.id}",
+            expected=f"sarsi-claude completes {phase_str} of task {task.id}",
+            check=f"phase_verdicts[{index}] == PASS after session",
+        )
+        _pred_id = pred_entry["id"]
+    except Exception:
+        pass
+
     # Which engine runs this task. The BACKEND is the task's — one worker runs
     # many tasks, and which engine ran a given one is a fact about that task.
     # A blank backend is an old record, and reads as the default rather than
@@ -445,7 +461,9 @@ def assign(config: Config, agent: Agent, task: tsk.Task, *,
                     "acp_spec": agent.spec,
                     # the executor the TASK chose, not one pinned to the agent
                     "openclaw_id": executor_id_for(task) or None,
-                    "planner": agent.model}
+                    "planner": agent.model,
+                    # M3: prediction id registered before this session started
+                    "pred_id": _pred_id}
     # The DURABLE HANDLE. An ACP session id is recorded so the gateway can still
     # be asked about this session after the process that made it has gone.
     # Copied only when present, so the tmux path's record is unchanged.
@@ -1247,6 +1265,26 @@ def release_session(config: Config, agent: Agent, task: tsk.Task, *,
     except Exception:
         pass
 
+    # Score the prediction that was registered when this session was assigned.
+    try:
+        from ai4science.harness.agents.sarsi import prediction as _pred
+        pred_id = (task.session or {}).get("pred_id")
+        if pred_id:
+            # Determine outcome from task state and phase verdicts
+            if task.verdict and task.verdict.get("state") == "PASS":
+                outcome = "PASS"
+            elif task.verdict:
+                outcome = "FAIL"
+            else:
+                # Session closed without a full task verdict — partial progress
+                all_phases = len(task.criteria or [])
+                verified = sum(1 for i in range(all_phases)
+                               if tsk.phase_passed(task, i))
+                outcome = "PASS" if verified > 0 else "INCOMPLETE"
+            _pred.score(agent.agent_dir, pred_id, outcome)
+    except Exception:
+        pass
+
     return tsk._touch(agent, task, now)
 
 
@@ -1288,6 +1326,30 @@ def _verify_phase(config: Config, agent: Agent, task: tsk.Task, *,
 
     task = tsk.record_phase(config, agent, task, index, verdict, now=now)
     task.verdict = verdict
+
+    # Write checkpoint.json so a restarted worker knows the verified phases
+    # without parsing the full task store.
+    try:
+        from ai4science.harness.agents.sarsi import selfmodel as _sm
+        from datetime import datetime, timezone
+        verified_phases = [
+            i for i in range(len(task.criteria or []))
+            if tsk.phase_passed(task, i)
+        ]
+        next_phase = tsk.earliest_incomplete(task)
+        ckpt = {
+            "task_id": task.id,
+            "plan_version": task.plan_version or "plan0",
+            "current_phase": next_phase,
+            "phases_verified": verified_phases,
+            "last_updated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        }
+        ck_path = tsk.dir_of(agent, task.id) / "checkpoint.json"
+        import json as _json
+        ck_path.write_text(_json.dumps(ckpt, indent=2))
+    except Exception:
+        pass
+
     ledger.append(config, "reports",
                   {"agent": agent.id, "task": task.id,
                    "state": "verified" if vf.is_pass(verdict) else "failed",
