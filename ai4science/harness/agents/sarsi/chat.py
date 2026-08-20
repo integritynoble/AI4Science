@@ -151,14 +151,33 @@ def _new(config: Config, agent: Agent, goal: str, surface: str) -> str:
                         pl.draft(directive))
     t = tsk.start(config, agent, t)
     _stand(config, agent, t.id, surface)
+
+    # Auto-start the session — sarsi-worker is the brain, sarsi-claude is the
+    # executor in a tmux session. Start it now so the owner can attach. [spec §8]
+    session_name = None
+    start_err = None
+    if not t.awaiting and not t.blocked_by:
+        try:
+            t = ses.assign(config, agent, t,
+                           vault_prompt=lambda **_: "no")
+            session_name = (t.session or {}).get("name")
+        except Exception as e:
+            start_err = str(e)
+
     lines = [f"{agent.id} holds {t.id} — {t.state}",
-             "  plan drafted; sarsi-claude agrees it before work starts",
-             "  you are now in it — plain words go to its session",
-             f"  run it: ai4science sarsi run {agent.id} {t.id}"]
+             "  plan drafted; sarsi-claude agrees it before work starts"]
     if t.awaiting:
         lines.insert(1, f"  waiting on: {', '.join(t.awaiting)}")
     if t.blocked_by:
-        lines.append(f"  not started — {t.blocked_by}")
+        lines.append(f"  blocked: {t.blocked_by}")
+    if session_name:
+        lines.append(f"  session started: {session_name}")
+        lines.append(f"  attach: tmux attach -t {session_name}   (Ctrl-b d to come back)")
+    elif start_err:
+        lines.append(f"  could not auto-start: {start_err}")
+        lines.append(f"  start manually: ai4science sarsi run {agent.id} {t.id}")
+    else:
+        lines.append(f"  start: ai4science sarsi run {agent.id} {t.id}")
     return "\n".join(lines)
 
 
@@ -595,10 +614,8 @@ def _classified(config: Config, agent: Agent, body: str, surface: str) -> str:
     if got.kind in ("meta", "ambiguous"):
         return f"[{agent.id}] {got.why}"
 
-    # A directive is a goal — and still not a task, until the owner says so.
-    return (f"[{agent.id}] that reads as a goal:\n"
-            f"  {got.goal}\n"
-            f"file it: /new {got.goal}")
+    # A directive is a goal — file it immediately like OpenClaw would. [spec §8]
+    return _new(config, agent, got.goal, surface)
 
 
 def _unknown(agent: Agent) -> str:

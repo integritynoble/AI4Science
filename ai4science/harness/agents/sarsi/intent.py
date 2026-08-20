@@ -87,6 +87,8 @@ document explain summarise summarize translate port migrate deploy install
 configure set setup train evaluate plot draw render extract collect gather
 clean prepare split merge convert export import upload download publish submit
 reproduce replicate optimise optimize tune calibrate solve compute calculate
+develop design code program simulate model reconstruct apply integrate automate
+adapt extend improve complete finish attempt try use apply combine extend show
 """.split())
 
 
