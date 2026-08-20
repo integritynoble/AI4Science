@@ -61,7 +61,7 @@ _CMD = ["opencode", "acp", "--pure"]  # kept for legacy; use openclaw_acp_runtim
 # re-implemented: one `classify` means a REFUSED reads ok=True on BOTH
 # transports and a new stop reason cannot be judged two different ways.
 from ai4science.harness.agents.sarsi.acp_backend import (
-    agent_argv, classify, verdict_of)
+    _default_wire, agent_argv, classify, verdict_of)
 
 
 def _verdict_for(reply: Dict[str, Any]) -> Dict[str, Any]:
@@ -288,7 +288,31 @@ class AcpRuntime:
             self.engine = "opencode"
         self._clients: Dict[str, AcpClient] = {}
 
-    def start(self, name: str, cwd: str, **_: Any) -> Dict[str, Any]:
+    def start(self, name: str, cwd: str, *, govern: bool = False,
+              ceiling: str = "A0", writable: Optional[List[str]] = None,
+              wire: Optional[Any] = None, **_: Any) -> Dict[str, Any]:
+        """Open a session. When `govern=True`, the PreToolUse hook is written
+        BEFORE the peer spawns and the session is REFUSED if it cannot be.
+
+        `govern` defaults False here — the direct-`opencode` factories run
+        ungoverned by design (opencode has no hook to govern against). But
+        `session.assign` calls `start(..., govern=True, ...)` for the gateway
+        path, and A used to swallow that through `**_` and spawn ungoverned
+        anyway. Now the request is honoured or the session is refused, using the
+        same writer (`_default_wire -> ensure_governance_hook`) the tmux path and
+        the sibling backend use, so the two boundaries cannot drift.
+        """
+        if govern:
+            try:
+                (wire or _default_wire())(cwd, ceiling=ceiling, writable=writable)
+            except Exception as e:
+                # Not swallowed, and the peer is NOT spawned: an ungoverned
+                # session is not the one that was asked for.
+                return {"ok": False, "name": name, "cwd": cwd,
+                        "reason": (f"could not govern the session: "
+                                   f"{type(e).__name__}: {e} — not started, "
+                                   f"because an ungoverned session is not the "
+                                   f"one that was asked for")}
         client = AcpClient(cwd, cmd=self._cmd)
         client.connect()
         self._clients[name] = client
