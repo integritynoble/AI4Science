@@ -124,9 +124,17 @@ class MachineRuntime:
         # hook "so the hook and the sandbox draw the same boundary." Two
         # boundaries that disagree are one boundary and one blind spot.
         self.engine = spec
+        # An unattended session has nobody to answer an approval prompt, and
+        # `ai4science chat` gates every Edit/Write/Bash behind one. A GOVERNED
+        # session therefore auto-approves and lets the hook be the boundary:
+        # `ensure_governance_hook` is wired before launch and carries the same
+        # declared paths, so the control is the ceiling rather than a prompt no
+        # one can answer. An UNGOVERNED session keeps the prompt, because there
+        # it is the only control there is.
+        approve = " --yes" if govern else ""
         return sessions.start_session(
             name, cwd, govern=govern, ceiling=ceiling, writable=writable,
-            claude_bin=f"ai4science chat --mode {spec}{extra}")
+            claude_bin=f"ai4science chat --mode {spec}{extra}{approve}")
 
     def send(self, name: str, text: str, *, _send=None) -> Dict[str, Any]:
         """Type one instruction into a session — as ONE keystroke stream.
