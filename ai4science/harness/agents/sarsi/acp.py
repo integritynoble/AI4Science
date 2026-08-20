@@ -60,7 +60,8 @@ _CMD = ["opencode", "acp", "--pure"]  # kept for legacy; use openclaw_acp_runtim
 # The four-outcome verdict is shared with the sibling backend rather than
 # re-implemented: one `classify` means a REFUSED reads ok=True on BOTH
 # transports and a new stop reason cannot be judged two different ways.
-from ai4science.harness.agents.sarsi.acp_backend import classify, verdict_of
+from ai4science.harness.agents.sarsi.acp_backend import (
+    agent_argv, classify, verdict_of)
 
 
 def _verdict_for(reply: Dict[str, Any]) -> Dict[str, Any]:
@@ -361,6 +362,20 @@ def ai4sci_acp_runtime(mode: str = "general-purpose") -> AcpRuntime:
     """
     cmd = ("/usr/local/bin/ai4science", "acp", "--pure", "--mode", mode)
     return _get_runtime(cmd)
+
+
+def acp_runtime_from_config(agent_id: str, *, config_path=None) -> AcpRuntime:
+    """ACP runtime whose launch argv is RESOLVED FROM `openclaw.json`.
+
+    The hardcoded factories (`acp_runtime`, `ai4sci_acp_runtime`,
+    `openclaw_acp_runtime`) each bake in a fixed vector; none of them read the
+    acpx entry's declared `args`. That is the bug `agent_argv` fixes — an entry
+    of `{"command": ".../opencode", "args": ["acp"]}` must launch `opencode
+    acp`, not bare `opencode` (which hangs forever on a non-TTY pipe). This
+    factory reuses `agent_argv` (shared with `acp_backend`) so the direct
+    transport honours the config the same way the backend does.
+    """
+    return _get_runtime(tuple(agent_argv(agent_id, config_path=config_path)))
 
 
 def openclaw_acp_runtime(openclaw_agent_id: str) -> AcpRuntime:
