@@ -195,8 +195,48 @@ the exact 80000ms constant would require the CALLER's MCP-transport config (the 
 openclaw's dist and was not located in this run. It does not change the verdict: whatever its exact
 value, it is an outer platform abort that masks the inner knob. See "Could not determine" below.
 
-## Remedy (deliverable c)
-See docs/red-evidence.txt / docs/green-evidence.txt and the wrapped-spawn implementation.
+## Remedy (deliverable c) — a spawn that reports the truth, in code WE own
+
+Implemented in the clone only (`ai4science/harness/agents/sarsi/acp.py`); node_modules is
+untouched. Test-first: RED in `docs/red-evidence.txt`, GREEN in `docs/green-evidence.txt`,
+tests in `tests/sarsi/test_acp_spawn_report.py`.
+
+### The change
+`AcpRuntime` gains an injected `lookup` callable and a new `spawn(name, cwd, **kw)` method that
+wraps the real spawn (`start`) and NEVER propagates a bare timeout. The caller can now tell the
+three realities apart **from the return value alone**, via a `status` field:
+
+| status | meaning | how it is decided |
+|---|---|---|
+| `RUNNING` (`"running"`) | (a) started and running | `start()` acknowledged, OR the ack was lost but a lookup found a live session |
+| `FINISHED` (`"finished"`) | (b) started and finished | ack lost, lookup found a session in a finished state |
+| `NEVER_STARTED` (`"never_started"`) | (c) never started | ack lost AND a **genuine negative lookup** found no session |
+| `UNKNOWN` (`"unknown"`) | can't tell | ack lost and the lookup could not be performed (none configured, or it raised) |
+
+Every return also carries `session_key` (so a follow-up can act on the handle regardless of
+status) and a human `detail`.
+
+### The invariant that drove the design
+`never_started` is a POSITIVE claim and is returned **only** on a genuine negative lookup.
+Absence of evidence is not evidence of absence: with no lookup configured, or a lookup that
+itself raised, the result is `UNKNOWN`, never a guessed `never_started`. This is exactly the lie
+Part 1/2 diagnosed ("The operation timed out" collapsing all three) — refusing to re-commit it is
+the whole point. Two tests pin it:
+`test_a_lookup_that_raises_does_not_become_never_started` and
+`test_no_lookup_configured_does_not_become_never_started`.
+
+### Why a `lookup` seam rather than a live gateway call
+`lookup(session_key)` returns a truthy record (optionally with `state`) when the session exists,
+a falsy value on a genuine negative, and may raise when it simply cannot tell. It is injected so
+tests decide the answer deterministically and so production can point it at the gateway's session
+listing (`sessions` / by label) without this file taking a hard dependency on — or a live call
+to — the gateway. No test touches a real gateway; a unit test that needs a live gateway is a test
+that dies with the gateway.
+
+### Result
+8/8 tests green (see `docs/green-evidence.txt`). The clean-spawn path reports `RUNNING` with the
+handle; the timeout path is routed through the lookup and resolves to `RUNNING` / `FINISHED` /
+`NEVER_STARTED` / `UNKNOWN` — never the identity-free, status-free platform string.
 
 ---
 
