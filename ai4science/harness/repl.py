@@ -1298,6 +1298,7 @@ def run_common_repl(
                                    agent=_agent_id), flush=True)
             continue
         line = _act.text
+        _user_line = line  # original before workspace prefix — used for log
 
         # In agent mode (sarsi-worker) the LLM has no idea what tasks the worker
         # holds, what the standing task is, or what lessons are recorded. Prepend
@@ -1609,6 +1610,19 @@ def run_common_repl(
                 except Exception:
                     pass
             persistence.save(_sid, workspace, session.history)
+            # §12: log REPL exchanges in agent mode so workspace_context() can
+            # surface them as "recent exchanges" in future turns.
+            _rmode = state.get("mode")
+            if getattr(_rmode, "kind", "") == "agent" and result:
+                try:
+                    from ai4science.harness.agents.sarsi import (
+                        registry as _sr, log as _log)
+                    _rcfg = _sr.load()
+                    _rwk = _rcfg.agents.get(getattr(_rmode, "name", "") or "")
+                    if _rwk is not None:
+                        _log.append(_rwk.agent_dir, "cli", _user_line, result)
+                except Exception:
+                    pass
 
         # Ctrl+C during a turn (inline/fallback mode = REPL on the main thread):
         # route SIGINT to the cooperative interrupt (like Esc / the TUI c-c
