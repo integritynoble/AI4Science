@@ -841,6 +841,33 @@ class AcpRuntime:
                     "reason": f"{type(e).__name__}: {e}"}
         return {"ok": True, "name": name, "runtime": "acp"}
 
+    def resume(self, name: str, cwd: str = "", **kw) -> Dict[str, Any]:
+        """Re-open a session for `name` after the peer or gateway has died.
+
+        Ported from the sibling transport (`acp.AcpRuntime.resume`), which is
+        where the idea lives. Same shape: stop whatever is recorded, then start
+        fresh — reusing the prior session's `cwd` and `ceiling` when the caller
+        does not override them.
+
+        HONEST LIMIT, the same one `_LIVE` already carries: this re-SPAWNS a new
+        peer in THIS process. It does not re-attach to a peer still alive in
+        another OS process — `_LIVE` is process-local, and cross-process
+        re-attach needs the gateway session API, which is implemented in neither
+        module. `resume` here is recovery-by-respawn, not reconnection.
+        """
+        with _LOCK:
+            prev = _LIVE.get(name)
+        if prev:
+            cwd = cwd or prev.get("cwd") or ""
+            kw.setdefault("ceiling", prev.get("ceiling", "A0"))
+        self.stop(name)
+        if not cwd:
+            return {"ok": False, "outcome": ERRORED, "name": name,
+                    "runtime": "acp", "agent_id": self.agent_id,
+                    "reason": ("resume needs a cwd, and no prior session for "
+                               f"{name!r} recorded one to reuse")}
+        return self.start(name, cwd, **kw)
+
     def set_ceiling(self, name: str, ceiling: str) -> Dict[str, Any]:
         """A live ACP session's permission answer follows the ceiling.
 
