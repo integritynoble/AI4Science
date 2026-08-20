@@ -119,7 +119,81 @@ uninformative and why all three outcomes (running / finished / never-started) co
 identical string: the string carries no session identity and no lifecycle status.
 
 ## Configurable on the path that bit us? (deliverable b)
-See section below — short answer: **configurable but masked**.
+
+**Verdict: configurable, but MASKED — the inner knob is real yet useless to the caller.**
+
+### The timeout stack on the spawn path (innermost → outermost)
+
+There are (at least) three nested timeouts between "spawn requested" and "caller gives up",
+and each throws a DIFFERENT, identifiable message. None of them is the string the caller saw.
+
+1. **Inner — Claude ACP session-create timeout (60s, env-configurable).**
+   `createSession()` wraps `connection.newSession(...)` in
+   `withTimeout(createPromise, resolveClaudeAcpSessionCreateTimeoutMs())` (line 3464). On fire
+   it throws `ClaudeAcpSessionCreateTimeoutError(buildClaudeAcpSessionCreateTimeoutMessage())`.
+   Message = "Claude ACP session creation timed out before session/new completed. ...".
+   This is the ONLY timeout that reads `ACPX_CLAUDE_ACP_SESSION_CREATE_TIMEOUT_MS`.
+
+2. **Middle — the gateway's own createSession timeout (`timeoutMs`).**
+   `createFreshRuntimeSession` (line 5196-5197) wraps the WHOLE `client.createSession(...)` in a
+   SECOND `withTimeout(..., timeoutMs)`:
+   ```
+   $ sed -n '5196,5198p' .../openclaw/dist/runtime-BzlxAzli.js
+   async function createFreshRuntimeSession(client, record, timeoutMs) {
+       const createdSession = await withTimeout(client.createSession(record.cwd), timeoutMs);
+   ```
+   On fire it throws the generic `TimeoutError`, whose message is fixed and does NOT read the
+   env var:
+   ```
+   $ sed -n '530,538p' .../openclaw/dist/runtime-BzlxAzli.js
+   var TimeoutError = class extends Error {
+       constructor(timeoutMs) {
+           super(`Timed out after ${timeoutMs}ms`);
+   ```
+   If `timeoutMs` (`this.options.timeoutMs`) is ≤ the inner 60s, THIS fires first and the inner
+   env knob can never surface — raising the inner constant changes nothing because the outer
+   race resolves first.
+
+3. **Outer — the MCP request timeout (60s default).** The tool call carrying the spawn is an
+   MCP request bounded by `options?.timeout ?? DEFAULT_REQUEST_TIMEOUT_MSEC` (60000, protocol.js
+   line 8/712). On fire the SDK's own wording is `"Request timed out"` — again not what the
+   caller saw.
+
+### Why the observed message proves masking (message-identity argument)
+
+The caller observed **"The operation timed out"** at ~80s. That string matches NONE of the
+three openclaw/MCP messages above:
+ - not "Claude ACP session creation timed out before session/new completed…" (inner)
+ - not "Timed out after {n}ms" (middle)
+ - not "Request timed out" (MCP)
+
+A full-tree search finds the string in exactly ONE place — playwright-core's fake clock —
+where it is literally built as a Web-Platform DOMException:
+```
+$ grep -rn "The operation timed out" .../node_modules/    # single hit, in playwright fake-clock:
+new DOMException(browserName === "chromium" ? "signal timed out" : "The operation timed out.", "TimeoutError")
+```
+That is the canonical `AbortSignal.timeout()` / DOMException `"TimeoutError"` message emitted by
+the JS platform (Node/undici) when an `AbortSignal.timeout(ms)` fires. So the caller's await was
+resolved by a **platform-level abort ABOVE openclaw**, before any of openclaw's own timeout
+errors could propagate up.
+
+**Conclusion.** `ACPX_CLAUDE_ACP_SESSION_CREATE_TIMEOUT_MS` is a genuine, live read site (Part 1
+proved that) — so "configurable" is true in the narrow sense. But on the path that bit us the
+value the CALLER experiences is bounded by an OUTER timeout it does not set via that env var
+(the platform `AbortSignal.timeout` at ~80s, and/or the 60s MCP request timeout). Because the
+caller's error string is the platform DOMException and NOT `ClaudeAcpSessionCreateTimeoutMessage`,
+we know for certain the inner timeout's result never reached the caller — it was masked.
+Turning the inner knob up therefore cannot change what the caller sees. **Configurable but
+masked; the honest answer for us is "useless on this path."** The fix must live in code we own
+(Part 3), not in that env var.
+
+### What the exact-80s figure would require (stated honestly)
+The ~80s (vs 60s) tells us the dominating outer timeout is ~80s, not the 60s MCP default. Pinning
+the exact 80000ms constant would require the CALLER's MCP-transport config (the `AbortSignal.timeout`
+/ request-timeout the AI4Science MCP client passes when invoking `sessions_spawn`), which is not in
+openclaw's dist and was not located in this run. It does not change the verdict: whatever its exact
+value, it is an outer platform abort that masks the inner knob. See "Could not determine" below.
 
 ## Remedy (deliverable c)
 See docs/red-evidence.txt / docs/green-evidence.txt and the wrapped-spawn implementation.
