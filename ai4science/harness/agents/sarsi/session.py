@@ -1147,6 +1147,13 @@ def stop(config: Config, agent: Agent, task: tsk.Task, *,
         task.past_sessions = past
         task.session = None
     task = (tsk.archive if archive else tsk.turn_off)(config, agent, task, now=now)
+    # §12: auto-export on archive — "finished task can be put into md file".
+    if archive:
+        try:
+            from ai4science.harness.agents.sarsi import export as _exp
+            _exp.write(config, agent, task)
+        except Exception:
+            pass
     return task
 
 

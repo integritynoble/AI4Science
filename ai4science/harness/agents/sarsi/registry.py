@@ -69,6 +69,9 @@ class Agent:
     #: stack beside them.
     spec: str = "claude-code"
     root: Path = field(default_factory=state_dir)
+    #: Appears in /agent only when installed. sarsi-worker and sarsi-machine are
+    #: installed by default; everything else needs /install-agent.
+    installed: bool = False
 
     @property
     def is_worker(self) -> bool:
@@ -182,7 +185,14 @@ def load(path: Optional[Path] = None) -> Config:
         raise ConfigError(f"no registry at {path}; run `sarsi init` to write one")
     except json.JSONDecodeError as e:
         raise ConfigError(f"{path} is not valid JSON: {e}")
-    return parse(raw, root=root, path=Path(path))
+    config = parse(raw, root=root, path=Path(path))
+    try:
+        from ai4science.harness.installed_agents import is_installed
+        for agent in config.agents.values():
+            agent.installed = is_installed(agent.id)
+    except Exception:
+        pass   # installed_agents unavailable — leave field at default False
+    return config
 
 
 def parse(raw: Dict[str, Any], *, root: Optional[Path] = None,

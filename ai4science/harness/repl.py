@@ -47,7 +47,8 @@ def _shortcwd(p) -> str:
 #: they need the live session. A resolver built only from the dispatcher would
 #: call these unknown — the same defect wearing a helpful face.
 _LOOP_COMMANDS = ("model", "agent", "mode", "cost", "files", "agents", "mcp",
-                  "feedback", "login", "whoami")
+                  "feedback", "login", "whoami",
+                  "install-agent", "uninstall-agent")
 
 _COMMAND_WORD = re.compile(r"^/([A-Za-z][A-Za-z0-9_-]*)(\s|$)")
 
@@ -159,16 +160,18 @@ def _console_deps(state: dict) -> dict:
 
     def _create(agent_id: str, goal: str, backend: str = "") -> str:
         try:
-            from ai4science.harness.agents.sarsi import (plan as pl, task as tsk,
-                                                         worker as wk)
+            from ai4science.harness.agents.sarsi import chat as _sc
             config = _config()
             agent = config.agents.get(agent_id)
             if agent is None:
                 return f"{agent_id} is not on this machine"
-            d = wk.Directive(agent_id=agent.id, goal=goal)
-            t = tsk.create(config, agent, d, backend=backend)
-            t = tsk.attach_plan(config, agent, t, pl.draft(d))
-            return t.id
+            # _new() picks backend, starts state machine, and auto-starts session.
+            result = _sc._new(config, agent, goal, "cli")
+            # Extract task id from the first line of the result for the confirm display.
+            first = (result or "").splitlines()[0] if result else ""
+            import re as _re
+            m = _re.search(r"tsk_\w+", first)
+            return result if result else (m.group(0) if m else goal)
         except Exception as e:
             return f"could not create it — {e}"
 
@@ -376,15 +379,20 @@ def _chat_specs() -> set:
 def _roster_agents() -> set:
     """Roster ids, from this machine's registry when it has one and from the
     shipped roster when it does not. A box that never ran `sarsi init` should
-    still be able to explain what the name means."""
+    still be able to explain what the name means.
+
+    The hostname is included as an alias for sarsi-machine so that
+    `/<hostname>` is recognised as a roster command [A21(b)]."""
     from ai4science.harness.agents.sarsi import registry as reg
     try:
-        return set(reg.load().agents)
+        names = set(reg.load().agents)
     except Exception:
         try:
-            return {a["id"] for a in reg._ROSTER}
+            names = {a["id"] for a in reg._ROSTER}
         except Exception:
-            return set()
+            names = set()
+    names.add(_machine_hostname())
+    return names
 
 
 def resolve_name(name: str):
@@ -486,6 +494,8 @@ def _dispatch_slash(line: str, state: dict) -> tuple[bool, str]:
                       "/agent [name|specific <q>] /do <goal> /tasks /login "
                       "/whoami /feedback <text> /readonly /yes /default "
                       "/cost /files /subagents /exit\n"
+                      "  agents: /install-agent [name] (add to /agent picker) "
+                      "/uninstall-agent [name] (remove from picker)\n"
                       "  tasks: /task (all boards) /<task-name> or /tsk_… "
                       "(open, guided) /interact (its terminal — Ctrl-z back) "
                       "/rename /goal /stop /archive /reopen [task] — owner "
@@ -524,6 +534,12 @@ def _dispatch_slash(line: str, state: dict) -> tuple[bool, str]:
         return True, "\n".join(lines)
     if cmd in ("do", "tasks"):
         return True, _sarsi_bridge(cmd, _arg.strip(), _bridge_target(state))
+
+    if cmd == "install-agent":
+        return True, _install_agent_cmd(_arg.strip())
+
+    if cmd == "uninstall-agent":
+        return True, _uninstall_agent_cmd(_arg.strip())
 
     # `/<roster-agent> do <goal>` and `/<roster-agent> tasks`. `/do` reaches the
     # sarsi worker whose id matches the CHAT AGENT's name, so a roster agent
@@ -653,6 +669,10 @@ def _sarsi_bridge(cmd: str, arg: str, agent_name: str) -> str:
         return f"could not read the sarsi registry: {e}"
 
     agent = config.agents.get(agent_name)
+    if agent is None:
+        # Hostname is the display name for sarsi-machine [A21(b)] — resolve it.
+        if agent_name == _machine_hostname():
+            agent = config.agents.get("sarsi-machine")
     if agent is None:
         return (f"{agent_name or 'this agent'} has no sarsi worker — it answers "
                 f"here instead of delegating.\n  workers with a task board: "
@@ -968,7 +988,7 @@ def run_common_repl(
     session_id: Optional[str] = None,
     writable_roots: Optional[List[Path]] = None,
     system_prompt: Optional[str] = None,
-    mode_label: str = "ai4sci",
+    mode_label: str = "unified-LLM",
     intro: Optional[str] = None,
 ) -> None:
     """Run the native-harness REPL until EOF or /exit.
@@ -1043,7 +1063,7 @@ def run_common_repl(
 
     _confirm = make_confirm(_tui_read, mode_label)
 
-    active_spec = agent_registry.get(mode_label) or agent_registry.get("ai4sci")
+    active_spec = agent_registry.get(mode_label) or agent_registry.get("unified-LLM")
     # A mode may prefer a backend (e.g. 'codex' → openai, 'claude-code' →
     # anthropic). Honor it only when the user pinned nothing, so an explicit
     # --backend/--model always wins.
@@ -1658,8 +1678,117 @@ def run_common_repl(
                 print(_note, flush=True)
 
 
+def _install_agent_cmd(arg: str) -> str:
+    """`/install-agent [name]` — market orientation (no arg) or install one."""
+    import difflib as _dl
+    from ai4science.harness import installed_agents as _ia
+    try:
+        from ai4science.harness.agents.sarsi import registry as _sreg
+        config = _sreg.load()
+        agents_dict = config.agents or {}
+    except Exception:
+        agents_dict = {}
+
+    installed = _ia.load()
+
+    # Collect all non-retired workers — initially all are popular [A27].
+    all_workers = []
+    for aid, agent in agents_dict.items():
+        if getattr(agent, "role", "") != "worker":
+            continue
+        if getattr(agent, "retired", False):
+            continue
+        about = getattr(agent, "about", "") or ""
+        if isinstance(about, (list, tuple)):
+            about = " ".join(str(x) for x in about)
+        all_workers.append((aid, str(about).strip()))
+
+    if not arg:
+        # Spec [A7]: market link → brief intro → usage → popular agents.
+        lines = [
+            "agent market: https://physicsworldmodel.org/agent",
+            "",
+            "The market lists research agents and tools you can add to your",
+            "ai4science. An installed agent appears in /agent and is entered",
+            "with /<agent-name>.",
+            "",
+            "  /install-agent <name>    install an agent",
+            "  /uninstall-agent <name>  remove an installed agent",
+            "",
+        ]
+        # Popular agents: director on `sarsi` decides; initially all are popular [A27].
+        # No director query yet — degrade gracefully [A27b]: show full roster.
+        if all_workers:
+            lines.append("popular agents:")
+            for aid, about in sorted(all_workers,
+                                     key=lambda r: (r[0] not in installed, r[0])):
+                marker = "✓" if aid in installed else " "
+                line = f"  {marker} {aid}"
+                if about:
+                    line += f" — {about}"
+                lines.append(line)
+            lines.append("")
+            lines.append("✓ = already installed")
+        else:
+            lines.append("(popular agent list unavailable — see market link above)")
+        return "\n".join(lines)
+
+    # Install by name.
+    name = arg.lower()
+    not_installed = {a[0].lower(): a[0] for a in all_workers if a[0] not in installed}
+    installed_lower = {x.lower(): x for x in installed}
+    if name in installed_lower:
+        return f"install-agent: {installed_lower[name]} is already installed"
+    if name not in not_installed:
+        close = _dl.get_close_matches(name, sorted(not_installed), n=2, cutoff=0.6)
+        hint = (" did you mean " + " or ".join(close) + "?") if close else ""
+        return (f"install-agent: {name!r} not found.{hint} "
+                f"/install-agent (no args) to browse the market")
+    actual = not_installed[name]
+    _ia.install(actual)
+    return f"installed {actual} — it now appears in /agent  (enter it: /{actual})"
+
+
+def _uninstall_agent_cmd(arg: str) -> str:
+    """`/uninstall-agent [name]` — list installed (removable) or remove one."""
+    from ai4science.harness import installed_agents as _ia
+    installed = _ia.load()
+    removable = sorted(installed - set(_ia._DEFAULT_INSTALLED))
+
+    if not arg:
+        if not removable:
+            return ("uninstall-agent: no removable agents installed "
+                    "(sarsi-worker is permanent)")
+        lines = ["installed agents (removable):"]
+        lines += [f"  {aid}" for aid in removable]
+        lines.append("remove one: /uninstall-agent <name>")
+        return "\n".join(lines)
+
+    name = arg.lower()
+    id_map = {aid.lower(): aid for aid in installed}
+    if name not in id_map:
+        return f"uninstall-agent: {name!r} is not installed"
+    actual = id_map[name]
+    if not _ia.uninstall(actual):
+        return f"uninstall-agent: {actual} is a default agent and cannot be removed"
+    return f"uninstalled {actual} — removed from /agent"
+
+
+def _machine_hostname() -> str:
+    """Short hostname — no domain suffix."""
+    try:
+        import socket
+        return socket.gethostname().split(".")[0]
+    except Exception:
+        return "this-machine"
+
+
 def _sarsi_worker_choices():
-    """`(id, description)` for every sarsi worker, `sarsi-worker` first.
+    """`(display_name, description)` for every installed sarsi agent.
+
+    Workers are listed by their own id.  The machine agent (manager role) is
+    listed by the machine's hostname per spec [A21(b)].  `sarsi-worker` sorts
+    first; the machine agent sorts second.
 
     Returns `[]` on any failure — a machine with no sarsi registry still gets
     its spec list, and a broken registry must not take down the picker the
@@ -1670,21 +1799,25 @@ def _sarsi_worker_choices():
         config = reg.load()
     except Exception:
         return []
+    hostname = _machine_hostname()
     rows = []
     for agent_id, agent in (config.agents or {}).items():
-        if getattr(agent, "role", "") != "worker":
-            continue
         if getattr(agent, "retired", False):
             continue
-        # `about` is a list on some roster entries and a string on others —
-        # a picker must not care which, and must never raise into the loop.
+        if not getattr(agent, "installed", False):
+            continue
+        role = getattr(agent, "role", "")
         about = getattr(agent, "about", "") or ""
         if isinstance(about, (list, tuple)):
             about = " ".join(str(x) for x in about)
-        rows.append((agent_id, str(about).strip()
-                     or "a sarsi worker: holds tasks and drives sessions"))
-    # `sarsi-worker` first: it is the general one, and the owner reaches for it.
-    rows.sort(key=lambda r: (r[0] != "sarsi-worker", r[0]))
+        about = str(about).strip()
+        if role == "worker":
+            rows.append((agent_id, about or "a sarsi worker: holds tasks and drives sessions"))
+        elif role == "manager":
+            # Machine agent shown by hostname [A21(b)].
+            rows.append((hostname, about or "the machine agent — coordinates workers on this machine"))
+    # sarsi-worker first, machine agent second, rest alphabetical.
+    rows.sort(key=lambda r: (r[0] != "sarsi-worker", r[0] != hostname, r[0]))
     return rows
 
 
