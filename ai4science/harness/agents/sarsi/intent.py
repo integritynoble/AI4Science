@@ -31,7 +31,7 @@ from dataclasses import dataclass
 @dataclass(frozen=True)
 class Intent:
     """What the line is, and — for a directive — the goal inside it."""
-    kind: str          # empty | greeting | question | meta | directive | ambiguous
+    kind: str          # empty | greeting | question | correction | meta | directive | ambiguous
     goal: str = ""
     why: str = ""      # for `meta` and `ambiguous`: what to ask the owner
 
@@ -75,6 +75,21 @@ _REFERENTIAL = re.compile(
     r"according to (?:this|that|the) goal|based on (?:this|that|the) goal|"
     r"from (?:this|that|the) goal|about (?:this|that|it)|"
     r"(?:this|that|the) goal|it|them|task|plan)\b[\s,.;:]*)*$", re.I)
+
+#: Lines that contradict or redirect the worker. Matched before the directive
+#: check so "no, that's wrong" is not filed as a task.
+_CORRECTION = re.compile(
+    r"^(?:"
+    r"no[,\.!]\s+"                                        # "no, ...", "no. ...", "no! ..."
+    r"|no\s+(?:wait|actually|that|I|that'?s)\b"           # "no wait", "no actually"
+    r"|that(?:'s|\s+is)\s+(?:not\s+right|wrong|incorrect|not\s+what)"
+    r"|I\s+didn'?t\s+mean\b"                              # "I didn't mean"
+    r"|I\s+meant\b"                                       # "I meant ..."
+    r"|not\s+(?:what\s+I\s+meant|that\b|right\b)"         # "not what I meant", "not that"
+    r"|actually[,\s]+"                                    # "actually, ..." (with pause)
+    r")",
+    re.I,
+)
 
 #: Verbs that make a line an instruction. Deliberately a list rather than a
 #: guess: "starts with a verb" is not something a regex knows, and a wrong yes
@@ -165,6 +180,9 @@ def classify(line: str) -> Intent:
                 "for. Tell me the goal — one sentence, what you want to end up "
                 "with — and I will offer it."))
         body = rest        # `make a task to write X` — the goal is X
+
+    if _CORRECTION.match(body):
+        return Intent("correction")
 
     if _looks_actionable(body):
         return Intent("directive", goal=body)

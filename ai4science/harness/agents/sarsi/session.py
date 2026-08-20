@@ -277,7 +277,11 @@ def assign(config: Config, agent: Agent, task: tsk.Task, *,
                        + ", ".join(task.awaiting))
 
     if task.session:
-        return task                          # one task, one session
+        memory.record(config, agent, "clash",
+                      f"{task.id} already has session {task.session.get('name', '?')}",
+                      "assign() called on a task that already has a running session — "
+                      "exactly-once violated.")
+        return task
 
     # Which engine runs this task. The BACKEND is the task's — one worker runs
     # many tasks, and which engine ran a given one is a fact about that task.

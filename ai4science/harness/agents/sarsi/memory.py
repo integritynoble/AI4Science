@@ -7,7 +7,8 @@ for the fixed triggers only:
   * `rollback`           — a phase was cleared after it had been touched;
   * `refusal`            — the session refused, or the brief could not land;
   * `clash`              — the same action was taken twice against the
-                           same target (exactly-once violated).
+                           same target (exactly-once violated);
+  * `correction`         — the owner contradicted or redirected the worker.
 
 Each lesson is one file under `lessons/`; `MEMORY.md` is the one-line index
 the session reads before it plans or resumes. The index is bounded the way
@@ -27,7 +28,7 @@ from typing import List, Optional
 
 from ai4science.harness.agents.sarsi.registry import Agent, Config
 
-TRIGGERS = ("refuted_prediction", "rollback", "refusal", "clash")
+TRIGGERS = ("refuted_prediction", "rollback", "refusal", "clash", "correction")
 
 #: How many lessons the index may carry. A memory that grows without bound
 #: stops being an index and becomes a second transcript.
@@ -117,7 +118,8 @@ def load_index(config: Config, agent: Agent) -> str:
     if not text:
         return ""
     return ("LESSONS FROM THIS AGENT'S PAST TASKS (written by trigger — "
-            "a refuted prediction, a rollback, a refusal, a clash). "
+            "a refuted prediction, a rollback, a refusal, a clash, or a "
+            "correction from the owner). "
             "Read the ones that bear on what you are about to do, and do "
             "not repeat them:\n\n" + text)
 

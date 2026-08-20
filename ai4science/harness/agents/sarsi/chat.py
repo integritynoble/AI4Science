@@ -617,6 +617,16 @@ def _classified(config: Config, agent: Agent, body: str, surface: str) -> str:
     from ai4science.harness.agents.sarsi import intent as _intent
     got = _intent.classify(body)
 
+    if got.kind == "correction":
+        standing = _standing(config, agent, surface)
+        detail = f"owner correction on {surface}: {body[:400]}"
+        if standing is not None:
+            detail += f" (standing task: {standing.id} — {standing.goal[:120]})"
+        memory.record(config, agent, "correction",
+                      f"owner corrected worker: {body[:120]}", detail)
+        return (f"[{agent.id}] noted — what would you like instead? "
+                f"(/tasks shows what I am holding)")
+
     if got.kind == "greeting":
         return (f"[{agent.id}] hello — /tasks shows what I am holding, "
                 f"/new <goal> opens a task.")
