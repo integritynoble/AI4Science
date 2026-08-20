@@ -46,6 +46,17 @@ inside a motor spawns a brain turn recursively). The CLI *surface* below
 `--timeout` default is **600** seconds (or the config value) if you omit it.
 For real work that is almost always too short — set it explicitly.
 
+### Pre-flight checklist (30 seconds, saves a dead run)
+
+- [ ] `node --version` prints `v24.19.0` (PATH exported).
+- [ ] `stat -c '%a' /tmp/brief.txt` prints `644`, and no parent dir is `0700`.
+- [ ] The brief names one **concrete completion criterion** and a **nonce**.
+- [ ] The brief **forbids `git push`** and forbids `cd DIR && cmd`.
+- [ ] The brief has **no contradictory rules** (read it once as an adversary).
+- [ ] You noted the current newest record so you can spot a new one afterward:
+      `ls -t /home/tina3/.openclaw/acpx/ai4sci-records/ | head -1`.
+- [ ] Only **one** motor will touch the target branch.
+
 ---
 
 ## When NOT to use this
@@ -250,6 +261,8 @@ must not be re-run recursively is marked accordingly.
 | 9 | `openclaw sessions list --help` (surface: `--agent`, `--active`, `--json`) | verified 2026-08-20 |
 | 10 | `openclaw sessions list --agent sarsi-worker --active 60 --json` | verified 2026-08-20 (returned valid JSON with real sessions) |
 | 11 | `grep AI4SCI_ACP_TIMEOUT /home/tina3/.openclaw/acpx/ai4sci-run.sh` → `:-1800` | verified 2026-08-20 |
+| 11a | `ls -t /home/tina3/.openclaw/acpx/ai4sci-records/ \| head -1` | verified 2026-08-20 (→ `ai4sci-72476a8636ee4788.log`) |
+| 11b | `node --version` → `v24.19.0` | verified 2026-08-20 |
 | 12 | `grep -rl DEFAULT_REQUEST_TIMEOUT_MSEC / CLAUDE_ACP_SESSION_CREATE_TIMEOUT_MS` under the acpx node_modules path | unverified — grep exceeded time budget under load (killed at 60s) |
 | 13 | AcpRuntime 900s client-side timeout | unverified — not re-grepped during authoring |
 
