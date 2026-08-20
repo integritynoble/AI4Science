@@ -147,7 +147,14 @@ def _new(config: Config, agent: Agent, goal: str, surface: str) -> str:
     if not out.admitted:
         return f"{out.message}\nnot queued — nothing is waiting on this"
 
-    t = tsk.attach_plan(config, agent, tsk.create(config, agent, directive),
+    # Pick backend based on what is actually installed here.
+    # Prefer sarsi-ai4sci (Qwen/gateway) but fall back to sarsi-claude if absent.
+    try:
+        _avail = ses.installed_specs()
+        _backend = "sarsi-ai4sci" if "ai4sci" in _avail else "sarsi-claude"
+    except Exception:
+        _backend = ""
+    t = tsk.attach_plan(config, agent, tsk.create(config, agent, directive, backend=_backend),
                         pl.draft(directive))
     t = tsk.start(config, agent, t)
     _stand(config, agent, t.id, surface)
