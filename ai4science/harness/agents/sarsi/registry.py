@@ -176,33 +176,6 @@ def config_path(root: Optional[Path] = None) -> Path:
     return (root or state_dir()) / CONFIG_NAME
 
 
-#: Agents that are installed without any explicit /install-agent action.
-DEFAULT_INSTALLED: frozenset = frozenset({"sarsi-worker", "sarsi-machine"})
-_INSTALLED_NAME = "installed.json"
-
-
-def installed_path(root: Optional[Path] = None) -> Path:
-    return (root or state_dir()) / _INSTALLED_NAME
-
-
-def load_installed_ids(root: Optional[Path] = None) -> set:
-    """Agent ids currently installed, merged with the always-installed defaults."""
-    try:
-        data = json.loads(installed_path(root).read_text())
-        return set(DEFAULT_INSTALLED) | set(data.get("installed", []))
-    except (FileNotFoundError, json.JSONDecodeError, AttributeError):
-        return set(DEFAULT_INSTALLED)
-
-
-def mark_installed(agent_id: str, root: Optional[Path] = None) -> None:
-    """Persist `agent_id` as installed (idempotent)."""
-    r = root or state_dir()
-    ids = load_installed_ids(r)
-    ids.add(agent_id)
-    installed_path(r).write_text(
-        json.dumps({"installed": sorted(ids)}, indent=2))
-
-
 def load(path: Optional[Path] = None) -> Config:
     root = state_dir()
     path = Path(path) if path else config_path(root)
@@ -213,9 +186,12 @@ def load(path: Optional[Path] = None) -> Config:
     except json.JSONDecodeError as e:
         raise ConfigError(f"{path} is not valid JSON: {e}")
     config = parse(raw, root=root, path=Path(path))
-    installed_ids = load_installed_ids(root)
-    for agent in config.agents.values():
-        agent.installed = agent.id in installed_ids
+    try:
+        from ai4science.harness.installed_agents import is_installed
+        for agent in config.agents.values():
+            agent.installed = is_installed(agent.id)
+    except Exception:
+        pass   # installed_agents unavailable — leave field at default False
     return config
 
 
