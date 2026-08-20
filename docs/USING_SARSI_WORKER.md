@@ -9,6 +9,14 @@ per-command ledger.
 
 Host at time of writing: OpenClaw **2026.6.11 (e085fa1)**, Node **v24.19.0**.
 
+**Jump to:** [TL;DR dispatch](#tldr--the-copy-pasteable-dispatch) ·
+[When NOT to use](#when-not-to-use-this) ·
+[Judging a run](#judging-a-run--never-on-one-signal) ·
+[Writing a brief](#writing-a-good-brief) ·
+[Honest limits](#the-honest-limits) ·
+[Timeouts](#timeouts-stack--the-smallest-one-binds) ·
+[Verification](#verification)
+
 ---
 
 ## TL;DR — the copy-pasteable dispatch
