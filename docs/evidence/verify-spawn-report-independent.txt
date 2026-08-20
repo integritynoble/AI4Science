@@ -1,0 +1,32 @@
+Independent verification of 708b3de by the second executor on this branch.
+Interpreter: /opt/pwm/venvs/ai4sci/bin/python
+Date: 2026-08-20T12:26:26Z
+HEAD: 708b3de
+
+$ /opt/pwm/venvs/ai4sci/bin/python -m unittest discover -s tests/sarsi -t . -p test_acp_spawn_report.py -v
+test_a_spawn_that_acknowledges_is_running_and_carries_its_handle (tests.sarsi.test_acp_spawn_report.ACleanSpawnReportsRunning.test_a_spawn_that_acknowledges_is_running_and_carries_its_handle) ... ok
+test_a_lost_ack_over_a_finished_session_is_finished (tests.sarsi.test_acp_spawn_report.ATimeoutWhereTheSessionFinishedReportsFinished.test_a_lost_ack_over_a_finished_session_is_finished) ... ok
+test_a_lost_ack_over_a_live_session_is_running_not_a_bare_timeout (tests.sarsi.test_acp_spawn_report.ATimeoutWhereTheSessionIsLiveReportsRunning.test_a_lost_ack_over_a_live_session_is_running_not_a_bare_timeout) ... ok
+test_a_lookup_that_raises_does_not_become_never_started (tests.sarsi.test_acp_spawn_report.NeverStartedIsNeverGuessedWithoutEvidence.test_a_lookup_that_raises_does_not_become_never_started) ... ok
+test_no_lookup_configured_does_not_become_never_started (tests.sarsi.test_acp_spawn_report.NeverStartedIsNeverGuessedWithoutEvidence.test_no_lookup_configured_does_not_become_never_started) ... ok
+test_a_genuine_negative_lookup_reports_never_started (tests.sarsi.test_acp_spawn_report.NeverStartedIsOnlyClaimedOnANegativeLookup.test_a_genuine_negative_lookup_reports_never_started) ... ok
+test_a_spawn_timeout_returns_a_status_rather_than_raising (tests.sarsi.test_acp_spawn_report.SpawnNeverPropagatesABareTimeout.test_a_spawn_timeout_returns_a_status_rather_than_raising) ... ok
+test_running_finished_never_started_are_three_different_strings (tests.sarsi.test_acp_spawn_report.TheThreeStatusesAreDistinct.test_running_finished_never_started_are_three_different_strings) ... ok
+
+----------------------------------------------------------------------
+Ran 8 tests in 0.002s
+
+OK
+
+$ ... -p test_acp_*.py   (regression sweep over the neighbouring ACP tests)
+
+
+----------------------------------------------------------------------
+Ran 11 tests in 0.002s
+
+FAILED (errors=3)
+
+NOTE: the 3 errors in the sweep are all 'ModuleNotFoundError: No module named pytest'
+(test_acp_agent_args, test_acp_backend, test_acp_governance are pytest-based and the
+ai4sci venv has no pytest). Pre-existing environment limitation, NOT a regression from
+708b3de: those three modules fail to IMPORT, they do not fail an assertion.
