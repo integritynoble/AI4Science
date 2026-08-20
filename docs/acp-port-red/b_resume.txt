@@ -1,0 +1,21 @@
+FFF                                                                      [100%]
+=================================== FAILURES ===================================
+_________________ test_resume_respawns_and_closes_the_old_peer _________________
+tests/sarsi/test_acp_b_resume.py:43: in test_resume_respawns_and_closes_the_old_peer
+    out = rt.resume("res-1", str(tmp_path))
+          ^^^^^^^^^
+E   AttributeError: 'AcpRuntime' object has no attribute 'resume'
+___________________ test_resume_preserves_the_prior_ceiling ____________________
+tests/sarsi/test_acp_b_resume.py:54: in test_resume_preserves_the_prior_ceiling
+    rt.resume("res-2", str(tmp_path))
+    ^^^^^^^^^
+E   AttributeError: 'AcpRuntime' object has no attribute 'resume'
+___________ test_resume_without_a_cwd_or_a_prior_session_is_errored ____________
+tests/sarsi/test_acp_b_resume.py:63: in test_resume_without_a_cwd_or_a_prior_session_is_errored
+    out = rt.resume("never-started-here")
+          ^^^^^^^^^
+E   AttributeError: 'AcpRuntime' object has no attribute 'resume'
+=========================== short test summary info ============================
+FAILED tests/sarsi/test_acp_b_resume.py::test_resume_respawns_and_closes_the_old_peer
+FAILED tests/sarsi/test_acp_b_resume.py::test_resume_preserves_the_prior_ceiling
+FAILED tests/sarsi/test_acp_b_resume.py::test_resume_without_a_cwd_or_a_prior_session_is_errored
