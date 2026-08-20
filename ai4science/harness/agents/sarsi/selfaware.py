@@ -251,23 +251,60 @@ def _lessons_from(indexes) -> list:
 
     A file that will not open loses only itself, never the others.
     """
-    out, seen = [], set()
+    per_source = []
     for idx in indexes:
         try:
             if not idx.exists():
                 continue
             text = idx.read_text().strip()
         except Exception:
-            continue
+            continue          # one unreadable tree must not lose the other
+        lines = []
         for line in text.splitlines():
             line = line.strip()
-            if not line or line.startswith("#"):
+            if line and not line.startswith("#"):
+                lines.append(line)
+        if lines:
+            per_source.append(lines)
+
+    # Round-robin, not concatenation. Concatenating meant the first tree's
+    # lessons filled every slot the renderer had: a harness index with eight
+    # lines would have hidden all 29 of openclaw's, silently undoing the whole
+    # point of reading both. It does not bite on tina today only because tina
+    # has no harness MEMORY.md at all -- luck, not design.
+    out, seen = [], set()
+    for row in range(max((len(c) for c in per_source), default=0)):
+        for col in per_source:
+            if row >= len(col):
                 continue
-            if line in seen:      # the same lesson in both trees is ONE lesson
+            line = col[row]
+            if line in seen:  # the same lesson in both trees is ONE lesson
                 continue
             seen.add(line)
             out.append(line)
     return out
+
+
+def _render_lessons(lessons: list, cap: int = 8) -> str:
+    """The lessons block, saying so when it holds back.
+
+    The task board has always announced its overflow ("... N more"); the
+    memory block never did, so a truncated list of lessons read to the model
+    exactly like a complete one -- 29 lessons on tina, 8 shown, and nothing
+    anywhere saying the other 21 existed. A cap the reader cannot see is a
+    quiet lie about what the worker knows.
+
+    There is no /memory command to point at, so this names the file, which is
+    real.
+    """
+    if not lessons:
+        return ""
+    shown = lessons[:cap]
+    block = "memory (lessons):\n" + "\n".join(f"  {l}" for l in shown)
+    if len(lessons) > cap:
+        block += (f"\n  ... {len(lessons) - cap} more not shown -- "
+                  f"MEMORY.md holds all {len(lessons)}")
+    return block
 
 
 def openclaw_workspace_context(agent_id: str) -> str:
@@ -291,10 +328,9 @@ def openclaw_workspace_context(agent_id: str) -> str:
     from pathlib import Path
     ws = (Path(os.path.expanduser("~")) / ".openclaw"
           / ("workspace-" + str(agent_id or "")))
-    lessons = _lessons_from([ws / "MEMORY.md"])
-    if not lessons:
+    body = _render_lessons(_lessons_from([ws / "MEMORY.md"]))
+    if not body:
         return ""
-    body = "memory (lessons):\n" + "\n".join(f"  {l}" for l in lessons[:8])
     return "[sarsi-worker workspace]\n" + body + "\n[/workspace]\n\n"
 
 
@@ -386,10 +422,9 @@ def workspace_context(config: Config, agent: Agent, surface: str = "cli") -> str
     # the door the work came through, and the worker should not be made to
     # care.
     try:
-        lesson_lines = _lessons_from(_memory_indexes(config, agent))
-        if lesson_lines:
-            parts.append("memory (lessons):\n" + "\n".join(
-                f"  {l}" for l in lesson_lines[:8]))
+        block = _render_lessons(_lessons_from(_memory_indexes(config, agent)))
+        if block:
+            parts.append(block)
     except Exception:
         pass
 
