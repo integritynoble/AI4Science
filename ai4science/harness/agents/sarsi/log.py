@@ -20,18 +20,28 @@ def _path(agent_dir: Path, surface: str) -> Path:
     return agent_dir / f"log-{safe}.jsonl"
 
 
-def append(agent_dir: Path, surface: str, user_in: str, worker_out: str) -> None:
-    """Append one exchange to the surface log. Never raises."""
+def append(agent_dir: Path, surface: str, user_in: str, worker_out: str,
+           task_id: str = "", trigger: str = "") -> None:
+    """Append one exchange to the surface log. Never raises.
+
+    task_id groups episodes by task for semantic consolidation (M1).
+    trigger marks exchanges that fired a memory trigger (W4) so episodes
+    can be distinguished from routine exchanges during promotion.
+    """
     try:
         p = _path(agent_dir, surface)
         p.parent.mkdir(parents=True, exist_ok=True)
-        entry = json.dumps({
+        rec: Dict[str, Any] = {
             "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "in": (user_in or "").strip(),
             "out": (worker_out or "").strip(),
-        })
+        }
+        if task_id:
+            rec["task_id"] = task_id
+        if trigger:
+            rec["trigger"] = trigger
         with p.open("a") as f:
-            f.write(entry + "\n")
+            f.write(json.dumps(rec) + "\n")
     except Exception:
         pass
 

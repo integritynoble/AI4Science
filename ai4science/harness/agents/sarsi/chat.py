@@ -36,7 +36,9 @@ def handle(config: Config, agent: Agent, text: str, *, surface: str,
     result = _handle(config, agent, text, surface=surface, runtime=runtime, pane=pane)
     try:
         from ai4science.harness.agents.sarsi import log as _log
-        _log.append(agent.agent_dir, surface, text, result)
+        standing = _standing(config, agent, surface)
+        _log.append(agent.agent_dir, surface, text, result,
+                    task_id=standing.id if standing is not None else "")
     except Exception:
         pass
     return result

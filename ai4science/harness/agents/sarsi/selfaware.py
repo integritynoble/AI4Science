@@ -369,6 +369,15 @@ def workspace_context(config: Config, agent: Agent, surface: str = "cli") -> str
     """
     parts: list = []
 
+    # ── semantic memory (always inject — constraints must never be gate-missed) ──
+    try:
+        from ai4science.harness.agents.sarsi import semantic as _sem
+        sem_text = _sem.render(agent.agent_dir)
+        if sem_text:
+            parts.append(sem_text)
+    except Exception:
+        pass
+
     # ── task board ─────────────────────────────────────────────────────────
     try:
         from ai4science.harness.agents.sarsi import task as tsk, entry as _entry
