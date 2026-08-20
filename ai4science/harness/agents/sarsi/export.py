@@ -37,6 +37,16 @@ def render(config, agent, task) -> str:
         lines += ["## Plan", "", plan.render(), ""]
 
     # Final verdict
+    if not task.verdict:
+        # SILENCE IS NOT SUCCESS. Omitting the section entirely when no verdict
+        # was recorded leaves a document that reads exactly like a task that
+        # succeeded -- the reader cannot tell "finished well" from "finished
+        # with nothing recorded". This fleet has been caught by that shape more
+        # than once, which is why `spawn()` reports `unknown` as a real answer
+        # rather than guessing. Say it instead.
+        lines += ["## Final Verdict", "",
+                  "**No verdict was recorded.** This task was archived without "
+                  "one, so nothing here says it succeeded.", ""]
     if task.verdict:
         v = task.verdict
         st = str(v.get("state", "")).upper()
