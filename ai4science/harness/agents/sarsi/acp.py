@@ -1,5 +1,25 @@
 """Persistent ACP transport for openclaw-managed and ai4science sessions.
 
+WHICH ACP MODULE TO USE (this file is the *transport*, sibling `acp_backend.py`
+is the *backend*):
+
+    Use `acp` (this module) when you want a PERSISTENT, RESUMABLE connection
+    keyed by launch command — a cached `AcpRuntime` that holds one live process
+    per session name and can `resume` a session after the gateway restarts. It
+    drives `openclaw acp`, `ai4science acp` or bare `opencode` via the factory
+    functions below.
+
+    Use `acp_backend` (the sibling) when you START a governed, single-turn
+    session and need a STRUCTURED verdict: the four outcomes
+    (ANSWERED / REFUSED / ERRORED / SILENT), the PreToolUse governance hook
+    written before the peer spawns, config-resolved agent argv, and the `spawn`
+    report (running / finished / never_started / unknown).
+
+The correctness fixes that were born in `acp_backend` — the four-outcome
+`classify`, `agent_argv` (so a declared `["acp"]` vector is not dropped), and
+the governance wire — are shared here rather than re-implemented: this module
+imports them from `acp_backend` so the two boundaries cannot silently drift.
+
 The tmux loop types at a screen and reads it back; this talks the Agent
 Client Protocol directly over stdio JSON-RPC, so a prompt is a request with
 an answer, not keystrokes followed by a guess. `AcpRuntime` exposes the same
@@ -36,6 +56,27 @@ from typing import Any, Dict, List, Optional
 
 PROMPT_TIMEOUT = 600
 _CMD = ["opencode", "acp", "--pure"]  # kept for legacy; use openclaw_acp_runtime()
+
+# The four-outcome verdict is shared with the sibling backend rather than
+# re-implemented: one `classify` means a REFUSED reads ok=True on BOTH
+# transports and a new stop reason cannot be judged two different ways.
+from ai4science.harness.agents.sarsi.acp_backend import (
+    _default_wire, agent_argv, classify, verdict_of)
+
+
+def _verdict_for(reply: Dict[str, Any]) -> Dict[str, Any]:
+    """Map an A-shaped `AcpClient.prompt` reply onto `classify`'s input.
+
+    A speaks `stopReason` (camelCase) and reports transport failure as
+    `{"ok": False, "reason": ...}`; `classify` speaks `stop_reason` and an
+    `error` dict. This is the only adapter between the two shapes.
+    """
+    error = None
+    if reply.get("ok") is False:
+        error = {"message": reply.get("reason") or "the prompt did not succeed"}
+    return classify({"stop_reason": reply.get("stopReason"),
+                     "text": reply.get("text"),
+                     "error": error})
 
 
 class AcpError(Exception):
@@ -247,7 +288,31 @@ class AcpRuntime:
             self.engine = "opencode"
         self._clients: Dict[str, AcpClient] = {}
 
-    def start(self, name: str, cwd: str, **_: Any) -> Dict[str, Any]:
+    def start(self, name: str, cwd: str, *, govern: bool = False,
+              ceiling: str = "A0", writable: Optional[List[str]] = None,
+              wire: Optional[Any] = None, **_: Any) -> Dict[str, Any]:
+        """Open a session. When `govern=True`, the PreToolUse hook is written
+        BEFORE the peer spawns and the session is REFUSED if it cannot be.
+
+        `govern` defaults False here — the direct-`opencode` factories run
+        ungoverned by design (opencode has no hook to govern against). But
+        `session.assign` calls `start(..., govern=True, ...)` for the gateway
+        path, and A used to swallow that through `**_` and spawn ungoverned
+        anyway. Now the request is honoured or the session is refused, using the
+        same writer (`_default_wire -> ensure_governance_hook`) the tmux path and
+        the sibling backend use, so the two boundaries cannot drift.
+        """
+        if govern:
+            try:
+                (wire or _default_wire())(cwd, ceiling=ceiling, writable=writable)
+            except Exception as e:
+                # Not swallowed, and the peer is NOT spawned: an ungoverned
+                # session is not the one that was asked for.
+                return {"ok": False, "name": name, "cwd": cwd,
+                        "reason": (f"could not govern the session: "
+                                   f"{type(e).__name__}: {e} — not started, "
+                                   f"because an ungoverned session is not the "
+                                   f"one that was asked for")}
         client = AcpClient(cwd, cmd=self._cmd)
         client.connect()
         self._clients[name] = client
@@ -258,8 +323,19 @@ class AcpRuntime:
     def send(self, name: str, text: str, **_: Any) -> Dict[str, Any]:
         client = self._clients.get(name)
         if client is None or not client.alive:
-            return {"ok": False, "reason": "no live acp session"}
-        return client.prompt(text)
+            reply = {"ok": False, "reason": "no live acp session"}
+            return {**reply, **_verdict_for(reply)}
+        reply = client.prompt(text)
+        # Enrich with the shared verdict while keeping A's original keys
+        # (`ok`, `stopReason`, `text`, `reason`) untouched for existing callers.
+        verdict = _verdict_for(reply)
+        merged = dict(reply)
+        merged.update({k: verdict[k] for k in
+                       ("outcome", "refused", "attempted")})
+        # `ok` is unified to the verdict's: a `refusal` is ok=True, a transport
+        # failure is ok=False — which is what A already returned in both cases.
+        merged["ok"] = verdict["ok"]
+        return merged
 
     def stop(self, name: str, **_: Any) -> None:
         client = self._clients.pop(name, None)
@@ -310,6 +386,20 @@ def ai4sci_acp_runtime(mode: str = "general-purpose") -> AcpRuntime:
     """
     cmd = ("/usr/local/bin/ai4science", "acp", "--pure", "--mode", mode)
     return _get_runtime(cmd)
+
+
+def acp_runtime_from_config(agent_id: str, *, config_path=None) -> AcpRuntime:
+    """ACP runtime whose launch argv is RESOLVED FROM `openclaw.json`.
+
+    The hardcoded factories (`acp_runtime`, `ai4sci_acp_runtime`,
+    `openclaw_acp_runtime`) each bake in a fixed vector; none of them read the
+    acpx entry's declared `args`. That is the bug `agent_argv` fixes — an entry
+    of `{"command": ".../opencode", "args": ["acp"]}` must launch `opencode
+    acp`, not bare `opencode` (which hangs forever on a non-TTY pipe). This
+    factory reuses `agent_argv` (shared with `acp_backend`) so the direct
+    transport honours the config the same way the backend does.
+    """
+    return _get_runtime(tuple(agent_argv(agent_id, config_path=config_path)))
 
 
 def openclaw_acp_runtime(openclaw_agent_id: str) -> AcpRuntime:

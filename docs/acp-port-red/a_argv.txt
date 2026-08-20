@@ -1,0 +1,21 @@
+FFF                                                                      [100%]
+=================================== FAILURES ===================================
+__________________ test_agent_argv_is_shared_with_the_backend __________________
+tests/sarsi/test_acp_a_argv.py:30: in test_agent_argv_is_shared_with_the_backend
+    assert acp.agent_argv is acp_backend.agent_argv
+           ^^^^^^^^^^^^^^
+E   AttributeError: module 'ai4science.harness.agents.sarsi.acp' has no attribute 'agent_argv'
+________________ test_config_factory_carries_the_declared_args _________________
+tests/sarsi/test_acp_a_argv.py:35: in test_config_factory_carries_the_declared_args
+    rt = acp.acp_runtime_from_config("sarsi-open", config_path=str(_cfg(tmp_path)))
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AttributeError: module 'ai4science.harness.agents.sarsi.acp' has no attribute 'acp_runtime_from_config'
+_____________ test_config_factory_caches_like_the_other_factories ______________
+tests/sarsi/test_acp_a_argv.py:41: in test_config_factory_caches_like_the_other_factories
+    a = acp.acp_runtime_from_config("sarsi-open", config_path=p)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AttributeError: module 'ai4science.harness.agents.sarsi.acp' has no attribute 'acp_runtime_from_config'
+=========================== short test summary info ============================
+FAILED tests/sarsi/test_acp_a_argv.py::test_agent_argv_is_shared_with_the_backend
+FAILED tests/sarsi/test_acp_a_argv.py::test_config_factory_carries_the_declared_args
+FAILED tests/sarsi/test_acp_a_argv.py::test_config_factory_caches_like_the_other_factories

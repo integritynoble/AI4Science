@@ -1,0 +1,33 @@
+FFFFF                                                                    [100%]
+=================================== FAILURES ===================================
+_______________ test_acp_reexports_the_shared_verdict_functions ________________
+tests/sarsi/test_acp_a_verdict.py:16: in test_acp_reexports_the_shared_verdict_functions
+    assert acp.classify is acp_backend.classify
+           ^^^^^^^^^^^^
+E   AttributeError: module 'ai4science.harness.agents.sarsi.acp' has no attribute 'classify'
+________________ test_send_marks_a_refusal_as_a_correct_outcome ________________
+tests/sarsi/test_acp_a_verdict.py:41: in test_send_marks_a_refusal_as_a_correct_outcome
+    assert out["outcome"] == acp_backend.REFUSED
+           ^^^^^^^^^^^^^^
+E   KeyError: 'outcome'
+_____________________ test_send_marks_end_turn_as_answered _____________________
+tests/sarsi/test_acp_a_verdict.py:49: in test_send_marks_end_turn_as_answered
+    assert out["outcome"] == acp_backend.ANSWERED
+           ^^^^^^^^^^^^^^
+E   KeyError: 'outcome'
+________________ test_send_marks_a_transport_failure_as_errored ________________
+tests/sarsi/test_acp_a_verdict.py:56: in test_send_marks_a_transport_failure_as_errored
+    assert out["outcome"] == acp_backend.ERRORED
+           ^^^^^^^^^^^^^^
+E   KeyError: 'outcome'
+______________________ test_send_marks_no_turn_as_silent _______________________
+tests/sarsi/test_acp_a_verdict.py:63: in test_send_marks_no_turn_as_silent
+    assert out["outcome"] == acp_backend.SILENT
+           ^^^^^^^^^^^^^^
+E   KeyError: 'outcome'
+=========================== short test summary info ============================
+FAILED tests/sarsi/test_acp_a_verdict.py::test_acp_reexports_the_shared_verdict_functions
+FAILED tests/sarsi/test_acp_a_verdict.py::test_send_marks_a_refusal_as_a_correct_outcome
+FAILED tests/sarsi/test_acp_a_verdict.py::test_send_marks_end_turn_as_answered
+FAILED tests/sarsi/test_acp_a_verdict.py::test_send_marks_a_transport_failure_as_errored
+FAILED tests/sarsi/test_acp_a_verdict.py::test_send_marks_no_turn_as_silent

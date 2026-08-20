@@ -1,0 +1,24 @@
+FFF.                                                                     [100%]
+=================================== FAILURES ===================================
+_________________ test_default_wire_is_shared_with_the_backend _________________
+tests/sarsi/test_acp_a_governance.py:19: in test_default_wire_is_shared_with_the_backend
+    assert acp._default_wire is acp_backend._default_wire
+           ^^^^^^^^^^^^^^^^^
+E   AttributeError: module 'ai4science.harness.agents.sarsi.acp' has no attribute '_default_wire'
+_______________ test_governed_start_refuses_when_the_wire_fails ________________
+tests/sarsi/test_acp_a_governance.py:40: in test_governed_start_refuses_when_the_wire_fails
+    assert out["ok"] is False
+E   assert True is False
+____________ test_governed_start_writes_the_hook_before_connecting _____________
+tests/sarsi/test_acp_a_governance.py:61: in test_governed_start_writes_the_hook_before_connecting
+    assert order == ["wire", "connect"]           # ordering is the whole point
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AssertionError: assert ['connect'] == ['wire', 'connect']
+E     
+E     At index 0 diff: 'connect' != 'wire'
+E     Right contains one more item: 'connect'
+E     Use -v to get more diff
+=========================== short test summary info ============================
+FAILED tests/sarsi/test_acp_a_governance.py::test_default_wire_is_shared_with_the_backend
+FAILED tests/sarsi/test_acp_a_governance.py::test_governed_start_refuses_when_the_wire_fails
+FAILED tests/sarsi/test_acp_a_governance.py::test_governed_start_writes_the_hook_before_connecting
