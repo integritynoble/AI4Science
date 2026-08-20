@@ -1668,7 +1668,7 @@ def run_common_repl(
 
 
 def _install_agent_cmd(arg: str) -> str:
-    """`/install-agent [name]` — list available or install one."""
+    """`/install-agent [name]` — market orientation (no arg) or install one."""
     import difflib as _dl
     from ai4science.harness import installed_agents as _ia
     try:
@@ -1676,45 +1676,66 @@ def _install_agent_cmd(arg: str) -> str:
         config = _sreg.load()
         agents_dict = config.agents or {}
     except Exception:
-        return "install-agent: could not read agent registry"
+        agents_dict = {}
 
     installed = _ia.load()
-    available = []
+
+    # Collect all non-retired workers — initially all are popular [A27].
+    all_workers = []
     for aid, agent in agents_dict.items():
         if getattr(agent, "role", "") != "worker":
             continue
         if getattr(agent, "retired", False):
             continue
-        if aid in installed:
-            continue
         about = getattr(agent, "about", "") or ""
         if isinstance(about, (list, tuple)):
             about = " ".join(str(x) for x in about)
-        available.append((aid, str(about).strip()))
+        all_workers.append((aid, str(about).strip()))
 
     if not arg:
-        if not available:
-            return "install-agent: all roster workers are already installed"
-        lines = ["available agents (not yet installed):"]
-        for aid, about in sorted(available):
-            lines.append(f"  {aid}" + (f" — {about}" if about else ""))
-        lines.append("")
-        lines.append("install one: /install-agent <name>")
+        # Spec [A7]: market link → brief intro → usage → popular agents.
+        lines = [
+            "agent market: https://physicsworldmodel.org/agent",
+            "",
+            "The market lists research agents and tools you can add to your",
+            "ai4science. An installed agent appears in /agent and is entered",
+            "with /<agent-name>.",
+            "",
+            "  /install-agent <name>    install an agent",
+            "  /uninstall-agent <name>  remove an installed agent",
+            "",
+        ]
+        # Popular agents: director on `sarsi` decides; initially all are popular [A27].
+        # No director query yet — degrade gracefully [A27b]: show full roster.
+        if all_workers:
+            lines.append("popular agents:")
+            for aid, about in sorted(all_workers,
+                                     key=lambda r: (r[0] not in installed, r[0])):
+                marker = "✓" if aid in installed else " "
+                line = f"  {marker} {aid}"
+                if about:
+                    line += f" — {about}"
+                lines.append(line)
+            lines.append("")
+            lines.append("✓ = already installed")
+        else:
+            lines.append("(popular agent list unavailable — see market link above)")
         return "\n".join(lines)
 
+    # Install by name.
     name = arg.lower()
-    aid_map = {a[0].lower(): a[0] for a in available}
+    not_installed = {a[0].lower(): a[0] for a in all_workers if a[0] not in installed}
     installed_lower = {x.lower(): x for x in installed}
     if name in installed_lower:
         return f"install-agent: {installed_lower[name]} is already installed"
-    if name not in aid_map:
-        close = _dl.get_close_matches(name, sorted(aid_map), n=2, cutoff=0.6)
+    if name not in not_installed:
+        close = _dl.get_close_matches(name, sorted(not_installed), n=2, cutoff=0.6)
         hint = (" did you mean " + " or ".join(close) + "?") if close else ""
         return (f"install-agent: {name!r} not found.{hint} "
-                f"/install-agent (no args) lists what is available")
-    actual = aid_map[name]
+                f"/install-agent (no args) to browse the market")
+    actual = not_installed[name]
     _ia.install(actual)
-    return f"installed {actual} — it now appears in /agent"
+    return f"installed {actual} — it now appears in /agent  (enter it: /{actual})"
 
 
 def _uninstall_agent_cmd(arg: str) -> str:
