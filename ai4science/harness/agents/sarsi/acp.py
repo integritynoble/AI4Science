@@ -166,6 +166,50 @@ def agent_command(agent_id: str, *, config_path=None) -> str:
         f"machine says how to launch it")
 
 
+def agent_argv(agent_id: str, *, config_path=None) -> list:
+    """The FULL invocation: the executable plus the `args` the config declares.
+
+    An acpx entry is a command AND an argument vector, and dropping the vector
+    is silent rather than loud. For `opencode` the difference decides whether
+    anything works at all: bare `opencode` is `[default] = start opencode tui`,
+    so on a non-TTY pipe it writes terminal-control bytes and blocks forever —
+    no stdout, an EMPTY stderr, and a timeout. That reads as a hung agent, so
+    the fault gets attributed to the agent instead of to the caller that never
+    passed `acp`.
+
+    Splitting the command on whitespace is NOT an acceptable substitute: it
+    cannot tell an argument from a path that contains a space, and it invents
+    an argv the config never asked for.
+    """
+    cfg = _load_config(config_path)
+    engine = engine_of(agent_id, config_path=config_path)
+    table = ((((cfg.get("plugins") or {}).get("entries") or {})
+              .get("acpx") or {}).get("config") or {}).get("agents") or {}
+    entry = table.get(engine) or {}
+    command = agent_command(agent_id, config_path=config_path)
+    declared = [a for a in (entry.get("args") or []) if a is not None]
+    # Two shapes are in use and both have to keep working:
+    #
+    #   {"command": "/path/run.sh"}                 a bare launcher
+    #   {"command": "/path/bin", "args": ["acp"]}   command plus a vector
+    #   {"command": "/usr/bin/python /some/x.py"}   args baked into the string
+    #
+    # The third is the one that forces a choice. When a vector is DECLARED the
+    # command is taken literally, so a launcher living under a path with a
+    # space survives. When no vector is declared we keep splitting, because
+    # existing configs carry their arguments inside the string and silently
+    # re-interpreting those would break every one of them.
+    if declared:
+        argv = [command]
+    else:
+        argv = shlex.split(command) if " " in command else [command]
+    # Coerced here rather than at the subprocess boundary: a stray number in
+    # the vector should name the config that holds it, not fail deep inside
+    # spawn with no idea where it came from. `None` is dropped as absent.
+    argv.extend(str(a) for a in declared)
+    return argv
+
+
 def cwd_for(agent_id: str, *, config_path=None) -> str:
     """The working directory the config declares for this agent, if any."""
     cfg = _load_config(config_path)
@@ -282,7 +326,8 @@ class StdioConnection:
 
     def __init__(self, command: str, cwd: str, *, env=None, timeout: float = 900.0,
                  allow_writes: bool = False, stderr_path: Optional[str] = None):
-        argv = shlex.split(command) if " " in command else [command]
+        argv = list(command) if isinstance(command, (list, tuple)) else (
+            shlex.split(command) if " " in command else [command])
         self.timeout = timeout
         self.allow_writes = allow_writes
         self.stderr_path = stderr_path or ""
@@ -490,7 +535,7 @@ def connect_stdio(*, agent_id: str, cwd: str = "", env=None,
     `stderr_path=os.devnull` explicitly, which at least makes the discarding a
     decision somebody made.
     """
-    command = agent_command(agent_id, config_path=config_path)
+    command = agent_argv(agent_id, config_path=config_path)
     where = cwd or cwd_for(agent_id, config_path=config_path) or os.getcwd()
     if stderr_path is None:
         stderr_path = str(Path(where) / f".acp-{agent_id}.stderr.log")
