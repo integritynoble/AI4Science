@@ -160,16 +160,18 @@ def _console_deps(state: dict) -> dict:
 
     def _create(agent_id: str, goal: str, backend: str = "") -> str:
         try:
-            from ai4science.harness.agents.sarsi import (plan as pl, task as tsk,
-                                                         worker as wk)
+            from ai4science.harness.agents.sarsi import chat as _sc
             config = _config()
             agent = config.agents.get(agent_id)
             if agent is None:
                 return f"{agent_id} is not on this machine"
-            d = wk.Directive(agent_id=agent.id, goal=goal)
-            t = tsk.create(config, agent, d, backend=backend)
-            t = tsk.attach_plan(config, agent, t, pl.draft(d))
-            return t.id
+            # _new() picks backend, starts state machine, and auto-starts session.
+            result = _sc._new(config, agent, goal, "cli")
+            # Extract task id from the first line of the result for the confirm display.
+            first = (result or "").splitlines()[0] if result else ""
+            import re as _re
+            m = _re.search(r"tsk_\w+", first)
+            return result if result else (m.group(0) if m else goal)
         except Exception as e:
             return f"could not create it — {e}"
 

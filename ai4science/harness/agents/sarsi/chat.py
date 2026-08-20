@@ -33,6 +33,17 @@ COMMANDS = ("/tasks", "/<task>", "/guided <task> <instruction>",
 
 def handle(config: Config, agent: Agent, text: str, *, surface: str,
            runtime: Optional[Any] = None, pane: Optional[Any] = None) -> str:
+    result = _handle(config, agent, text, surface=surface, runtime=runtime, pane=pane)
+    try:
+        from ai4science.harness.agents.sarsi import log as _log
+        _log.append(agent.agent_dir, surface, text, result)
+    except Exception:
+        pass
+    return result
+
+
+def _handle(config: Config, agent: Agent, text: str, *, surface: str,
+            runtime: Optional[Any] = None, pane: Optional[Any] = None) -> str:
     body = (text or "").strip()
     if not body.startswith("/"):
         verb = _self_verb(body)
