@@ -1279,6 +1279,11 @@ def run_common_repl(
             if _act.kind in ("say", "enter", "leave", "confirm"):
                 if _act.text:
                     print(_act.text, flush=True)
+                # Entering a worker: prime the LLM with a workspace briefing so
+                # it "realises" it should look at its state before responding.
+                # Injected as an ASSISTANT message — the agent says it self-checked.
+                if _act.kind == "enter" and _new.kind == "agent":
+                    _prime_worker_session(session, _new.name)
             elif _act.kind == "create":
                 print(f"→ {_deps['create'](_act.agent, _act.goal, _act.backend)}",
                       flush=True)
@@ -1452,6 +1457,7 @@ def run_common_repl(
                         # this repl's spec — same list, said out loud on the row.
                         state["mode"] = _c.Mode(kind="agent", name=chosen.name)
                         print(f"now addressing {chosen.name}", flush=True)
+                        _prime_worker_session(session, chosen.name)
                         continue
                     # workers were prepended, so shift back into `pick`
                     target = pick[idx - len(workers)]
@@ -1837,6 +1843,40 @@ def _sarsi_worker_choices():
     # sarsi-worker first, machine agent second, rest alphabetical.
     rows.sort(key=lambda r: (r[0] != "sarsi-worker", r[0] != hostname, r[0]))
     return rows
+
+
+def _prime_worker_session(session, agent_name: str) -> None:
+    """Prime the LLM session with a workspace briefing when entering agent mode.
+
+    Injected as an ASSISTANT message so the LLM "realises" it has already
+    looked at its own workspace before the user asks anything. Without this,
+    the LLM has no inherent understanding that it should consult its task list,
+    plans, memory, or history before responding.
+
+    The message is short by design — one paragraph of instruction plus the
+    workspace snapshot. A priming message that is too long would crowd out
+    actual conversation history.
+    """
+    try:
+        from ai4science.harness.agents.sarsi import registry as _sr, selfaware as _sa
+        config = _sr.load()
+        agent = config.agents.get(agent_name)
+        if agent is None:
+            return
+        ctx = _sa.workspace_context(config, agent, surface="cli")
+        briefing = (
+            "I am sarsi-worker. Before responding I always check my workspace "
+            "state — my task list, standing task plan, memory, and recent "
+            "conversation log — so my answers are grounded in what is actually "
+            "happening rather than general knowledge.\n\n"
+        )
+        if ctx:
+            briefing += ctx
+        else:
+            briefing += "(no tasks or history yet — workspace is empty)"
+        session.history.append(Message(role="assistant", content=briefing))
+    except Exception:
+        pass
 
 
 def _bridge_target(state: dict) -> str:
