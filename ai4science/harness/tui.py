@@ -734,7 +734,7 @@ class FullScreen:
         self.mode = mode
         self.prompt = prompt
         self._inq = queue.Queue()       # Enter → lines for the worker
-        self._busy = True
+        self._busy = False              # idle until first user input (begin_turn sets True)
         self._frame_i = 0
         self._status_extra = ""
         self._app = None
@@ -771,6 +771,7 @@ class FullScreen:
             self._gerund = random.choice(_GERUNDS)
         except Exception:
             self._gerund = "Working"
+        self._busy = True
         self._turn_t0 = time.monotonic()
         self._tokens = 0
         self._activity = "thinking"
