@@ -1,5 +1,25 @@
 """Persistent ACP transport for openclaw-managed and ai4science sessions.
 
+WHICH ACP MODULE TO USE (this file is the *transport*, sibling `acp_backend.py`
+is the *backend*):
+
+    Use `acp` (this module) when you want a PERSISTENT, RESUMABLE connection
+    keyed by launch command — a cached `AcpRuntime` that holds one live process
+    per session name and can `resume` a session after the gateway restarts. It
+    drives `openclaw acp`, `ai4science acp` or bare `opencode` via the factory
+    functions below.
+
+    Use `acp_backend` (the sibling) when you START a governed, single-turn
+    session and need a STRUCTURED verdict: the four outcomes
+    (ANSWERED / REFUSED / ERRORED / SILENT), the PreToolUse governance hook
+    written before the peer spawns, config-resolved agent argv, and the `spawn`
+    report (running / finished / never_started / unknown).
+
+The correctness fixes that were born in `acp_backend` — the four-outcome
+`classify`, `agent_argv` (so a declared `["acp"]` vector is not dropped), and
+the governance wire — are shared here rather than re-implemented: this module
+imports them from `acp_backend` so the two boundaries cannot silently drift.
+
 The tmux loop types at a screen and reads it back; this talks the Agent
 Client Protocol directly over stdio JSON-RPC, so a prompt is a request with
 an answer, not keystrokes followed by a guess. `AcpRuntime` exposes the same
