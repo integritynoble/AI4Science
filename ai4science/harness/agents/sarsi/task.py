@@ -31,9 +31,6 @@ from ai4science.harness.agents.sarsi.registry import Agent, Config
 from ai4science.harness.agents.sarsi.worker import Directive, NotAWorker, UnverifiedClaim
 
 RECORD_NAME = "task.json"
-#: §12's document — the half of a finished task a PERSON reads. It sits
-#: beside the record, never instead of it (C10): code reads `task.json`.
-FINISHED_NAME = "FINISHED.md"
 
 PLANNING = "planning"
 AWAITING_GRANT = "awaiting-grant"
@@ -709,102 +706,16 @@ def turn_off(config: Config, agent: Agent, task: Task, *, now=time.time) -> Task
     return _touch(agent, task, now)
 
 
-def finished_markdown(task: Task) -> str:
-    """§12's document: *"The finished task can be put into md file"*.
-
-    Written for a person, months later, who wants to know what this task was
-    and what became of it. Three things it must not do:
-
-    * **It must not imply success it cannot show.** A task archived with no
-      recorded verdict says so in those words. Silence is not success -- the
-      same rule the spawn reporting follows, and the one this fleet has been
-      caught by more than once.
-    * **It must not omit which engine ran it.** "Which engine ran this one is a
-      fact about the task" (`backends.py`), and a history that drops it cannot
-      answer *what ran this?* afterwards.
-    * **It must not replace the record.** It accompanies `task.json` (C10).
-    """
-    v = task.verdict or {}
-    if not v:
-        outcome = ("**No verdict was recorded.** This task was archived without "
-                   "one, so nothing here says it succeeded.")
-    else:
-        ok = v.get("ok")
-        state = ("succeeded" if ok is True else
-                 "did NOT succeed" if ok is False else "was recorded without a verdict flag")
-        outcome = "It %s.%s" % (state,
-                                ("\n\n> " + str(v.get("summary")))
-                                if v.get("summary") else "")
-    lines = [
-        "# Finished task — %s" % (task.name or task.id),
-        "",
-        "> %s" % (task.goal or "(no goal recorded)"),
-        "",
-        "| | |",
-        "|---|---|",
-        "| task id | `%s` |" % task.id,
-        "| worker | `%s` |" % task.agent_id,
-        "| executor | `%s` |" % (task.backend or "(not recorded)"),
-        "| state | `%s` |" % task.state,
-        "| created | %s |" % (task.created_at or "(unknown)"),
-        "| last updated | %s |" % (task.updated_at or "(unknown)"),
-        "",
-        "## Outcome",
-        "",
-        outcome,
-        "",
-    ]
-    if task.criteria:
-        lines += ["## Verified when", ""]
-        lines += ["- %s" % c for c in task.criteria]
-        lines += [""]
-    if task.blocked_by:
-        lines += ["## Blocked by", "", str(task.blocked_by), ""]
-    sess = task.session or {}
-    if sess:
-        lines += ["## Session", ""]
-        for k in ("runtime", "transport", "agent_id", "acp_session_id",
-                  "openclaw_id", "name", "engine"):
-            if sess.get(k):
-                lines.append("- **%s**: `%s`" % (k, sess[k]))
-        lines += [""]
-    lines += ["---", "",
-              "The machine-readable record is `%s` in this directory; this "
-              "document does not replace it." % RECORD_NAME, ""]
-    return "\n".join(lines)
-
-
 def archive(config: Config, agent: Agent, task: Task, *, now=time.time) -> Task:
     """Terminal: the record is kept, the slot is freed, the board is clear.
 
     Distinct from `turn_off`, which is resumable. Closing a task the owner meant
     to come back to, and closing one they are done with, are different acts and
     conflating them loses one of them.
-
-    §12 also asks that a finished task be written down as a DOCUMENT. That
-    happens here rather than on request, because §12 makes it the worker's job
-    -- *"sarsi-worker should take down history and finished task"* -- and a
-    history that depends on someone remembering to ask for it is the one that
-    is missing when it is wanted.
     """
     task.state = ARCHIVED
     task.blocked_by = None
-    out = _touch(agent, task, now)
-    # Written AFTER `_touch`, so the document carries the archived state and
-    # the final timestamp rather than the values from before this call.
-    try:
-        d = dir_of(agent, task.id)
-        d.mkdir(parents=True, exist_ok=True)
-        # Overwritten, not appended: archiving twice is the same act twice,
-        # and a file that grows a second copy underneath the first is a log
-        # pretending to be a record.
-        (d / FINISHED_NAME).write_text(finished_markdown(out))
-    except Exception:
-        # A history that cannot be written must not lose the task. The record
-        # is already saved by `_touch`; failing here would trade the archive
-        # for the document.
-        pass
-    return out
+    return _touch(agent, task, now)
 
 
 def resume(config: Config, agent: Agent, task: Task, *, now=time.time) -> Task:
