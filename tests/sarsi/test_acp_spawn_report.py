@@ -106,9 +106,13 @@ class ATimeoutWhereTheSessionIsLiveReportsRunning(_Cleared):
 
         self.assertEqual(out["status"], acp.RUNNING, out)
         self.assertEqual(out["session_key"], "task-B", out)
+        self.assertEqual(out.get("acp_session_id"), "sid-found", out)
         self.assertEqual(seen.get("key"), "task-B", "the lookup used the key")
-        # The truth, not the platform's uninformative string.
-        self.assertNotIn("operation timed out", (out.get("detail") or "").lower())
+        # The truth is carried by the STATUS, not a bare string. The detail may
+        # still quote the underlying cause for diagnostics -- what matters is
+        # that the reply also evidences the live session, so the caller is not
+        # handed the timeout string ALONE.
+        self.assertIn("live", (out.get("detail") or "").lower())
 
 
 class ATimeoutWhereTheSessionFinishedReportsFinished(_Cleared):

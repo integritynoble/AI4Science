@@ -65,6 +65,29 @@ SILENT = "silent"
 #: The session started. NOT a verdict -- see `verdict_of`.
 ACCEPTED = "accepted"
 
+# -- spawn-report statuses --------------------------------------------------
+#
+# A spawn that does not cleanly acknowledge collapses three DIFFERENT realities
+# into one uninformative platform string ("The operation timed out"). These are
+# those three, kept apart, told from one another by an actual session LOOKUP and
+# never by the timeout text:
+#: (a) started and still running -- the ack was merely slow.
+RUNNING = "running"
+#: (b) started and already finished -- it even completed.
+FINISHED = "finished"
+#: (c) never started -- and only ever returned on a GENUINE NEGATIVE lookup.
+NEVER_STARTED = "never_started"
+#: The honest fourth answer: the lookup could not be performed, so which of the
+#: three this is cannot be known. This exists so `never_started` is never GUESSED
+#: -- absence of evidence (no lookup, or a lookup that failed) is not a negative
+#: lookup, and claiming it would rebuild the very lie this module removes.
+UNKNOWN = "unknown"
+
+#: Lookup `state` values that mean the session has already ended. Anything found
+#: and not in here is, by the evidence that it EXISTS at all, still running.
+_FINISHED_STATES = {"finished", "done", "complete", "completed", "ended",
+                    "closed", "stopped", "exited"}
+
 #: Where OpenClaw keeps its config on this machine.
 OPENCLAW_JSON = Path(os.environ.get(
     "OPENCLAW_CONFIG", str(Path.home() / ".openclaw" / "openclaw.json")))
@@ -586,12 +609,20 @@ class AcpRuntime:
 
     def __init__(self, *, agent_id: str = "", connect: Optional[Callable] = None,
                  config_path=None, timeout: float = 900.0,
-                 wire: Optional[Callable] = None):
+                 wire: Optional[Callable] = None,
+                 lookup: Optional[Callable] = None):
         self.agent_id = agent_id
         self._connect = connect
         self._config_path = config_path
         self._timeout = timeout
         self._wire = wire
+        # How `spawn` finds out whether a session that did not ACK is
+        # nonetheless alive. `lookup(session_key)` returns a record (truthy, with
+        # an optional `state`) when the session exists, a falsy value on a
+        # GENUINE negative, and may raise when it simply cannot tell. Injected so
+        # a test can decide the answer, and so production can point it at the
+        # gateway's session listing without this file depending on the gateway.
+        self._lookup = lookup
 
     # -- lifecycle
     def start(self, name: str, cwd: str, *, govern: bool = True,
@@ -673,6 +704,87 @@ class AcpRuntime:
                 # session record on this fleet is oneshot, and `persistent` is
                 # unreachable on this channel.
                 "mode": "oneshot"}
+
+    def spawn(self, name: str, cwd: str, **kw) -> Dict[str, Any]:
+        """Spawn, and report the TRUTH from the return value alone.
+
+        The defect this exists for: a spawn that does not cleanly acknowledge
+        surfaces to the caller as one uninformative platform string ("The
+        operation timed out"), which is the SAME string whether the session is
+        (a) alive, (b) already finished, or (c) never created. A caller handed
+        that cannot retry safely, attach, or tell a lost handle from a dead
+        spawn.
+
+        So this never propagates a bare timeout. It runs the real spawn; on a
+        clean acknowledgement the session is live and it reports `RUNNING` with
+        the handle. When the spawn does NOT acknowledge, it does not trust the
+        error text -- it LOOKS THE SESSION UP by `name` and lets the evidence
+        decide between `RUNNING`, `FINISHED` and `NEVER_STARTED`.
+
+        The one rule that must not bend: `NEVER_STARTED` is a positive claim and
+        is returned ONLY on a genuine negative lookup. With no lookup configured,
+        or a lookup that itself failed, the answer is `UNKNOWN` -- never a guess
+        that the session is absent. The return always carries a `session_key` so
+        a follow-up can act on the handle regardless of status.
+        """
+        started = self.start(name, cwd, **kw)
+        if started.get("ok"):
+            # session/new acknowledged: the session is live and the executor
+            # runs on. (Started+finished is only distinguishable via the lookup
+            # path below, when the ACK itself was lost.)
+            return {"status": RUNNING,
+                    "session_key": name,
+                    "acp_session_id": started.get("acp_session_id"),
+                    "runtime": "acp",
+                    "agent_id": self.agent_id,
+                    "detail": "session/new acknowledged; the session is live",
+                    "start": started}
+
+        reason = started.get("reason") or "the spawn did not acknowledge"
+
+        if self._lookup is None:
+            # No way to look, so no basis for ANY of the three. Reporting
+            # never_started here would be the exact lie: a positive claim with no
+            # negative lookup behind it.
+            return {"status": UNKNOWN, "session_key": name, "runtime": "acp",
+                    "agent_id": self.agent_id,
+                    "detail": (f"the spawn did not acknowledge ({reason}) and no "
+                               f"session lookup is configured, so running vs "
+                               f"finished vs never-started cannot be told apart")}
+        try:
+            found = self._lookup(name)
+        except Exception as e:
+            # The lookup could not answer. Still not never_started: no answer is
+            # not a negative answer.
+            return {"status": UNKNOWN, "session_key": name, "runtime": "acp",
+                    "agent_id": self.agent_id,
+                    "detail": (f"the spawn did not acknowledge ({reason}); the "
+                               f"session lookup also failed "
+                               f"({type(e).__name__}: {e}), so never-started "
+                               f"cannot be claimed")}
+
+        if not found:
+            # A genuine negative: we asked, and there is no such session.
+            return {"status": NEVER_STARTED, "session_key": name, "runtime": "acp",
+                    "agent_id": self.agent_id,
+                    "detail": (f"the spawn did not acknowledge ({reason}); a "
+                               f"lookup for {name!r} found no session")}
+
+        state = str((found or {}).get("state") or "").strip().lower()
+        key = (found or {}).get("session_key") or name
+        sid = (found or {}).get("acp_session_id")
+        if state in _FINISHED_STATES:
+            return {"status": FINISHED, "session_key": key, "acp_session_id": sid,
+                    "runtime": "acp", "agent_id": self.agent_id,
+                    "detail": (f"the spawn ack was lost ({reason}) but the "
+                               f"session has already finished (state={state!r})")}
+        # Found and not finished -> it exists, so it started, and it has not
+        # ended: running. An unlabelled state is reported as running because the
+        # session demonstrably EXISTS; that is still the started-and-live half.
+        return {"status": RUNNING, "session_key": key, "acp_session_id": sid,
+                "runtime": "acp", "agent_id": self.agent_id,
+                "detail": (f"the spawn ack was lost ({reason}) but the session "
+                           f"is live per lookup (state={state or 'unspecified'!r})")}
 
     def send(self, name: str, text: str, **_) -> Dict[str, Any]:
         """THE YIELD. Blocks for the turn and returns what actually happened.
