@@ -226,6 +226,32 @@ OPENCLAW_ACP_IDS: Dict[str, str] = {
 }
 
 
+def executor_id_for(task: Any) -> str:
+    """Which EXECUTOR runs this task — read off its BACKEND.
+
+    SPEC-ai4science §8: *"sarsi-worker **guides** two engines: **sarsi-claude**
+    to run Claude Code, and **sarsi-ai4sci** to run ai4sci"*, and [A1]:
+    *"`/sarsi-ai4sci` and `/sarsi-claude` are **not** entry points — they are
+    EXECUTORS, not listed and not entered."*
+
+    So the engine is a property of the TASK, chosen per task, not a fixed
+    property of the worker. `OPENCLAW_ACP_IDS` keys on the AGENT and maps
+    `sarsi-worker -> sarsi-claude`, which pins the brain to one engine: a task
+    whose backend is `sarsi-ai4sci` would then be handed to Claude Code, the
+    record would name an executor the owner never chose, and the wrong engine
+    would do the work. `backends._ACP_AGENTS` keys on the backend and is the
+    source of truth; the agent map is the fallback for agents with no backend.
+    """
+    from ai4science.harness.agents.sarsi import backends as _bk
+    name = (getattr(task, "backend", "") or "").strip()
+    if name:
+        try:
+            return _bk.acp_agent_for(_bk.resolve(name))
+        except Exception:
+            pass
+    return OPENCLAW_ACP_IDS.get(getattr(task, "agent_id", "") or "") or ""
+
+
 def drivable(spec: str) -> bool:
     return spec in DRIVABLE_SPECS
 
@@ -304,7 +330,7 @@ def assign(config: Config, agent: Agent, task: tsk.Task, *,
     # Agents not in OPENCLAW_ACP_IDS (social, funding, jobs, etc.) run in a
     # regular tmux session via MachineRuntime and are attended by the owner.
     if runtime is None:
-        openclaw_id = OPENCLAW_ACP_IDS.get(agent.id)
+        openclaw_id = executor_id_for(task) or None
         if openclaw_id is not None:
             from ai4science.harness.agents.sarsi.acp import openclaw_acp_runtime
             runtime = openclaw_acp_runtime(openclaw_id)
@@ -397,7 +423,8 @@ def assign(config: Config, agent: Agent, task: tsk.Task, *,
                     # `openclaw_id` lets _rt() recover the right cached AcpRuntime.
                     "transport": "acp" if getattr(runtime, "acp", False) else "tmux",
                     "acp_spec": agent.spec,
-                    "openclaw_id": OPENCLAW_ACP_IDS.get(agent.id),
+                    # the executor the TASK chose, not one pinned to the agent
+                    "openclaw_id": executor_id_for(task) or None,
                     "planner": agent.model}
     # The DURABLE HANDLE. An ACP session id is recorded so the gateway can still
     # be asked about this session after the process that made it has gone.
@@ -785,6 +812,16 @@ def _rt(runtime: Optional[Any], task: tsk.Task) -> Any:
         #
         # The BACKEND runtime, not the transport one: the transport attaches to
         # a session the gateway already owns, and a fresh task has none.
+        # PREFER THE TRANSPORT when this agent maps to an openclaw agent id.
+        # The gateway then owns the session and keeps it in a TMUX PANE, so the
+        # owner can attach and WATCH the work happen. The backend below spawns
+        # a bare stdio subprocess instead: full programmatic control, and
+        # nothing to look at. Visibility is the whole reason the spec puts the
+        # tool session in a pane, so it is the default when it is available.
+        # NOT keyed on the agent. `OPENCLAW_ACP_IDS` maps sarsi-worker ->
+        # sarsi-claude, so using it here would run a task whose BACKEND is
+        # sarsi-ai4sci on Claude instead -- the wrong engine. The openclaw id
+        # must come from the task's own backend.
         from ai4science.harness.agents.sarsi import backends as _bk
         name = (getattr(task, "backend", "") or "").strip()
         if name:
@@ -794,6 +831,19 @@ def _rt(runtime: Optional[Any], task: tsk.Task) -> Any:
             except Exception:
                 chosen, driver = "", ""
             if driver == "acp":
+                # The BACKEND, deliberately -- not the gateway transport.
+                #
+                # The transport (`openclaw acp --session ID`) was tried here
+                # first, because §11/[A12] wants a tmux pane the owner can
+                # attach to. It does NOT produce one on this build: openclaw's
+                # dist contains no tmux session management at all (only banner
+                # and theme files mention it), and a live run created no pane
+                # and no gateway session record. So preferring it broke two
+                # tests and bought nothing.
+                #
+                # Watching a task work is a real requirement and it is still
+                # unmet; it needs a mechanism that actually creates the pane,
+                # not a different ACP endpoint.
                 from ai4science.harness.agents.sarsi import acp_backend as _ab
                 return _ab.AcpRuntime(agent_id=_bk.acp_agent_for(chosen))
     return runtime or MachineRuntime()

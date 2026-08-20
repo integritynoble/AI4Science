@@ -49,6 +49,7 @@ ACP session (no gateway, no tmux pane).
 """
 import json
 import queue
+import shutil
 import subprocess
 import threading
 import time
@@ -111,10 +112,23 @@ class AcpClient:
         if self._cmd and "openclaw" in str(self._cmd[0]):
             # openclaw is a Node.js script; ensure node is discoverable even
             # when the harness runs without the user's full NVM PATH.
+            # RESOLVED, not assumed. This was hard-coded to
+            # `/home/sarsi/.nvm/.../bin` — one specific account's node, in code
+            # that runs on all of them. Every other account got a PATH pointing
+            # into a home it cannot read (those are mode 750), so `openclaw`
+            # never started and the only symptom was `initialize` timing out:
+            # the transport looked broken when the interpreter was simply
+            # somewhere else.
+            import glob
             import os
-            node_bin = "/home/sarsi/.nvm/versions/node/v24.19.0/bin"
             path = os.environ.get("PATH", "")
-            if node_bin not in path:
+            if shutil.which("openclaw", path=path):
+                node_bin = ""          # already reachable; touch nothing
+            else:
+                cands = sorted(glob.glob(
+                    os.path.expanduser("~/.nvm/versions/node/*/bin")))
+                node_bin = cands[-1] if cands else ""
+            if node_bin and node_bin not in path:
                 env = {**os.environ, "PATH": f"{node_bin}:{path}"}
         self._proc = subprocess.Popen(
             self._cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
@@ -413,11 +427,18 @@ def openclaw_acp_runtime(openclaw_agent_id: str) -> AcpRuntime:
     `openclaw_agent_id` is the agent's ID in openclaw.json (e.g.
     "sarsi-claude", "sarsi-open", "sarsi-ai4sci").
     """
+    import glob
     import os
     import shutil
-    # Try current PATH first, then sarsi's NVM install as a fallback.
-    _fallback = "/home/sarsi/.nvm/versions/node/v24.19.0/bin/openclaw"
-    binary = shutil.which("openclaw") or (
-        _fallback if os.path.isfile(_fallback) else "openclaw")
+    # PATH first, then THIS account's own nvm install. The fallback used to
+    # name `/home/sarsi/.nvm/...` — one specific account's binary, in code that
+    # runs on all of them. Every other account's homes are mode 750, so the
+    # probe could not even stat it, and the only symptom was a timeout.
+    binary = shutil.which("openclaw")
+    if not binary:
+        for _bin in sorted(glob.glob(
+                os.path.expanduser("~/.nvm/versions/node/*/bin/openclaw"))):
+            binary = _bin
+        binary = binary or "openclaw"
     cmd = (binary, "acp", "--session", f"{openclaw_agent_id}:main:main")
     return _get_runtime(cmd)
