@@ -615,6 +615,70 @@ def _default_wire():
     return ensure_governance_hook
 
 
+def session_store_lookup(agent_id: str, *, since_ms: int, home=None,
+                         engine: str = ""):
+    """A lookup over openclaw's own session store, for `spawn()`.
+
+    `~/.openclaw/agents/<engine>/sessions/sessions.json` is the only record of a
+    session that survives the process that made it. Entries carry `status`,
+    `startedAt`, `endedAt` and `spawnedBy` -- but NOT the caller's spawn name,
+    so a session can only be identified by having started AFTER this spawn began.
+
+    That makes ambiguity a real outcome, and it refuses rather than picks:
+
+        store unreadable        -> raises   (`spawn` answers `unknown`)
+        readable, no candidate  -> None     (`spawn` answers `never_started`)
+        exactly one candidate   -> that entry
+        several candidates      -> raises   (`spawn` answers `unknown`)
+
+    Handing back a plausible-but-wrong session id is worse than admitting the
+    ambiguity: the caller would then attach to, or kill, somebody else's run.
+
+    The store is also known to mutate WHILE being read (a `startedAt` was
+    observed changing between two reads of the same file), so it is read once
+    and any parse failure is an error, never an empty answer.
+    """
+    import json as _json
+    import os as _os
+    from pathlib import Path as _Path
+
+    root = _Path(home) if home is not None else _Path(_os.path.expanduser("~"))
+    eng = engine or engine_of(agent_id)
+
+    def _lookup(_name: str):
+        path = root / ".openclaw" / "agents" / eng / "sessions" / "sessions.json"
+        # No store is NOT an empty store. Absence of evidence must not become
+        # evidence of absence -- that is precisely the `never_started` lie.
+        text = path.read_text()
+        data = _json.loads(text)
+        if not isinstance(data, dict):
+            raise AcpProtocolError(f"{path} is not a session map")
+        hits = []
+        for key, entry in data.items():
+            if not isinstance(entry, dict):
+                continue
+            started = entry.get("startedAt")
+            if not isinstance(started, (int, float)) or started < since_ms:
+                continue
+            hits.append((key, entry))
+        if not hits:
+            return None
+        if len(hits) > 1:
+            raise AcpProtocolError(
+                f"{len(hits)} sessions started after this spawn on {eng!r}; "
+                f"which one is this spawn cannot be told apart, so the status "
+                f"is unknown rather than guessed")
+        key, entry = hits[0]
+        return {"state": str(entry.get("status") or ""),
+                "session_key": key,
+                "acp_session_id": key,
+                "started_at": entry.get("startedAt"),
+                "ended_at": entry.get("endedAt"),
+                "spawned_by": entry.get("spawnedBy")}
+
+    return _lookup
+
+
 class AcpRuntime:
     """`MachineRuntime`'s interface, over ACP.
 
@@ -745,6 +809,19 @@ class AcpRuntime:
         that the session is absent. The return always carries a `session_key` so
         a follow-up can act on the handle regardless of status.
         """
+        # OPT-IN, not automatic. `session_store_lookup` is the production
+        # evidence source, but wiring it as a silent default would convert
+        # `unknown` into `never_started` for every caller -- and openclaw is
+        # believed to write that store asynchronously, so an empty store
+        # milliseconds after a spawn is not yet proof the session is absent.
+        # A caller who accepts that risk passes the lookup explicitly:
+        #
+        #     AcpRuntime(agent_id=..., lookup=session_store_lookup(
+        #         agent_id, since_ms=int(time.time() * 1000)))
+        #
+        # Until the store's write timing is measured, the invariant stands:
+        # with no lookup configured, the answer is `unknown`.
+        lookup = self._lookup
         started = self.start(name, cwd, **kw)
         if started.get("ok"):
             # session/new acknowledged: the session is live and the executor
@@ -760,7 +837,7 @@ class AcpRuntime:
 
         reason = started.get("reason") or "the spawn did not acknowledge"
 
-        if self._lookup is None:
+        if lookup is None:
             # No way to look, so no basis for ANY of the three. Reporting
             # never_started here would be the exact lie: a positive claim with no
             # negative lookup behind it.
@@ -770,7 +847,7 @@ class AcpRuntime:
                                f"session lookup is configured, so running vs "
                                f"finished vs never-started cannot be told apart")}
         try:
-            found = self._lookup(name)
+            found = lookup(name)
         except Exception as e:
             # The lookup could not answer. Still not never_started: no answer is
             # not a negative answer.
