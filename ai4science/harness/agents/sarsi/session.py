@@ -283,6 +283,22 @@ def assign(config: Config, agent: Agent, task: tsk.Task, *,
                       "exactly-once violated.")
         return task
 
+    # Readiness gate — sync self model and check for gaps before spawning.
+    # A stale authority or missing plan is logged as a refusal lesson so the
+    # pattern is visible in MEMORY.md. Soft check for now: gaps are recorded
+    # but do not block (M3 adds hard blocking once prediction records exist).
+    try:
+        from ai4science.harness.agents.sarsi import selfmodel as _sm
+        _sm.sync(config, agent)
+        ready, gaps = _sm.readiness(config, agent, task)
+        if not ready:
+            for gap in gaps:
+                memory.record(config, agent, "refusal",
+                              f"readiness gap before assign: {gap[:120]}",
+                              f"task {task.id}: {gap}")
+    except Exception:
+        pass
+
     # Which engine runs this task. The BACKEND is the task's — one worker runs
     # many tasks, and which engine ran a given one is a fact about that task.
     # A blank backend is an old record, and reads as the default rather than
@@ -1220,6 +1236,17 @@ def release_session(config: Config, agent: Agent, task: tsk.Task, *,
     past.append(dict(task.session or {}, ended_at=now()))
     task.past_sessions = past
     task.session = None
+
+    # Update self model: record when the executor last completed a session.
+    try:
+        from ai4science.harness.agents.sarsi import selfmodel as _sm
+        _sm.update(agent.agent_dir, "executor",
+                   {"last_verified_at": _sm._now_iso(), "task_id": task.id},
+                   evidence_ref=f"session-release:{task.id}",
+                   stale_after_secs=86400)
+    except Exception:
+        pass
+
     return tsk._touch(agent, task, now)
 
 

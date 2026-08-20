@@ -1,155 +1,197 @@
-"""The self-model — `SA = ⟨Content, Operations, Evidence⟩`.
+"""Evidence-grounded self model — what the harness can truthfully observe.
 
-The agent maintains a model of **what it is, what it can do, and how it knows**,
-where every claim is backed by an observation. This is a functional definition
-and not a claim of consciousness.
+Each field carries measured_at, evidence_ref, and stale_after_secs.
+Staleness is computed at read time: a field not re-observed within its window
+is `stale=True`. A stale field is reported as stale, not silenced.
 
-One implementation, seven instances: the *evidence sources* differ per agent,
-the *contract* does not.
+Write rule: fields are written only by harness events — registry load, ledger
+reads, task transitions, session completions. LLM self-report never writes here.
+A field not yet measured is None, not 0 or "unknown" — silence is not success
+(paper §3.4).
 
-| Line | Evidence, probed at ask time |
-|---|---|
-| engines I can operate | a real binary discovery on this machine |
-| tasks I hold, and their states | this agent's own task records |
-| what I **verified** | verifier verdicts only — `s_C` |
-| vault: asked, allowed, denied | the vault ledger — never the secrets |
-| outward: sent, refused, abstained | the outward ledger |
-| playbook version and parameters | this agent's playbook on disk |
-| **limits** | the honesty rule, always stated |
-
-The rules, enforced here rather than asked for in a prompt:
-
-  * **every claim carries its source.** A line without an observation behind it
-    is a boast, so `Claim.source` is required.
-  * **`s_C` counts what the verifier granted**, never what the agent said.
-  * **an unmeasured competence is reported `unverified`**, never guessed.
-  * **it never promotes itself.** A pending candidate is *reported* as awaiting
-    the owner's signature; reporting it is not adopting it.
+File: <agent_dir>/self_state.json
 """
 from __future__ import annotations
 
-import shutil
-from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional
-
-from ai4science.harness.agents.sarsi import ledger, playbook as pb, task as tsk
-from ai4science.harness.agents.sarsi.registry import Agent, Config
-
-LIMITS = ("competence beyond these measurements is unverified — nothing here "
-          "is a claim about what I have not been measured doing")
+import json
+import time
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
 
-@dataclass(frozen=True)
-class Claim:
-    field: str
-    value: Any
-    source: str          # required: where this was observed
+def _path(agent_dir: Path) -> Path:
+    return agent_dir / "self_state.json"
 
 
-def model(config: Config, agent: Agent, *,
-          which: Callable[[str], Optional[str]] = shutil.which) -> List[Claim]:
-    claims: List[Claim] = [
-        Claim("agent", agent.id, "the registry"),
-        Claim("role", agent.role, "the registry"),
-        Claim("drives_sessions", agent.is_worker,
-              "the registry — a manager has no path to ASG in code"),
-        Claim("engines", _engines(which),
-              "a real binary probe on this machine's PATH"),
-    ]
-
-    tasks = tsk.all_of(config, agent) if agent.is_worker else []
-    claims.append(Claim("tasks_held", len(tasks), "this agent's task records"))
-    claims.append(Claim("states", _states(tasks), "this agent's task records"))
-    # s_C: written by the verifier, read here. What the agent claimed is absent.
-    claims.append(Claim("verified",
-                        sum(1 for t in tasks
-                            if t.state == tsk.VERIFIED
-                            and (t.verdict or {}).get("state") == "PASS"),
-                        "verifier verdicts only"))
-
-    claims.append(Claim("vault", _vault_counts(config, agent),
-                        "the vault ledger — decisions, never secrets"))
-    claims.append(Claim("outward", _outward_counts(config, agent),
-                        "the outward ledger"))
-
-    book = pb.read(config, agent)
-    claims.append(Claim("playbook",
-                        {"version": book.get("version"),
-                         "params": book.get("params", {})},
-                        "this agent's playbook on disk"))
-    candidate = book.get("candidate")
-    if candidate:
-        claims.append(Claim("pending_candidate", candidate.get("rationale", ""),
-                            "held, awaiting your signature"))
-    claims.append(Claim("limits", LIMITS, "the honesty rule"))
-    return claims
+def _now_iso() -> str:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def render(config: Config, agent: Agent, **kw) -> str:
-    claims = model(config, agent, **kw)
-    lines = [f"{agent.id} — what I am, what I can do, and how I know",
-             "(every line below is observed, not asserted)"]
-    for claim in claims:
-        if claim.field == "limits":
+def _age_secs(measured_at: Optional[str]) -> Optional[float]:
+    """Seconds since measured_at, or None when not measured."""
+    if not measured_at:
+        return None
+    try:
+        from datetime import datetime, timezone
+        t = datetime.fromisoformat(measured_at)
+        return (datetime.now(timezone.utc) - t).total_seconds()
+    except Exception:
+        return None
+
+
+def _load(agent_dir: Path) -> Dict[str, Any]:
+    p = _path(agent_dir)
+    if not p.exists():
+        return {}
+    try:
+        return json.loads(p.read_text())
+    except Exception:
+        return {}
+
+
+def _save(agent_dir: Path, state: Dict[str, Any]) -> None:
+    p = _path(agent_dir)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(state, indent=2))
+
+
+def update(agent_dir: Path, field: str, value: Any,
+           evidence_ref: str = "", stale_after_secs: int = 3600) -> None:
+    """Write one field to the self model. Never raises."""
+    try:
+        state = _load(agent_dir)
+        state[field] = {
+            "value": value,
+            "measured_at": _now_iso(),
+            "evidence_ref": (evidence_ref or "").strip(),
+            "stale_after_secs": int(stale_after_secs),
+        }
+        _save(agent_dir, state)
+    except Exception:
+        pass
+
+
+def read(agent_dir: Path) -> Dict[str, Any]:
+    """All fields with `stale` computed from age vs stale_after_secs."""
+    state = _load(agent_dir)
+    out: Dict[str, Any] = {}
+    for name, rec in state.items():
+        if not isinstance(rec, dict):
             continue
-        if claim.field == "pending_candidate":
-            lines.append(f"  improvement awaiting your signature: {claim.value}")
-            continue
-        lines.append(f"  {claim.field}: {claim.value}   [{claim.source}]")
-    if not agent.is_worker:
-        # the invariant, reported as a fact about itself
-        lines.append("  I route, plan and answer. I have never driven a "
-                     "sarsi-claude session, and I cannot: assigning one raises "
-                     "for a manager.")
-    lines.append(f"  limits: {LIMITS}")
-    return "\n".join(lines)
-
-
-def competence(config: Config, agent: Agent, ability: str) -> str:
-    """What this agent knows about an ability. Anything unprobed is unverified —
-    a self-model that guesses here is worse than one that declines."""
-    measured = {c.field for c in model(config, agent)}
-    return "measured" if ability in measured else "unverified"
-
-
-# ── the probes ────────────────────────────────────────────────────────
-
-def _engines(which: Callable[[str], Optional[str]]) -> Dict[str, bool]:
-    return {name: bool(which(name)) for name in ("claude", "codex")}
-
-
-def _states(tasks) -> Dict[str, int]:
-    out: Dict[str, int] = {}
-    for t in tasks:
-        out[t.state] = out.get(t.state, 0) + 1
+        age = _age_secs(rec.get("measured_at"))
+        limit = rec.get("stale_after_secs", 3600)
+        stale = (age is None) or (age > limit)
+        out[name] = dict(rec, stale=stale, age_secs=round(age) if age is not None else None)
     return out
 
 
-def _vault_counts(config: Config, agent: Agent) -> Dict[str, int]:
-    rows = [r for r in ledger.read(config, "vault") if r.get("agent") == agent.id]
-    return {"asked": len(rows),
-            "allowed": sum(1 for r in rows if r.get("decision") == "ALLOW"),
-            "denied": sum(1 for r in rows if r.get("decision") == "DENY")}
+def is_stale(agent_dir: Path, field: str) -> bool:
+    """Is this field stale (or unmeasured)?"""
+    f = read(agent_dir).get(field)
+    if f is None:
+        return True
+    return bool(f.get("stale", True))
 
 
-def _outward_counts(config: Config, agent: Agent) -> Dict[str, int]:
-    rows = [r for r in ledger.read(config, "outward") if r.get("agent") == agent.id]
-    return {"sent": sum(1 for r in rows if r.get("outcome") == "sent"),
-            "refused": sum(1 for r in rows if r.get("outcome") == "refused"),
-            "abstained": sum(1 for r in rows if r.get("outcome") == "abstained"),
-            "drafted": sum(1 for r in rows if r.get("outcome") == "drafted")}
+def sync(config, agent) -> Dict[str, Any]:
+    """Populate observable fields from harness state. Returns the current read."""
+    d = agent.agent_dir
+
+    # identity — static; stale_after = 30 days
+    try:
+        update(d, "identity", {
+            "agent_id": agent.id,
+            "role": agent.role,
+            "owner_id": config.owner_id,
+        }, evidence_ref="registry:sarsi.json", stale_after_secs=86400 * 30)
+    except Exception:
+        pass
+
+    # authority — from registry + trust ledger; stale_after = 1 hour
+    try:
+        from ai4science.harness.agents.sarsi import selfaware as _sa
+        eff, why = _sa._effective(agent.ceiling)
+        update(d, "authority", {
+            "configured": agent.ceiling,
+            "effective": eff,
+            "why": why,
+        }, evidence_ref="trust-ledger", stale_after_secs=3600)
+    except Exception:
+        pass
+
+    # active_intention — from task store; stale_after = 5 min
+    try:
+        from ai4science.harness.agents.sarsi import task as tsk, entry as _entry
+        rows = tsk.all_of(config, agent)
+        standing_id = None
+        try:
+            standing_id = _entry.current(config, agent)
+        except Exception:
+            pass
+        update(d, "active_intention", {
+            "task_count": len(rows),
+            "standing_task_id": standing_id,
+        }, evidence_ref="task-store", stale_after_secs=300)
+    except Exception:
+        pass
+
+    # executor — last session completion; stale_after = 24h (written by session.py)
+    # Not synced here — session.py writes this on session completion.
+
+    return read(d)
 
 
-def evidence_for_rsi(config: Config, agent: Agent) -> Dict[str, Any]:
-    """The measurements a proposal must cite. Same numbers as the self-model —
-    an improvement argued from figures the owner cannot see is not evidence."""
-    tasks = tsk.all_of(config, agent) if agent.is_worker else []
-    outward = _outward_counts(config, agent)
-    return {
-        "tasks_held": len(tasks),
-        "blocked_by_concurrency": sum(1 for t in tasks
-                                      if t.blocked_by == "concurrency"),
-        "verified": sum(1 for t in tasks if t.state == tsk.VERIFIED),
-        "refused": outward["refused"] + sum(1 for t in tasks
-                                            if t.state == tsk.REFUSED),
-    }
+def render(agent_dir: Path) -> str:
+    """Non-stale self-model fields formatted for context injection.
+
+    Stale fields are still mentioned so the LLM knows they exist but are
+    unverified — silence about a stale authority field is worse than reporting
+    it stale.
+    """
+    state = read(agent_dir)
+    if not state:
+        return ""
+    lines = ["self model (harness-observed):"]
+    for name in ("identity", "authority", "active_intention", "executor"):
+        rec = state.get(name)
+        if rec is None:
+            lines.append(f"  {name}: not yet measured")
+            continue
+        val = rec.get("value")
+        stale = rec.get("stale", True)
+        age = rec.get("age_secs")
+        age_str = f" (age {age}s)" if age is not None else ""
+        stale_str = " [STALE]" if stale else ""
+        lines.append(f"  {name}{stale_str}{age_str}: {json.dumps(val)}")
+    return "\n".join(lines)
+
+
+def readiness(config, agent, task=None) -> Tuple[bool, List[str]]:
+    """Is the agent in a state where assigning a session is safe?
+
+    Returns (ready, gaps) where gaps is a list of human-readable problems.
+    A gap means a required field is stale or null. Soft check — the caller
+    decides whether to block or warn.
+    """
+    gaps: List[str] = []
+    d = agent.agent_dir
+
+    if is_stale(d, "authority"):
+        gaps.append("authority field is stale or unmeasured — "
+                    "ceiling may have changed since last check")
+
+    if task is not None:
+        try:
+            from ai4science.harness.agents.sarsi import task as tsk
+            plan = tsk.read_plan(config, agent, task)
+            if plan is None:
+                gaps.append(f"task {task.id} has no plan — cannot assign session "
+                            "without an agreed plan")
+        except Exception:
+            pass
+        if task.awaiting:
+            gaps.append(f"task {task.id} is still awaiting grants: "
+                        + ", ".join(task.awaiting))
+
+    return len(gaps) == 0, gaps

@@ -357,14 +357,19 @@ def _memory_indexes(config: Config, agent: Agent) -> list:
     return out
 
 
-def workspace_context(config: Config, agent: Agent, surface: str = "cli") -> str:
-    """A compact workspace snapshot to prepend to LLM answers in agent mode.
+def workspace_context(config: Config, agent: Agent, surface: str = "cli",
+                      observation: str = "") -> str:
+    """Working-memory gate — context window assembled per turn.
 
-    The LLM answering a question in sarsi-worker mode has no idea what tasks the
-    worker holds, what the current standing task is, or what lessons the agent has
-    recorded. This injects that context so the answer is grounded in the actual
-    workspace rather than generic model knowledge.
+    Assembly order (highest to lowest priority, per BrainRSI §5.2):
+      1. Semantic memory  — all active entries (always; constraints bypass the gate)
+      2. Task board + intentional — plan for standing task, current phase
+      3. Memory lessons   — MEMORY.md from both workspaces
+      4. Self model       — harness-observed fields with staleness flags
+      5. Episodic         — last 3 exchanges verbatim + scored older ones, ≤3000 chars
+      6. Log file path    — always shown so LLM can read more
 
+    `observation` is the current user input; used to score episodic relevance.
     Returns "" when no context is available so the caller can skip the prefix.
     """
     parts: list = []
@@ -437,26 +442,86 @@ def workspace_context(config: Config, agent: Agent, surface: str = "cli") -> str
     except Exception:
         pass
 
-    # ── full conversation log ───────────────────────────────────────────────
-    # sarsi-worker is a manager that directs sarsi-claude and sarsi-ai4sci.
-    # Every decision it makes must be grounded in the full project history,
-    # so ALL exchanges are injected — no count or character cap. The log file
-    # path is also included so the LLM can re-read it directly if needed.
+    # ── self model (harness-observed, with staleness) ──────────────────────
     try:
-        from ai4science.harness.agents.sarsi import log as _log
+        from ai4science.harness.agents.sarsi import selfmodel as _sm
+        _sm.sync(config, agent)
+        sm_text = _sm.render(agent.agent_dir)
+        if sm_text:
+            parts.append(sm_text)
+    except Exception:
+        pass
+
+    # ── episodic log — gated selection ─────────────────────────────────────
+    # Last 3 exchanges always shown verbatim (recency anchor).
+    # Older exchanges: scored by task-overlap and keyword overlap with the
+    # current observation, admitted greedily up to EPISODIC_CHAR_CAP chars.
+    # Count of omitted entries is always shown — a silent truncation reads as
+    # completeness when it is not.
+    EPISODIC_CHAR_CAP = 3000
+    try:
+        from ai4science.harness.agents.sarsi import log as _log, entry as _entry
         log_path = _log._path(agent.agent_dir, surface)
-        entries = _log.read(agent.agent_dir, surface, limit=0)  # all entries
-        log_lines = [f"conversation history ({len(entries)} exchanges)"
-                     f" — full log: {log_path}:"]
-        if entries:
-            for e in entries:
-                ts = str(e.get("at", ""))[:16]
-                inp = str(e.get("in", "")).strip()
-                out = str(e.get("out", "")).strip()
-                log_lines.append(f"  [{ts}] you: {inp}")
-                log_lines.append(f"           worker: {out}")
-        else:
+        all_entries = _log.read(agent.agent_dir, surface, limit=0)
+        total = len(all_entries)
+
+        # Always take the last 3 as the recency anchor.
+        recent = all_entries[-3:] if len(all_entries) >= 3 else all_entries
+        older = all_entries[:-3] if len(all_entries) > 3 else []
+
+        # Score older entries for relevance.
+        obs_words = set((observation or "").lower().split()) - {
+            "the", "a", "an", "is", "in", "to", "and", "of", "for", "it"}
+        try:
+            standing_id = _entry.current(config, agent, surface=surface) or ""
+        except Exception:
+            standing_id = ""
+
+        def _score(e: dict) -> int:
+            s = 0
+            if standing_id and e.get("task_id") == standing_id:
+                s += 2
+            if obs_words:
+                text = ((e.get("in") or "") + " " + (e.get("out") or "")).lower()
+                s += min(2, sum(1 for w in obs_words if w in text))
+            return s
+
+        scored = sorted(older, key=_score, reverse=True)
+
+        def _fmt(e: dict) -> str:
+            ts = str(e.get("at", ""))[:16]
+            inp = str(e.get("in", "")).strip()
+            out = str(e.get("out", "")).strip()
+            tid = f" [{e['task_id']}]" if e.get("task_id") else ""
+            return f"  [{ts}]{tid} you: {inp}\n           worker: {out}"
+
+        # Greedily admit scored older entries within the cap.
+        admitted: list = []
+        chars_used = sum(len(_fmt(e)) for e in recent)
+        for e in scored:
+            fmt = _fmt(e)
+            if chars_used + len(fmt) > EPISODIC_CHAR_CAP:
+                break
+            admitted.append(e)
+            chars_used += len(fmt)
+
+        shown_count = len(recent) + len(admitted)
+        omitted = total - shown_count
+        header = (f"conversation history ({total} total, {shown_count} shown"
+                  + (f", {omitted} omitted — full log: {log_path}" if omitted else "")
+                  + "):")
+        log_lines = [header]
+        # Print admitted (older, relevant) first so chronology reads naturally.
+        for e in sorted(admitted, key=lambda x: x.get("at", "")):
+            log_lines.append(_fmt(e))
+        if admitted and recent:
+            log_lines.append("  … [gap] …")
+        for e in recent:
+            log_lines.append(_fmt(e))
+        if not all_entries:
             log_lines.append("  (no exchanges recorded yet)")
+        if not omitted:
+            log_lines.append(f"  full log: {log_path}")
         parts.append("\n".join(log_lines))
     except Exception:
         pass
