@@ -57,6 +57,26 @@ from typing import Any, Dict, List, Optional
 PROMPT_TIMEOUT = 600
 _CMD = ["opencode", "acp", "--pure"]  # kept for legacy; use openclaw_acp_runtime()
 
+# The four-outcome verdict is shared with the sibling backend rather than
+# re-implemented: one `classify` means a REFUSED reads ok=True on BOTH
+# transports and a new stop reason cannot be judged two different ways.
+from ai4science.harness.agents.sarsi.acp_backend import classify, verdict_of
+
+
+def _verdict_for(reply: Dict[str, Any]) -> Dict[str, Any]:
+    """Map an A-shaped `AcpClient.prompt` reply onto `classify`'s input.
+
+    A speaks `stopReason` (camelCase) and reports transport failure as
+    `{"ok": False, "reason": ...}`; `classify` speaks `stop_reason` and an
+    `error` dict. This is the only adapter between the two shapes.
+    """
+    error = None
+    if reply.get("ok") is False:
+        error = {"message": reply.get("reason") or "the prompt did not succeed"}
+    return classify({"stop_reason": reply.get("stopReason"),
+                     "text": reply.get("text"),
+                     "error": error})
+
 
 class AcpError(Exception):
     """The protocol answered, and the answer was a refusal."""
@@ -278,8 +298,19 @@ class AcpRuntime:
     def send(self, name: str, text: str, **_: Any) -> Dict[str, Any]:
         client = self._clients.get(name)
         if client is None or not client.alive:
-            return {"ok": False, "reason": "no live acp session"}
-        return client.prompt(text)
+            reply = {"ok": False, "reason": "no live acp session"}
+            return {**reply, **_verdict_for(reply)}
+        reply = client.prompt(text)
+        # Enrich with the shared verdict while keeping A's original keys
+        # (`ok`, `stopReason`, `text`, `reason`) untouched for existing callers.
+        verdict = _verdict_for(reply)
+        merged = dict(reply)
+        merged.update({k: verdict[k] for k in
+                       ("outcome", "refused", "attempted")})
+        # `ok` is unified to the verdict's: a `refusal` is ok=True, a transport
+        # failure is ok=False — which is what A already returned in both cases.
+        merged["ok"] = verdict["ok"]
+        return merged
 
     def stop(self, name: str, **_: Any) -> None:
         client = self._clients.pop(name, None)
