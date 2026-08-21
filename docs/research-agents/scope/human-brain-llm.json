@@ -1,0 +1,97 @@
+{
+  "$comment": "The scope object of spec §13j. Set by the field's experts, not by the agent and not by the owner. Versioned: a change here is a change to what the agent may work on. This field is declared AHEAD of its agent: no brain-recording corpus exists on this machine, and a field whose answer key is absent cannot be scored — see human-brain-llm.md.",
+  "agent": "human-brain-llm",
+  "agent_id": null,
+  "$agent_id_comment": "null: no agent exists for this field yet — research_agents.registry knows seven names and this is not one. A field declared ahead of its agent is a draft, and the console shows it as one. Promotion requires a corpus with held-out subjects and a judge that the proposing role does not own.",
+  "field": "human brain and language models",
+  "principle": "shared structure between a language model and a brain must be measured against what the STIMULUS ALONE predicts; an encoding score a stimulus-only or size-matched control also reaches is not evidence of shared computation — stated so it can be wrong, and it very often is",
+  "version": 1,
+  "set_on": "2026-08-18",
+  "set_by": {
+    "roles": [
+      "cognitive neuroscientist (language)",
+      "neuroimaging methodologist",
+      "computational modeller of neural representation",
+      "consent and data-use officer"
+    ],
+    "named": null,
+    "$comment": "roles, never names — naming a person in a design document commits them to something they have not agreed to. `named` is filled when a panel exists."
+  },
+  "in": [
+    {
+      "subfield": "encoding models — predicting recorded neural responses from model representations",
+      "boundary": "always reported beside a stimulus-only floor (word rate, surprisal, acoustic and low-level features) and a size-matched control model"
+    },
+    {
+      "subfield": "decoding — recovering stimulus properties from recordings",
+      "boundary": "reported with the identification baseline and with subject-disjoint splits; a within-subject split reads the subject, not the language"
+    },
+    {
+      "subfield": "representational similarity",
+      "boundary": "normalised by an explicitly estimated noise ceiling, with the ceiling reported and not folded into the number"
+    },
+    {
+      "subfield": "generalisation across subjects, sessions and datasets",
+      "boundary": "held-out subjects and held-out recordings; a result that does not survive a new subject is a result about that subject"
+    },
+    {
+      "subfield": "re-validation of published brain-score and alignment claims",
+      "boundary": "against the stimulus-only floor those claims were mostly never asked to clear"
+    }
+  ],
+  "out": [
+    {
+      "question": "whether a model understands, is conscious, or has experience",
+      "why": "no recording is an answer key for it; a benchmark that scored it would be scoring a definition, not a fact",
+      "goes_to": "nobody here"
+    },
+    {
+      "question": "any clinical or diagnostic statement about a named individual",
+      "why": "this agent may say what predicts group-level response; it may never say anything about a person",
+      "goes_to": "nobody here"
+    },
+    {
+      "question": "advocacy for a model architecture",
+      "why": "a field that both proposes an architecture and rules on its brain-likeness has replaced validation with authorship",
+      "goes_to": "nobody here"
+    },
+    {
+      "question": "mechanism in neural tissue — why a population responds",
+      "why": "correlational recordings cannot score it; it needs intervention and a different answer key",
+      "goes_to": "neuroscience (no agent yet)"
+    },
+    {
+      "question": "collecting the recordings",
+      "why": "scanner and electrode time is the binding constraint, and consent is held by a person, never by an agent",
+      "goes_to": "the labs and their custodians"
+    }
+  ],
+  "adjacent": [
+    {
+      "field": "computational-imaging",
+      "relation": "shares the inverse-problem machinery for reconstructing fMRI and MEG; owns the reconstruction, not the interpretation"
+    },
+    {
+      "field": "medical-physics",
+      "relation": "owns acquisition physics and artefact behaviour of the scanners this field reads from"
+    },
+    {
+      "field": "neuroscience (no agent yet)",
+      "relation": "owns the cohorts, the consent, the stimulus design and any causal claim"
+    }
+  ],
+  "claims_allowed": [
+    "what a model representation adds over a stimulus-only floor, on held-out subjects it was not fitted on",
+    "noise-ceiling-normalised similarity with the ceiling reported beside it",
+    "that a representation adds nothing over the floor, which is the expected answer most of the time"
+  ],
+  "claims_forbidden": [
+    "any claim about understanding, consciousness or experience",
+    "any claim about a named individual",
+    "an encoding or alignment score reported without the stimulus-only floor and the noise ceiling beside it",
+    "a claim of brain-likeness supported only by a correlation that a larger model also achieves"
+  ],
+  "would_move_the_boundary": "the question becoming CAUSAL — whether perturbing a representation changes the neural response. No correlational recording can score that, so it is a different twin and a different answer key. The response is fission, not a wider scope",
+  "watch_rung": null,
+  "$watch_comment": "if the stimulus-only floor stays unbeaten across every candidate representation, the field's own principle has been confirmed in its least flattering direction, and the experts decide whether that is a finding or a closure (§13j)."
+}

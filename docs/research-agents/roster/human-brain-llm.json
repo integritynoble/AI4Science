@@ -1,0 +1,39 @@
+{
+  "$comment": "The roster of spec §13f, per field. The nine core roles are a floor: a field may add and may not remove. This field adds one, and it is admitted only because a ladder rung has no core owner.",
+  "agent": "human-brain-llm",
+  "version": 1,
+  "set_on": "2026-08-18",
+  "sub_agents": [
+    {"name": "literature", "does": "finds and reads prior work; produces claims with citations", "core": true, "embodied": false,
+     "why_separate": "reading and doing must not share a context, or the agent finds what it set out to find", "kind": "reasoning"},
+    {"name": "twin", "does": "maintains the stimulus-and-response model — stimulus timing, haemodynamic or spectral response, subject and session structure", "core": true, "embodied": false,
+     "why_separate": "the model a claim is graded against may not be owned by the claim's author, and this twin stops being valid outside the stimulus set it was built on — naturalistic speech does not transport to isolated words", "kind": "reasoning"},
+    {"name": "corpus", "does": "fetches and validates public brain-recording datasets with their stimuli; refuses when the stimulus alignment or the consent terms are absent", "core": true, "embodied": false,
+     "why_separate": "never substitutes simulated recordings: neural noise is the easiest of all to simulate convincingly, and a benchmark that did it would produce numbers that are not results", "kind": "reasoning"},
+    {"name": "method", "does": "proposes candidate representations, mappings and analyses", "core": true, "embodied": false,
+     "why_separate": "the only role that writes the thing being judged", "kind": "reasoning"},
+    {"name": "runner", "does": "executes analyses, on leased compute when needed", "core": true, "embodied": false,
+     "why_separate": "keeps cost and placement out of the method's hands", "kind": "reasoning"},
+    {"name": "verifier", "does": "judges a claim against the criterion written before it", "core": true, "embodied": false,
+     "why_separate": "independence is temporal and authorial (§13i) — and here it refuses any result not reported beside the stimulus-only floor and the noise ceiling", "kind": "judging"},
+    {"name": "reproducer", "does": "re-runs a published alignment result from its artifacts alone", "core": true, "embodied": false,
+     "why_separate": "catches the result that only exists on the machine that made it — and in this field, the one whose subject split was never written down", "kind": "judging"},
+    {"name": "teacher", "does": "derives the curriculum from the evidence chain", "core": true, "embodied": false,
+     "why_separate": "teaching is a product and must be checkable like one; this one refuses to present an encoding correlation as evidence of understanding", "kind": "judging"},
+    {"name": "writer", "does": "assembles the field page and the paper", "core": true, "embodied": false,
+     "why_separate": "writing last, from the record, not from intent", "kind": "judging"},
+    {"name": "floor", "does": "fits the stimulus-only and size-matched control models independently, before any candidate representation is scored", "core": false, "embodied": false,
+     "why_separate": "the field's whole question is what a representation adds over the stimulus, and no core role owns it. Fitted by `method` it would be a floor set by the party that has to clear it — and most published alignment scores have never been asked to clear one at all",
+     "admitted_for_rung": 2, "owns_rungs": ["2"],
+     "$owns_comment": "rung 3's subject disjointness is the twin's and the experts'; the floor consumes the split and may not choose it", "kind": "reasoning"}
+  ],
+  "tools": [
+    {"tool": "encoding and decoding regression", "for": "mapping representations to responses with cross-validated ridge or equivalent", "source": "built-in", "cost": "minutes", "needs_envelope": false},
+    {"tool": "noise-ceiling estimation", "for": "the upper bound any model could reach on this data — rung 4", "source": "built-in", "cost": "minutes", "needs_envelope": false},
+    {"tool": "representational similarity analysis", "for": "geometry comparison independent of a fitted mapping", "source": "built-in", "cost": "minutes", "needs_envelope": false},
+    {"tool": "neuroimaging dataset clients", "for": "public naturalistic-stimulus recordings with model-ready stimuli", "source": "built-in", "cost": "application + download", "needs_envelope": false,
+     "$comment": "access is granted to a person under a data-use agreement, not to an agent. The owner holds the agreement; the agent reads what the owner already has, and refuses rather than applying on anyone's behalf"},
+    {"tool": "registry client", "for": "publishing and querying L1-L4", "source": "built-in", "cost": "free", "needs_envelope": false}
+  ],
+  "$envelope_comment": "needs_envelope: a physical act (§13i). This field lists NO embodied member and no tool that needs an envelope, and that absence is the point: every act here is on recordings a person already consented to and already collected. The binding constraint is scanner and electrode time, which this roster cannot buy and must not pretend to — a field that added a collection robot here would be reaching for human subjects, and that is the one direction this roster refuses to grow without a panel."
+}
