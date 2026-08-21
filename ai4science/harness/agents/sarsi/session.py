@@ -302,12 +302,26 @@ def assign(config: Config, agent: Agent, task: tsk.Task, *,
     # Register a pre-action forecast via forecast.py before spawning.
     # forecast.record() raises TooLate if the task already has a verdict, which
     # enforces the pre-action invariant without any additional guard here.
+    # M3.2: calibration affects the forecast probability — if overconfident
+    # (bias < -0.10 with at least 2 scored forecasts), use 0.5 instead of 0.7.
+    # This is a bounded policy: it changes the recorded estimate but never
+    # bypasses authority or required deterministic verification.
     try:
         from ai4science.harness.agents.sarsi import forecast as _fc
         index = tsk.earliest_incomplete(task)
         phase_str = f"phase {index + 1}" if index is not None else "final verification"
-        _fc.record(config, agent, task, 0.7,
-                   why=f"sarsi-claude assigned for {phase_str} of {task.id}")
+        p_forecast = 0.7
+        cal = _fc.calibration(config, agent)
+        if cal and cal.get("n", 0) >= 2 and (cal.get("bias") or 0.0) < -0.10:
+            p_forecast = 0.5  # overconfident — be more conservative
+            memory.record(config, agent, "refusal",
+                          f"calibration bias {cal['bias']:.2f} with n={cal['n']}: "
+                          "using conservative p=0.5 instead of p=0.7",
+                          f"task {task.id}: overconfidence correction applied")
+        _fc.record(config, agent, task, p_forecast,
+                   why=f"sarsi-claude assigned for {phase_str} of {task.id}; "
+                   f"p={p_forecast:.1f} "
+                   + ("(conservative — overconfidence detected)" if p_forecast < 0.7 else "(default)"))
     except Exception:
         pass
 
