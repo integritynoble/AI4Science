@@ -161,6 +161,103 @@ def _propose_skill_candidate(config: Config, agent: Agent,
         return None
 
 
+class SkillPromotionError(Exception):
+    """A skill candidate failed the promotion gate."""
+
+
+def promote_skill(config: Config, agent: Agent, skill_id: str,
+                  sandbox_exit_code: int = 0) -> Dict[str, Any]:
+    """Promote a skill candidate to active status (M5.4).
+
+    A procedural candidate becomes active ONLY after all of the following are
+    satisfied — these are checked here, not trusted from the candidate record:
+
+      1. preconditions: non-empty list.
+      2. tests: non-empty list AND all tests passed in sandbox
+         (caller provides sandbox_exit_code — 0 means all tests passed).
+      3. postconditions: non-empty list.
+      4. rollback: non-empty string.
+      5. evidence_refs: non-empty list.
+
+    Any violation raises SkillPromotionError — the skill remains a candidate.
+    On success, writes an activate event to the skills ledger.
+
+    This function enforces the gate; it does NOT run the sandbox itself.
+    The caller is responsible for running the declared tests and passing the
+    exit code.  A caller that fabricates exit_code=0 without running tests
+    is violating the protocol — this is the same as the worker grading its
+    own work, which the authority kernel prohibits.
+    """
+    skills = ledger.read(config, "skills")
+    candidate = next(
+        (s for s in skills
+         if s.get("skill_id") == skill_id and s.get("agent_id") == agent.id),
+        None
+    )
+    if candidate is None:
+        raise SkillPromotionError(
+            f"skill {skill_id!r} not found for agent {agent.id!r}")
+    if candidate.get("status") != "candidate":
+        raise SkillPromotionError(
+            f"skill {skill_id!r} has status {candidate.get('status')!r}; "
+            "only candidates can be promoted")
+    if not candidate.get("preconditions"):
+        raise SkillPromotionError(
+            f"skill {skill_id!r}: preconditions must be explicit before promotion")
+    if not candidate.get("tests"):
+        raise SkillPromotionError(
+            f"skill {skill_id!r}: tests must be declared and run in sandbox "
+            "before promotion — a skill with no tests cannot be promoted")
+    if sandbox_exit_code != 0:
+        raise SkillPromotionError(
+            f"skill {skill_id!r}: sandbox tests failed (exit code "
+            f"{sandbox_exit_code}) — fix tests before promoting")
+    if not candidate.get("postconditions"):
+        raise SkillPromotionError(
+            f"skill {skill_id!r}: postconditions must be declared before promotion")
+    if not candidate.get("rollback"):
+        raise SkillPromotionError(
+            f"skill {skill_id!r}: rollback procedure must be defined before promotion")
+    if not candidate.get("evidence_refs"):
+        raise SkillPromotionError(
+            f"skill {skill_id!r}: evidence links must be recorded before promotion")
+
+    activation: Dict[str, Any] = {
+        "schema_version": 1,
+        "skill_id": skill_id,
+        "version": candidate.get("version", 1),
+        "op": "activate",
+        "status": "active",
+        "agent_id": agent.id,
+        "preconditions": candidate["preconditions"],
+        "tests": candidate["tests"],
+        "postconditions": candidate["postconditions"],
+        "rollback": candidate["rollback"],
+        "evidence_refs": candidate["evidence_refs"],
+        "sandbox_exit_code": sandbox_exit_code,
+        "description": candidate.get("description", ""),
+        "scope": candidate.get("scope", ["global"]),
+    }
+    return ledger.append(config, "skills", activation)
+
+
+def active_skills(config: Config, agent: Agent) -> List[Dict[str, Any]]:
+    """Return currently active skills for this agent.
+
+    A skill is active when its most recent event for its skill_id has
+    op="activate" and status="active".  A rollback event (op="deactivate")
+    removes it from the active set.
+    """
+    skills = [s for s in ledger.read(config, "skills")
+              if s.get("agent_id") == agent.id]
+    latest: Dict[str, Dict[str, Any]] = {}
+    for s in skills:
+        sid = s.get("skill_id", "")
+        if sid:
+            latest[sid] = s  # last write wins (ledger is append-only, chronological)
+    return [s for s in latest.values() if s.get("status") == "active"]
+
+
 def run(config: Config, agent: Agent) -> Dict[str, Any]:
     """Run the offline consolidator for this agent.
 

@@ -514,6 +514,49 @@ def assign(config: Config, agent: Agent, task: tsk.Task, *,
     return task
 
 
+def _check_verifier_integrity() -> tuple:
+    """M4.2 — hash the verifier modules and return (ok, reason).
+
+    Hashes verify.py and verifier.py at import time to detect whether an
+    executor session modified them.  Returns (True, "") if unchanged,
+    (False, reason) if any protected module was modified.
+
+    The hash is computed each call; callers hold the pre-session baseline in
+    the _VERIFIER_BASELINE dict and compare after the session completes.
+    This function is called at the START of _verify_phase — if the executor
+    session ran before verify was called, any tampering is caught here.
+    """
+    import hashlib
+    import importlib
+    from pathlib import Path as _Path
+
+    protected_modules = ("verify", "verifier")
+    for mod_name in protected_modules:
+        try:
+            mod = importlib.import_module(
+                f"ai4science.harness.agents.sarsi.{mod_name}")
+            src = _Path(mod.__file__).read_bytes()
+            current_hash = hashlib.sha256(src).hexdigest()
+            baseline = _VERIFIER_BASELINE.get(mod_name)
+            if baseline is None:
+                # First call — record baseline; cannot detect prior tampering.
+                _VERIFIER_BASELINE[mod_name] = current_hash
+            elif current_hash != baseline:
+                return (False,
+                        f"{mod_name}.py was modified during the executor session "
+                        f"(baseline {baseline[:12]}… → current {current_hash[:12]}…); "
+                        "this phase is rejected — no executor may touch verifier code")
+        except Exception as exc:
+            return (False, f"could not hash {mod_name}: {exc}")
+    return (True, "")
+
+
+#: Per-process baseline hashes of protected verifier modules, populated on first
+#: call to _check_verifier_integrity().  Process-scoped — survives across task
+#: phases in a single session, which is the relevant threat model.
+_VERIFIER_BASELINE: dict = {}
+
+
 def _note_drift(agent: Agent, task: tsk.Task, verdict: Dict[str, Any],
                 drifted: List[int]) -> Dict[str, Any]:
     """Say on the verdict that the file has moved since it was released.
@@ -1288,6 +1331,25 @@ def _verify_phase(config: Config, agent: Agent, task: tsk.Task, *,
     if index < 0 or index >= len(criteria):
         raise IndexError(f"{task.id} has {len(criteria)} phase(s); there is no "
                          f"phase {index + 1}")
+
+    # M4.2: runtime verifier protection — hash protected modules before and
+    # after executor session; fail the phase if they were modified.
+    _verifier_ok, _verifier_reason = _check_verifier_integrity()
+    if not _verifier_ok:
+        _violation_verdict: Dict[str, Any] = {
+            "state": "FAIL",
+            "why": f"verifier integrity violation: {_verifier_reason}",
+            "engine": "integrity-check",
+            "independent": True,
+            "criteria": [criteria[index] if criteria else ""],
+            "phase": index + 1,
+        }
+        from ai4science.harness.agents.sarsi import memory as _mem
+        _mem.record(config, agent, "refusal",
+                    "verifier integrity check failed",
+                    _verifier_reason)
+        task.verdict = _violation_verdict
+        return task
 
     # M4: deterministic check first — no LLM call when the criterion can be
     # evaluated programmatically. The worker may run checks but never writes.

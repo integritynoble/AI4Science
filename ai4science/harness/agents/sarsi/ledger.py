@@ -21,6 +21,7 @@ Two properties, both enforced here rather than trusted to callers:
 """
 from __future__ import annotations
 
+import fcntl
 import json
 import time
 from datetime import datetime, timezone
@@ -48,7 +49,12 @@ def append(config: Config, name: str, record: Dict[str, Any], *,
     path = _path(config, name)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a") as fh:
-        fh.write(json.dumps(stamped, sort_keys=True) + "\n")
+        try:
+            fcntl.flock(fh, fcntl.LOCK_EX)
+            fh.write(json.dumps(stamped, sort_keys=True) + "\n")
+            fh.flush()
+        finally:
+            fcntl.flock(fh, fcntl.LOCK_UN)
     try:
         path.chmod(0o600)
     except Exception:

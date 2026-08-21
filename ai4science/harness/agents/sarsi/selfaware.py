@@ -528,7 +528,51 @@ def workspace_context(config: Config, agent: Agent, surface: str = "cli",
 
     if not parts:
         return ""
-    return "[sarsi-worker workspace]\n" + "\n\n".join(parts) + "\n[/workspace]\n\n"
+    ctx = "[sarsi-worker workspace]\n" + "\n\n".join(parts) + "\n[/workspace]\n\n"
+    _save_context_snapshot(agent, ctx, observation=observation)
+    return ctx
+
+
+def _save_context_snapshot(agent: "Agent", ctx: str,
+                           observation: str = "") -> None:
+    """Persist exact W_t bytes + manifest entry (M2.5).
+
+    Files written:
+      <agent_dir>/contexts/<context_id>.txt.gz  — exact context bytes
+      <agent_dir>/context_manifest.jsonl         — one record per turn
+    Never raises — context assembly must not be blocked by snapshot failures.
+    """
+    import gzip
+    import hashlib
+    import json
+    import time
+    import uuid
+    from datetime import datetime, timezone
+    try:
+        ctx_bytes = ctx.encode("utf-8")
+        context_id = f"ctx_{uuid.uuid4().hex[:12]}"
+        ctx_hash = hashlib.sha256(ctx_bytes).hexdigest()
+        ts = datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+        ctx_dir = agent.agent_dir / "contexts"
+        ctx_dir.mkdir(parents=True, exist_ok=True)
+        gz_path = ctx_dir / f"{context_id}.txt.gz"
+        with gzip.open(gz_path, "wb") as fh:
+            fh.write(ctx_bytes)
+
+        manifest_path = agent.agent_dir / "context_manifest.jsonl"
+        record = {
+            "context_id": context_id,
+            "at": ts,
+            "sha256": ctx_hash,
+            "byte_count": len(ctx_bytes),
+            "gz_path": str(gz_path),
+            "query_snippet": (observation or "")[:80],
+        }
+        with manifest_path.open("a") as mf:
+            mf.write(json.dumps(record, sort_keys=True) + "\n")
+    except Exception:
+        pass
 
 
 def is_about_self(line: str) -> bool:
