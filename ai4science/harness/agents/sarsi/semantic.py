@@ -1,156 +1,194 @@
-"""Semantic memory — consolidated stable facts, decisions, constraints.
+"""Semantic memory — promoted facts, lessons, invariants, causal rules.
 
-Episodic memory (log-cli.jsonl) captures individual exchanges; semantic memory
-captures what survives across them: decisions, constraints, preferences, facts,
-and open issues. Unlike episodes, semantic entries are promoted explicitly and
-supersede each other — a constraint that has changed is not deleted, it is
-marked superseded and points to its replacement.
+Uses the existing ledger infrastructure (`ledger.append(config, "semantic", ...)`)
+rather than a separate persistence framework, so secret filtering, timestamping,
+and append discipline are inherited automatically.
 
-**Always inject all active entries** — constraints and decisions must not be
-missed by a relevance gate. This is the one memory class that bypasses the
-working-memory gate (M2).
+Event-sourced with a materialized active view. The row is never rewritten;
+supersession/retraction is a new event that references the prior item.
 
-File: <agent_dir>/semantic.jsonl — one JSON object per line.
-
-Entry shape:
+Schema (schema_version=1):
   {
-    "id":           "sem_0001",
-    "type":         "constraint|decision|preference|fact|open_issue",
-    "scope":        "global|project:<name>|task:<id>",
-    "text":         "Never auto-push to main without user approval",
-    "importance":   10,
-    "status":       "active|superseded",
-    "superseded_by": null,
-    "evidence_ref": "ex_183",
-    "at":           "2026-08-20T09:00:00Z"
+    "schema_version": 1,
+    "memory_id": "sem_...",
+    "op": "assert|retract|supersede",
+    "supersedes": null,          # memory_id of the prior entry this supersedes
+    "statement": "...",
+    "kind": "fact|lesson|invariant|causal_rule",
+    "scope": ["global", "project:pwm", "task:tsk_abc"],
+    "status": "candidate|active|retracted",
+    "provenance": ["ep_...", "ver_..."],
+    "support_count": 3,
+    "contradicts": [],
+    "valid_from": "...",
+    "valid_until": null,
+    "promoted_by": "owner|consolidator+verifier"
   }
+
+Rules:
+- one episode does not automatically become semantic truth;
+- owner-explicit corrections may become active immediately if clearly scoped;
+- learned candidates require repeated support or strong external evidence;
+- contradictions block silent promotion;
+- every active memory keeps evidence links.
+
+Injection is scope-based, not semantic-ranked. A constraint has no vocabulary
+in common with the task it constrains, so ranking it by similarity will push
+it out of context exactly when it matters most.
 """
 from __future__ import annotations
 
-import json
-from datetime import datetime, timezone
-from pathlib import Path
+import uuid
 from typing import Any, Dict, List, Optional
 
-VALID_TYPES = frozenset(("constraint", "decision", "preference", "fact",
-                         "open_issue"))
+from ai4science.harness.agents.sarsi import ledger
+from ai4science.harness.agents.sarsi.registry import Agent, Config
+
+#: Maximum bytes injected before announcing the remainder.
+INJECT_BYTE_CAP = 4096
 
 
-def _path(agent_dir: Path) -> Path:
-    return agent_dir / "semantic.jsonl"
+def _new_id() -> str:
+    return f"sem_{uuid.uuid4().hex[:10]}"
 
 
-def _read_all(agent_dir: Path) -> List[Dict[str, Any]]:
-    p = _path(agent_dir)
-    if not p.exists():
-        return []
-    rows: List[Dict[str, Any]] = []
-    for line in p.read_text().splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            rows.append(json.loads(line))
-        except Exception:
-            pass
-    return rows
-
-
-def _write_all(agent_dir: Path, entries: List[Dict[str, Any]]) -> None:
-    p = _path(agent_dir)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(
-        "\n".join(json.dumps(e) for e in entries) + ("\n" if entries else "")
-    )
-
-
-def _new_id(existing: List[Dict[str, Any]]) -> str:
-    nums = []
-    for e in existing:
-        try:
-            nums.append(int((e.get("id") or "").split("_", 1)[1]))
-        except Exception:
-            pass
-    return f"sem_{max(nums, default=0) + 1:04d}"
-
-
-def record(agent_dir: Path, type_: str, scope: str, text: str,
-           importance: int = 5, evidence_ref: str = "") -> Dict[str, Any]:
-    """Write a new active semantic entry. Returns the entry written."""
-    if type_ not in VALID_TYPES:
-        raise ValueError(f"type must be one of {sorted(VALID_TYPES)!r}")
-    existing = _read_all(agent_dir)
-    entry: Dict[str, Any] = {
-        "id": _new_id(existing),
-        "type": type_,
-        "scope": (scope or "global").strip(),
-        "text": text.strip(),
-        "importance": int(importance),
-        "status": "active",
-        "superseded_by": None,
-        "evidence_ref": (evidence_ref or "").strip(),
-        "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+def record(config: Config, agent: Agent, statement: str, *,
+           kind: str = "lesson", scope: Optional[List[str]] = None,
+           status: str = "active", provenance: Optional[List[str]] = None,
+           contradicts: Optional[List[str]] = None,
+           promoted_by: str = "owner") -> Dict[str, Any]:
+    """Assert a new semantic memory entry. Returns the stored record."""
+    rec = {
+        "schema_version": 1,
+        "memory_id": _new_id(),
+        "op": "assert",
+        "supersedes": None,
+        "statement": statement.strip(),
+        "kind": kind,
+        "scope": list(scope or ["global"]),
+        "status": status,
+        "provenance": list(provenance or []),
+        "support_count": 1,
+        "contradicts": list(contradicts or []),
+        "valid_from": None,   # ledger stamps `at`
+        "valid_until": None,
+        "promoted_by": promoted_by,
+        "agent": agent.id,
     }
-    existing.append(entry)
-    _write_all(agent_dir, existing)
-    return entry
+    return ledger.append(config, "semantic", rec)
 
 
-def supersede(agent_dir: Path, old_id: str, new_text: str,
-              type_: str = "", scope: str = "", importance: int = 0,
-              evidence_ref: str = "") -> Optional[Dict[str, Any]]:
-    """Replace old_id with a new entry that supersedes it.
-
-    The old entry's status becomes "superseded" and points to the new id.
-    Fields not provided are inherited from the old entry.
-    Returns the new entry, or None when old_id is not found.
-    """
-    existing = _read_all(agent_dir)
-    old = next((e for e in existing if e.get("id") == old_id), None)
-    if old is None:
-        return None
-    new_entry: Dict[str, Any] = {
-        "id": _new_id(existing),
-        "type": type_ or old.get("type", "fact"),
-        "scope": (scope or old.get("scope") or "global").strip(),
-        "text": new_text.strip(),
-        "importance": int(importance) if importance else old.get("importance", 5),
-        "status": "active",
-        "superseded_by": None,
-        "evidence_ref": (evidence_ref or "").strip(),
-        "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+def supersede(config: Config, agent: Agent, prior_id: str,
+              new_statement: str, **kwargs) -> Dict[str, Any]:
+    """Supersede an existing entry. Writes a new assert and a retraction event."""
+    # Write retraction for the old entry
+    ledger.append(config, "semantic", {
+        "schema_version": 1,
+        "memory_id": _new_id(),
+        "op": "retract",
+        "supersedes": prior_id,
+        "statement": "",
+        "kind": "retraction",
+        "scope": [],
+        "status": "retracted",
+        "agent": agent.id,
+    })
+    # Write new active entry that references the old one
+    kwargs.setdefault("status", "active")
+    kwargs.setdefault("scope", ["global"])
+    kwargs.setdefault("promoted_by", "owner")
+    new_id = _new_id()
+    rec = {
+        "schema_version": 1,
+        "memory_id": new_id,
+        "op": "supersede",
+        "supersedes": prior_id,
+        "statement": new_statement.strip(),
+        "kind": kwargs.get("kind", "lesson"),
+        "scope": kwargs.get("scope", ["global"]),
+        "status": kwargs.get("status", "active"),
+        "provenance": kwargs.get("provenance", []),
+        "support_count": kwargs.get("support_count", 1),
+        "contradicts": kwargs.get("contradicts", []),
+        "valid_from": None,
+        "valid_until": None,
+        "promoted_by": kwargs.get("promoted_by", "owner"),
+        "agent": agent.id,
     }
-    old["status"] = "superseded"
-    old["superseded_by"] = new_entry["id"]
-    existing.append(new_entry)
-    _write_all(agent_dir, existing)
-    return new_entry
+    return ledger.append(config, "semantic", rec)
 
 
-def active_entries(agent_dir: Path) -> List[Dict[str, Any]]:
-    """All entries whose status is 'active', sorted by importance descending."""
-    rows = [e for e in _read_all(agent_dir) if e.get("status") == "active"]
-    return sorted(rows, key=lambda e: -int(e.get("importance", 0)))
+def active_entries(config: Config, agent: Agent,
+                   scope_filter: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+    """Return the active semantic memory entries for this agent.
 
-
-def get(agent_dir: Path, entry_id: str) -> Optional[Dict[str, Any]]:
-    """Look up any entry by id (active or superseded)."""
-    return next(
-        (e for e in _read_all(agent_dir) if e.get("id") == entry_id), None
-    )
-
-
-def render(agent_dir: Path) -> str:
-    """Active entries formatted for injection into context.
-
-    Always inject everything — constraints must not be missed by a relevance
-    gate. An empty string means no semantic entries exist yet.
+    The active view is computed from the full event log:
+    - retract/supersede events remove the referenced entry from the active set;
+    - only entries with status == "active" and not targeted by a retraction
+      are included.
+    Scope filter: a list of scopes to match (any overlap admits the entry).
     """
-    entries = active_entries(agent_dir)
+    rows = [r for r in ledger.read(config, "semantic")
+            if r.get("agent") == agent.id]
+
+    # Collect ids that have been superseded or retracted
+    inactive_ids = set()
+    for r in rows:
+        target = r.get("supersedes")
+        if target and r.get("op") in ("retract", "supersede"):
+            inactive_ids.add(target)
+
+    active = [r for r in rows
+              if r.get("op") == "assert" and r.get("status") == "active"
+              and r.get("memory_id") not in inactive_ids]
+    # Supersede ops create both a retraction and a new entry; include the new
+    # "supersede" op entries that are themselves active and not later retracted
+    supersede_rows = [r for r in rows
+                      if r.get("op") == "supersede"
+                      and r.get("status") == "active"
+                      and r.get("memory_id") not in inactive_ids]
+    active.extend(supersede_rows)
+
+    if scope_filter:
+        def _matches(entry: Dict[str, Any]) -> bool:
+            entry_scopes = entry.get("scope") or []
+            if "global" in entry_scopes:
+                return True
+            return bool(set(scope_filter) & set(entry_scopes))
+        active = [r for r in active if _matches(r)]
+
+    return active
+
+
+def render(config: Config, agent: Agent,
+           scope_filter: Optional[List[str]] = None) -> str:
+    """Format active entries for context injection.
+
+    Entries are injected unconditionally regardless of relevance score — a
+    constraint has no vocabulary in common with the task it constrains.
+    Cap is announced when hit so the LLM knows to ask for the full list.
+    """
+    entries = active_entries(config, agent, scope_filter)
     if not entries:
         return ""
-    lines = [f"semantic memory ({len(entries)} active {'entry' if len(entries) == 1 else 'entries'}):"]
-    for e in entries:
-        tag = f"[{e.get('type', '?')}:{e.get('scope', 'global')}]"
-        lines.append(f"  {e['id']} {tag} {e.get('text', '')}")
+
+    lines = ["active knowledge / constraints:"]
+    total_bytes = 0
+    shown = 0
+    for entry in entries:
+        stmt = (entry.get("statement") or "").strip()
+        if not stmt:
+            continue
+        kind = entry.get("kind", "")
+        scope_str = ", ".join(entry.get("scope") or [])
+        line = f"  [{kind}] ({scope_str}) {stmt}"
+        if total_bytes + len(line) > INJECT_BYTE_CAP:
+            remaining = len(entries) - shown
+            lines.append(f"  ... {remaining} more active entr{'y' if remaining == 1 else 'ies'} "
+                         f"not shown (byte cap {INJECT_BYTE_CAP} reached)")
+            break
+        lines.append(line)
+        total_bytes += len(line)
+        shown += 1
+
     return "\n".join(lines)

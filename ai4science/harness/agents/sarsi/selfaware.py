@@ -377,7 +377,7 @@ def workspace_context(config: Config, agent: Agent, surface: str = "cli",
     # ── semantic memory (always inject — constraints must never be gate-missed) ──
     try:
         from ai4science.harness.agents.sarsi import semantic as _sem
-        sem_text = _sem.render(agent.agent_dir)
+        sem_text = _sem.render(config, agent)
         if sem_text:
             parts.append(sem_text)
     except Exception:
@@ -446,7 +446,7 @@ def workspace_context(config: Config, agent: Agent, surface: str = "cli",
     try:
         from ai4science.harness.agents.sarsi import selfmodel as _sm
         _sm.sync(config, agent)
-        sm_text = _sm.render(agent.agent_dir)
+        sm_text = _sm.render_cached(agent.agent_dir)
         if sm_text:
             parts.append(sm_text)
     except Exception:

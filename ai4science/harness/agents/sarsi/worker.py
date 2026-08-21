@@ -65,12 +65,21 @@ class Directive:
         self.goal = goal
 
     def as_record(self) -> Dict[str, Any]:
-        return {"id": self.id, "agent": self.agent_id, "goal": self.goal,
-                "scope": list(self.scope), "criteria": list(self.criteria),
-                "budget": dict(self.budget), "deadline": self.deadline,
-                "revocation": self.revocation,
-                "requires_tools": list(self.requires_tools),
-                "requires_secrets": list(self.requires_secrets)}
+        # Populate scope deterministically if not explicitly set.
+        # "global" means no project/task qualifier; a scope of [] is
+        # ambiguous so we default to ["global"] to make injection filterable.
+        scope = list(self.scope) if self.scope else ["global"]
+        return {
+            "schema_version": 2,
+            "event_id": f"dir_evt_{uuid.uuid4().hex[:10]}",
+            "op": "assert",
+            "id": self.id, "agent": self.agent_id, "goal": self.goal,
+            "scope": scope, "criteria": list(self.criteria),
+            "budget": dict(self.budget), "deadline": self.deadline,
+            "revocation": self.revocation,
+            "requires_tools": list(self.requires_tools),
+            "requires_secrets": list(self.requires_secrets),
+        }
 
 
 @dataclass
@@ -166,13 +175,87 @@ def report(config: Config, agent: Agent, directive: Directive, *, state: str,
     return ledger.append(config, "reports", record, now=now)
 
 
+def _active_directive_ids(rows: List[Dict[str, Any]]) -> set:
+    """Compute the set of directive ids that have been revoked or superseded.
+
+    Handles both old-style rows (revocation field) and new event-sourced rows
+    (op == "revoke" or "supersede" with target_id). Backward-compatible: old
+    rows without 'op' are treated as 'assert' events.
+    """
+    revoked: set = set()
+    for r in rows:
+        op = r.get("op")
+        # New-style revoke/supersede event
+        if op in ("revoke", "supersede"):
+            target = r.get("target_id") or r.get("directive_id")
+            if target:
+                revoked.add(target)
+        # Old-style: revocation field set on the directive itself
+        if r.get("revocation") and r.get("id"):
+            revoked.add(r["id"])
+    return revoked
+
+
 def outstanding(config: Config, agent: Agent) -> List[Dict[str, Any]]:
     """Directives this worker admitted and has not yet reported on.
 
+    The active view filters out:
+    - directives with revocation set (old-style field);
+    - directives targeted by a revoke or supersede event (event-sourced);
+    - directives that already have a report.
+
     A refused directive never appears here — that is what "not queued" means.
     """
-    admitted = [d for d in ledger.read(config, "directives")
-                if d.get("agent") == agent.id and d.get("admitted")]
+    all_rows = ledger.read(config, "directives")
+    agent_rows = [r for r in all_rows if r.get("agent") == agent.id]
+    revoked = _active_directive_ids(agent_rows)
+
+    # An admitted row is one where admitted=True (old style) or op="assert"
+    # with status not retracted/revoked.
+    admitted = [d for d in agent_rows
+                if (d.get("admitted") or d.get("op") == "assert")
+                and d.get("op") not in ("revoke", "supersede", "retract")
+                and d.get("id") not in revoked]
+
     reported = {r.get("directive") for r in ledger.read(config, "reports")
                 if r.get("agent") == agent.id}
     return [d for d in admitted if d.get("id") not in reported]
+
+
+def revoke(config: Config, agent: Agent, directive_id: str,
+           reason: str = "") -> Dict[str, Any]:
+    """Revoke an outstanding directive by writing a revoke event.
+
+    Append-only: does not modify the original row. The active view in
+    outstanding() will exclude this directive on the next read.
+    """
+    rec = {
+        "schema_version": 2,
+        "event_id": f"dir_evt_{uuid.uuid4().hex[:10]}",
+        "directive_id": directive_id,
+        "op": "revoke",
+        "target_id": directive_id,
+        "reason": (reason or "").strip(),
+        "agent": agent.id,
+    }
+    return ledger.append(config, "directives", rec)
+
+
+def supersede_directive(config: Config, agent: Agent,
+                        old_id: str, new_directive: Directive,
+                        reason: str = "") -> Admission:
+    """Supersede an old directive with a new one.
+
+    Writes a supersede event (removing the old from outstanding) and then
+    admits the new directive in one operation.
+    """
+    ledger.append(config, "directives", {
+        "schema_version": 2,
+        "event_id": f"dir_evt_{uuid.uuid4().hex[:10]}",
+        "directive_id": old_id,
+        "op": "supersede",
+        "target_id": old_id,
+        "reason": (reason or "").strip(),
+        "agent": agent.id,
+    })
+    return admit(config, agent, new_directive)
