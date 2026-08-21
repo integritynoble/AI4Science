@@ -1303,6 +1303,56 @@ def _verify_phase(config: Config, agent: Agent, task: tsk.Task, *,
         raise IndexError(f"{task.id} has {len(criteria)} phase(s); there is no "
                          f"phase {index + 1}")
 
+    # M4: deterministic check first — no LLM call when the criterion can be
+    # evaluated programmatically. The worker may run checks but never writes.
+    try:
+        from ai4science.harness.agents.sarsi import verify as _det
+        from pathlib import Path as _Path
+        _work = (task.work_root or "").strip()
+        _work_dir = (_Path(_work).expanduser().resolve()
+                     if _work else tsk.dir_of(agent, task.id))
+        _det_result = _det.check(criteria[index], _work_dir)
+        if _det_result.get("state") in (_det.PASS, _det.FAIL):
+            verdict: Dict[str, Any] = {
+                "state": _det_result["state"],
+                "why": _det_result.get("why", ""),
+                "engine": "deterministic",
+                "independent": True,   # code check, not the executor's self-report
+                "check": _det_result.get("check", ""),
+                "criteria": [criteria[index]],
+                "phase": index + 1,
+            }
+            # Still note any plan drift so the owner sees it.
+            verdict = _note_drift(agent, task, verdict,
+                                  tsk.criteria_drift(agent, task))
+            from ai4science.harness.agents.sarsi import verifier as vf
+            task = tsk.record_phase(config, agent, task, index, verdict, now=now)
+            task.verdict = verdict
+            ledger.append(config, "reports",
+                          {"agent": agent.id, "task": task.id,
+                           "state": "verified" if vf.is_pass(verdict) else "failed",
+                           "verdict": verdict, "evidence": [_det_result.get("why", "")[:500]]},
+                          now=now)
+            if tsk.earliest_incomplete(task) is None:
+                done = len(criteria)
+                task = tsk.finish(config, agent, task, verdict={
+                    "state": "PASS",
+                    "why": f"every phase passed deterministic check: {done} of {done}",
+                    "engine": "deterministic",
+                    "independent": True,
+                    "criteria": criteria}, now=now)
+                task = release_session(config, agent, task, runtime=runtime, now=now)
+            elif not vf.is_pass(verdict):
+                # FAIL — steer the session back
+                reason = verdict.get("why", "deterministic check failed")
+                guide(config, agent, task,
+                      f"Phase {index + 1} failed the deterministic check: {reason}\n"
+                      "Address this and report what you did.",
+                      runtime=runtime)
+            return tsk._touch(agent, task, now)
+    except Exception:
+        pass  # deterministic check errored — fall through to LLM verifier
+
     verdict = dict(verifier(goal=task.goal, criteria=[criteria[index]],
                             evidence=evidence) or {})
     verdict["engine"] = engine or "unknown"
