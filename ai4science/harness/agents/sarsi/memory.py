@@ -18,14 +18,27 @@ and a quiet truncation is not allowed to read like completeness.
 Nothing here is summarised by a model. A lesson is the trigger, the title,
 and the detail the harness already had in hand at the moment the trigger
 fired — promoted, not invented.
+
+M5 — episode ledger:
+Every trigger call also writes an episode record to the ledger channel
+"episodes". The episode is what the offline consolidator (`consolidate.py`)
+reads; lessons in MEMORY.md are the short-cycle read path and remain
+unchanged.
+
+The pipeline is:
+  trigger → episode record → lesson file/index   (immediate)
+  [later] offline consolidator → semantic candidate → owner confirms → active
 """
 from __future__ import annotations
 
 import re
 import time
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
+from ai4science.harness.agents.sarsi import ledger
 from ai4science.harness.agents.sarsi.registry import Agent, Config
 
 TRIGGERS = ("refuted_prediction", "rollback", "refusal", "clash", "correction")
@@ -59,9 +72,60 @@ def lesson_path(config: Config, agent: Agent, ts: float, trigger: str,
     return memory_dir(config, agent) / "lessons" / f"{stamp}-{trigger}-{_slug(title)}.md"
 
 
+def record_episode(config: Config, agent: Agent, trigger: str,
+                   summary: str, detail: str = "", *,
+                   task_id: str = "", phase_id: str = "",
+                   outcome: str = "", tags: Optional[List[str]] = None,
+                   lesson_ref: str = "", now=time.time) -> Dict[str, Any]:
+    """Write an episode record to the ledger (episodes.jsonl).
+
+    This is the machine-readable evidence the offline consolidator reads.
+    It is separate from the human-readable lesson in MEMORY.md — the lesson
+    is the short-cycle read path; the episode is the long-cycle evidence path.
+
+    One trigger → one episode. Duplicate suppression is the caller's
+    responsibility; this function writes unconditionally and appends only.
+    """
+    ts = float(now())
+    ep: Dict[str, Any] = {
+        "schema_version": 1,
+        "episode_id": f"ep_{uuid.uuid4().hex[:10]}",
+        "agent_id": agent.id,
+        "task_id": task_id or "",
+        "phase_id": phase_id or "",
+        "trigger": trigger,
+        "outcome": outcome or _trigger_outcome(trigger),
+        "summary": (summary or "").strip()[:MAX_TITLE],
+        "detail": (detail or "").strip()[:MAX_DETAIL],
+        "tags": list(tags or [trigger]),
+        "lesson_ref": lesson_ref or "",
+        "started_at": datetime.fromtimestamp(ts, tz=timezone.utc).isoformat(timespec="seconds"),
+        "ended_at": datetime.fromtimestamp(ts, tz=timezone.utc).isoformat(timespec="seconds"),
+    }
+    try:
+        return ledger.append(config, "episodes", ep, now=lambda: ts)
+    except Exception:
+        return ep
+
+
+def _trigger_outcome(trigger: str) -> str:
+    """Default outcome string for each trigger type."""
+    return {
+        "refuted_prediction": "fail",
+        "rollback": "rolled_back",
+        "refusal": "refused",
+        "clash": "fail",
+        "correction": "rolled_back",
+    }.get(trigger, "unknown")
+
+
 def record(config: Config, agent: Agent, trigger: str, title: str,
            detail: str = "", *, now=time.time) -> Optional[Path]:
     """Write one lesson and prepend its line to the index.
+
+    Also writes an episode record to the ledger (M5). The episode is what
+    the offline consolidator reads; the lesson file is the short-cycle read
+    path for the worker.
 
     Returns the lesson path, or `None` when the trigger is not one of the
     fixed ones — a lesson written for any other reason is a note, and notes
@@ -81,8 +145,16 @@ def record(config: Config, agent: Agent, trigger: str, title: str,
     if detail:
         body += [detail, ""]
     path.write_text("\n".join(body))
-
     _prepend_index(config, agent, path, trigger, title)
+
+    # Write episode record to the ledger for the offline consolidator (M5).
+    # Never raises — lesson file is the authoritative short-cycle output.
+    try:
+        record_episode(config, agent, trigger, title, detail,
+                       lesson_ref=str(path.name), now=lambda: ts)
+    except Exception:
+        pass
+
     return path
 
 
