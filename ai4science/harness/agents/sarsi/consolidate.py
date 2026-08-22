@@ -188,12 +188,14 @@ def promote_skill(config: Config, agent: Agent, skill_id: str,
     is violating the protocol — this is the same as the worker grading its
     own work, which the authority kernel prohibits.
     """
-    skills = ledger.read(config, "skills")
-    candidate = next(
-        (s for s in skills
-         if s.get("skill_id") == skill_id and s.get("agent_id") == agent.id),
-        None
-    )
+    # The LAST event for this skill, not the first. An append-only ledger keeps
+    # the `propose` row forever, so reading the first match let an already
+    # active skill be promoted again — and each promotion writes another
+    # `activate`. In an append-only log the state is the last row; anything
+    # else reads history as if it were the present.
+    rows = [s for s in ledger.read(config, "skills")
+            if s.get("skill_id") == skill_id and s.get("agent_id") == agent.id]
+    candidate = rows[-1] if rows else None
     if candidate is None:
         raise SkillPromotionError(
             f"skill {skill_id!r} not found for agent {agent.id!r}")
@@ -290,14 +292,23 @@ def run(config: Config, agent: Agent) -> Dict[str, Any]:
     qualifying_error_groups: List[Tuple[str, int]] = []
     qualifying_success_groups: List[Tuple[str, int]] = []
 
+    contradicted: List[Dict[str, Any]] = []
     for fp, group in failure_groups.items():
         if len(group) >= MIN_SUPPORT_FOR_CANDIDATE:
             qualifying_error_groups.append((fp, len(group)))
             rec = _propose_semantic_candidate(config, agent, group)
-            if rec is not None:
-                semantic_candidates.append(rec)
-            else:
+            if rec is None:
+                skipped += 1                 # the write itself failed
+            elif rec.get("contradicts"):
+                # Proposed and recorded — it is evidence, and evidence that
+                # argues with something already believed is the MOST worth
+                # keeping. What it is not is promotable: `semantic.promote()`
+                # refuses while the other entry is still active. Counted here
+                # so the report stops implying nothing was in dispute.
+                contradicted.append(rec)
                 skipped += 1
+            else:
+                semantic_candidates.append(rec)
 
     for fp, group in success_groups.items():
         if len(group) >= MIN_SUPPORT_FOR_SKILL:
@@ -311,6 +322,7 @@ def run(config: Config, agent: Agent) -> Dict[str, Any]:
         "error_groups_qualifying": qualifying_error_groups,
         "success_groups_qualifying": qualifying_success_groups,
         "semantic_candidates": semantic_candidates,
+        "contradicted_candidates": contradicted,
         "skill_candidates": skill_candidates,
         "skipped_contradictions": skipped,
         "agent_id": agent.id,

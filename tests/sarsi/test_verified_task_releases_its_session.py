@@ -235,6 +235,10 @@ def test_a_verified_task_still_names_the_session_that_did_it(config, agent):
     rt = Runtime()
     t = _task(config, agent, rt)
     name = t.session["name"]
+    # The plan says `out.txt exists` and `out.txt contains 42`, and since M4
+    # those are checked rather than taken on the verifier's word. Writing the
+    # file is what makes this a test of RELEASE and not of the checker.
+    (ses.work_dir_for(agent, t) / "out.txt").write_text("42\n")
     t = ses.verify(config, agent, t, verifier=_passing, evidence="e",
                    runtime=rt, now=time.time)
     assert t.session is None
@@ -262,6 +266,10 @@ def test_the_last_phase_finishing_releases_it_too(config, agent):
     rt = Runtime()
     t = _task(config, agent, rt)
     name = t.session["name"]
+    # The plan says `out.txt exists` and `out.txt contains 42`, and since M4
+    # those are checked rather than taken on the verifier's word. Writing the
+    # file is what makes this a test of RELEASE and not of the checker.
+    (ses.work_dir_for(agent, t) / "out.txt").write_text("42\n")
     t = ses.verify(config, agent, t, verifier=_passing, evidence="e",
                    runtime=rt, phase=0, now=time.time)
     assert t.state != tsk.VERIFIED          # one of two phases

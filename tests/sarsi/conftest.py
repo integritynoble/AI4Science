@@ -22,3 +22,15 @@ from ai4science.harness.agents.sarsi import session as ses
 @pytest.fixture(autouse=True)
 def _hermetic_installed_specs(monkeypatch):
     monkeypatch.setattr(ses, "installed_specs", lambda: set())
+
+
+@pytest.fixture(autouse=True)
+def _no_live_model(monkeypatch):
+    """The chat door may call a model; the suite must not.
+
+    Same doctrine as the registry isolation above. Whether an API key happens
+    to be configured on the machine running the tests is not a property of the
+    code under test, and a suite that reaches the network measures the network.
+    A test that WANTS generation injects its own callable.
+    """
+    monkeypatch.setenv("SARSI_CHAT_LLM", "0")

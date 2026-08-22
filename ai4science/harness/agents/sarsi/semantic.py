@@ -118,6 +118,56 @@ def supersede(config: Config, agent: Agent, prior_id: str,
     return ledger.append(config, "semantic", rec)
 
 
+class PromotionBlocked(Exception):
+    """A candidate could not be promoted, and the reason is the message."""
+
+
+def candidates(config: Config, agent: Agent) -> List[Dict[str, Any]]:
+    """Entries proposed but not active. Evidence awaiting a decision."""
+    return [r for r in ledger.read(config, "semantic")
+            if r.get("agent") == agent.id and r.get("status") == "candidate"]
+
+
+def promote(config: Config, agent: Agent, memory_id: str, *,
+            by: str = "owner", resolves: Optional[List[str]] = None) -> Dict[str, Any]:
+    """Make a candidate active — the only supported way one becomes true.
+
+    Refused while the candidate carries an unresolved contradiction. The
+    consolidator can and should propose a lesson that argues with something
+    already believed; what it must not do is let that lesson become believed
+    without the disagreement being settled. A store that holds both is not a
+    memory, it is a pile, and every later retrieval has to pick one at random.
+
+    `resolves` names the contradicting entries a caller has retracted or
+    superseded first. Nothing here retracts anything on the caller's behalf:
+    resolving a contradiction is a decision, and this is not the place decisions
+    are made.
+    """
+    rows = [r for r in ledger.read(config, "semantic")
+            if r.get("agent") == agent.id and r.get("memory_id") == memory_id]
+    if not rows:
+        raise PromotionBlocked(f"no semantic entry {memory_id!r} for {agent.id}")
+    cand = rows[-1]
+    if cand.get("status") != "candidate":
+        raise PromotionBlocked(
+            f"{memory_id} is {cand.get('status')!r}, not a candidate — only a "
+            f"candidate can be promoted")
+    unresolved = [c for c in (cand.get("contradicts") or [])
+                  if c not in set(resolves or [])]
+    still_active = {e.get("memory_id") for e in active_entries(config, agent)}
+    unresolved = [c for c in unresolved if c in still_active]
+    if unresolved:
+        raise PromotionBlocked(
+            f"{memory_id} contradicts {', '.join(unresolved)}, which is still "
+            f"active. Settle the disagreement — retract or supersede the other "
+            f"entry — before this becomes something I act on.")
+    rec = dict(cand)
+    rec.update({"memory_id": _new_id(), "op": "assert", "status": "active",
+                "supersedes": None, "promoted_by": by,
+                "provenance": list(cand.get("provenance") or []) + [memory_id]})
+    return ledger.append(config, "semantic", rec)
+
+
 def active_entries(config: Config, agent: Agent,
                    scope_filter: Optional[List[str]] = None) -> List[Dict[str, Any]]:
     """Return the active semantic memory entries for this agent.

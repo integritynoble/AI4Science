@@ -245,7 +245,9 @@ def test_verification_runs_before_submitting_a_stranded_prompt(config, agent):
         return original(name, k)
 
     pane.key = key
-    op.tick(config, agent, _task(config, agent), pane=pane, verifier=verifier)
+    op.tick(config, agent, _task(config, agent,
+                                 criterion="the report reads correctly"),
+            pane=pane, verifier=verifier)
     assert order == ["verified", "submitted"]
 
 
@@ -253,8 +255,12 @@ def test_the_verifier_is_given_gathered_evidence_not_the_pane(config, agent):
     """The live bug: the loop handed the verifier a terminal showing a spinner
     and some narration, and the verifier correctly said it could see no evidence
     of the file. What the session LEFT BEHIND is what a verdict rests on."""
+    # Prose on purpose: `report.md exists` is a criterion `verify.check()` can
+    # settle on its own, and this test is about what reaches the MODEL verifier
+    # when no deterministic check can. The filename stays so evidence gathering
+    # still knows what to collect.
     t = _task(config, agent,
-              criterion="report.md exists and states the total 111")
+              criterion="report.md states the total 111 correctly")
     folder = tsk.dir_of(agent, t.id)
     folder.mkdir(parents=True, exist_ok=True)
     (folder / "report.md").write_text("# Report\n\nThe total is 111.\n")
@@ -272,7 +278,10 @@ def test_the_verifier_is_given_gathered_evidence_not_the_pane(config, agent):
 
 
 def test_a_missing_required_file_reaches_the_verifier_as_missing(config, agent):
-    t = _task(config, agent, criterion="summary.md exists")
+    # Prose, for the same reason as above: a deterministic FAIL would (rightly)
+    # never call the model verifier, and this test is about what the model
+    # verifier is told when the file is missing.
+    t = _task(config, agent, criterion="summary.md records the total correctly")
     tsk.dir_of(agent, t.id).mkdir(parents=True, exist_ok=True)
     seen = {}
 
@@ -286,7 +295,9 @@ def test_a_missing_required_file_reaches_the_verifier_as_missing(config, agent):
 
 def test_a_pass_ends_the_task_and_steers_nothing_further(config, agent):
     pane = FakePane(STRANDED_PANE)
-    t = _task(config, agent)
+    # A criterion no deterministic check can settle, so the stub verifier is
+    # the thing being tested rather than `verify.check()`.
+    t = _task(config, agent, criterion="the report reads correctly")
     action = op.tick(config, agent, t, pane=pane,
                      verifier=lambda **kw: {"state": "PASS"})
     assert action.kind == "verified"

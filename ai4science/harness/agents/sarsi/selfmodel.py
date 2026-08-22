@@ -337,3 +337,225 @@ def evidence_for_rsi(config: Config, agent: Agent) -> Dict[str, Any]:
         "refused": outward["refused"] + sum(1 for t in tasks
                                             if t.state == tsk.REFUSED),
     }
+
+
+# ── operation-specific readiness ─────────────────────────────────────────────
+#
+# "Am I ready?" is not a question with one answer. `readiness()` above asks it
+# the way `assign` needs it asked, which is right for `assign` and wrong for
+# everything else: archiving a task does not care whether an executor binary is
+# on PATH, and writing a semantic memory does not care about either. A single
+# global health check either blocks operations that had no need of the missing
+# field, or passes operations that did.
+#
+# So the requirement is declared per operation, each field has ONE declared way
+# to observe it, and the refresh is bounded. The rule that matters most is the
+# last one: **retry exhaustion never becomes a guessed value.** A field that
+# could not be measured stays `unmeasured`, and the operation is escalated or
+# degraded — it is not run against a number nobody observed. [plan v3 §7.3]
+
+#: operation -> the fields it actually requires.
+REQUIRED_STATE: Dict[str, Tuple[str, ...]] = {
+    "assign_executor": ("active_plan", "authority", "executor_reachable"),
+    "archive_task": ("active_plan", "verification_state"),
+    "guide_session": ("session_live",),
+    "write_semantic_memory": ("provenance", "scope"),
+}
+
+#: Fields that may be permanently absent on some machines, and the operations
+#: that stay legal without them. Declared, per §7.3, rather than discovered by
+#: an operation failing in the field.
+MAY_BE_ABSENT: Dict[str, Tuple[str, ...]] = {
+    # No `claude`/`codex` binary on this host: the worker can still plan,
+    # answer, archive and record — it cannot delegate.
+    "executor_reachable": ("archive_task", "write_semantic_memory",
+                           "guide_session"),
+}
+
+#: How many times a declared observation path is retried before the field is
+#: left unmeasured. Bounded because an unreachable field must not loop forever.
+DEFAULT_ATTEMPTS = 2
+
+
+@dataclass(frozen=True)
+class StateField:
+    """One required field, and how it stands right now."""
+    name: str
+    validity: str            # fresh | stale | unmeasured | absent
+    value: Any = None
+    source: str = ""
+    attempts: int = 0
+    why: str = ""
+
+    @property
+    def ok(self) -> bool:
+        return self.validity == "fresh"
+
+
+@dataclass(frozen=True)
+class Readiness:
+    """The gate's answer for ONE operation."""
+    operation: str
+    ready: bool
+    gaps: List[str] = field(default_factory=list)
+    fields: List[StateField] = field(default_factory=list)
+    exhausted: List[str] = field(default_factory=list)
+    degraded_ok: bool = False   #: the only missing fields are declared-absent
+
+    def as_record(self) -> Dict[str, Any]:
+        return {"operation": self.operation, "ready": self.ready,
+                "gaps": list(self.gaps), "exhausted": list(self.exhausted),
+                "degraded_ok": self.degraded_ok,
+                "fields": [{"name": f.name, "validity": f.validity,
+                            "attempts": f.attempts, "source": f.source}
+                           for f in self.fields]}
+
+
+def _observe(config: Config, agent: Agent, name: str, *, task=None,
+             context: Optional[Dict[str, Any]] = None,
+             refreshed: Optional[Dict[str, bool]] = None) -> StateField:
+    """The declared observation path for one field. One path per field, on
+    purpose: two ways to learn the same thing is two things that can disagree."""
+    ctx = context or {}
+    if name == "authority":
+        rows = {r["field"]: r for r in read_cached(agent.agent_dir)}
+        rec = rows.get("authority")
+        if rec is None:
+            return StateField(name, "unmeasured", source="self_state.json",
+                              why="authority has never been measured here")
+        return StateField(name, rec.get("validity", "unmeasured"),
+                          value=rec.get("value"), source="self_state.json",
+                          why="" if rec.get("validity") == "fresh"
+                              else "the ceiling may have changed since it was read")
+
+    if name == "executor_reachable":
+        found = {n: shutil.which(n) for n in ("claude", "codex")}
+        live = [n for n, p in found.items() if p]
+        if live:
+            return StateField(name, "fresh", value=live, source="PATH")
+        return StateField(name, "absent", value=[], source="PATH",
+                          why="no `claude` or `codex` on PATH — there is "
+                              "nothing here to delegate to")
+
+    if name == "active_plan":
+        if task is None:
+            return StateField(name, "unmeasured", source="task store",
+                              why="no task was named")
+        try:
+            plan = tsk.read_plan(config, agent, task)
+        except Exception as e:
+            return StateField(name, "unmeasured", source="task store",
+                              why=f"plan could not be read: {e}")
+        if plan is None:
+            return StateField(name, "absent", source="task store",
+                              why=f"task {task.id} has no plan — there is "
+                                  f"nothing agreed to work from")
+        if getattr(task, "awaiting", None):
+            return StateField(name, "stale", value=task.plan_version,
+                              source="task store",
+                              why=f"task {task.id} is still awaiting grants: "
+                                  + ", ".join(task.awaiting))
+        return StateField(name, "fresh", value=task.plan_version,
+                          source="task store")
+
+    if name == "verification_state":
+        if task is None:
+            return StateField(name, "unmeasured", source="task store",
+                              why="no task was named")
+        if task.verdict:
+            return StateField(name, "fresh", value=task.verdict.get("state"),
+                              source="task verdict")
+        if task.phase_verdicts:
+            return StateField(name, "fresh",
+                              value=f"{len(task.phase_verdicts)} phase verdicts",
+                              source="task phase_verdicts")
+        return StateField(name, "unmeasured", source="task store",
+                          why=f"nothing has judged {task.id} — archiving it "
+                              f"would file work no verifier ever saw")
+
+    if name == "session_live":
+        sess = (getattr(task, "session", None) or {}) if task is not None else {}
+        nm = sess.get("name") or ""
+        if nm:
+            return StateField(name, "fresh", value=nm, source="task.session")
+        return StateField(name, "absent", source="task.session",
+                          why="no session on this task — there is nowhere to "
+                              "deliver a steer")
+
+    if name in ("provenance", "scope"):
+        val = ctx.get(name)
+        if val:
+            return StateField(name, "fresh", value=val, source="caller")
+        return StateField(name, "unmeasured", source="caller",
+                          why=f"a semantic write with no {name} cannot be "
+                              f"traced back or bounded")
+
+    return StateField(name, "unmeasured", source="",
+                      why=f"{name} has no declared observation path")
+
+
+def _refresh(config: Config, agent: Agent, name: str) -> bool:
+    """The declared way to make a field fresh again. False when there is none."""
+    if name == "authority":
+        try:
+            sync(config, agent)
+            return True
+        except Exception:
+            return False
+    if name == "executor_reachable":
+        return True          # re-probing PATH is the retry
+    return False
+
+
+def gate(config: Config, agent: Agent, operation: str, *, task=None,
+         context: Optional[Dict[str, Any]] = None,
+         attempts: int = DEFAULT_ATTEMPTS) -> Readiness:
+    """Is the state this operation requires actually there? [§7.3]
+
+    For each required field: fresh proceeds; stale or unmeasured gets the
+    declared observation path up to `attempts` times; still unavailable leaves
+    the field as it is and reports a gap. A field declared in `MAY_BE_ABSENT`
+    for this operation does not block it — the operation was declared legal
+    without it, in advance, rather than excused after the fact.
+    """
+    names = REQUIRED_STATE.get(operation)
+    if names is None:
+        return Readiness(operation=operation, ready=False,
+                         gaps=[f"{operation!r} declares no required state — "
+                               f"an operation the gate does not know is not "
+                               f"one it can clear"])
+
+    fields: List[StateField] = []
+    gaps: List[str] = []
+    exhausted: List[str] = []
+    blocking_absent = False
+
+    for name in names:
+        tries = 0
+        f = _observe(config, agent, name, task=task, context=context)
+        while not f.ok and tries < attempts and f.validity != "absent":
+            if not _refresh(config, agent, name):
+                break
+            tries += 1
+            f = _observe(config, agent, name, task=task, context=context)
+        f = StateField(f.name, f.validity, f.value, f.source, tries, f.why)
+        fields.append(f)
+        if f.ok:
+            continue
+        if tries >= attempts and attempts > 0:
+            exhausted.append(name)
+        if operation in MAY_BE_ABSENT.get(name, ()):
+            # Declared legal without it. Reported anyway — a degraded run the
+            # owner cannot see is indistinguishable from a normal one.
+            gaps.append(f"{name} is {f.validity} ({f.why}) — {operation} is "
+                        f"declared legal without it")
+            continue
+        blocking_absent = True
+        gaps.append(f"{name} is {f.validity}"
+                    + (f" — {f.why}" if f.why else "")
+                    + (f" (observed {tries}x, still not available)" if tries else ""))
+
+    ready = not blocking_absent
+    return Readiness(operation=operation, ready=ready, gaps=gaps, fields=fields,
+                     exhausted=exhausted,
+                     degraded_ok=ready and bool(gaps))

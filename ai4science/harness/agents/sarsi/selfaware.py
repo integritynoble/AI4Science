@@ -31,7 +31,7 @@ Two things this deliberately will not do:
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from ai4science.harness.agents.sarsi.registry import Agent, Config
 
@@ -357,38 +357,122 @@ def _memory_indexes(config: Config, agent: Agent) -> list:
     return out
 
 
+GATE_VERSION = "gate/2"
+
+#: What each mode buys. Characters for the section caps (the assembler works in
+#: text), tokens for the recent window (the buffer is token-budgeted). These are
+#: defaults the gate RECORDS, not truths — §7.2 is explicit that a budget nobody
+#: can see is not a budget.
+MODE_BUDGET = {
+    "CHAT": {"recent_tokens": 6000, "episodic_chars": 0, "lessons": 0,
+             "semantic": False, "self": "none", "plan": False},
+    "REASON": {"recent_tokens": 3000, "episodic_chars": 1200, "lessons": 4,
+               "semantic": "retrieved", "self": "cached", "plan": True},
+    "ACTION": {"recent_tokens": 0, "episodic_chars": 3000, "lessons": 8,
+               "semantic": "all-active", "self": "measured", "plan": True},
+}
+
+
 def workspace_context(config: Config, agent: Agent, surface: str = "cli",
-                      observation: str = "") -> str:
-    """Working-memory gate — context window assembled per turn.
+                      observation: str = "", *, mode: str = "",
+                      route: Any = None) -> str:
+    """Working-memory gate — one assembler, three prices. [plan v3 §7.0-§7.4]
 
-    Assembly order (highest to lowest priority, per BrainRSI §5.2):
-      1. Semantic memory  — all active entries (always; constraints bypass the gate)
-      2. Task board + intentional — plan for standing task, current phase
+    `ACTION` (the default, and what every caller got before modes existed):
+
+      1. Semantic memory  — all active entries; a constraint bypasses ranking
+      2. Task board + intentional — plan for the standing task, current phase
       3. Memory lessons   — MEMORY.md from both workspaces
-      4. Self model       — harness-observed fields with staleness flags
-      5. Episodic         — last 3 exchanges verbatim + scored older ones, ≤3000 chars
-      6. Log file path    — always shown so LLM can read more
+      4. Self model       — harness-observed fields, measured now, with staleness
+      5. Episodic         — last 3 exchanges verbatim + scored older ones
+      6. Log file path    — always shown, so the model can read further
 
-    `observation` is the current user input; used to score episodic relevance.
-    Returns "" when no context is available so the caller can skip the prefix.
+    `REASON` buys the same shape smaller: cached self-model instead of a live
+    probe, *retrieved* semantic memory instead of all of it, a tighter episodic
+    slice scored against the resolved query.
+
+    `CHAT` buys almost nothing: who I am, what I hold in one line, and the
+    recent conversation. No live probe, no semantic store, no scored pass over
+    the log, no plan. This is the fast path §2.8 exists for — and it is a
+    *cost* decision only. Nothing about what the worker may do changes with the
+    mode; the door still decides that, exactly where it did before.
+
+    `observation` is the current user input, used to score relevance.
+    `route` is a `mode.Route` — when given it supplies both the mode and the
+    reference-resolved retrieval query, and it is recorded in the manifest so a
+    routing mistake replays apart from a retrieval mistake.
+
+    Returns "" when nothing is available, so the caller can skip the prefix.
     """
-    parts: list = []
+    picked = (mode or getattr(route, "mode", "") or "ACTION").upper()
+    if picked not in MODE_BUDGET:
+        picked = "ACTION"
+    budget = MODE_BUDGET[picked]
+    query = (getattr(route, "query", "") or observation or "")
 
-    # ── semantic memory (always inject — constraints must never be gate-missed) ──
-    try:
-        from ai4science.harness.agents.sarsi import semantic as _sem
-        sem_text = _sem.render(config, agent)
-        if sem_text:
-            parts.append(sem_text)
-    except Exception:
-        pass
+    sections: list = []          # (name, text) in assembly order
+    omitted: dict = {}           # category -> how many left out, never silent
+    selected: dict = {}          # category -> ids that made it in
+
+    def add(name: str, text: str) -> None:
+        if text:
+            sections.append((name, text))
+
+    buf = None
+    if budget["recent_tokens"]:
+        try:
+            from ai4science.harness.agents.sarsi import discourse as _disc
+            buf = _disc.recent(agent.agent_dir, surface,
+                               budget_tokens=budget["recent_tokens"])
+            add("recent", _disc.render(buf))
+            selected["exchanges"] = buf.ids()
+            if buf.omitted:
+                omitted["older_exchanges"] = buf.omitted
+        except Exception:
+            pass
+
+    # ── semantic memory ────────────────────────────────────────────────────
+    # ACTION injects every active entry: a constraint has no vocabulary in
+    # common with the task it constrains, and ranking it is how it goes missing
+    # exactly when it matters. REASON retrieves — and `retrieval.retrieve()`
+    # keeps the protected arm unranked for the same reason.
+    if budget["semantic"] == "all-active":
+        try:
+            from ai4science.harness.agents.sarsi import semantic as _sem
+            add("semantic", _sem.render(config, agent))
+        except Exception:
+            pass
+    elif budget["semantic"] == "retrieved":
+        try:
+            from ai4science.harness.agents.sarsi import retrieval as _ret
+            task_id = _standing_id(config, agent, surface)
+            got = _ret.retrieve(config, agent, query=query, task_id=task_id, k=6)
+            add("semantic", _ret.render(config, agent, query=query,
+                                        task_id=task_id, k=6))
+            selected["semantic"] = [e.get("id", "") for e in
+                                    (got.get("protected", []) + got.get("retrieved", []))]
+            selected["retrieval_mode"] = got.get("mode", "")
+        except Exception as e:
+            # Recorded, not swallowed. A turn answered without the memory it
+            # asked for is a different event from a turn that had none, and
+            # only the manifest can tell them apart afterwards. [§11.3]
+            omitted["semantic"] = f"retrieval failed: {type(e).__name__}: {e}"
 
     # ── task board ─────────────────────────────────────────────────────────
     try:
-        from ai4science.harness.agents.sarsi import task as tsk, entry as _entry
+        from ai4science.harness.agents.sarsi import task as tsk
         rows = tsk.all_of(config, agent)
-        standing_id = _entry.current(config, agent, surface=surface)
-        if rows:
+        standing_id = _standing_id(config, agent, surface)
+        if picked == "CHAT":
+            # One line. Enough to know what it is holding without paying for
+            # the board — "tasks held: 3 (current tsk_ab12) — /tasks lists them".
+            if rows:
+                cur = f" (current {standing_id})" if standing_id else ""
+                add("board", f"tasks held: {len(rows)}{cur} — /tasks lists them")
+                omitted["board_rows"] = len(rows)
+            else:
+                add("board", "tasks held: none")
+        elif rows:
             board = ["tasks held:"]
             for t in rows[:6]:
                 marker = " ← current" if t.id == standing_id else ""
@@ -396,29 +480,32 @@ def workspace_context(config: Config, agent: Agent, surface: str = "cli",
                 board.append(f"  {t.id}  [{t.state}]  {goal_snip}{marker}")
             if len(rows) > 6:
                 board.append(f"  … {len(rows) - 6} more — /tasks lists them")
-            parts.append("\n".join(board))
+                omitted["board_rows"] = len(rows) - 6
+            add("board", "\n".join(board))
+            selected["tasks"] = [t.id for t in rows[:6]]
         else:
-            parts.append("tasks held: none")
+            add("board", "tasks held: none")
     except Exception:
         pass
 
     # ── standing task plan (brief) ──────────────────────────────────────────
-    try:
-        from ai4science.harness.agents.sarsi import task as tsk, entry as _entry
-        standing_id = _entry.current(config, agent, surface=surface)
-        if standing_id:
-            t = tsk.get(config, agent, standing_id)
-            if t:
-                plan = tsk.read_plan(config, agent, t)
-                if plan:
-                    rendered = plan.render()
-                    # keep first 400 chars — enough for context without overwhelming
-                    snip = rendered[:400].strip()
-                    if len(rendered) > 400:
-                        snip += " …"
-                    parts.append(f"current task plan ({standing_id}):\n{snip}")
-    except Exception:
-        pass
+    if budget["plan"]:
+        try:
+            from ai4science.harness.agents.sarsi import task as tsk
+            standing_id = _standing_id(config, agent, surface)
+            if standing_id:
+                t = tsk.get(config, agent, standing_id)
+                if t:
+                    plan = tsk.read_plan(config, agent, t)
+                    if plan:
+                        rendered = plan.render()
+                        snip = rendered[:400].strip()
+                        if len(rendered) > 400:
+                            snip += " …"
+                            omitted["plan_chars"] = len(rendered) - 400
+                        add("plan", f"current task plan ({standing_id}):\n{snip}")
+        except Exception:
+            pass
 
     # ── memory index, from BOTH workspaces ─────────────────────────────────
     # A sarsi-worker has two homes on this fleet and neither is wrong:
@@ -435,120 +522,156 @@ def workspace_context(config: Config, agent: Agent, surface: str = "cli",
     # Both are read. Which tree a lesson was written into is an accident of
     # the door the work came through, and the worker should not be made to
     # care.
-    try:
-        block = _render_lessons(_lessons_from(_memory_indexes(config, agent)))
-        if block:
-            parts.append(block)
-    except Exception:
-        pass
+    if budget["lessons"]:
+        try:
+            lessons = _lessons_from(_memory_indexes(config, agent))
+            block = _render_lessons(lessons, cap=budget["lessons"])
+            add("lessons", block)
+            if len(lessons) > budget["lessons"]:
+                omitted["lessons"] = len(lessons) - budget["lessons"]
+        except Exception:
+            pass
 
-    # ── self model (harness-observed, with staleness) ──────────────────────
-    try:
-        from ai4science.harness.agents.sarsi import selfmodel as _sm
-        _sm.sync(config, agent)
-        sm_text = _sm.render_cached(agent.agent_dir)
-        if sm_text:
-            parts.append(sm_text)
-    except Exception:
-        pass
+    # ── self model ─────────────────────────────────────────────────────────
+    # `measured` runs the probes; `cached` reads the last measurement with its
+    # staleness flags intact. A greeting does not pay for a probe, and a stale
+    # field is still reported as stale rather than quietly refreshed.
+    if budget["self"] != "none":
+        try:
+            from ai4science.harness.agents.sarsi import selfmodel as _sm
+            if budget["self"] == "measured":
+                _sm.sync(config, agent)
+            add("self", _sm.render_cached(agent.agent_dir))
+        except Exception:
+            pass
+    else:
+        omitted["self_fields"] = "not measured this turn (CHAT)"
 
     # ── episodic log — gated selection ─────────────────────────────────────
     # Last 3 exchanges always shown verbatim (recency anchor).
     # Older exchanges: scored by task-overlap and keyword overlap with the
-    # current observation, admitted greedily up to EPISODIC_CHAR_CAP chars.
-    # Count of omitted entries is always shown — a silent truncation reads as
+    # current observation, admitted greedily up to the mode's cap. The count of
+    # omitted entries is always shown — a silent truncation reads as
     # completeness when it is not.
-    EPISODIC_CHAR_CAP = 3000
-    try:
-        from ai4science.harness.agents.sarsi import log as _log, entry as _entry
-        log_path = _log._path(agent.agent_dir, surface)
-        all_entries = _log.read(agent.agent_dir, surface, limit=0)
-        total = len(all_entries)
-
-        # Always take the last 3 as the recency anchor.
-        recent = all_entries[-3:] if len(all_entries) >= 3 else all_entries
-        older = all_entries[:-3] if len(all_entries) > 3 else []
-
-        # Score older entries for relevance.
-        obs_words = set((observation or "").lower().split()) - {
-            "the", "a", "an", "is", "in", "to", "and", "of", "for", "it"}
+    if budget["episodic_chars"]:
         try:
-            standing_id = _entry.current(config, agent, surface=surface) or ""
+            block, left_out = _episodic(config, agent, surface, query,
+                                        budget["episodic_chars"])
+            add("episodic", block)
+            if left_out:
+                omitted["episodes"] = left_out
         except Exception:
-            standing_id = ""
+            pass
 
-        def _score(e: dict) -> int:
-            s = 0
-            if standing_id and e.get("task_id") == standing_id:
-                s += 2
-            if obs_words:
-                text = ((e.get("in") or "") + " " + (e.get("out") or "")).lower()
-                s += min(2, sum(1 for w in obs_words if w in text))
-            return s
-
-        scored = sorted(older, key=_score, reverse=True)
-
-        def _fmt(e: dict) -> str:
-            ts = str(e.get("at", ""))[:16]
-            inp = str(e.get("in", "")).strip()
-            out = str(e.get("out", "")).strip()
-            tid = f" [{e['task_id']}]" if e.get("task_id") else ""
-            return f"  [{ts}]{tid} you: {inp}\n           worker: {out}"
-
-        # Greedily admit scored older entries within the cap.
-        admitted: list = []
-        chars_used = sum(len(_fmt(e)) for e in recent)
-        for e in scored:
-            fmt = _fmt(e)
-            if chars_used + len(fmt) > EPISODIC_CHAR_CAP:
-                break
-            admitted.append(e)
-            chars_used += len(fmt)
-
-        shown_count = len(recent) + len(admitted)
-        omitted = total - shown_count
-        header = (f"conversation history ({total} total, {shown_count} shown"
-                  + (f", {omitted} omitted — full log: {log_path}" if omitted else "")
-                  + "):")
-        log_lines = [header]
-        # Print admitted (older, relevant) first so chronology reads naturally.
-        for e in sorted(admitted, key=lambda x: x.get("at", "")):
-            log_lines.append(_fmt(e))
-        if admitted and recent:
-            log_lines.append("  … [gap] …")
-        for e in recent:
-            log_lines.append(_fmt(e))
-        if not all_entries:
-            log_lines.append("  (no exchanges recorded yet)")
-        if not omitted:
-            log_lines.append(f"  full log: {log_path}")
-        parts.append("\n".join(log_lines))
-    except Exception:
-        pass
-
-    if not parts:
+    if not sections:
         return ""
-    ctx = "[sarsi-worker workspace]\n" + "\n\n".join(parts) + "\n[/workspace]\n\n"
-    _save_context_snapshot(agent, ctx, observation=observation)
+    ctx = ("[sarsi-worker workspace]\n"
+           + "\n\n".join(t for _, t in sections) + "\n[/workspace]\n\n")
+    _save_context_snapshot(agent, ctx, observation=observation, mode=picked,
+                           route=route, sections=sections, omitted=omitted,
+                           selected=selected, budget=budget, surface=surface)
     return ctx
 
 
-def _save_context_snapshot(agent: "Agent", ctx: str,
-                           observation: str = "") -> None:
-    """Persist exact W_t bytes + manifest entry (M2.5).
+def _standing_id(config: Config, agent: Agent, surface: str) -> str:
+    try:
+        from ai4science.harness.agents.sarsi import entry as _entry
+        return _entry.current(config, agent, surface=surface) or ""
+    except Exception:
+        return ""
+
+
+def _episodic(config: Config, agent: Agent, surface: str, observation: str,
+              cap: int):
+    """The scored slice of older exchanges, plus how many were left out."""
+    from ai4science.harness.agents.sarsi import log as _log
+    log_path = _log._path(agent.agent_dir, surface)
+    all_entries = _log.read(agent.agent_dir, surface, limit=0)
+    total = len(all_entries)
+
+    recent = all_entries[-3:] if len(all_entries) >= 3 else all_entries
+    older = all_entries[:-3] if len(all_entries) > 3 else []
+
+    obs_words = set((observation or "").lower().split()) - {
+        "the", "a", "an", "is", "in", "to", "and", "of", "for", "it"}
+    standing_id = _standing_id(config, agent, surface)
+
+    def _score(e: dict) -> int:
+        s = 0
+        if standing_id and e.get("task_id") == standing_id:
+            s += 2
+        if obs_words:
+            text = ((e.get("in") or "") + " " + (e.get("out") or "")).lower()
+            s += min(2, sum(1 for w in obs_words if w in text))
+        return s
+
+    scored = sorted(older, key=_score, reverse=True)
+
+    def _fmt(e: dict) -> str:
+        ts = str(e.get("at", ""))[:16]
+        inp = str(e.get("in", "")).strip()
+        out = str(e.get("out", "")).strip()
+        tid = f" [{e['task_id']}]" if e.get("task_id") else ""
+        return f"  [{ts}]{tid} you: {inp}\n           worker: {out}"
+
+    admitted: list = []
+    chars_used = sum(len(_fmt(e)) for e in recent)
+    for e in scored:
+        fmt = _fmt(e)
+        if chars_used + len(fmt) > cap:
+            break
+        admitted.append(e)
+        chars_used += len(fmt)
+
+    shown_count = len(recent) + len(admitted)
+    omitted = total - shown_count
+    header = (f"conversation history ({total} total, {shown_count} shown"
+              + (f", {omitted} omitted — full log: {log_path}" if omitted else "")
+              + "):")
+    log_lines = [header]
+    for e in sorted(admitted, key=lambda x: x.get("at", "")):
+        log_lines.append(_fmt(e))
+    if admitted and recent:
+        log_lines.append("  … [gap] …")
+    for e in recent:
+        log_lines.append(_fmt(e))
+    if not all_entries:
+        log_lines.append("  (no exchanges recorded yet)")
+    if not omitted:
+        log_lines.append(f"  full log: {log_path}")
+    return "\n".join(log_lines), max(0, omitted)
+
+
+def _save_context_snapshot(agent: "Agent", ctx: str, observation: str = "", *,
+                           mode: str = "ACTION", route: Any = None,
+                           sections: Optional[list] = None,
+                           omitted: Optional[dict] = None,
+                           selected: Optional[dict] = None,
+                           budget: Optional[dict] = None,
+                           surface: str = "cli") -> None:
+    """Persist exact `W_t` bytes + the manifest row that explains them. [§7.4]
 
     Files written:
       <agent_dir>/contexts/<context_id>.txt.gz  — exact context bytes
-      <agent_dir>/context_manifest.jsonl         — one record per turn
+      <agent_dir>/context_manifest.jsonl        — one record per turn
+
+    A hash alone cannot reconstruct what the model saw once the source files
+    move on, so the exact rendered snapshot is stored beside the manifest, and
+    the manifest carries what the snapshot cannot: which ids were selected,
+    which candidates were left out and why, the budget in force, and — since
+    v3 — the MODE and the router version that chose it. Without those last two
+    a bad answer cannot be attributed: a routing mistake and a retrieval
+    mistake look identical in the bytes.
+
     Never raises — context assembly must not be blocked by snapshot failures.
     """
     import gzip
     import hashlib
     import json
-    import time
     import uuid
     from datetime import datetime, timezone
     try:
+        from ai4science.harness.agents.sarsi import discourse as _disc
         ctx_bytes = ctx.encode("utf-8")
         context_id = f"ctx_{uuid.uuid4().hex[:12]}"
         ctx_hash = hashlib.sha256(ctx_bytes).hexdigest()
@@ -562,17 +685,72 @@ def _save_context_snapshot(agent: "Agent", ctx: str,
 
         manifest_path = agent.agent_dir / "context_manifest.jsonl"
         record = {
+            "schema_version": 2,
             "context_id": context_id,
             "at": ts,
+            "surface": surface,
             "sha256": ctx_hash,
             "byte_count": len(ctx_bytes),
             "gz_path": str(gz_path),
             "query_snippet": (observation or "")[:80],
+            "mode": mode,
+            "gate_version": GATE_VERSION,
+            "router_version": getattr(route, "router_version", ""),
+            "route": route.as_record() if hasattr(route, "as_record") else {},
+            "budget": dict(budget or {}),
+            "token_estimate": _disc.estimate_tokens(ctx),
+            "token_estimator": _disc.estimator(),
+            "sections": [{"name": n, "bytes": len(t.encode("utf-8"))}
+                         for n, t in (sections or [])],
+            "selected": dict(selected or {}),
+            "omitted": dict(omitted or {}),
         }
         with manifest_path.open("a") as mf:
-            mf.write(json.dumps(record, sort_keys=True) + "\n")
+            mf.write(json.dumps(record, sort_keys=True, default=str) + "\n")
     except Exception:
         pass
+
+
+def manifest(agent_dir: "Path", limit: int = 0) -> List[Dict[str, Any]]:
+    """The context manifest, oldest-first. Rows that predate a schema version
+    are returned as they were written — history is read, not rewritten."""
+    import json
+    p = agent_dir / "context_manifest.jsonl"
+    if not p.exists():
+        return []
+    rows: List[Dict[str, Any]] = []
+    for ln in p.read_text().splitlines():
+        try:
+            rows.append(json.loads(ln))
+        except Exception:
+            continue
+    return rows if not limit else rows[-limit:]
+
+
+def replay(agent_dir: "Path", context_id: str) -> Optional[str]:
+    """The exact bytes a past turn saw, or None. [§7.4]
+
+    Read from the stored snapshot and checked against the hash the manifest
+    recorded at the time. A context hash plus section counts cannot rebuild an
+    input once the source files move on — which is the whole reason the bytes
+    are kept rather than described. A mismatch returns None: a snapshot that
+    does not match its own manifest is not evidence of anything.
+    """
+    import gzip
+    import hashlib
+    for row in manifest(agent_dir):
+        if row.get("context_id") != context_id:
+            continue
+        gz = row.get("gz_path") or ""
+        try:
+            raw = gzip.open(gz, "rb").read()
+        except Exception:
+            return None
+        want = row.get("sha256") or ""
+        if want and hashlib.sha256(raw).hexdigest() != want:
+            return None
+        return raw.decode("utf-8")
+    return None
 
 
 def is_about_self(line: str) -> bool:

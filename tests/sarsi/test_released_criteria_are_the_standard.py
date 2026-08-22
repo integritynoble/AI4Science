@@ -223,6 +223,10 @@ def test_a_phase_verdict_carries_the_same_note(config, agent):
     every verdict the loop actually produces."""
     t = _task(config, agent, released=True)
     _rewrite(agent, t)
+    # `out.txt exists and contains 42` is deterministic since M4. The subject
+    # here is the DRIFT NOTE on the verdict, so the artifact is written and the
+    # verdict is a real one.
+    (ses.work_dir_for(agent, t) / "out.txt").write_text("42\n")
     t = ses.verify(config, agent, t, verifier=_passing, evidence="out.txt: 42",
                    runtime=Runtime(), phase=0, now=time.time)
     got = t.phase_verdicts.get("0") or {}

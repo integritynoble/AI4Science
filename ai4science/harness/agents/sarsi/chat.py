@@ -634,18 +634,64 @@ def _classified(config: Config, agent: Agent, body: str, surface: str) -> str:
                 f"/new <goal> opens a task.")
 
     if got.kind == "question":
-        from ai4science.harness.agents.sarsi import selfaware as _sa
-        if _sa.is_about_self(body):
-            return _self_model(config, agent)
-        return (f"[{agent.id}] that is a question I cannot answer on this "
-                f"door.\nheard on {surface}: {body}\n"
-                f"to make it a task instead: /new {body}")
+        return _answered(config, agent, body, surface)
 
     if got.kind in ("meta", "ambiguous"):
         return f"[{agent.id}] {got.why}"
 
     # A directive is a goal — file it immediately like OpenClaw would. [spec §8]
     return _new(config, agent, got.goal, surface)
+
+
+def _answered(config: Config, agent: Agent, body: str, surface: str) -> str:
+    """A question, answered — from measured state first, then from a model.
+
+    The order is the point. `is_about_self` runs AHEAD of any generation, so a
+    question about the worker is answered out of `selfmodel.py`'s evidence-
+    backed claims. The self-model is *measured*; a model asked to describe
+    itself narrates, and narration is exactly what the evidence discipline
+    exists to keep out of self-report.
+
+    Everything else gets one generative turn on the CHAT fast path: the
+    recent-conversation window and a one-line board, assembled by the gate at
+    `CHAT` prices — no live self-probe, no semantic store, no scored pass over
+    the whole log. [plan v3 §7.0]
+
+    And answering is not acting. This returns prose. Nothing it produces is
+    parsed back into an instruction, and no task is filed: creation stays
+    explicit at `/new`, which is why the offer is stated every time rather
+    than acted on. When no engine is reachable, that is said plainly — a door
+    that answers nothing quietly is the failure this replaced.
+    """
+    from ai4science.harness.agents.sarsi import selfaware as _sa
+    if _sa.is_about_self(body):
+        return _self_model(config, agent)
+
+    from ai4science.harness.agents.sarsi import mode as _mode, reply as _reply
+    route = _mode.route(body, buf=_recent(config, agent, surface))
+    ctx = ""
+    try:
+        ctx = _sa.workspace_context(config, agent, surface=surface,
+                                    observation=body, route=route)
+    except Exception:
+        pass
+    said = _reply.answer(config, agent, body, context=ctx, surface=surface)
+    if said:
+        return (f"[{agent.id}] {said}\n"
+                f"(answered, not filed — /new <goal> if you want it as a task)")
+    return (f"[{agent.id}] that is a question I cannot answer on this "
+            f"door — no model engine is reachable here.\n"
+            f"heard on {surface}: {body}\n"
+            f"to make it a task instead: /new {body}")
+
+
+def _recent(config: Config, agent: Agent, surface: str):
+    """The recent-conversation window this surface is holding, or None."""
+    try:
+        from ai4science.harness.agents.sarsi import discourse as _disc
+        return _disc.recent(agent.agent_dir, surface)
+    except Exception:
+        return None
 
 
 def _unknown(agent: Agent) -> str:

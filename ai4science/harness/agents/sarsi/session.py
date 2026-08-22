@@ -311,13 +311,17 @@ def assign(config: Config, agent: Agent, task: tsk.Task, *,
         index = tsk.earliest_incomplete(task)
         phase_str = f"phase {index + 1}" if index is not None else "final verification"
         p_forecast = 0.7
-        cal = _fc.calibration(config, agent)
-        if cal and cal.get("n", 0) >= 2 and (cal.get("bias") or 0.0) < -0.10:
-            p_forecast = 0.5  # overconfident — be more conservative
+        sup = _fc.supervision(config, agent)
+        if sup.level == "tighter":
+            # The estimate moves, and so does the BEHAVIOUR: `require_
+            # deterministic` is read in `_verify_phase`, where it stops a
+            # model's opinion closing a phase no deterministic check could
+            # judge. A calibration number that changed only another number
+            # would be telemetry wearing a policy's name. [§M3.2]
+            p_forecast = 0.5
             memory.record(config, agent, "refusal",
-                          f"calibration bias {cal['bias']:.2f} with n={cal['n']}: "
-                          "using conservative p=0.5 instead of p=0.7",
-                          f"task {task.id}: overconfidence correction applied")
+                          f"supervision tightened: {sup.why[:120]}",
+                          f"task {task.id}: {sup.as_record()}")
         _fc.record(config, agent, task, p_forecast,
                    why=f"sarsi-claude assigned for {phase_str} of {task.id}; "
                    f"p={p_forecast:.1f} "
@@ -1317,6 +1321,25 @@ def release_session(config: Config, agent: Agent, task: tsk.Task, *,
     return tsk._touch(agent, task, now)
 
 
+def work_dir_for(agent: Agent, task: tsk.Task):
+    """Where this task's artifacts actually land — the one answer.
+
+    The declared `work_root` when there is one, the task folder otherwise. A
+    deterministic criterion is checked against this directory, so a caller
+    (or a test) that guesses a different one is asking about a different place
+    than the verifier looks. Two answers to "where is the work" is one more
+    than a check can tolerate.
+    """
+    from pathlib import Path as _Path
+    declared = (getattr(task, "work_root", "") or "").strip()
+    if declared:
+        try:
+            return _Path(declared).expanduser().resolve()
+        except OSError:
+            pass
+    return tsk.dir_of(agent, task.id)
+
+
 def _verify_phase(config: Config, agent: Agent, task: tsk.Task, *,
                   verifier: Callable[..., Dict[str, Any]], evidence: str,
                   engine: Optional[str], index: int, now,
@@ -1353,53 +1376,100 @@ def _verify_phase(config: Config, agent: Agent, task: tsk.Task, *,
 
     # M4: deterministic check first — no LLM call when the criterion can be
     # evaluated programmatically. The worker may run checks but never writes.
+    #
+    # The guard covers the CHECK and nothing after it. It used to wrap the
+    # recording too, and that hid a real defect for as long as it existed: the
+    # FAIL path ends in `guide()`, `guide()` raised `UnboundLocalError` on
+    # every call, and the exception unwound a verdict that had already been
+    # recorded — straight into the LLM verifier, which said PASS. A
+    # deterministic FAIL was reachable, correct, and thrown away. Whether the
+    # steer could be delivered has no bearing on what the check found.
+    _det_result = None
     try:
         from ai4science.harness.agents.sarsi import verify as _det
-        from pathlib import Path as _Path
-        _work = (task.work_root or "").strip()
-        _work_dir = (_Path(_work).expanduser().resolve()
-                     if _work else tsk.dir_of(agent, task.id))
-        _det_result = _det.check(criteria[index], _work_dir)
-        if _det_result.get("state") in (_det.PASS, _det.FAIL):
-            verdict: Dict[str, Any] = {
-                "state": _det_result["state"],
-                "why": _det_result.get("why", ""),
+        _det_result = _det.check(criteria[index], work_dir_for(agent, task))
+    except Exception:
+        _det_result = None      # the check itself errored — the LLM verifier judges
+    if _det_result is not None and _det_result.get("state") in ("PASS", "FAIL"):
+        verdict: Dict[str, Any] = {
+            "state": _det_result["state"],
+            "why": _det_result.get("why", ""),
+            "engine": "deterministic",
+            "independent": True,   # code check, not the executor's self-report
+            "check": _det_result.get("check", ""),
+            "criteria": [criteria[index]],
+            "phase": index + 1,
+        }
+        # Still note any plan drift so the owner sees it.
+        verdict = _note_drift(agent, task, verdict,
+                              tsk.criteria_drift(agent, task))
+        from ai4science.harness.agents.sarsi import verifier as vf
+        task = tsk.record_phase(config, agent, task, index, verdict, now=now)
+        task.verdict = verdict
+        ledger.append(config, "reports",
+                      {"agent": agent.id, "task": task.id,
+                       "state": "verified" if vf.is_pass(verdict) else "failed",
+                       "verdict": verdict, "evidence": [_det_result.get("why", "")[:500]]},
+                      now=now)
+        if tsk.earliest_incomplete(task) is None:
+            done = len(criteria)
+            task = tsk.finish(config, agent, task, verdict={
+                "state": "PASS",
+                "why": f"every phase passed deterministic check: {done} of {done}",
                 "engine": "deterministic",
-                "independent": True,   # code check, not the executor's self-report
-                "check": _det_result.get("check", ""),
-                "criteria": [criteria[index]],
-                "phase": index + 1,
-            }
-            # Still note any plan drift so the owner sees it.
-            verdict = _note_drift(agent, task, verdict,
-                                  tsk.criteria_drift(agent, task))
-            from ai4science.harness.agents.sarsi import verifier as vf
-            task = tsk.record_phase(config, agent, task, index, verdict, now=now)
-            task.verdict = verdict
-            ledger.append(config, "reports",
-                          {"agent": agent.id, "task": task.id,
-                           "state": "verified" if vf.is_pass(verdict) else "failed",
-                           "verdict": verdict, "evidence": [_det_result.get("why", "")[:500]]},
-                          now=now)
-            if tsk.earliest_incomplete(task) is None:
-                done = len(criteria)
-                task = tsk.finish(config, agent, task, verdict={
-                    "state": "PASS",
-                    "why": f"every phase passed deterministic check: {done} of {done}",
-                    "engine": "deterministic",
-                    "independent": True,
-                    "criteria": criteria}, now=now)
-                task = release_session(config, agent, task, runtime=runtime, now=now)
-            elif not vf.is_pass(verdict):
-                # FAIL — steer the session back
-                reason = verdict.get("why", "deterministic check failed")
+                "independent": True,
+                "criteria": criteria}, now=now)
+            task = release_session(config, agent, task, runtime=runtime, now=now)
+        elif not vf.is_pass(verdict):
+            # FAIL — steer the session back. Best effort: there may be no
+            # session, it may not be drivable, or the owner may have the
+            # wheel. None of those unmake the verdict.
+            reason = verdict.get("why", "deterministic check failed")
+            try:
                 guide(config, agent, task,
                       f"Phase {index + 1} failed the deterministic check: {reason}\n"
                       "Address this and report what you did.",
                       runtime=runtime)
-            return tsk._touch(agent, task, now)
+            except Exception:
+                pass
+        return tsk._touch(agent, task, now)
+
+    # Tightened supervision, bought by measured overconfidence: no deterministic
+    # criterion could judge this phase, and a worker that promises more than it
+    # delivers does not get to close one on a model's opinion. Left UNVERIFIED
+    # and handed back — which costs throughput and is the point. [§M3.2]
+    try:
+        from ai4science.harness.agents.sarsi import forecast as _fc
+        _sup = _fc.supervision(config, agent)
     except Exception:
-        pass  # deterministic check errored — fall through to LLM verifier
+        _sup = None
+    if _sup is not None and _sup.require_deterministic:
+        held: Dict[str, Any] = {
+            "state": "UNVERIFIED",
+            "why": (f"no deterministic criterion could judge phase {index + 1}, "
+                    f"and supervision is tightened: {_sup.why}"),
+            "engine": "supervision-policy",
+            "independent": True,
+            "criteria": [criteria[index]],
+            "phase": index + 1,
+            "supervision": _sup.as_record(),
+        }
+        task.verdict = held
+        ledger.append(config, "reports",
+                      {"agent": agent.id, "task": task.id, "state": "unverified",
+                       "verdict": held, "evidence": [evidence[:500]]}, now=now)
+        try:
+            guide(config, agent, task,
+                  f"Phase {index + 1} cannot be closed on judgement here: "
+                  f"{_sup.why}. Give it a criterion a check can evaluate — a "
+                  f"command's exit code, a file, a hash — and report the result.",
+                  runtime=runtime)
+        except Exception:
+            # Nowhere to steer (no session, not drivable, owner has the wheel).
+            # The HELD verdict still stands: whether the message could be
+            # delivered has no bearing on whether the phase was judged.
+            pass
+        return tsk._touch(agent, task, now)
 
     verdict = dict(verifier(goal=task.goal, criteria=[criteria[index]],
                             evidence=evidence) or {})
@@ -1426,24 +1496,12 @@ def _verify_phase(config: Config, agent: Agent, task: tsk.Task, *,
     task.verdict = verdict
 
     # Write checkpoint.json so a restarted worker knows the verified phases
-    # without parsing the full task store.
+    # without parsing the full task store. Atomic, hashed to the plan it
+    # describes, and carrying the verdict evidence per phase — see
+    # `checkpoint.py` for why each of those three is not optional.
     try:
-        from datetime import datetime, timezone
-        verified_phases = [
-            i for i in range(len(task.criteria or []))
-            if tsk.phase_passed(task, i)
-        ]
-        next_phase = tsk.earliest_incomplete(task)
-        ckpt = {
-            "task_id": task.id,
-            "plan_version": task.plan_version or "plan0",
-            "current_phase": next_phase,
-            "phases_verified": verified_phases,
-            "last_updated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        }
-        ck_path = tsk.dir_of(agent, task.id) / "checkpoint.json"
-        import json as _json
-        ck_path.write_text(_json.dumps(ckpt, indent=2))
+        from ai4science.harness.agents.sarsi import checkpoint as _ck
+        _ck.write(config, agent, task)
     except Exception:
         pass
 
@@ -1532,9 +1590,14 @@ def guide(config: Config, agent: Agent, task: tsk.Task, instruction: str, *,
     # write the next prompt straight against it. Two drivers, one session: what
     # either does has to be visible to the other.
     try:
-        from ai4science.harness.agents.sarsi import ownerlog as _ol, router as _rt
+        # NOT `as _rt`: this module already has a module-level `_rt()` that
+        # resolves the runtime, and importing the router under the same name
+        # makes `_rt(runtime, task)` above an unbound local for the whole
+        # function. Every owner guide raised UnboundLocalError before the
+        # keystroke was ever sent.
+        from ai4science.harness.agents.sarsi import ownerlog as _ol, router as _router
         _ol.append(config, agent, instruction,
-                   surface=getattr(_rt, "CLI_CHANNEL", "cli"),
+                   surface=getattr(_router, "CLI_CHANNEL", "cli"),
                    mode="guided" if by_owner else "worker-guided", now=now)
     except Exception:
         pass          # a history that cannot be written must not stop the steer

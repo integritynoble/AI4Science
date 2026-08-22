@@ -37,6 +37,7 @@ never been wrong.
 from __future__ import annotations
 
 import time
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 from ai4science.harness.agents.sarsi.registry import Agent, Config
@@ -161,3 +162,72 @@ def may_widen(*_args, **_kwargs) -> bool:
     which is the trade the governance plane exists to prevent.
     """
     return False
+
+
+# ── calibration that changes a decision ──────────────────────────────────────
+#
+# A Brier score nobody acts on is telemetry. §M3.2 is explicit that calibration
+# must affect a decision or be admitted as observation only — and the decision
+# it may affect is *supervision*, never authority. `may_widen()` above already
+# refuses the other direction and exists to be called.
+#
+# So the one lever here is tightening: a worker that has been measurably
+# overconfident gets a SMALLER delegated step and loses the right to close a
+# phase on a model's opinion when no deterministic criterion could judge it.
+# The good-calibration direction deliberately buys almost nothing — at most a
+# larger step — because the alternative is an agent that earns its way out of
+# being checked.
+
+#: Scored forecasts needed before calibration may change anything. Two is not
+#: many; it is the point at which a direction exists at all, and the policy is
+#: bounded in what it can do rather than in how sure it is.
+MIN_SAMPLE = 2
+
+
+@dataclass(frozen=True)
+class Supervision:
+    """How closely this worker is watched right now, and on what evidence."""
+    level: str = "normal"                 # normal | tighter
+    require_deterministic: bool = False   #: a model PASS cannot close a phase
+    max_delegated_phases: int = 1
+    why: str = "calibration is unmeasured — supervision is the default"
+    n: int = 0
+    bias: Optional[float] = None
+
+    def as_record(self) -> Dict[str, Any]:
+        return {"level": self.level, "n": self.n, "bias": self.bias,
+                "require_deterministic": self.require_deterministic,
+                "max_delegated_phases": self.max_delegated_phases,
+                "why": self.why}
+
+
+def supervision(config: Config, agent: Agent) -> Supervision:
+    """The bounded policy calibration is allowed to drive. [§M3.2]
+
+    Tighter supervision is a real behaviour change: with
+    `require_deterministic` set, a phase whose criterion no deterministic check
+    could evaluate is left UNVERIFIED and handed back, instead of being closed
+    by a model saying it looks done. That costs throughput and buys correctness
+    from the worker that has been measured promising more than it delivers.
+
+    What it never does is move a ceiling, grant a permission, or skip a check
+    that was required anyway.
+    """
+    cal = calibration(config, agent)
+    if not cal or cal.get("n", 0) < MIN_SAMPLE:
+        n = (cal or {}).get("n", 0)
+        return Supervision(n=n, bias=(cal or {}).get("bias"),
+                           why=(f"only {n} scored forecast(s) — not enough to "
+                                f"call a direction, so nothing changes"))
+    bias = float(cal.get("bias") or 0.0)
+    if bias <= -_BIAS_FLOOR:
+        return Supervision(
+            level="tighter", require_deterministic=True,
+            max_delegated_phases=1, n=cal["n"], bias=bias,
+            why=(f"overconfident by {abs(bias):.2f} over {cal['n']} scored "
+                 f"forecasts — a model's opinion may not close a phase here, "
+                 f"and the delegated step stays at one phase"))
+    return Supervision(level="normal", n=cal["n"], bias=bias,
+                       max_delegated_phases=2 if cal.get("beats_base_rate") else 1,
+                       why=(f"calibrated within {abs(bias):.2f} over {cal['n']} "
+                            f"scored forecasts — normal supervision"))

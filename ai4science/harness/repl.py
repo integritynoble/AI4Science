@@ -1303,6 +1303,14 @@ def run_common_repl(
         # In agent mode (sarsi-worker) the LLM has no idea what tasks the worker
         # holds, what the standing task is, or what lessons are recorded. Prepend
         # a workspace snapshot so the answer is grounded in the actual state. [§12]
+        #
+        # How MUCH of it is routed per turn. This prefix used to be identical
+        # for `hello` and for `implement M2`: the semantic store, the board,
+        # the standing plan, both memory indexes, a live self-model probe and a
+        # scored pass over the whole log, in front of every plain line typed.
+        # `mode.route()` prices the turn first, and the gate assembles to that
+        # price — the fast path of plan v3 §2.8, at the one call site that was
+        # paying the full bill every time.
         _mode = state.get("mode")
         if (getattr(_mode, "kind", "") == "agent"
                 and not line.startswith("/")):
@@ -1315,7 +1323,10 @@ def run_common_repl(
                     _cfg = _sr.load()
                     _wk = _cfg.agents.get(_name)
                     if _wk is not None:
-                        _ctx = _sa.workspace_context(_cfg, _wk, surface="cli")
+                        _route = _turn_route(_cfg, _wk, line)
+                        _ctx = _sa.workspace_context(_cfg, _wk, surface="cli",
+                                                     observation=line,
+                                                     route=_route)
                 except Exception:
                     # No harness registry on this account -- most of this fleet.
                     # That must not cost the worker its workspace entirely: fall
@@ -1869,6 +1880,29 @@ def _sarsi_worker_choices():
     # sarsi-worker first, machine agent second, rest alphabetical.
     rows.sort(key=lambda r: (r[0] != "sarsi-worker", r[0] != hostname, r[0]))
     return rows
+
+
+def _turn_route(config, agent, line: str):
+    """Price this turn before assembling context for it. [plan v3 §7.0]
+
+    Returns a `mode.Route`, or None when the router cannot be reached — in
+    which case the gate falls back to its `ACTION` default, which is what every
+    turn got before modes existed. Failing back to the expensive path is the
+    right direction: the cheap path is an optimisation, and losing an
+    optimisation is not the same kind of event as losing a safeguard.
+    """
+    try:
+        from ai4science.harness.agents.sarsi import (discourse as _disc,
+                                                     entry as _entry,
+                                                     mode as _mode)
+        try:
+            cursor = bool(_entry.current(config, agent, surface="cli"))
+        except Exception:
+            cursor = False
+        buf = _disc.recent(agent.agent_dir, "cli")
+        return _mode.route(line, buf=buf, cursor=cursor)
+    except Exception:
+        return None
 
 
 def _prime_worker_session(session, agent_name: str) -> None:
