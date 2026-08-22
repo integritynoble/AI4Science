@@ -293,3 +293,31 @@ def _place(kind: str, text: str, resolved: "_disc.Resolved"):
                             "relevant memory for"), False, False
         return CHAT, "an ordinary question, answerable from recent context", False, False
     return CHAT, "an ordinary turn", False, False
+
+
+#: The polite wrapper a request arrives in. Stripped to get at the instruction.
+_WRAPPER = re.compile(
+    r"^\s*(?:please\s+|pls\s+|kindly\s+"
+    r"|(?:can|could|would|will)\s+you\s+(?:please\s+)?"
+    r"|i(?:'d| would)? (?:like|want) you to\s+"
+    r"|i want\s+(?:you\s+to\s+)?"
+    r"|(?:let'?s|lets)\s+"
+    r"|go ahead and\s+"
+    r"|(?:now\s+)?(?:you should|you can)\s+)", re.I)
+
+
+def action_goal(text: str) -> str:
+    """The instruction inside a request, without the wrapper or the question mark.
+
+    `can you create a task to port the solver?` is a request to do a thing, and
+    the thing is `create a task to port the solver`. Offering the owner their
+    own sentence back with `can you` still in it makes a goal that reads as a
+    question forever after — the same defect `intent._strip_preamble` exists
+    for, one wrapper further out.
+    """
+    body = (text or "").strip().rstrip("?").strip()
+    prev = None
+    while prev != body:
+        prev = body
+        body = _WRAPPER.sub("", body, count=1).strip()
+    return body or (text or "").strip()

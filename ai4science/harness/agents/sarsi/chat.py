@@ -58,10 +58,16 @@ def _handle(config: Config, agent: Agent, text: str, *, surface: str,
         if body.lower().rstrip("?").strip() == "why":
             # Asked from inside a task, it is about that task — naming it again
             # is the friction the cursor exists to remove.
-            if standing is None:
-                return (f"which task? /why <task> — or open one with /<task> "
-                        f"first. /tasks lists them.")
-            return _why(config, agent, standing, "", runtime)
+            if standing is not None:
+                return _why(config, agent, standing, "", runtime)
+            # With no cursor it is the plainest follow-up there is, and
+            # "which task?" is the wrong question when the last two turns were
+            # a conversation. It goes down the fast path like any other local
+            # follow-up; only when there is nothing to follow does it ask.
+            if agent.is_worker and _recent_has_something(config, agent, surface):
+                return _answered(config, agent, body, surface)
+            return (f"which task? /why <task> — or open one with /<task> "
+                    f"first. /tasks lists them.")
         if standing is not None:
             return _guided(config, agent, standing, body, runtime)
         return _classified(config, agent, body, surface)
@@ -634,16 +640,37 @@ def _classified(config: Config, agent: Agent, body: str, surface: str) -> str:
                 f"/new <goal> opens a task.")
 
     if got.kind == "question":
-        return _answered(config, agent, body, surface)
+        from ai4science.harness.agents.sarsi import mode as _mode
+        route = _mode.route(body, buf=_recent(config, agent, surface),
+                            intent_of=got)
+        if route.mode == _mode.ACTION:
+            # A request with a question mark on it. Not answered as chat, and
+            # not filed either — this door never files from plain prose.
+            goal = _mode.action_goal(body)
+            return (f"[{agent.id}] that reads as something to DO, not a "
+                    f"question I should answer.\n"
+                    f"to file it: /new {goal}")
+        return _answered(config, agent, body, surface, route=route)
 
     if got.kind in ("meta", "ambiguous"):
+        # `continue` and `go on` land here — `intent.classify` cannot place a
+        # line with no subject of its own, and asking the owner to rephrase a
+        # follow-up is the wrong answer when the last two turns say exactly
+        # what it follows. The router already resolved the referent; if it
+        # priced the turn as conversation, it is answered as conversation.
+        from ai4science.harness.agents.sarsi import mode as _mode
+        route = _mode.route(body, buf=_recent(config, agent, surface),
+                            intent_of=got)
+        if route.mode == _mode.CHAT and route.referent:
+            return _answered(config, agent, body, surface, route=route)
         return f"[{agent.id}] {got.why}"
 
     # A directive is a goal — file it immediately like OpenClaw would. [spec §8]
     return _new(config, agent, got.goal, surface)
 
 
-def _answered(config: Config, agent: Agent, body: str, surface: str) -> str:
+def _answered(config: Config, agent: Agent, body: str, surface: str,
+              route=None) -> str:
     """A question, answered — from measured state first, then from a model.
 
     The order is the point. `is_about_self` runs AHEAD of any generation, so a
@@ -663,12 +690,20 @@ def _answered(config: Config, agent: Agent, body: str, surface: str) -> str:
     than acted on. When no engine is reachable, that is said plainly — a door
     that answers nothing quietly is the failure this replaced.
     """
-    from ai4science.harness.agents.sarsi import selfaware as _sa
-    if _sa.is_about_self(body):
+    from ai4science.harness.agents.sarsi import (mode as _mode, reply as _reply,
+                                                 selfaware as _sa)
+    if route is None:
+        route = _mode.route(body, buf=_recent(config, agent, surface))
+
+    # `is_about_self` runs ahead of the model — but NOT ahead of the router.
+    # Live, "can you create a task to port the GAP-TV solver?" ends in a
+    # question mark, contains "you" and "task", and came back as a canned
+    # self-model page instead of an offer to file the work. A request wearing a
+    # question mark is still a request, and §7.0's one-way valve has to hold on
+    # the door as well as in the router.
+    if route.mode != _mode.ACTION and _sa.is_about_self(body):
         return _self_model(config, agent)
 
-    from ai4science.harness.agents.sarsi import mode as _mode, reply as _reply
-    route = _mode.route(body, buf=_recent(config, agent, surface))
     ctx = ""
     try:
         ctx = _sa.workspace_context(config, agent, surface=surface,
@@ -677,12 +712,17 @@ def _answered(config: Config, agent: Agent, body: str, surface: str) -> str:
         pass
     said = _reply.answer(config, agent, body, context=ctx, surface=surface)
     if said:
-        return (f"[{agent.id}] {said}\n"
+        return (f"[{agent.id}] {said.text}\n"
                 f"(answered, not filed — /new <goal> if you want it as a task)")
-    return (f"[{agent.id}] that is a question I cannot answer on this "
-            f"door — no model engine is reachable here.\n"
+    return (f"[{agent.id}] I cannot answer that here: {said.why}.\n"
             f"heard on {surface}: {body}\n"
             f"to make it a task instead: /new {body}")
+
+
+def _recent_has_something(config: Config, agent: Agent, surface: str) -> bool:
+    """Is there a recent exchange for a follow-up to point at?"""
+    buf = _recent(config, agent, surface)
+    return buf is not None and not buf.empty
 
 
 def _recent(config: Config, agent: Agent, surface: str):

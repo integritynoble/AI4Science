@@ -224,5 +224,108 @@ def test_a_question_about_the_worker_never_reaches_the_model(config, agent,
 
 def test_with_no_engine_the_door_says_so_rather_than_answering_nothing(config, agent):
     out = chat.handle(config, agent, "how are the exports going?", surface="cli")
-    assert "no model engine is reachable" in out
+    assert "no model engine is configured" in out
     assert "/new" in out
+
+
+def test_an_engine_that_fails_is_not_reported_as_an_absent_one(config, agent,
+                                                               monkeypatch):
+    """Live, `is_available()` said True for a placeholder key and the call came
+    back HTTP 401 — and the door said "no engine is reachable", which is the
+    wrong sentence about a real, fixable problem."""
+    from ai4science.harness.agents.sarsi import reply
+
+    def boom(_prompt):
+        raise RuntimeError("HTTP 401: Incorrect API key provided")
+
+    monkeypatch.setattr(reply, "engine", lambda: boom)
+    out = chat.handle(config, agent, "how are the exports going?", surface="cli")
+    assert "did not answer" in out and "401" in out
+    assert "no model engine is configured" not in out
+
+
+def test_a_declined_answer_reads_as_not_knowing(config, agent, monkeypatch):
+    from ai4science.harness.agents.sarsi import reply
+    monkeypatch.setattr(reply, "engine", lambda: (lambda p: reply.UNKNOWN))
+    out = chat.handle(config, agent, "what is the owner's start date?",
+                      surface="cli")
+    assert "I do not know" in out
+
+
+def test_a_request_wearing_a_question_mark_is_not_answered_as_a_question(
+        config, agent, monkeypatch):
+    """The live defect: `can you create a task to port the GAP-TV solver?` came
+    back as a canned self-model page, because it ends in `?`, says `you`, and
+    says `task`. It is a request, and the door now reads it as one."""
+    from ai4science.harness.agents.sarsi import reply, task as tsk
+    monkeypatch.setattr(reply, "engine",
+                        lambda: (lambda p: "here is an essay about tasks"))
+    out = chat.handle(config, agent,
+                      "can you create a task to port the GAP-TV solver?",
+                      surface="cli")
+    assert "/new create a task to port the GAP-TV solver" in out
+    assert "essay" not in out                  # not answered as chat
+    assert "what I am, what I can do" not in out   # and not as the self-model
+    assert tsk.all_of(config, agent) == []     # and still not filed
+
+
+def test_a_bare_why_with_something_to_follow_takes_the_fast_path(config, agent,
+                                                                 monkeypatch):
+    """`why?` with no task cursor used to answer "which task?" — the wrong
+    question when the last two turns were a conversation."""
+    from ai4science.harness.agents.sarsi import log, reply
+    log.append(agent.agent_dir, "cli", "what is compressive imaging?",
+               "it codes a scene onto fewer measurements.")
+    monkeypatch.setattr(reply, "engine",
+                        lambda: (lambda p: "because the coding is what makes it invertible."))
+    out = chat.handle(config, agent, "why?", surface="cli")
+    assert "invertible" in out
+    assert "which task?" not in out
+
+
+def test_and_with_nothing_to_follow_it_still_asks(config, agent):
+    out = chat.handle(config, agent, "why?", surface="cli")
+    assert "which task?" in out
+
+
+def test_continue_is_answered_not_sent_back_for_rephrasing(config, agent,
+                                                            monkeypatch):
+    """`intent.classify` cannot place a line with no subject of its own, so
+    `continue` came back as "I could not tell whether that is a goal". Asking
+    the owner to rephrase a follow-up is the wrong answer when the last two
+    turns say exactly what it follows."""
+    from ai4science.harness.agents.sarsi import log, reply
+    log.append(agent.agent_dir, "cli", "what is a coded aperture?",
+               "a mask that multiplexes the scene onto the sensor.")
+    monkeypatch.setattr(reply, "engine",
+                        lambda: (lambda p: "the mask is what makes it invertible."))
+    out = chat.handle(config, agent, "continue", surface="cli")
+    assert "invertible" in out
+    assert "could not tell" not in out
+
+
+def test_but_a_line_with_nothing_to_follow_still_asks(config, agent, monkeypatch):
+    from ai4science.harness.agents.sarsi import reply
+    monkeypatch.setattr(reply, "engine", lambda: (lambda p: "should not be called"))
+    out = chat.handle(config, agent, "continue", surface="cli")
+    assert "could not tell" in out
+
+
+def test_the_prompt_the_door_sends_carries_the_routed_context(config, agent,
+                                                              monkeypatch):
+    """A CHAT turn must actually receive the recent window — the fast path is
+    cheap, not blind."""
+    from ai4science.harness.agents.sarsi import log, reply
+    log.append(agent.agent_dir, "cli", "what is a coded aperture?",
+               "a mask that multiplexes the scene.")
+    seen = {}
+
+    def call(prompt):
+        seen["prompt"] = prompt
+        return "because of the mask."
+
+    monkeypatch.setattr(reply, "engine", lambda: call)
+    chat.handle(config, agent, "why?", surface="cli")
+    assert "recent conversation" in seen["prompt"]
+    assert "coded aperture" in seen["prompt"]
+    assert "[sarsi-worker workspace]" in seen["prompt"]

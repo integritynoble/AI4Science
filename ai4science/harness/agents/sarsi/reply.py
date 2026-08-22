@@ -29,6 +29,7 @@ that silently answers nothing is the failure that made this necessary.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
 from ai4science.harness.agents.sarsi.registry import Agent, Config
@@ -71,12 +72,23 @@ def build_prompt(agent_id: str, question: str, *, context: str = "",
     return "\n\n".join(parts)
 
 
+#: Tried in order. A locally served model first — it is free and on this host,
+#: and the fast path is the one place that matters most.
+BACKENDS = ("qwen_local", "deepseek", "qwen", "openai")
+
+
 def engine() -> Optional[Callable[[str], str]]:
     """The cheapest reachable text engine, or None.
 
     Deliberately the API path only. Spawning a coding CLI to answer `why?`
     would reintroduce, on the fast path, the exact cost this mode exists to
     avoid — and an executor process is an executor whatever it is asked for.
+
+    Every *configured* backend is tried, because `is_available()` checks that a
+    key and a base URL exist, not that either works. Measured on this host: it
+    returned True for a placeholder key (`sk-unused…bridge`) and the call came
+    back `HTTP 401`. So configuration is a candidate list, not an answer, and
+    when the whole list fails the caller is told what each one said.
     """
     import os
     if os.environ.get(_ENV_FLAG, "1").strip().lower() in ("0", "false", "no", "off"):
@@ -85,42 +97,75 @@ def engine() -> Optional[Callable[[str], str]]:
         from ai4science.llm import openai_compat as _oc
     except Exception:
         return None
-    for backend in ("openai", "comparegpt"):
+    live = []
+    for backend in BACKENDS:
         try:
             if _oc.is_available(backend):
-                def call(prompt: str, _b=backend) -> str:
-                    text, _ = _oc.chat(_b, [{"role": "user", "content": prompt}])
-                    return text
-                return call
+                live.append(backend)
         except Exception:
             continue
-    return None
+    if not live:
+        return None
+
+    def call(prompt: str) -> str:
+        failures = []
+        for backend in live:
+            try:
+                text, _ = _oc.chat(backend, [{"role": "user", "content": prompt}])
+                if text:
+                    return text
+                failures.append(f"{backend}: returned nothing")
+            except Exception as e:
+                failures.append(f"{backend}: {type(e).__name__}: {str(e)[:120]}")
+        raise RuntimeError("; ".join(failures))
+
+    return call
 
 
 def available() -> bool:
     return engine() is not None
 
 
+@dataclass(frozen=True)
+class Said:
+    """What came back, or precisely why nothing did."""
+    text: str = ""
+    why: str = ""          #: set when `text` is empty — the reason, not a shrug
+
+    def __bool__(self) -> bool:
+        return bool(self.text)
+
+
 def answer(config: Config, agent: Agent, question: str, *, context: str = "",
            surface: str = "cli",
-           model: Optional[Callable[[str], str]] = None) -> Optional[str]:
-    """One generative turn, or None when there is nothing to answer with.
+           model: Optional[Callable[[str], str]] = None) -> Said:
+    """One generative turn, or the reason there was none.
 
-    `None` means *no engine, or the engine declined* — both of which the caller
-    must report rather than paper over. A blank string is never returned as an
-    answer.
+    The reason is returned rather than collapsed, because the three cases are
+    different facts and the owner needs to be told which one happened:
+
+      * **no engine configured** — nothing to ask;
+      * **the engine failed** — it was asked and the call did not work. Live,
+        `is_available()` returned True for a placeholder key and the call came
+        back `HTTP 401`; the door reported "no engine is reachable", which was
+        the wrong sentence about a real, fixable problem;
+      * **the model declined** — it was asked, it answered, and the answer was
+        "I do not know". That is a correct outcome and reads as one.
     """
     q = (question or "").strip()
     if not q:
-        return None
+        return Said(why="there was no question in that")
     call = model or engine()
     if call is None:
-        return None
+        return Said(why="no model engine is configured here")
     try:
         out = (call(build_prompt(agent.id, q, context=context,
                                  surface=surface)) or "").strip()
-    except Exception:
-        return None
-    if not out or out.upper().startswith(UNKNOWN):
-        return None
-    return out
+    except Exception as e:
+        return Said(why=f"the model engine here did not answer: "
+                        f"{type(e).__name__}: {str(e)[:160]}")
+    if out.upper().startswith(UNKNOWN):
+        return Said(why="I do not know — nothing I hold settles that")
+    if not out:
+        return Said(why="the model engine returned nothing")
+    return Said(text=out)
