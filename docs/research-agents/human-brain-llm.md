@@ -352,6 +352,89 @@ and it can never run the experiment that would settle a question if nobody has
 run it already. That is a real and unfixable limitation, and it is preferable to
 the alternative.
 
+## 12c. The level queues — this agent on the individual, organizational and circle axes
+
+The queue above is the **field's**. This one is the **agent's**, in the same
+format, against the level framework at
+[`sarsi-intelligence-level`](https://github.com/integritynoble/sarsi-intelligence-level).
+It is here rather than in a separate document because the two queues turn out to
+share a rung, and that shared rung is the whole shape of this field.
+
+### A — the individual ladder
+
+| # | problem | **solved when** | why it is placed here | state |
+|---|---|---|---|---|
+| A1 | **I0 → I1 · durable state** | `the field map and the record of what has been scored survive a restart and change what is selected next` | first because everything above operates on the record it accumulates | available by design — the field map is the mechanism |
+| A2 | **I1 → I2 · the memory ablation** | `selection guided by the accumulated record beats selection without it, on a held-out family of representations, scored by a party that did not write the record` | **this is the field's own rung 1 turned inward.** The agent demands that every alignment score be reported against a floor; A2 is that same demand applied to the agent's own memory. An agent that will not clear its own floor has no standing to insist others clear theirs | open |
+| A3 | **I2 → I3 · the analysis policy changed** | `mapping, regularisation, layer and context selection change, survive into later operation, and pass an evaluation the agent did not run` | Θ here is exactly §6's *may* list. Needs A2, or a policy change is judged against unablated memory | open |
+| A4 | **I3 → I4 · improvement competence rises** | `validated downstream gain ÷ proposal-and-evaluation cost rises across generations, with the denominator reported` | the denominator is what makes it honest — a rising score is consistent with the improvement machinery standing still | open |
+| A5 | **I4 → I5 · an unknown nobody handed it** | `the agent identifies a significant unknown, designs discriminating evidence, and the knowledge is validated externally` | this field offers an unusually clean I5 target: **the negative base rate.** How often a representation fails to beat the floor is unknown, unpublished, and measurable from data already public | open |
+| A6 | **I5 → IΩ · objective openness** | — | **not available to this agent, and not because it is hard.** The objective lives in `scope/human-brain-llm.json`, set by the field's experts; §6 says the agent may not change what counts as shared structure. By the role map the objective-open seat is the director's, and here that is a person | **closed by construction** |
+
+> **A6 is closed rather than open, and the distinction matters.** An open rung is
+> work not yet done; a closed one is work this agent may not do. Reading A6 as a
+> gap would invite exactly the move the scope object forbids — an agent revising
+> what counts as an answer in its own field.
+
+### B — the organizational ladder, for this agent's own group
+
+The group of ten is itself an organization, and the O-axes are properties of how
+its members are arranged rather than of any member's capability.
+
+| # | problem | **solved when** | why it is placed here | state |
+|---|---|---|---|---|
+| B1 | **O0 → O1 · persistence** | `shared state, roles and evidence survive any single member` | makes no improvement claim; directly observable | by design |
+| B2 | **The separation gate** | `proposer, evaluator and promoter are distinct, and the evaluator's criteria lie outside the proposer's write set` | a gate rather than a level: every rung above is void without it. **`floor` exists to satisfy exactly this** — fitted by `method` it would be a floor set by the party that has to clear it | **satisfied by the roster** |
+| B3 | **O1 → O2 · a measured reliability ledger** | `which member is asked changes on measured per-member reliability, and the change improves outcomes` | needs B2, or the improvement is self-certified | open |
+| B4 | **O2 → O3 · the group's own verification improvable** | `the verification procedure is versioned, candidates scored on a held-out split, promoted through a gate the group cannot invoke` | the organizational form of A3 | open |
+| B5 | **O3 → O4 · competence over the group's promotion** | `the group gets better at telling a good candidate from a bad one, per unit of review cost` | the quantity that decides whether member quality converts into anything | open |
+| B6 | **O4 → O5 · knowledge no member holds** | `a result is produced that no single member could have produced, with the organizational contribution identified` | the floor, the ceiling and the split are jointly a claim no member owns alone — which is the shape of this rung, not yet its evidence | partial |
+| B7 | **O5 → OΩ · new organizational forms** | `an accepted artifact repeatedly adds a member with its own reach, expanding what the group can discover` | **this has happened once already**: `floor` was admitted for a stated rung, with a reason recorded. One event is not a rate | one event |
+| B8 | **O-A5 · world coupling** | `the referee chain terminates in an instrument that measured a brain, not in another member and not in the literature` | **this is the field queue's rung 6, in organizational vocabulary.** They are one rung seen from two axes | open — see below |
+
+> **B8 and field rung 6 are the same problem.** The field states it as *no
+> recording is on this machine*; the organizational axis states it as *the
+> referee chain terminates in published literature and human behaviour rather
+> than in an instrument*. Neither is a separate deficiency to be fixed on its own,
+> and closing either closes both.
+
+### C — the circles
+
+| # | problem | **solved when** | why it is placed here | state |
+|---|---|---|---|---|
+| C1 | **Circle I · software** | `identify, implement and validate run unapproved, and deploy does too` | **rungs 1–5 of the field queue all live here.** Floors, ceilings, splits and controls are software work end to end | open. δ is owner-signed. **Floor type: throughput — removable** |
+| C4 | **Circle IV · biological** | `a hypothesis about a biological mechanism is generated, tested and validated to an endpoint` | **rung 6 lives here, and only rung 6.** Its ι requires I5, and its ν is irreducibly external twice over — once for evaluator separation, once because the regulatory structure requires a human principal investigator | open. **Floor type: physical — not removable** |
+| — | Circles II, III, V+ | — | not this field's. Nothing here fabricates, replicates or collects energy | n/a |
+
+### What the crossing says
+
+**This is a Circle IV field running a Circle I loop**, and that sentence explains
+the page.
+
+Rungs 1–5 are Circle I: cheap, software, and bounded by a **throughput** floor
+that better tooling removes. Rung 6 is Circle IV: bounded by a **physical** floor
+that no level on either axis compresses, with a ν that is externally required by
+regulation rather than by this project's preference.
+
+So §12b does not end in a refusal because of a policy this project chose. **It
+ends in a refusal because Circle IV's validate step is irreducibly external, and
+one of the two reasons it is external is a human principal investigator that no
+agent can be.** The roster's missing body is that fact showing up in one field's
+membership list.
+
+Two consequences worth stating.
+
+**The cheap rungs and the defining rung are in different circles**, so a free
+hand closes five and leaves the sixth untouched — which is what the queue's own
+warning about *an agent that solves what it can* predicts, now with a mechanism
+rather than a suspicion.
+
+**A5 is on a branch.** Circle IV requires Circle I, is not required by Circle III,
+and does not feed Circle V+ — so the circle that most demands a high individual
+level contributes least to the wider trajectory. This agent's clean I5 target is
+real and is not on anyone's critical path, and it is better to know that than to
+discover it later.
+
 ## The four layers
 
 | layer | this field's instance |
