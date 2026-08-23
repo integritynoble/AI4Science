@@ -360,6 +360,14 @@ REQUIRED_STATE: Dict[str, Tuple[str, ...]] = {
     "archive_task": ("active_plan", "verification_state"),
     "guide_session": ("session_live",),
     "write_semantic_memory": ("provenance", "scope"),
+    # Planning wants to know what it may commit to and what could run it, and
+    # is still legal when nothing can — you can plan work on a machine that
+    # cannot execute it, you just cannot then assign it. This is what makes
+    # `MAY_BE_ABSENT` reachable at all: a field is only "declared absent for
+    # an operation" if that operation required it in the first place, and
+    # until now no operation both required `executor_reachable` and declared
+    # itself legal without it, so `degraded_ok` could never be produced.
+    "plan_task": ("authority", "executor_reachable"),
 }
 
 #: Fields that may be permanently absent on some machines, and the operations
@@ -368,8 +376,8 @@ REQUIRED_STATE: Dict[str, Tuple[str, ...]] = {
 MAY_BE_ABSENT: Dict[str, Tuple[str, ...]] = {
     # No `claude`/`codex` binary on this host: the worker can still plan,
     # answer, archive and record — it cannot delegate.
-    "executor_reachable": ("archive_task", "write_semantic_memory",
-                           "guide_session"),
+    "executor_reachable": ("plan_task", "archive_task",
+                           "write_semantic_memory", "guide_session"),
 }
 
 #: How many times a declared observation path is retried before the field is

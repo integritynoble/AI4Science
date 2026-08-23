@@ -34,3 +34,21 @@ def _no_live_model(monkeypatch):
     A test that WANTS generation injects its own callable.
     """
     monkeypatch.setenv("SARSI_CHAT_LLM", "0")
+
+
+@pytest.fixture(autouse=True)
+def _verifier_baseline_intact():
+    """Restore the import-time verifier baseline after every test.
+
+    An empty baseline is a refusal — `_check_verifier_integrity` will not adopt
+    whatever happens to be on disk — so a test that clears it and does not put
+    it back makes every LATER test reject every phase. That is exactly what
+    happened: one `clear()` with no restore cost seventeen failures in files
+    that pass on their own, and the symptom (a task stuck at `running`) points
+    nowhere near the cause.
+    """
+    from ai4science.harness.agents.sarsi import session as _ses
+    saved = dict(_ses._VERIFIER_BASELINE)
+    yield
+    _ses._VERIFIER_BASELINE.clear()
+    _ses._VERIFIER_BASELINE.update(saved or _ses.verifier_hashes())

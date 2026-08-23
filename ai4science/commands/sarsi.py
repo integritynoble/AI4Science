@@ -1878,3 +1878,102 @@ def problems_cmd(field: str = typer.Argument(
             # authority.
             console.print("     (a reading of the field — this machine holds "
                           "no evidence for it)", markup=False, highlight=False)
+
+
+@app.command("consolidate", help="Run the offline consolidator: turn repeated "
+                                 "episodes into candidate lessons and skills.")
+def consolidate_cmd(agent_id: str = typer.Argument(..., help="Worker id, e.g. sarsi-worker"),
+                    sweep: bool = typer.Option(True, "--sweep/--no-sweep",
+                                               help="First check for expectations that "
+                                                    "passed their deadline with no verdict.")) -> None:
+    """The offline pass §M5.3 describes, with a door on it.
+
+    It had none. `consolidate.run()` existed, was tested, and was reachable
+    only by importing the library by hand — so the M5 exit criterion could not
+    be met by the running system however much evidence it accumulated. An
+    offline job nobody can start is not offline, it is absent.
+
+    Nothing here activates anything. Candidates are proposed with their
+    evidence and wait for `sarsi promote`; that separation is §M5.2.
+    """
+    from ai4science.harness.agents.sarsi import consolidate as cons, session as ses
+    config = _load()
+    agent = config.agents.get(agent_id)
+    if agent is None:
+        typer.echo(f"{agent_id} is not an agent on this machine")
+        raise typer.Exit(code=1)
+
+    if sweep:
+        fired = ses.check_expectations(config, agent)
+        if fired:
+            typer.echo(f"{len(fired)} expectation(s) passed their deadline with "
+                       f"no verdict — recorded as episodes")
+
+    report = cons.run(config, agent)
+    typer.echo(f"{report['episodes_read']} episode(s) read")
+    for row in report.get("error_groups_qualifying", []):
+        typer.echo(f"  repeated failure ×{row[1]}: {row[0]}")
+    for row in report.get("success_groups_qualifying", []):
+        typer.echo(f"  repeated success ×{row[1]}: {row[0]}")
+
+    cands = report.get("semantic_candidates", [])
+    blocked = report.get("contradicted_candidates", [])
+    skills = report.get("skill_candidates", [])
+    if not (cands or blocked or skills):
+        typer.echo("nothing repeated often enough to propose — "
+                   "which is the honest outcome, not a failure")
+        return
+    for c in cands:
+        typer.echo(f"\n  candidate {c['memory_id']}  (support {c.get('support_count')}, "
+                   f"scope {', '.join(c.get('scope') or [])})")
+        typer.echo(f"    {c['statement'][:200]}")
+        typer.echo(f"    promote with: ai4science sarsi promote {agent_id} {c['memory_id']}")
+    for c in blocked:
+        typer.echo(f"\n  BLOCKED {c['memory_id']} — contradicts "
+                   f"{', '.join(c.get('contradicts') or [])}")
+        typer.echo(f"    {c['statement'][:200]}")
+        typer.echo("    settle the disagreement first: retract or supersede the other entry")
+    for s in skills:
+        typer.echo(f"\n  skill candidate {s['skill_id']}: {s.get('description', '')[:120]}")
+        typer.echo("    it needs preconditions, tests, postconditions and a rollback "
+                   "before it can be promoted")
+
+
+@app.command("promote", help="Make a candidate lesson active — the only way one becomes true.")
+def promote_cmd(agent_id: str = typer.Argument(..., help="Worker id, e.g. sarsi-worker"),
+                memory_id: str = typer.Argument(..., help="Candidate id from `sarsi consolidate`"),
+                resolves: List[str] = typer.Option([], "--resolves",
+                                                   help="Contradicting entries you have "
+                                                        "already retracted or superseded.")) -> None:
+    from ai4science.harness.agents.sarsi import semantic as sem
+    config = _load()
+    agent = config.agents.get(agent_id)
+    if agent is None:
+        typer.echo(f"{agent_id} is not an agent on this machine")
+        raise typer.Exit(code=1)
+    try:
+        rec = sem.promote(config, agent, memory_id, by="owner",
+                          resolves=list(resolves) or None)
+    except sem.PromotionBlocked as e:
+        typer.echo(str(e))
+        raise typer.Exit(code=1)
+    typer.echo(f"promoted — {rec['memory_id']} is active:\n  {rec['statement'][:200]}")
+
+
+@app.command("candidates", help="Lessons proposed and waiting on a decision.")
+def candidates_cmd(agent_id: str = typer.Argument(..., help="Worker id, e.g. sarsi-worker")) -> None:
+    from ai4science.harness.agents.sarsi import consolidate as cons, semantic as sem
+    config = _load()
+    agent = config.agents.get(agent_id)
+    if agent is None:
+        typer.echo(f"{agent_id} is not an agent on this machine")
+        raise typer.Exit(code=1)
+    rows = sem.candidates(config, agent)
+    if not rows:
+        typer.echo("nothing is waiting on a decision")
+    for c in rows:
+        typer.echo(f"  {c['memory_id']}  (support {c.get('support_count')})  "
+                   f"{c['statement'][:140]}")
+    active = cons.active_skills(config, agent)
+    if active:
+        typer.echo(f"\nactive skills: {', '.join(s['skill_id'] for s in active)}")

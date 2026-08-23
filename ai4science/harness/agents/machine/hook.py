@@ -178,8 +178,14 @@ def main(argv=None) -> int:
         ceiling = _trust.effective_ceiling(ceiling)
     except Exception:
         _trust = None
+    # `rec` is the discriminator `should_halt_session` already relies on: a
+    # governed worker session has a supervisor record and nobody is sitting at
+    # it; a session with no record was started by a human who is. The verifier
+    # is protected from the first and not the second — §M4.2's runtime
+    # independence without making its development-time bootstrap impossible.
     verdict = decide_tool_call(call, ceiling=ceiling, project_dir=project_dir,
-                               writable=_declared_writable())
+                               writable=_declared_writable(),
+                               governed=rec is not None)
     # remote approval channel: escalate an 'ask' to the owner's Telegram if configured
     if verdict.get("decision") == "ask":
         verdict = _maybe_telegram(verdict, data)

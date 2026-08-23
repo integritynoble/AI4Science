@@ -41,7 +41,12 @@ from typing import Any, Dict, List, Optional
 from ai4science.harness.agents.sarsi import ledger
 from ai4science.harness.agents.sarsi.registry import Agent, Config
 
-TRIGGERS = ("refuted_prediction", "rollback", "refusal", "clash", "correction")
+#: §M5.1's eight machine-observable triggers. Three were missing entirely and
+#: a fourth could never fire, because `_trigger_outcome` had no `"pass"` — so
+#: `consolidate`'s success arm, and every skill candidate behind it, was
+#: unreachable from the live path however many times a workflow succeeded.
+TRIGGERS = ("refuted_prediction", "rollback", "refusal", "clash", "correction",
+            "denial", "expectation_timeout", "success")
 
 #: How many lessons the index may carry. A memory that grows without bound
 #: stops being an index and becomes a second transcript.
@@ -118,6 +123,9 @@ def _trigger_outcome(trigger: str) -> str:
         "refusal": "refused",
         "clash": "fail",
         "correction": "rolled_back",
+        "denial": "refused",
+        "expectation_timeout": "fail",
+        "success": "pass",
     }.get(trigger, "unknown")
 
 

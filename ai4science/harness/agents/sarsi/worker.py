@@ -151,6 +151,19 @@ def _record(config: Config, agent: Agent, out: Admission, *, now) -> None:
         # CAP → REP is automatic: the miss becomes an answer, not a silence.
         report(config, agent, out.directive, state="blocked",
                evidence=[out.message], needed_and_missing=list(out.missing), now=now)
+        # …and an episode. §M5.1 names "admission/refusal event" as a hard
+        # trigger; the ledger row and the report existed, and nothing the
+        # consolidator reads did. A capability this agent keeps being asked
+        # for and keeps not having is exactly the repeated pattern the offline
+        # pass is meant to surface.
+        try:
+            from ai4science.harness.agents.sarsi import memory as _mem
+            _mem.record(config, agent, "denial",
+                        f"refused a directive: {out.reason or 'not admitted'}",
+                        f"goal: {(out.directive.goal or '')[:200]} — "
+                        f"missing: {', '.join(out.missing) or 'n/a'}")
+        except Exception:
+            pass
 
 
 def report(config: Config, agent: Agent, directive: Directive, *, state: str,

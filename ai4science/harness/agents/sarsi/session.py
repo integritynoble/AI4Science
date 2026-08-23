@@ -290,12 +290,25 @@ def assign(config: Config, agent: Agent, task: tsk.Task, *,
     try:
         from ai4science.harness.agents.sarsi import selfmodel as _sm
         _sm.sync(config, agent)
-        ready, gaps = _sm.readiness(config, agent, task)
-        if not ready:
-            for gap in gaps:
-                memory.record(config, agent, "refusal",
-                              f"readiness gap before assign: {gap[:120]}",
-                              f"task {task.id}: {gap}")
+        # The operation-specific gate (§7.3), not the global health check. It
+        # had no production caller at all — the live path asked one question
+        # for every operation, which either blocks work that needed none of the
+        # missing state or waves through work that needed all of it. `gate()`
+        # asks what THIS operation declared it requires, refreshes what it can
+        # a bounded number of times, and never turns retry exhaustion into a
+        # value.
+        got = _sm.gate(config, agent, "assign_executor", task=task)
+        ready, gaps = got.ready, got.gaps
+        for gap in gaps:
+            memory.record(config, agent, "refusal",
+                          f"readiness gap before assign: {gap[:120]}",
+                          f"task {task.id}: {gap}")
+        if got.exhausted:
+            memory.record(config, agent, "refusal",
+                          f"unmeasured after {_sm.DEFAULT_ATTEMPTS} attempts: "
+                          f"{', '.join(got.exhausted)}",
+                          f"task {task.id}: the declared observation path did "
+                          f"not produce a value, and none was guessed")
     except Exception:
         pass
 
@@ -524,34 +537,68 @@ def assign(config: Config, agent: Agent, task: tsk.Task, *,
     return task
 
 
-def _check_verifier_integrity() -> tuple:
-    """M4.2 — hash the verifier modules and return (ok, reason).
+PROTECTED_VERIFIER_MODULES = ("verify", "verifier", "checkpoint")
 
-    Hashes verify.py and verifier.py at import time to detect whether an
-    executor session modified them.  Returns (True, "") if unchanged,
-    (False, reason) if any protected module was modified.
 
-    The hash is computed each call; callers hold the pre-session baseline in
-    the _VERIFIER_BASELINE dict and compare after the session completes.
-    This function is called at the START of _verify_phase — if the executor
-    session ran before verify was called, any tampering is caught here.
-    """
+def verifier_hashes() -> Dict[str, str]:
+    """Current sha256 of each protected verifier module. [§M4.2]"""
     import hashlib
     import importlib
     from pathlib import Path as _Path
 
-    protected_modules = ("verify", "verifier")
-    for mod_name in protected_modules:
+    out: Dict[str, str] = {}
+    for mod_name in PROTECTED_VERIFIER_MODULES:
         try:
             mod = importlib.import_module(
                 f"ai4science.harness.agents.sarsi.{mod_name}")
-            src = _Path(mod.__file__).read_bytes()
-            current_hash = hashlib.sha256(src).hexdigest()
+            out[mod_name] = hashlib.sha256(
+                _Path(mod.__file__).read_bytes()).hexdigest()
+        except Exception as exc:                       # pragma: no cover
+            out[mod_name] = f"unreadable: {exc}"
+    return out
+
+
+def verifier_fingerprint() -> str:
+    """One short id for the whole verifier, pinned into every verdict.
+
+    §M4.2 asks for the verifier version/hash in the run evidence, and it was
+    absent: a verdict recorded `state/why/engine/independent` and nothing that
+    said WHICH verifier produced it. A stored verdict nobody can attribute to a
+    version cannot be re-checked after the verifier changes.
+    """
+    import hashlib
+    joined = ";".join(f"{k}={v}" for k, v in sorted(verifier_hashes().items()))
+    return hashlib.sha256(joined.encode("utf-8")).hexdigest()[:16]
+
+
+def _check_verifier_integrity() -> tuple:
+    """M4.2 — has anything rewritten the verifier since this process started?
+
+    The baseline is taken at **import** (see `_VERIFIER_BASELINE` below), not
+    on first call. It used to be populated lazily inside this function, whose
+    only caller is `_verify_phase` — which runs *after* the executor session
+    has already worked. So on a per-invocation CLI, which is the normal case,
+    the first call had nothing to compare against and a `verify.py` already
+    replaced with `def check(...): return PASS` was reported clean. Measured:
+    a wholesale replacement went undetected, and the tampered module then
+    passed every criterion.
+
+    Taking it at import is not a complete answer either — a tamper that
+    predates the process is invisible to any in-process hash — which is why
+    the policy gate now refuses writes to these paths outright, and why the
+    fingerprint travels in the verdict so a stored judgment can be attributed.
+    """
+    for mod_name, current_hash in verifier_hashes().items():
+        try:
             baseline = _VERIFIER_BASELINE.get(mod_name)
             if baseline is None:
-                # First call — record baseline; cannot detect prior tampering.
-                _VERIFIER_BASELINE[mod_name] = current_hash
-            elif current_hash != baseline:
+                # Should not happen: the baseline is taken at import. If it is
+                # somehow absent, say so rather than adopting whatever is there
+                # now as the truth — that is exactly the hole this had.
+                return (False,
+                        f"no import-time baseline for {mod_name}.py; this "
+                        f"process cannot vouch for the verifier")
+            if current_hash != baseline:
                 return (False,
                         f"{mod_name}.py was modified during the executor session "
                         f"(baseline {baseline[:12]}… → current {current_hash[:12]}…); "
@@ -561,10 +608,109 @@ def _check_verifier_integrity() -> tuple:
     return (True, "")
 
 
-#: Per-process baseline hashes of protected verifier modules, populated on first
-#: call to _check_verifier_integrity().  Process-scoped — survives across task
-#: phases in a single session, which is the relevant threat model.
-_VERIFIER_BASELINE: dict = {}
+#: Baseline hashes of the protected verifier modules, taken at IMPORT — before
+#: any executor session can have run in this process. Populated lazily on first
+#: call, it was always taken after the work it was meant to vouch for.
+_VERIFIER_BASELINE: Dict[str, str] = {}
+
+
+def _prime_verifier_baseline() -> None:
+    if not _VERIFIER_BASELINE:
+        _VERIFIER_BASELINE.update(verifier_hashes())
+
+
+_prime_verifier_baseline()
+
+
+def _step_is_spent(config: Config, agent: Agent, task: tsk.Task) -> bool:
+    """Has this session used up the phases it was allowed to take on?
+
+    `max_delegated_phases` came out of `forecast.supervision()` and nothing
+    ever read it, so half of §M3.2's bounded policy was telemetry: calibration
+    could tighten VERIFICATION and never the size of the step, which is the
+    lever the section names first.
+    """
+    try:
+        from ai4science.harness.agents.sarsi import forecast as _fc
+        bound = _fc.supervision(config, agent).max_delegated_phases
+    except Exception:
+        return False
+    if not bound:
+        return False          # unbounded: the standing arrangement
+    allowed = max(1, int(bound))
+    if tsk.earliest_incomplete(task) is None:
+        return False                       # finished; release happens anyway
+    done = sum(1 for i in range(len(task.criteria or []))
+               if tsk.phase_passed(task, i))
+    return (done - int(getattr(task, "phases_at_assign", 0) or 0)) >= allowed
+
+
+def _record_success(config: Config, agent: Agent, task: tsk.Task,
+                    verdict: Dict[str, Any], *, now) -> None:
+    """A verified pass, as an episode the consolidator can cluster. [§M5.1]
+
+    Deliberately narrow: `high-value verified success if configured` in the
+    spec, and what makes it high-value here is that a real verifier judged it.
+    A model's opinion on a judgmental criterion produces an episode too, but
+    one that says so — `deterministic` travels with it, so a procedure is
+    never proposed from a workflow only a model ever blessed.
+    """
+    try:
+        from ai4science.harness.agents.sarsi import memory as _mem
+        phases = len(task.criteria or [])
+        _mem.record_episode(
+            config, agent, "success",
+            f"verified: {(task.goal or '')[:150]}",
+            f"{phases} phase(s) passed; engine={verdict.get('engine', '?')}; "
+            f"deterministic={verdict.get('deterministic')}",
+            task_id=task.id, outcome="pass",
+            tags=["success", "workflow",
+                  "deterministic" if verdict.get("deterministic") else "judged"],
+            now=now)
+    except Exception:
+        pass
+
+
+def check_expectations(config: Config, agent: Agent, *, now=time.time) -> list:
+    """Tasks that were forecast, given a deadline, and blew through it. [§M5.1]
+
+    "Timeout after a registered expectation" is the one hard trigger with no
+    machinery behind it at all — nothing in the tree measured a registered
+    expectation against the clock. A forecast carries `at`; a task carries
+    `max_minutes`. That is a deadline, and passing it without a verdict is a
+    machine-observable fact about a prediction that did not come true in time.
+
+    Returns the episodes written, so a caller can report how many fired.
+    """
+    from ai4science.harness.agents.sarsi import memory as _mem
+    fired = []
+    try:
+        rows = list(tsk.all_of(config, agent))
+    except Exception:
+        return fired
+    for t in rows:
+        fc_row = t.forecast or {}
+        started = fc_row.get("at")
+        limit = getattr(t, "max_minutes", None)
+        if not started or not limit or (t.verdict or {}).get("state"):
+            continue
+        overdue = (float(now()) - float(started)) / 60.0 - float(limit)
+        if overdue <= 0:
+            continue
+        if any(e.get("task_id") == t.id and e.get("trigger") == "expectation_timeout"
+               for e in ledger.read(config, "episodes")):
+            continue          # one episode per expectation, not one per sweep
+        try:
+            fired.append(_mem.record_episode(
+                config, agent, "expectation_timeout",
+                f"{t.id} passed its deadline with no verdict",
+                f"forecast p={fc_row.get('p')} registered {overdue + float(limit):.1f} "
+                f"minutes ago; limit was {limit} minutes and nothing has judged it",
+                task_id=t.id, outcome="fail", tags=["timeout", "forecast"],
+                now=now))
+        except Exception:
+            continue
+    return fired
 
 
 def _note_drift(agent: Agent, task: tsk.Task, verdict: Dict[str, Any],
@@ -1436,6 +1582,9 @@ def _verify_phase(config: Config, agent: Agent, task: tsk.Task, *,
             "check": _det_result.get("check", ""),
             "criteria": [criteria[index]],
             "phase": index + 1,
+            "verifier": verifier_fingerprint(),
+            "criterion_kind": "deterministic",
+            "deterministic": True,
         }
         # Still note any plan drift so the owner sees it.
         verdict = _note_drift(agent, task, verdict,
@@ -1466,6 +1615,13 @@ def _verify_phase(config: Config, agent: Agent, task: tsk.Task, *,
                 "engine": "deterministic",
                 "independent": True,
                 "criteria": criteria}, now=now)
+            task = release_session(config, agent, task, runtime=runtime, now=now)
+        elif vf.is_pass(verdict) and _step_is_spent(config, agent, task):
+            # §M3.2's other half, which was set and never read: a worker whose
+            # calibration bought a SMALLER delegated step now gets one. The
+            # session that has used its allowance is released, so the next
+            # phase starts in a fresh one — which is also what §M4.3 asks for,
+            # a fresh executor per bounded step.
             task = release_session(config, agent, task, runtime=runtime, now=now)
         elif not vf.is_pass(verdict):
             # FAIL — steer the session back. Best effort: there may be no
@@ -1527,6 +1683,13 @@ def _verify_phase(config: Config, agent: Agent, task: tsk.Task, *,
                           tsk.criteria_drift(agent, task))
     verdict["criteria"] = [criteria[index]]
     verdict["phase"] = index + 1
+    verdict["verifier"] = verifier_fingerprint()
+    # The downgrade is stated. Reaching here means no deterministic check could
+    # settle this criterion, so the phase is closing on a model's opinion —
+    # §M4.1 forbids that happening SILENTLY, and a verdict that does not say so
+    # reads afterwards exactly like a checked one.
+    verdict["criterion_kind"] = "judgmental"
+    verdict["deterministic"] = False
 
     from ai4science.harness.agents.sarsi import verifier as vf
 
@@ -1876,6 +2039,13 @@ def verify(config: Config, agent: Agent, task: tsk.Task, *,
         ledger.append(config, "reports",
                       {"agent": agent.id, "task": task.id, "state": "verified",
                        "verdict": verdict, "evidence": [evidence[:500]]}, now=now)
+        # §M5.1's eighth trigger: a verified success is evidence too, and it
+        # is the ONLY evidence a procedure can be built from. Nothing wrote it,
+        # so `consolidate`'s success arm — and every skill candidate behind it
+        # — was unreachable from the live path however often a workflow
+        # actually worked. Only a VERIFIED pass counts; the executor saying so
+        # is not the trigger.
+        _record_success(config, agent, task, verdict, now=now)
         return release_session(config, agent, task, runtime=runtime, now=now)
 
     task.verdict = verdict

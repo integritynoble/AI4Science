@@ -24,7 +24,7 @@ import re
 import shlex
 import subprocess
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 PASS = "PASS"
 FAIL = "FAIL"
@@ -85,6 +85,36 @@ _OUTPUT_CONTAINS = re.compile(
     r"has|says)\s+(.{1,120})"
     r"|(?:prints?|reports?|outputs?)\s+(.{1,120})", re.I)
 
+#: `out.txt contains "42"` — a content predicate over a file, not a command.
+#: NOT `has`: "export.csv has 1,204 rows" is a claim about the file's SHAPE,
+#: and reading it as a substring test turns a criterion the model verifier
+#: judged correctly into a deterministic FAIL. Only verbs that actually mean
+#: "this text appears in that file".
+_FILE_CONTAINS = re.compile(
+    r"([\w./-]+\.[A-Za-z0-9]{1,8})\s+(?:contains?|includes?|mentions?)\s+"
+    r"['\"]?(.{1,120}?)['\"]?\s*$", re.I)
+
+#: `sha256 of out.txt is a948…` — an exact content hash.
+_FILE_HASH = re.compile(
+    r"(?:sha256|hash|checksum)\s+of\s+([\w./-]+)\s+(?:is|equals?|matches)\s+"
+    r"([0-9a-f]{8,64})", re.I)
+
+#: `the field accuracy in metrics.json is at least 0.9`, and the dotted form.
+_JSON_FIELD = re.compile(
+    r"(?:the\s+)?(?:json\s+)?field\s+\.?([\w.\[\]]+)\s+(?:in|of)\s+"
+    r"([\w./-]+\.json)\s+(?:is|equals?|reads?)\s+"
+    r"(?:(?P<op>at least|at most|greater than|less than|exactly)\s+)?"
+    r"['\"]?(?P<val>[^'\"]{1,60}?)['\"]?\s*$", re.I)
+
+#: `the diff touches only src/ and tests/` — or, with no paths named, the
+#: task's own declared `may_touch`.
+_DIFF_SCOPED = re.compile(
+    r"(?:the\s+)?(?:diff|changes?|edits?)\s+(?:touch(?:es)?|are|is|stay(?:s)?|"
+    r"remain(?:s)?)\s+(?:only\s+|within\s+|inside\s+|restricted to\s+|"
+    r"confined to\s+)?(?P<paths>.*)$", re.I)
+_NO_FILES_OUTSIDE = re.compile(
+    r"no\s+files?\s+outside\s+(?:the\s+)?declared\s+paths?", re.I)
+
 #: An expected exit code that is not zero. "exits with code 3" was checked
 #: against 0, so a satisfied criterion was reported as a failure.
 _EXPECTED_EXIT = re.compile(
@@ -125,6 +155,7 @@ def _safe_cwd(work_dir: Optional[Path]) -> Optional[Path]:
 
 def check(criterion: str, work_dir: Optional[Path],
           timeout: int = DEFAULT_TIMEOUT, *, trusted: bool = False,
+          may_touch: Optional[List[str]] = None,
           _depth: int = 0) -> Dict[str, Any]:
     """Evaluate one `Verified when:` criterion deterministically.
 
@@ -149,10 +180,15 @@ def check(criterion: str, work_dir: Optional[Path],
         # conditions it declared. Each clause is judged; the phase passes only
         # if every judgeable clause passes, and an unjudgeable clause makes the
         # whole thing unverified rather than quietly optional.
-        parts = _clauses(crit)
+        # A diff-scope criterion names its paths with `and` — "the diff touches
+        # only src/ and tests/" is ONE condition over two directories, not two
+        # conditions, and splitting it judged the second half as a criterion of
+        # its own.
+        parts = [] if (_DIFF_SCOPED.search(crit) or _NO_FILES_OUTSIDE.search(crit)) \
+            else _clauses(crit)
         if len(parts) > 1:
             results = [check(c, work_dir, timeout=timeout, trusted=trusted,
-                             _depth=1) for c in parts]
+                             may_touch=may_touch, _depth=1) for c in parts]
             if any(r["state"] == FAIL for r in results):
                 bad = next(r for r in results if r["state"] == FAIL)
                 return _verdict(FAIL, f"one clause failed: {bad['why']}",
@@ -178,6 +214,32 @@ def check(criterion: str, work_dir: Optional[Path],
     m = _FILE_EXISTS.search(crit)
     if m:
         return _check_file_exists(m.group(1), cwd)
+
+    # 2b. Content predicate over a file — §M4.1's "file content/hash matches
+    # predicate", which was listed and never implemented.
+    mh = _FILE_HASH.search(crit)
+    if mh:
+        return _check_file_hash(mh.group(1), mh.group(2), cwd)
+    mj = _JSON_FIELD.search(crit)
+    if mj:
+        return _check_json_field(mj.group(2), mj.group(1), mj.group("op") or "is",
+                                 mj.group("val"), cwd)
+    mc = _FILE_CONTAINS.search(crit)
+    if mc and not _BACKTICK_CMD.search(crit):
+        return _check_file_contains(mc.group(1), mc.group(2), cwd)
+
+    # 2c. The diff stays inside the declared paths. `may_touch` is parsed onto
+    # the task and, until now, no check ever consulted it — the data existed
+    # and the check did not.
+    if _NO_FILES_OUTSIDE.search(crit) and may_touch:
+        return _check_diff_scope(list(may_touch), cwd)
+    md = _DIFF_SCOPED.search(crit)
+    if md:
+        named = [w.strip(" .,`'\"") for w in
+                 re.split(r"\s+and\s+|,\s*", md.group("paths") or "") if w.strip()]
+        allowed = [n for n in named if n and "/" in n or n.endswith("/")] or list(may_touch or [])
+        if allowed:
+            return _check_diff_scope(allowed, cwd)
 
     # 3. Backtick-quoted command
     bt = _BACKTICK_CMD.search(crit)
@@ -306,6 +368,138 @@ def _clauses(crit: str) -> list:
         i += 1
     parts.append("".join(buf))
     return [p.strip() for p in parts if p.strip()]
+
+
+def _check_file_contains(name: str, want: str, cwd: Path) -> Dict[str, Any]:
+    """A file whose CONTENT has to say something. §M4.1 type 3."""
+    target = _inside(name, cwd)
+    if target is None:
+        return _verdict(UNVERIFIED,
+                        f"file path {name!r} escapes the work directory",
+                        check=f"contains({name})")
+    if not target.exists():
+        return _verdict(FAIL, f"{name} does not exist in {cwd}",
+                        check=f"contains({name})")
+    try:
+        body = target.read_text(errors="replace")
+    except Exception as e:
+        return _verdict(UNVERIFIED, f"could not read {name}: {e}",
+                        check=f"contains({name})")
+    if want in body:
+        return _verdict(PASS, f"{name} contains {want!r}",
+                        check=f"contains({name})")
+    return _verdict(FAIL,
+                    f"{name} does not contain {want!r} "
+                    f"({len(body)} bytes read)", check=f"contains({name})")
+
+
+def _check_file_hash(name: str, want: str, cwd: Path) -> Dict[str, Any]:
+    """An exact content hash — the strongest file predicate there is."""
+    import hashlib
+    target = _inside(name, cwd)
+    if target is None:
+        return _verdict(UNVERIFIED,
+                        f"file path {name!r} escapes the work directory",
+                        check=f"sha256({name})")
+    if not target.exists():
+        return _verdict(FAIL, f"{name} does not exist in {cwd}",
+                        check=f"sha256({name})")
+    got = hashlib.sha256(target.read_bytes()).hexdigest()
+    if got.startswith(want.lower()):
+        return _verdict(PASS, f"sha256({name}) = {got[:16]}… as required",
+                        check=f"sha256({name})")
+    return _verdict(FAIL,
+                    f"sha256({name}) is {got[:16]}…, expected {want[:16]}…",
+                    check=f"sha256({name})")
+
+
+def _check_json_field(name: str, field: str, op: str, want: str,
+                      cwd: Path) -> Dict[str, Any]:
+    """A predicate over one field of a JSON artifact. §M4.1 type 4."""
+    import json as _json
+    target = _inside(name, cwd)
+    if target is None:
+        return _verdict(UNVERIFIED,
+                        f"file path {name!r} escapes the work directory",
+                        check=f"json({name}.{field})")
+    if not target.exists():
+        return _verdict(FAIL, f"{name} does not exist in {cwd}",
+                        check=f"json({name}.{field})")
+    try:
+        doc = _json.loads(target.read_text())
+    except Exception as e:
+        return _verdict(FAIL, f"{name} is not readable JSON: {e}",
+                        check=f"json({name}.{field})")
+    cur: Any = doc
+    for part in field.replace("[", ".").replace("]", "").split("."):
+        if not part:
+            continue
+        try:
+            cur = cur[int(part)] if part.isdigit() else cur[part]
+        except Exception:
+            return _verdict(FAIL, f"{name} has no field {field!r}",
+                            check=f"json({name}.{field})")
+    check = f"json({name}.{field})"
+    lo = str(op).lower()
+    try:
+        if lo in ("at least", "greater than", "at most", "less than"):
+            a, b = float(cur), float(want)
+            ok = {"at least": a >= b, "greater than": a > b,
+                  "at most": a <= b, "less than": a < b}[lo]
+            return _verdict(PASS if ok else FAIL,
+                            f"{field} is {cur}, {lo} {want} is "
+                            f"{'satisfied' if ok else 'not satisfied'}", check=check)
+    except (TypeError, ValueError):
+        return _verdict(FAIL,
+                        f"{field} is {cur!r}, which cannot be compared numerically "
+                        f"with {want!r}", check=check)
+    want_norm = want.strip().strip("'\"")
+    ok = str(cur).strip().lower() == want_norm.lower()
+    if not ok and want_norm.lower() in ("true", "false"):
+        ok = bool(cur) is (want_norm.lower() == "true")
+    return _verdict(PASS if ok else FAIL,
+                    f"{field} is {cur!r}" + ("" if ok else f", expected {want_norm!r}"),
+                    check=check)
+
+
+def _check_diff_scope(allowed: List[str], cwd: Path) -> Dict[str, Any]:
+    """Every changed file sits under a declared path. §M4.1 type 5."""
+    try:
+        r = _run("git status --porcelain", cwd)
+    except Exception as e:
+        return _verdict(UNVERIFIED, f"could not read the diff: {e}",
+                        check="diff-scope")
+    if r.returncode != 0:
+        return _verdict(UNVERIFIED,
+                        f"git status failed (exit {r.returncode}) — no diff to scope",
+                        check="diff-scope")
+    changed = [ln[3:].strip() for ln in r.stdout.splitlines() if ln.strip()]
+    norm = [a.rstrip("/") for a in allowed if a]
+    stray = [f for f in changed
+             if not any(f == a or f.startswith(a + "/") for a in norm)]
+    if not changed:
+        return _verdict(PASS, "nothing was changed, so nothing left the "
+                              "declared paths", check="diff-scope")
+    if stray:
+        return _verdict(FAIL,
+                        f"{len(stray)} file(s) changed outside "
+                        f"{', '.join(norm)}: {', '.join(stray[:5])}",
+                        check="diff-scope")
+    return _verdict(PASS,
+                    f"all {len(changed)} changed file(s) are within "
+                    f"{', '.join(norm)}", check="diff-scope")
+
+
+def _inside(name: str, cwd: Path) -> Optional[Path]:
+    """The path, if it stays inside the work dir. None if it escapes."""
+    try:
+        target = (cwd / name).resolve()
+        root = cwd.resolve()
+        if root != target and root not in target.parents:
+            return None
+        return target
+    except Exception:
+        return None
 
 
 def _check_exit_code(cmd: str, want: int, cwd: Path,

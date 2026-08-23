@@ -189,7 +189,11 @@ class Supervision:
     """How closely this worker is watched right now, and on what evidence."""
     level: str = "normal"                 # normal | tighter
     require_deterministic: bool = False   #: a model PASS cannot close a phase
-    max_delegated_phases: int = 1
+    #: `None` means unbounded — the standing arrangement, where a session works
+    #: through the plan. A NUMBER is what tightening buys, and defaulting it to
+    #: 1 made the tightened policy the default for every worker: measured, that
+    #: released the session after each phase on tasks nobody had ever scored.
+    max_delegated_phases: Optional[int] = None
     why: str = "calibration is unmeasured — supervision is the default"
     n: int = 0
     bias: Optional[float] = None
@@ -228,6 +232,6 @@ def supervision(config: Config, agent: Agent) -> Supervision:
                  f"forecasts — a model's opinion may not close a phase here, "
                  f"and the delegated step stays at one phase"))
     return Supervision(level="normal", n=cal["n"], bias=bias,
-                       max_delegated_phases=2 if cal.get("beats_base_rate") else 1,
+                       max_delegated_phases=None,
                        why=(f"calibrated within {abs(bias):.2f} over {cal['n']} "
                             f"scored forecasts — normal supervision"))

@@ -174,6 +174,10 @@ class Task:
     #: owner)? A worker's seed is a starting point, not an agreed plan, and the
     #: difference is whether the session has had its say.
     plan_agreed: bool = False
+    #: How many phases were already verified when the current session was
+    #: assigned. The difference against now is how far THIS session has been
+    #: allowed to run, which is what §M3.2's "smaller delegated step" bounds.
+    phases_at_assign: int = 0
     created_at: str = ""
     updated_at: str = ""
 

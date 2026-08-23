@@ -86,6 +86,65 @@ def _unused_needs_its_artefact(title: str, verified_when: str) -> None:
         f"is not evidence of a run.")
 
 
+#: Strict mode. §M4.1's last paragraph says a phase whose criterion no
+#: deterministic check can express should be REJECTED at plan time rather than
+#: silently downgraded to a model opinion at verify time. Rejecting outright is
+#: right for a repository that has finished converting its criteria and wrong
+#: for one mid-conversion, so the strict half is opt-in and the *declaration*
+#: is not: an undeterministic criterion is always named, on the plan and on the
+#: verdict, so the downgrade is a stated fact instead of a silence.
+STRICT_CRITERIA_ENV = "SARSI_STRICT_CRITERIA"
+
+
+def strict_criteria() -> bool:
+    import os
+    return os.environ.get(STRICT_CRITERIA_ENV, "").strip().lower() in (
+        "1", "true", "yes", "on")
+
+
+def judgeable(verified_when: str) -> bool:
+    """Can a deterministic check evaluate this criterion at all?
+
+    Asked of `verify.check` itself rather than of a second list of patterns —
+    two lists of what counts as checkable is one more than can stay in step.
+    """
+    try:
+        from pathlib import Path as _P
+        from ai4science.harness.agents.sarsi import verify as _v
+        import tempfile
+        # A directory that exists and contains nothing: the classifier reaches
+        # a verdict state without the answer depending on any artifact.
+        with tempfile.TemporaryDirectory() as td:
+            got = _v.check(verified_when, _P(td), timeout=1, trusted=True)
+        return got.get("state") in (_v.PASS, _v.FAIL)
+    except Exception:
+        return False
+
+
+def undeterministic(plan: "Plan") -> list:
+    """The phases whose criteria no check can settle. `[(index, title, why)]`."""
+    out = []
+    for i, ph in enumerate(getattr(plan, "phases", []) or []):
+        if not judgeable(ph.verified_when):
+            out.append((i, ph.title, ph.verified_when))
+    return out
+
+
+def require_checkable(plan: "Plan") -> list:
+    """Reject a plan that cannot be judged — in strict mode. Returns the
+    declared-judgmental phases either way, so the caller can record them."""
+    weak = undeterministic(plan)
+    if weak and strict_criteria():
+        lines = "; ".join(f"phase {i + 1} ({t!r}): {w!r}" for i, t, w in weak)
+        raise BadPlan(
+            f"{len(weak)} phase(s) declare a criterion no deterministic check "
+            f"can evaluate — {lines}. State a criterion a check can settle (a "
+            f"command's exit code, a file, a hash, a JSON field, the diff's "
+            f"scope), or say plainly that this phase is judged by a model. "
+            f"Accepting it silently is how a phase closes on an opinion.")
+    return weak
+
+
 @dataclass(frozen=True)
 class Phase:
     title: str

@@ -44,17 +44,31 @@ def config(tmp_path, monkeypatch):
 # ── _check_verifier_integrity() ───────────────────────────────────────────────
 
 def test_integrity_check_passes_when_modules_unchanged():
-    ses._VERIFIER_BASELINE.clear()
     ok, reason = ses._check_verifier_integrity()
     assert ok, f"clean integrity check failed: {reason}"
     assert reason == ""
 
 
-def test_integrity_check_records_baseline_on_first_call():
+def test_the_baseline_is_taken_at_import_not_on_first_call():
+    """It used to be populated lazily inside the check, whose only caller runs
+    AFTER the executor session has worked — so on a per-invocation CLI, which
+    is the normal case, the first call had nothing to compare against and a
+    `verify.py` already replaced with `def check(...): return PASS` was
+    reported clean."""
+    assert set(ses._VERIFIER_BASELINE) == set(ses.PROTECTED_VERIFIER_MODULES)
+
+
+def test_a_process_with_no_baseline_refuses_rather_than_adopting_one():
+    """The hole, stated as a rule: with nothing to compare against, the honest
+    answer is "this process cannot vouch for the verifier" — not "clean"."""
+    saved = dict(ses._VERIFIER_BASELINE)
     ses._VERIFIER_BASELINE.clear()
-    ses._check_verifier_integrity()
-    assert "verify" in ses._VERIFIER_BASELINE
-    assert "verifier" in ses._VERIFIER_BASELINE
+    try:
+        ok, reason = ses._check_verifier_integrity()
+        assert not ok
+        assert "cannot vouch" in reason
+    finally:
+        ses._VERIFIER_BASELINE.update(saved)
 
 
 def test_integrity_check_detects_tampered_verify(tmp_path):
@@ -83,12 +97,18 @@ def test_integrity_check_detects_tampered_verify(tmp_path):
     finally:
         # Restore original — test must not leave the repo modified.
         shutil.copy2(backup, verify_path)
+        # Re-prime rather than clear: an empty baseline is now a refusal, not
+        # an invitation to adopt whatever is on disk.
         ses._VERIFIER_BASELINE.clear()
+        ses._prime_verifier_baseline()
 
 
 def test_integrity_check_passes_after_restore():
+    """Restoring the file makes the hash match the import-time baseline again.
+    The baseline is NOT re-taken here — re-taking it after a tamper is how a
+    replaced verifier gets adopted as the new truth."""
     ses._VERIFIER_BASELINE.clear()
-    # After restoring in the previous test, a fresh baseline should pass.
+    ses._prime_verifier_baseline()
     ok, reason = ses._check_verifier_integrity()
     assert ok, f"integrity check should pass after restore: {reason}"
 
@@ -163,10 +183,15 @@ def test_empty_work_dir_produces_unverified():
 # ── verify baseline stability ─────────────────────────────────────────────────
 
 def test_verifier_baseline_pinned_per_process():
-    """Once the baseline is set for a module it stays constant in this process."""
-    ses._VERIFIER_BASELINE.clear()
-    ses._check_verifier_integrity()
+    """Once taken at import, the baseline stays constant in this process.
+
+    It used to `clear()` and let the check repopulate — which is the behaviour
+    that was removed, and leaving it cleared poisoned every later test in the
+    session: an empty baseline is now a refusal, so `_verify_phase` rejected
+    every phase in the seventeen tests that ran after this file."""
     first = dict(ses._VERIFIER_BASELINE)
     ses._check_verifier_integrity()
-    second = dict(ses._VERIFIER_BASELINE)
-    assert first == second, "baseline changed between calls — it must be stable"
+    ses._check_verifier_integrity()
+    assert dict(ses._VERIFIER_BASELINE) == first, \
+        "baseline changed between calls — it must be stable"
+    assert first, "the baseline is taken at import and must not be empty"

@@ -357,7 +357,7 @@ def _memory_indexes(config: Config, agent: Agent) -> list:
     return out
 
 
-GATE_VERSION = "gate/3"
+GATE_VERSION = "gate/4"
 
 
 class ProtectedOverflow(Exception):
@@ -368,6 +368,26 @@ class ProtectedOverflow(Exception):
 #: text), tokens for the recent window (the buffer is token-budgeted). These are
 #: defaults the gate RECORDS, not truths — §7.2 is explicit that a budget nobody
 #: can see is not a budget.
+#: The TOTAL each mode may spend, and what is held back for the model's own
+#: answer. §7.2 specifies a whole-context budget with an output reserve, and
+#: `MODE_BUDGET` below is per-section and in mixed units — so the sections
+#: could each stay inside their own cap while the assembled context blew past
+#: any total nobody was tracking. Measured: a CHAT turn with a 6000-token
+#: recent budget produced a 21443-byte context.
+CONTEXT_BUDGET = {
+    "CHAT":   {"total_tokens": 8000,  "output_reserve": 2000},
+    "REASON": {"total_tokens": 16000, "output_reserve": 4000},
+    "ACTION": {"total_tokens": 32000, "output_reserve": 12000},
+}
+
+#: Trimmed in this order when the total is exceeded — cheapest evidence first.
+#: `semantic` is absent on purpose: constraints are not trimmed, they fail
+#: closed (§7.2), and the protected arm is what that rule protects.
+TRIM_ORDER = ("episodic", "lessons", "plan", "board", "self", "recent")
+
+#: Sections rendered oldest-first, where the END is the part worth keeping.
+_TRIM_FROM_THE_FRONT = frozenset(("recent", "episodic"))
+
 MODE_BUDGET = {
     "CHAT": {"recent_tokens": 6000, "episodic_chars": 0, "lessons": 0,
              "semantic": False, "self": "none", "plan": False},
@@ -453,6 +473,8 @@ def workspace_context(config: Config, agent: Agent, surface: str = "cli",
             selected["semantic"] = [i for i in rep.get("ids", []) if i]
             if rep.get("omitted"):
                 omitted["semantic"] = rep["omitted"]
+                omitted["semantic_candidate_ids"] = _not_selected(
+                    config, agent, selected["semantic"])
             if rep.get("protected_dropped"):
                 # §7.2: for a consequential turn, constraints that do not fit
                 # are NOT silently omitted. Proceeding would mean acting under
@@ -479,6 +501,12 @@ def workspace_context(config: Config, agent: Agent, surface: str = "cli",
                 e.get("memory_id") or e.get("id", "")
                 for e in (got.get("protected", []) + got.get("retrieved", []))]
             selected["retrieval_mode"] = got.get("mode", "")
+            # §7.4 asks for the omitted CANDIDATE ids, not only a count: a
+            # reader asking "why was that rule not applied?" needs to see that
+            # it was a candidate and lost, which a number cannot say.
+            missed = _not_selected(config, agent, selected["semantic"])
+            if missed:
+                omitted["semantic_candidate_ids"] = missed
             if got.get("error"):
                 # `retrieve()` catches its own store failures and returns an
                 # empty result, so this branch — not the except below — is how
@@ -599,12 +627,96 @@ def workspace_context(config: Config, agent: Agent, surface: str = "cli",
 
     if not sections:
         return ""
+
+    # Enforce the TOTAL, after the sections have each honoured their own cap.
+    sections, trimmed = _fit_total(sections, picked)
+    if trimmed:
+        omitted["trimmed_for_total"] = trimmed
+
     ctx = ("[sarsi-worker workspace]\n"
            + "\n\n".join(t for _, t in sections) + "\n[/workspace]\n\n")
     _save_context_snapshot(agent, ctx, observation=observation, mode=picked,
                            route=route, sections=sections, omitted=omitted,
                            selected=selected, budget=budget, surface=surface)
     return ctx
+
+
+def _not_selected(config: Config, agent: Agent, chosen) -> list:
+    """Active memory ids this turn did NOT take, capped and counted."""
+    try:
+        from ai4science.harness.agents.sarsi import semantic as _sem
+        taken = {c for c in (chosen or []) if c}
+        ids = [e.get("memory_id", "") for e in _sem.active_entries(config, agent)]
+        rest = [i for i in ids if i and i not in taken]
+    except Exception:
+        return []
+    if len(rest) > 40:
+        return rest[:40] + [f"… and {len(rest) - 40} more not listed"]
+    return rest
+
+
+def _fit_total(sections: list, mode: str):
+    """Bring the assembled context inside the mode's total. Returns
+    `(sections, trimmed)` where `trimmed` names what went and by how much.
+
+    Nothing is dropped silently: a section that is cut is *named* with the
+    bytes it lost, and a section removed entirely is named too. That is the
+    whole difference between a budget and a truncation. [§0.1.7, §7.2]
+
+    Trimming takes the LARGEST eligible section each pass rather than walking a
+    fixed order once: a single ordered pass removed a 16-byte board to save
+    four tokens and then had nothing left to give, finishing over budget while
+    reporting that it had trimmed. Sections below a floor are left alone —
+    deleting a one-line section buys nothing and costs the reader a fact.
+    """
+    from ai4science.harness.agents.sarsi import discourse as _disc
+    limits = CONTEXT_BUDGET.get(mode, CONTEXT_BUDGET["ACTION"])
+    room = max(1, limits["total_tokens"] - limits["output_reserve"])
+    by_name = {n: t for n, t in sections}
+    trimmed: dict = {}
+    #: The wrapper the caller adds around these sections counts too.
+    overhead = _disc.estimate_tokens("[sarsi-worker workspace]\n\n[/workspace]\n\n")
+    floor = 200
+
+    def total() -> int:
+        return overhead + _disc.estimate_tokens("\n\n".join(by_name.values()))
+
+    for _ in range(len(TRIM_ORDER) * 4):
+        over = total() - room
+        if over <= 0:
+            break
+        eligible = [(len(by_name[n]), n) for n in TRIM_ORDER
+                    if n in by_name and len(by_name[n]) > floor]
+        if not eligible:
+            eligible = [(len(by_name[n]), n) for n in TRIM_ORDER if n in by_name]
+            if not eligible:
+                break
+        _, name = max(eligible)
+        text = by_name[name]
+        cut = min(len(text), max(400, int(over * 4.5)))
+        if name in _TRIM_FROM_THE_FRONT:
+            # A conversation is rendered oldest-first, so cutting the tail
+            # removes the turns the reader most needs — and `why?` then points
+            # at nothing. What falls out of a recent window is the OLD end;
+            # that is what makes it a recent window.
+            kept = text[cut:]
+            head = text.splitlines()[0] if text else ""
+            gone = len(text) - len(kept)
+            by_name[name] = (head + f"\n  … [{gone} bytes of older {name} trimmed "
+                             f"to stay inside the {mode} context budget]\n" + kept)
+            trimmed[name] = f"trimmed {gone} bytes of the oldest"
+            continue
+        kept = text[: max(0, len(text) - cut)]
+        gone = len(text) - len(kept)
+        if len(kept) < floor:
+            by_name.pop(name)
+            trimmed[name] = f"removed ({len(text)} bytes)"
+        else:
+            note = (f"\n  … [{gone} bytes of {name} trimmed to stay inside the "
+                    f"{mode} context budget]")
+            by_name[name] = kept + note
+            trimmed[name] = f"trimmed {gone} bytes"
+    return [(n, by_name[n]) for n, _ in sections if n in by_name], trimmed
 
 
 def _standing_id(config: Config, agent: Agent, surface: str) -> str:
@@ -743,7 +855,13 @@ def _save_context_snapshot(agent: "Agent", ctx: str, observation: str = "", *,
             "budget": dict(budget or {}),
             "token_estimate": _disc.estimate_tokens(ctx),
             "token_estimator": _disc.estimator(),
-            "sections": [{"name": n, "bytes": len(t.encode("utf-8"))}
+            # Per-section content hashes, not just the whole-context one:
+            # §7.4 asks for "selected content hashes", and a single hash over
+            # the concatenation cannot tell a reader WHICH part changed
+            # between two otherwise similar turns.
+            "sections": [{"name": n,
+                          "bytes": len(t.encode("utf-8")),
+                          "sha256": hashlib.sha256(t.encode("utf-8")).hexdigest()[:16]}
                          for n, t in (sections or [])],
             "selected": dict(selected or {}),
             "omitted": dict(omitted or {}),

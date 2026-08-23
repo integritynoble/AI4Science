@@ -68,21 +68,66 @@ _FIND_EXEC = {"-exec", "-execdir", "-ok", "-okdir", "-delete", "-fprintf",
 # Governance config + owner state the governed agent must never rewrite — writing
 # any of these lets it remove its own hook or lift its own ceiling, so they are
 # DENIED at every ceiling (reads are unaffected).
+#
+# The verifier and its criterion machinery are on this list for the same
+# reason as the governor's own config: a session that can rewrite the code
+# that judges it has, in effect, no judge. §M4.2 calls this runtime task
+# independence — "the sarsi-claude session whose artifact is being judged must
+# not be able to modify the verifier, its criterion definitions, or the
+# benchmark used to judge that artifact" — and until this line the policy gate
+# allowed `Write` to `sarsi/verify.py` at every ceiling, A1 included.
+_PROTECTED_VERIFIER_NAMES = ("agents/sarsi/verify.py", "agents/sarsi/verifier.py",
+                             "agents/sarsi/checkpoint.py", "agents/sarsi/forecast.py",
+                             "agents/sarsi/plan.py", "agents/sarsi/task.py")
 _PROTECTED_WRITE = (".claude/settings.json", ".claude/settings.local.json",
                     "pwm-cc-trust", "pwm-cc-tripwires", "pwm-cc-sessions", "/pwm-cp/")
 # `\b` treats '-' as a word boundary, so `\bcp\b` matched the "cp" inside our own
 # state dir name (pwm-cp) and any command naming it read as a copy. Require each
 # verb to stand alone — not glued to a word char OR a hyphen on either side.
 _WRITE_VERB = re.compile(
-    r">|(?<![\w-])(?:tee|dd|rm|mv|cp|ln|truncate|chmod|chown)(?![\w-])")
+    r">|(?<![\w-])(?:tee|dd|rm|mv|cp|ln|truncate|chmod|chown|install|patch|sed)(?![\w-])")
+
+#: A shell redirect writes a file, whatever the command in front of it is.
+#: `echo pwned > verify.py` was classified "read-only command" because `echo`
+#: is a read-only head and nothing looked at the `>`. That made every
+#: protected path a one-liner away for any session at A1.
+_REDIRECT_WRITE = re.compile(r"(?<![0-9])>{1,2}(?!&)\s*(?P<path>[^\s;|&]+)")
 _SEG_SPLIT = re.compile(r"[;|&]+")
 
 
-def _write_is_protected(path: str) -> bool:
+#: §M4.2 draws two different lines and this governor could only see one:
+#:
+#:   development-time bootstrap — the verifier is WRITTEN, by a session the
+#:     owner is running on purpose, and then reviewed and frozen;
+#:   runtime task independence — the session whose artifact is being judged
+#:     must never touch the verifier that judges it.
+#:
+#: Protecting these paths unconditionally collapses the two and makes the
+#: first impossible: measured, the very session implementing `verify.py` was
+#: refused every write to it, by the rule it had just added.
+#:
+#: The discriminator already exists in this codebase, and `hook.should_halt_
+#: session` records the day it was learned: a governed WORKER session has a
+#: supervisor record and nobody is sitting at it; a session with no record was
+#: started by a human who is. So the verifier is protected from the first and
+#: not the second — and governor config and owner state stay protected from
+#: BOTH, because nothing may lift its own ceiling or remove its own hook.
+_PROTECTED_VERIFIER = _PROTECTED_VERIFIER_NAMES
+
+
+def _write_is_protected(path: str, governed: bool = True) -> bool:
     return any(s in (path or "") for s in _PROTECTED_WRITE)
 
 
-def _bash_writes_protected(cmd: str) -> bool:
+def _write_hits_verifier(path: str) -> bool:
+    """A write at the verifier itself — checked on a real PATH, never on the
+    text of a command. Substring-scanning a command string for these would
+    flag a session for *mentioning* `verify.py`, which is the blast-radius
+    failure `hook.should_halt_session` was written about."""
+    return any(v in (path or "") for v in _PROTECTED_VERIFIER)
+
+
+def _bash_writes_protected(cmd: str, governed: bool = True) -> bool:
     """A bash command that WRITES (redirect / tee / rm / mv …) to a protected path.
     Reading a protected file (cat/grep) is fine and not flagged.
 
@@ -139,7 +184,7 @@ def _blank_quoted(text: str) -> str:
     return _QUOTED_RE.sub("''", text or "")
 
 
-def classify_command(cmd: str) -> Dict[str, Any]:
+def classify_command(cmd: str, governed: bool = True) -> Dict[str, Any]:
     """Classify what would EXECUTE, not the raw text of the command.
 
     Matching the raw string halts a session for WRITING about a forbidden
@@ -158,9 +203,25 @@ def classify_command(cmd: str) -> Dict[str, Any]:
     for pat in _CONSEQUENTIAL:
         if re.search(pat, low):
             return {"kind": "consequential", "consequential": True, "reason": "matched a consequential pattern"}
-    if _bash_writes_protected(low):
+    if _bash_writes_protected(low, governed):
         return {"kind": "protected", "consequential": True,
                 "reason": "writes a protected governance/state path"}
+    # A redirect writes a file whatever stands in front of it. `echo pwned >
+    # …/verify.py` used to classify as "read-only command", because `echo` is a
+    # read-only head and nothing looked at the `>`; that made every protected
+    # path one line away for any session at A1. The target is classified on its
+    # own terms — protected, or a write that needs the write tier.
+    for m in _REDIRECT_WRITE.finditer(low):
+        target = m.group("path")
+        if _write_is_protected(target, governed):
+            return {"kind": "protected", "consequential": True,
+                    "reason": f"redirects output into a protected path ({target})"}
+        if governed and _write_hits_verifier(target):
+            return {"kind": "protected", "consequential": True,
+                    "reason": f"redirects output into the verifier ({target})"}
+        if target.startswith("/") or target.startswith("~"):
+            return {"kind": "consequential", "consequential": True,
+                    "reason": f"redirects output to an absolute path ({target})"}
     # allowlist: every pipeline/sequence segment must head a read-only or work
     # command. Split QUOTE-AWARE — a | inside quotes (grep "a|b") is data, not a
     # pipe; the old regex split broke quoting and mis-flagged such commands as
@@ -303,7 +364,8 @@ def _capped_by_group(ceiling: str, group) -> str:
 
 def decide_tool_call(call: Dict[str, Any], *, ceiling: str = "A1",
                      project_dir: Optional[str] = None,
-                     writable=None, group=None) -> Dict[str, Any]:
+                     writable=None, group=None,
+                     governed: bool = True) -> Dict[str, Any]:
     tool = call.get("tool_name") or call.get("tool") or ""
     inp = call.get("tool_input") or call.get("input") or {}
     # The cap lands BEFORE `lvl` — every branch below reads `lvl`, so a cap
@@ -320,8 +382,17 @@ def decide_tool_call(call: Dict[str, Any], *, ceiling: str = "A1",
 
     if tool in WRITE_TOOLS:
         path = inp.get("file_path") or inp.get("path") or inp.get("notebook_path") or ""
-        if _write_is_protected(path):                          # governor config / owner state: never
+        if _write_is_protected(path, governed):                # governor config / owner state: never
             return _deny("writing a governance/state path (hook config or trust ledger) is not permitted")
+        if governed and _write_hits_verifier(path):
+            # §M4.2 runtime independence: the session whose artifact is being
+            # judged may not modify the verifier that judges it. Scoped to a
+            # GOVERNED session — a human at a terminal implementing the
+            # verifier is the development-time bootstrap the same section
+            # explicitly allows, and blanket protection made that impossible.
+            return _deny("a task session may not write the verifier that "
+                         "judges it — this is decided before the work starts, "
+                         "not by the work")
         if _write_is_sensitive(path, project_dir):
             # A2 is trusted to WORK, not trusted to write anywhere. It is what
             # `release` gives every task, so it was the standing authority of
@@ -346,7 +417,7 @@ def decide_tool_call(call: Dict[str, Any], *, ceiling: str = "A1",
         return _allow("in-project write") if lvl >= 1 else _ask("A0 is advisory; writes require approval")
 
     if tool == "Bash":
-        c = classify_command(inp.get("command", ""))
+        c = classify_command(inp.get("command", ""), governed)
         if c["kind"] == "forbidden":                            # catastrophe backstop: every tier
             return _deny("forbidden command", tripwire=True)
         if c["kind"] == "protected":                           # governor config / owner state: never
