@@ -1932,7 +1932,10 @@ def _prime_worker_session(session, agent_name: str) -> None:
         agent = config.agents.get(agent_name)
         if agent is None:
             return
-        ctx = _sa.workspace_context(config, agent, surface="cli")
+        # `snapshot=False`: this briefing may never reach a model. Entering a
+        # worker and leaving again is a thing people do, and it must not write
+        # files — nor put a context nobody was shown into the replay ledger.
+        ctx = _sa.workspace_context(config, agent, surface="cli", snapshot=False)
         briefing = (
             "I am sarsi-worker. My role is to manage tasks and guide sarsi-claude "
             "and sarsi-ai4sci — the agents that do the actual work. Every response "

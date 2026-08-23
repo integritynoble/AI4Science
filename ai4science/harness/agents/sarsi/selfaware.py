@@ -404,7 +404,7 @@ MODE_BUDGET = {
 
 def workspace_context(config: Config, agent: Agent, surface: str = "cli",
                       observation: str = "", *, mode: str = "",
-                      route: Any = None) -> str:
+                      route: Any = None, snapshot: bool = True) -> str:
     """Working-memory gate — one assembler, three prices. [plan v3 §7.0-§7.4]
 
     `ACTION` (the default, and what every caller got before modes existed):
@@ -430,6 +430,15 @@ def workspace_context(config: Config, agent: Agent, surface: str = "cli",
     `route` is a `mode.Route` — when given it supplies both the mode and the
     reference-resolved retrieval query, and it is recorded in the manifest so a
     routing mistake replays apart from a retrieval mistake.
+
+    `snapshot=False` assembles without recording. It exists for the ONE caller
+    that builds a context which may never reach a model: entering agent mode
+    primes the session with a briefing, and a person who enters and leaves has
+    had no turn. Recording there made browsing an agent write files —
+    `contexts/*.txt.gz` and a `context_manifest.jsonl` row — which breaks the
+    property that entering costs nothing, and fills the replay ledger with
+    contexts no model ever saw. A manifest that lists non-turns is worse than a
+    short one: it makes "what did the model see?" unanswerable by counting.
 
     Returns "" when nothing is available, so the caller can skip the prefix.
     """
@@ -601,7 +610,11 @@ def workspace_context(config: Config, agent: Agent, surface: str = "cli",
     if budget["self"] != "none":
         try:
             from ai4science.harness.agents.sarsi import selfmodel as _sm
-            if budget["self"] == "measured":
+            # `sync()` PROBES and persists `self_state.json`. When this
+            # assembly is not being recorded it is not a turn, and a read must
+            # not write: entering a worker and leaving again would otherwise
+            # leave a measurement behind for a turn that never happened.
+            if budget["self"] == "measured" and snapshot:
                 _sm.sync(config, agent)
             add("self", _sm.render_cached(agent.agent_dir))
         except Exception:
@@ -635,9 +648,10 @@ def workspace_context(config: Config, agent: Agent, surface: str = "cli",
 
     ctx = ("[sarsi-worker workspace]\n"
            + "\n\n".join(t for _, t in sections) + "\n[/workspace]\n\n")
-    _save_context_snapshot(agent, ctx, observation=observation, mode=picked,
-                           route=route, sections=sections, omitted=omitted,
-                           selected=selected, budget=budget, surface=surface)
+    if snapshot:
+        _save_context_snapshot(agent, ctx, observation=observation, mode=picked,
+                               route=route, sections=sections, omitted=omitted,
+                               selected=selected, budget=budget, surface=surface)
     return ctx
 
 

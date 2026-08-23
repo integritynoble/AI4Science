@@ -71,7 +71,13 @@ def test_attach_takes_the_terminal_and_detach_hands_it_back():
             "attach never took the terminal:\n" + raw.decode(errors="replace"))
         assert b"RESULT:" not in raw, "returned before anyone detached"
 
-        os.write(fd, b"\x02d")               # C-b d — the owner detaches
+        # Ctrl-z, not the C-b d chord. Ctrl-z is the one-key detach
+        # `_attach_tmux` binds for the duration of the attach, and it is the
+        # key the returned sentence names ("Ctrl-z came home"). The prefix
+        # chord depends on the prefix a machine happens to be configured with
+        # and on which tmux server eats it first, which is a fact about the
+        # box rather than about the hand-off under test.
+        os.write(fd, b"\x1a")                # Ctrl-z — the owner detaches
         _pump(fd, raw, time.monotonic() + 20.0,
               until=f"RESULT:back from {name} (Ctrl-z came home).".encode())
         os.close(fd)

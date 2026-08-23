@@ -35,6 +35,19 @@ EVERYDAY = "A2"
 @pytest.fixture(autouse=True)
 def isolated(tmp_path, monkeypatch):
     monkeypatch.setenv("SARSI_STATE_DIR", str(tmp_path))
+    # The TRUST ledger lives outside SARSI_STATE_DIR, in the real
+    # `~/.local/share/pwm-cp/`, and `trust.effective_ceiling` caps a requested
+    # A3 to A2 unless A3 is unlocked there. So an A3 assertion in this file
+    # passed only because THIS developer's machine happens to have A3
+    # unlocked, and failed in a full run where an earlier test moved the state
+    # dir — a result about the box, reported as a result about the renderer.
+    #
+    # Point it at the test's own directory and unlock explicitly: what is under
+    # test is that the listing MARKS an elevated agent, not whether this
+    # machine has earned one.
+    monkeypatch.setenv("PWM_CP_STATE_DIR", str(tmp_path / "cp"))
+    from ai4science.harness.agents.machine import trust
+    trust.unlock_a3(force=True)
     return tmp_path
 
 

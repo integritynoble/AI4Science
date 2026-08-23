@@ -45,22 +45,34 @@ def pid_start(pid) -> Optional[str]:
         return None
 
 
-def pid_is_ours(rec) -> bool:
+def pid_is_ours(rec, alive=None) -> bool:
     """Is this record's pid still the process it was created for?
 
     A record written before start times were stamped is RE-STAMPED rather than
     rejected: calling every legacy record an impostor would push all of them
     onto the ambiguous cwd fallback at once, which is the failure this whole
     change exists to avoid.
+
+    `alive` is the liveness test to use, and it exists because callers already
+    inject one. `ceiling_report(alive=...)` honoured it on its own rung and
+    then called this, which asked the real OS — so a report about two recorded
+    sessions came out differently depending on whether pids 42 and 43 happened
+    to exist on the machine running it. A seam that answers one rung with the
+    caller's world and the next with its own is not a fallback chain, it is two
+    chains.
     """
     if not rec:
         return False
+    is_alive = alive or _pid_alive
     pid = rec.get("pid")
-    if not pid or not _pid_alive(pid):
+    if not pid or not is_alive(pid):
         return False
     now = pid_start(pid)
     if now is None:
-        return False
+        # No start time to compare: with an injected liveness test there is no
+        # /proc entry to read either, and calling that an impostor would make
+        # every such record unresolvable. Liveness is what the caller said.
+        return alive is not None
     was = rec.get("pid_start")
     if not was:                                     # legacy record: adopt + stamp
         try:
@@ -220,7 +232,7 @@ def ceiling_report(alive=None) -> list:
         # identity, not bare liveness: a recycled pid IS alive in the os.kill
         # sense, and reporting that as a healthy exact match is the specific
         # thing this column exists to catch
-        pid_ok = bool(pid) and is_alive(pid) and pid_is_ours(r)
+        pid_ok = bool(pid) and is_alive(pid) and pid_is_ours(r, alive=alive)
         if pid_ok:
             by, resolved = "pid", r.get("ceiling")
         else:
