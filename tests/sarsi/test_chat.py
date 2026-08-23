@@ -300,11 +300,28 @@ def test_a_greeting_is_greeted_not_answered_with_the_task_form(config, agent):
     assert "/new" in out or "/tasks" in out
 
 
-def test_a_framed_directive_offers_new_with_the_stripped_goal(config, agent):
-    """This door never files a task from plain chat — creation stays explicit.
-    But it can say exactly what to type, with the framing already stripped."""
-    out = _say(config, agent, "the goal is please write a GAP-TV solver for CASSI")
-    assert "/new write a GAP-TV solver for CASSI" in out
+def test_a_framed_directive_is_filed_with_the_framing_stripped(config):
+    """A directive is a goal, and since `bddd3568` [spec §8] the door files it.
+    What must not survive is the owner's FRAMING: "the goal is please write X"
+    filed a task whose goal read back as that whole sentence.
+
+    On `sarsi-worker`, not the fixture's `work`: `work` is retired and admits
+    nothing, so the reply is its refusal rather than the behaviour under test.
+    This test asserted the pre-`bddd3568` door — an offer of `/new` and no task
+    — and passed anyway, because the retired agent refused before the
+    difference could show."""
+    agent = config.agents["sarsi-worker"]
+    _say(config, agent, "the goal is please write a GAP-TV solver for CASSI")
+    assert [t.goal for t in tsk.all_of(config, agent)] == \
+        ["write a GAP-TV solver for CASSI"]
+
+
+def test_but_a_question_is_still_answered_and_never_filed(config):
+    """The half of the old docstring that is still true, and the one plan v3
+    §7.0 depends on."""
+    agent = config.agents["sarsi-worker"]
+    out = _say(config, agent, "how are the exports going?")
+    assert "/new" in out
     assert tsk.all_of(config, agent) == []
 
 

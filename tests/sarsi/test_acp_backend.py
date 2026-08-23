@@ -91,6 +91,28 @@ class FakeConnection:
         self.closed = True
 
 
+#: Overwritten per test by `_own_cwd`. A module-level default keeps the call
+#: sites readable; the fixture is what makes them hermetic.
+CWD = "/tmp"
+
+
+@pytest.fixture(autouse=True)
+def _own_cwd(tmp_path, monkeypatch):
+    """Each test governs its OWN directory.
+
+    `govern=True` writes `<cwd>/.claude/settings.json`, and these tests passed
+    the shared `/tmp` — so on any machine where another account has already
+    created `/tmp/.claude`, every start failed with `PermissionError` and ten
+    tests reported an ACP defect that was really a directory belonging to
+    somebody else. Measured here: `/tmp/.claude` is owned by the `ai4science`
+    user while the suite runs as `spiritai`.
+    """
+    d = tmp_path / "acp-cwd"
+    d.mkdir()
+    monkeypatch.setitem(globals(), "CWD", str(d))
+    return str(d)
+
+
 @pytest.fixture(autouse=True)
 def _no_leaked_sessions():
     """The live-connection registry is module-level, so one test's session
@@ -110,7 +132,7 @@ def _started(reply=None, name="s", **kw):
     """A runtime with a session already open — because a send with nothing
     open is a different test, and it is below."""
     rt, conn = _runtime(reply, **kw)
-    out = rt.start(name, "/tmp", govern=True, ceiling="A0")
+    out = rt.start(name, CWD, govern=True, ceiling="A0")
     assert out["ok"] is True, out
     return rt, conn
 
@@ -194,7 +216,7 @@ def test_starting_a_session_yields_no_verdict():
     returns while the executor runs on. A caller that reads the spawn result as
     an answer has invented one."""
     rt, _ = _runtime()
-    out = rt.start("nm", "/tmp", govern=True, ceiling="A0")
+    out = rt.start("nm", CWD, govern=True, ceiling="A0")
 
     assert out["ok"] is True, "the session did start"
     assert out["outcome"] == acp.ACCEPTED
@@ -216,7 +238,7 @@ def test_a_refusal_survives_verdict_of_rather_than_reading_as_nothing():
 
 def test_the_session_handle_is_durable_and_names_the_acp_agent():
     rt, _ = _runtime(session_id="ai4sci-abc123")
-    out = rt.start("nm", "/tmp", govern=True, ceiling="A0")
+    out = rt.start("nm", CWD, govern=True, ceiling="A0")
 
     assert out["runtime"] == "acp"
     assert out["acp_session_id"] == "ai4sci-abc123"
@@ -226,7 +248,7 @@ def test_the_session_handle_is_durable_and_names_the_acp_agent():
 
 def test_a_session_that_will_not_start_is_reported_not_pretended():
     rt, _ = _runtime(fail_new=True)
-    out = rt.start("nm", "/tmp", govern=True, ceiling="A0")
+    out = rt.start("nm", CWD, govern=True, ceiling="A0")
     assert out["ok"] is False
     assert "session/new" in (out.get("reason") or "")
 
@@ -487,6 +509,6 @@ def test_a_malformed_update_does_not_take_the_turn_down():
 
     conn = Weird()
     rt = acp.AcpRuntime(connect=lambda **_: conn, agent_id="sarsi-claude")
-    rt.start("w", "/tmp", govern=True, ceiling="A0")
+    rt.start("w", CWD, govern=True, ceiling="A0")
     assert acp.text_of(["not a block", 7, None]) == "not a block"
     assert rt.send("w", "go")["outcome"] == acp.ANSWERED

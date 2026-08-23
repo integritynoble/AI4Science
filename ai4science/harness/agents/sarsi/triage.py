@@ -102,12 +102,61 @@ def suggest(config: Config, demand: str) -> Suggestion:
     top = out[0].score
     joint = [c for c in out if c.score == top]
     if len(joint) > 1:
+        # A tie between agents that are INTERCHANGEABLE is not the tie this
+        # refusal was written for. The refusal exists to stop a scope mistake —
+        # personal work routed to `work`, professional work to `abraham` — and
+        # that hazard needs two agents that are FOR different things. Where the
+        # roster gained `sarsi-ai4sci` and `sarsi-open` beside `sarsi-worker`,
+        # every generic demand tied three ways on one identical reason, and the
+        # manager stopped being able to route anything at all: not "I cannot
+        # tell whose this is" but "any of these would do", answered as though
+        # it were the first.
+        general = _interchangeable_winner(config, joint)
+        if general is not None:
+            result.best = general
+            return result
         # Reported as a tie rather than resolved by sort order: a stable
         # alphabetical winner would look like a judgment and be an accident.
         result.tied = [c.agent_id for c in joint]
         return result
     result.best = out[0]
     return result
+
+
+#: Preferred first when several interchangeable workers tie. The general worker
+#: is the one with no backend in its name — the others are the same role wearing
+#: a particular engine.
+_GENERAL_FIRST = ("sarsi-worker",)
+
+
+def _interchangeable_winner(config: Config, joint: List[Candidate]):
+    """The one to pick when the tied agents differ only by engine, else None.
+
+    Interchangeable means: they tied on the SAME reason, and the roster gives
+    them the same purpose and the same tools. Anything else — two agents that
+    are for different things, however equal their scores — stays a refusal,
+    because that is the tie where picking wrong costs something.
+    """
+    reasons = {c.why for c in joint}
+    if len(reasons) != 1:
+        return None
+    agents = [config.agents.get(c.agent_id) for c in joint]
+    if any(a is None for a in agents):
+        return None
+
+    def _purpose(a) -> tuple:
+        return (tuple(sorted(getattr(a, "tools", ()) or ())),
+                (getattr(a, "purpose", "") or "").strip().lower(),
+                bool(getattr(a, "is_worker", True)))
+
+    if len({_purpose(a) for a in agents}) != 1:
+        return None
+    for preferred in _GENERAL_FIRST:
+        for c in joint:
+            if c.agent_id == preferred:
+                return Candidate(agent_id=c.agent_id, score=c.score,
+                                 why=f"{c.why}; the others differ only by engine")
+    return None
 
 
 def _score(config: Config, agent, words: set):

@@ -50,8 +50,12 @@ def test_default_config_has_one_manager_and_the_rest_workers():
     ids = [a["id"] for a in cfg["agents"]["list"]]
     # Stated explicitly, because an agent appearing here by accident is a thing
     # the owner should have to agree to.
-    assert ids == ["sarsi-machine", "sarsi-worker", "work", "social",
-                   "funding", "jobs", "computational-imaging", "abraham"]
+    # `sarsi-ai4sci` and `sarsi-open` joined on 2026-08-20: the same worker
+    # role on a different engine. Adding them here is the agreement the comment
+    # above asks for — the list caught them, which is what it is for.
+    assert ids == ["sarsi-machine", "sarsi-worker", "sarsi-ai4sci", "sarsi-open",
+                   "work", "social", "funding", "jobs",
+                   "computational-imaging", "abraham"]
     roles = {a["id"]: a.get("role") for a in cfg["agents"]["list"]}
     assert roles["sarsi-machine"] == "manager"
     assert all(roles[i] == "worker" for i in ids if i != "sarsi-machine")

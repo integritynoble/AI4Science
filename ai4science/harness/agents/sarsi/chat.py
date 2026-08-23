@@ -612,9 +612,20 @@ def _classified(config: Config, agent: Agent, body: str, surface: str) -> str:
     console door already classifies; a door that does not is the second
     classifier problem in reverse: one decides, the other shrugs.
 
-    This door never files a task from plain chat — creation stays explicit —
-    so a directive is answered with the exact /new to type, framing already
-    stripped."""
+    What this door files, and what it only answers, stopped matching this
+    paragraph when `bddd3568` made a parsed directive auto-file [spec §8]. The
+    line still worth keeping is narrower than the one that was here:
+
+      * a **question** is answered and never filed — that is the invariant
+        `_answered` rests on, and the one plan v3 §7.0 quotes when it says
+        CHAT mode gains the door the ability to SAY things and never to DO
+        them;
+      * a **directive** is a goal, and a goal is filed, with the owner's
+        framing stripped off it first.
+
+    The old wording claimed both halves for the whole door, and a test written
+    from it passed only because the fixture's agent was retired and refused
+    everything."""
     if not agent.is_worker:
         # A manager holds no tasks, so /new is not an offer it can make —
         # classifying the line would only sharpen a suggestion that is wrong

@@ -55,7 +55,19 @@ from ai4science.harness.agents.sarsi.registry import Agent, Config
 #: signal. A bare `✻` is not: it also heads FINISHED status lines — abraham's
 #: run sat at `✻ Brewed for 35s` and the loop reported `busy` forever at a
 #: session that had already stopped. A glyph is not a state.
-_BUSY = ("esc to interrupt", "esc interrupt")
+#: OUR surfaces say exactly this. One spelling, fixed at the emitter: when
+#: `tui.py` said `esc to stop` the fix went into `tui.py`, not into this tuple,
+#: because a reader that learns every spelling stops being able to say what the
+#: right one is.
+_OURS = ("esc to interrupt",)
+
+#: Harnesses we do NOT control, and the marker each actually prints. These
+#: cannot be fixed at the emitter — that is the whole reason they are listed
+#: separately rather than blended into `_OURS`, where they would quietly
+#: license a second spelling on our own renderers.
+_FOREIGN_BUSY = {"opencode": "esc interrupt"}
+
+_BUSY = _OURS + tuple(_FOREIGN_BUSY.values())
 
 #: Gates this loop is allowed to answer, and the option to press. Recognised by
 #: a phrase that only appears on that gate. Anything else waits for the owner.

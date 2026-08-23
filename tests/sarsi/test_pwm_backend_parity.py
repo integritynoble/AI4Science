@@ -62,9 +62,23 @@ def _emitted(path: pathlib.Path, pattern: str) -> bool:
 
 # ── the busy marker ───────────────────────────────────────────────────
 
-def test_the_loop_knows_exactly_one_busy_marker():
-    """If this grows a second spelling, the fix went into the wrong file."""
-    assert operator._BUSY == ("esc to interrupt",), operator._BUSY
+def test_the_loop_knows_exactly_one_busy_marker_of_its_own():
+    """If OUR spelling grows a second form, the fix went into the wrong file.
+
+    The rule is about emitters we control: when `tui.py` said `esc to stop`,
+    the fix belonged in `tui.py`. A reader that learns every spelling loses the
+    ability to say which one is right.
+
+    A harness we do NOT control is a different fact, and `_FOREIGN_BUSY` is
+    where it goes — named, with the harness that prints it, so nobody reads it
+    later as licence to add a second spelling to our own renderers."""
+    assert operator._OURS == ("esc to interrupt",), operator._OURS
+
+
+def test_every_extra_busy_marker_names_the_harness_it_belongs_to():
+    extra = set(operator._BUSY) - set(operator._OURS)
+    assert extra == set(operator._FOREIGN_BUSY.values())
+    assert all(k and v for k, v in operator._FOREIGN_BUSY.items())
 
 
 def test_the_full_screen_tui_emits_the_marker_the_loop_reads():
