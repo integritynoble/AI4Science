@@ -329,3 +329,31 @@ def test_the_prompt_the_door_sends_carries_the_routed_context(config, agent,
     assert "recent conversation" in seen["prompt"]
     assert "coded aperture" in seen["prompt"]
     assert "[sarsi-worker workspace]" in seen["prompt"]
+
+
+def test_a_recurring_problem_routes_to_reason_so_the_lesson_comes_back(config, agent):
+    """§16.10 end to end: an episode is written about a failure, and the
+    question that names its recurrence retrieves it. Live, this failed — the
+    turn routed CHAT, the gate skipped lessons, and the context came back
+    104 bytes with nothing in it."""
+    from ai4science.harness.agents.sarsi import memory
+    memory.record(config, agent, "refusal", "the export timed out at 60s",
+                  "the export timed out at 60s")
+    r = mode.route("why did the export time out again?")
+    assert r.mode == mode.REASON
+    ctx = sa.workspace_context(config, agent,
+                               observation="why did the export time out again?",
+                               route=r)
+    assert "timed out" in ctx
+
+
+def test_and_the_same_question_without_recurrence_stays_cheap(config, agent):
+    """The contrast that shows the escalation is earned, not blanket."""
+    from ai4science.harness.agents.sarsi import memory
+    memory.record(config, agent, "refusal", "the export timed out at 60s",
+                  "the export timed out at 60s")
+    r = mode.route("what is an export, roughly?")
+    assert r.mode == mode.CHAT
+    ctx = sa.workspace_context(config, agent, observation="what is an export?",
+                               route=r)
+    assert "timed out" not in ctx

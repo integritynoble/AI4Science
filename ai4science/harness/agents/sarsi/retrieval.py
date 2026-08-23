@@ -113,8 +113,13 @@ def retrieve(config: Config, agent: Agent,
     try:
         scope_filter = list(scope) if scope else None
         all_active = _sem.active_entries(config, agent, scope_filter)
-    except Exception:
-        return {"protected": [], "retrieved": [], "mode": "lexical"}
+    except Exception as e:
+        # An empty result and a broken store are different facts, and the
+        # caller has to be able to tell them apart: a turn that lost every
+        # constraint to a corrupt store must not look like a turn that had
+        # none. The gate records `error` in the manifest. [§11.3(e)]
+        return {"protected": [], "retrieved": [], "mode": "lexical",
+                "error": f"{type(e).__name__}: {e}"}
 
     mode = "semantic" if _semantic_mode() else "lexical"
     query_tokens = _tokens(query or "")

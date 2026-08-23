@@ -102,10 +102,12 @@ def record_episode(config: Config, agent: Agent, trigger: str,
         "started_at": datetime.fromtimestamp(ts, tz=timezone.utc).isoformat(timespec="seconds"),
         "ended_at": datetime.fromtimestamp(ts, tz=timezone.utc).isoformat(timespec="seconds"),
     }
-    try:
-        return ledger.append(config, "episodes", ep, now=lambda: ts)
-    except Exception:
-        return ep
+    # A refused write is NOT an episode. Returning the unwritten record made a
+    # refusal indistinguishable from a success at the call site — including a
+    # `SecretInLedger` refusal, which is the one case where the caller most
+    # needs to know. `ledger.append` stamps `at`; a record without it was
+    # never written, and now it does not come back pretending otherwise.
+    return ledger.append(config, "episodes", ep, now=lambda: ts)
 
 
 def _trigger_outcome(trigger: str) -> str:
@@ -148,10 +150,15 @@ def record(config: Config, agent: Agent, trigger: str, title: str,
     _prepend_index(config, agent, path, trigger, title)
 
     # Write episode record to the ledger for the offline consolidator (M5).
-    # Never raises — lesson file is the authoritative short-cycle output.
+    # A refused SECRET must not be swallowed here either: the lesson file has
+    # already been written, so the caller has to learn that the evidence half
+    # did not land. Other failures stay soft — the lesson is the authoritative
+    # short-cycle output and a full disk should not lose it.
     try:
         record_episode(config, agent, trigger, title, detail,
                        lesson_ref=str(path.name), now=lambda: ts)
+    except ledger.SecretInLedger:
+        raise
     except Exception:
         pass
 

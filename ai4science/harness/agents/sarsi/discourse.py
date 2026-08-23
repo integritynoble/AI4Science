@@ -261,9 +261,55 @@ _OLDER = re.compile(
     re.I)
 
 
+#: A problem happening AGAIN is the §16.10 case: the whole point of keeping
+#: episodes is that the lesson comes back when the same thing recurs. Measured
+#: live — "why did the export time out again?" took the cheap path and never
+#: saw the lesson that had been written about the previous occurrence, because
+#: nothing here recognised recurrence as a reason to look back.
+_RECURS = re.compile(
+    r"\b(again|still|recurring|recurs|once more|as before|"
+    r"keeps? (?:happening|failing|breaking|crashing|timing out)|"
+    r"same (?:problem|error|issue|failure|thing|bug)|"
+    r"another (?:one of these|such))\b", re.I)
+
+#: A whole turn that is nothing but a recurrence adverb. These point one line
+#: up; everything else that mentions recurrence is making a claim about a
+#: pattern, which is what episodic memory is for.
+_BARE_RECUR = re.compile(
+    r"^(?:do|say|try|run)?\s*(?:that|it)?\s*"
+    r"(?:again|once more|the same)[\s.!?]*$", re.I)
+
+#: A question about something that went wrong. Past failures are what episodic
+#: memory is for, so asking about one is a request for it.
+_WENT_WRONG = re.compile(
+    r"\b(why|what|when|how)\b.{0,60}?"
+    r"\b(fail(?:ed|ing|s)?|timed? ?out|broke|broken|crash(?:ed|ing|es)?|"
+    r"error(?:ed|s)?|refus(?:ed|al)|reject(?:ed)?|regress(?:ed|ion)?|"
+    r"went wrong|didn'?t work|not work(?:ing)?)\b", re.I)
+
+
 def asks_for_older_memory(line: str) -> bool:
-    """Is this turn explicitly reaching past the recent window? [§6.6]"""
-    return bool(_OLDER.search(line or ""))
+    """Is this turn reaching past the recent window? [§6.6]
+
+    Three ways it can be: naming a time before now, pointing at a recurrence,
+    or asking about something that went wrong. The last two were the gap — a
+    lesson written about a failure is worthless if the question "why did it
+    happen again?" is priced as small talk.
+
+    A bare `again` is NOT enough on its own: "say that again" is a discourse
+    follow-up whose referent is one line up, and the elliptical path already
+    resolves it without a search. But the guard is narrow — `it keeps failing`
+    is also short and also carries a pronoun, and it is exactly the sentence
+    that should reach for the record.
+    """
+    text = (line or "").strip()
+    if not text:
+        return False
+    if _OLDER.search(text):
+        return True
+    if _BARE_RECUR.match(text):
+        return False          # `again`, `do that again` — one line up, no search
+    return bool(_RECURS.search(text) or _WENT_WRONG.search(text))
 
 
 def resolve(line: str, buf: Optional[Buffer] = None) -> Resolved:

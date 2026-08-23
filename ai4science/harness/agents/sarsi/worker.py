@@ -222,6 +222,10 @@ def outstanding(config: Config, agent: Agent) -> List[Dict[str, Any]]:
     return [d for d in admitted if d.get("id") not in reported]
 
 
+class UnknownDirective(Exception):
+    """A revoke or supersede naming a directive this agent never issued."""
+
+
 def revoke(config: Config, agent: Agent, directive_id: str,
            reason: str = "") -> Dict[str, Any]:
     """Revoke an outstanding directive by writing a revoke event.
@@ -229,6 +233,14 @@ def revoke(config: Config, agent: Agent, directive_id: str,
     Append-only: does not modify the original row. The active view in
     outstanding() will exclude this directive on the next read.
     """
+    known = {d.get("id") for d in ledger.read(config, "directives")
+             if d.get("agent") == agent.id and d.get("id")}
+    if directive_id not in known:
+        # A revoke event for a directive nobody issued is a record of nothing.
+        # It used to be written and returned successfully, so a typo left a
+        # permanent event that revoked no directive and reported no problem.
+        raise UnknownDirective(
+            f"{agent.id} has no directive {directive_id!r} to revoke")
     rec = {
         "schema_version": 2,
         "event_id": f"dir_evt_{uuid.uuid4().hex[:10]}",
@@ -249,13 +261,20 @@ def supersede_directive(config: Config, agent: Agent,
     Writes a supersede event (removing the old from outstanding) and then
     admits the new directive in one operation.
     """
+    # The new directive is admitted FIRST so the supersede event can name it.
+    # Before this the event said only "dir_X was superseded" — you could see
+    # that something replaced it and never see by what, which makes the chain
+    # unreadable exactly when someone is asking why the current instruction is
+    # what it is.
+    got = admit(config, agent, new_directive)
     ledger.append(config, "directives", {
         "schema_version": 2,
         "event_id": f"dir_evt_{uuid.uuid4().hex[:10]}",
         "directive_id": old_id,
         "op": "supersede",
         "target_id": old_id,
+        "superseded_by": new_directive.id,
         "reason": (reason or "").strip(),
         "agent": agent.id,
     })
-    return admit(config, agent, new_directive)
+    return got

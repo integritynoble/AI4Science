@@ -25,6 +25,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -36,6 +37,10 @@ SCHEMA_VERSION = 2
 
 #: What a resume needs the owner to do before it can continue.
 REBASE = "rebase-required"
+
+
+class CheckpointNotWritten(Exception):
+    """The checkpoint did not reach disk. The caller has to know."""
 
 
 def plan_hash(task: tsk.Task) -> str:
@@ -75,7 +80,12 @@ def path_for(agent: Agent, task_id: str):
 
 
 def write(config: Config, agent: Agent, task: tsk.Task) -> Checkpoint:
-    """Record where this task stands. Atomic; never raises."""
+    """Record where this task stands. Atomic, durable, and loud on failure.
+
+    Raises `CheckpointNotWritten` rather than returning a Checkpoint that
+    never reached disk — a caller that cannot tell a durable write from a lost
+    one is the reason a restart resumes somewhere nobody chose.
+    """
     verified = [i for i in range(len(task.criteria or []))
                 if tsk.phase_passed(task, i)]
     evidence: Dict[str, Any] = {}
@@ -93,14 +103,36 @@ def write(config: Config, agent: Agent, task: tsk.Task) -> Checkpoint:
                     phases_verified=verified,
                     evidence=evidence,
                     last_updated=datetime.now(timezone.utc).isoformat(timespec="seconds"))
+    p = path_for(agent, task.id)
+    # A unique temp name per writer: a fixed `checkpoint.json.tmp` lets two
+    # workers on one task interleave their partial writes into the same file
+    # and then rename whichever finishes last.
+    tmp = p.with_name(f".checkpoint.{os.getpid()}.{uuid.uuid4().hex[:8]}.tmp")
     try:
-        p = path_for(agent, task.id)
         p.parent.mkdir(parents=True, exist_ok=True)
-        tmp = p.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(ck.as_record(), indent=2))
-        os.replace(tmp, p)        # atomic: a reader sees the old file or the new
-    except Exception:
-        pass
+        with open(tmp, "w") as fh:
+            fh.write(json.dumps(ck.as_record(), indent=2))
+            fh.flush()
+            os.fsync(fh.fileno())     # durable, not merely written
+        os.replace(tmp, p)            # atomic: a reader sees the old or the new
+        try:                          # and the rename itself survives a crash
+            dfd = os.open(p.parent, os.O_RDONLY)
+            try:
+                os.fsync(dfd)
+            finally:
+                os.close(dfd)
+        except OSError:
+            pass
+    except Exception as e:
+        # The temp file does not outlive the failure, and the failure is not
+        # reported as a checkpoint. "Never raises" made a lost write look
+        # exactly like a durable one at the only call site that matters.
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        raise CheckpointNotWritten(
+            f"could not record where {task.id} got to: {type(e).__name__}: {e}") from e
     return ck
 
 

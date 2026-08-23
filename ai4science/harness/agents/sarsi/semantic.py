@@ -47,6 +47,11 @@ from ai4science.harness.agents.sarsi.registry import Agent, Config
 #: Maximum bytes injected before announcing the remainder.
 INJECT_BYTE_CAP = 4096
 
+#: Kinds that are constraints rather than learned facts. They are injected
+#: first and are never the entries a byte cap drops — the same rule
+#: `retrieval.PROTECTED_KINDS` states for the ranked path.
+PROTECTED_KINDS = frozenset(("invariant", "causal_rule"))
+
 
 def _new_id() -> str:
     return f"sem_{uuid.uuid4().hex[:10]}"
@@ -56,6 +61,7 @@ def record(config: Config, agent: Agent, statement: str, *,
            kind: str = "lesson", scope: Optional[List[str]] = None,
            status: str = "active", provenance: Optional[List[str]] = None,
            contradicts: Optional[List[str]] = None,
+           support_count: int = 1, tags: Optional[List[str]] = None,
            promoted_by: str = "owner") -> Dict[str, Any]:
     """Assert a new semantic memory entry. Returns the stored record."""
     rec = {
@@ -68,7 +74,8 @@ def record(config: Config, agent: Agent, statement: str, *,
         "scope": list(scope or ["global"]),
         "status": status,
         "provenance": list(provenance or []),
-        "support_count": 1,
+        "support_count": int(support_count),
+        "tags": list(tags or []),
         "contradicts": list(contradicts or []),
         "valid_from": None,   # ledger stamps `at`
         "valid_until": None,
@@ -123,9 +130,31 @@ class PromotionBlocked(Exception):
 
 
 def candidates(config: Config, agent: Agent) -> List[Dict[str, Any]]:
-    """Entries proposed but not active. Evidence awaiting a decision."""
-    return [r for r in ledger.read(config, "semantic")
-            if r.get("agent") == agent.id and r.get("status") == "candidate"]
+    """Entries proposed, not active, and not yet promoted.
+
+    A promoted candidate is filtered out here rather than rewritten there: the
+    log is append-only, so "already decided" is a later event, not an edit.
+    """
+    rows = [r for r in ledger.read(config, "semantic") if r.get("agent") == agent.id]
+    promoted = {r.get("promoted_from") for r in rows if r.get("promoted_from")}
+    return [r for r in rows if r.get("status") == "candidate"
+            and r.get("memory_id") not in promoted]
+
+
+def retract(config: Config, agent: Agent, memory_id: str,
+            reason: str = "") -> Dict[str, Any]:
+    """Withdraw an active entry without inventing a replacement. [§5.2]
+
+    `promote()`'s own refusal tells the caller to "retract or supersede" the
+    contradicting entry, and until now only the second was reachable — which
+    forced anyone resolving a contradiction to make up a new statement they
+    did not believe, just to get rid of one they no longer did.
+    """
+    return ledger.append(config, "semantic", {
+        "schema_version": 1, "memory_id": _new_id(), "op": "retract",
+        "supersedes": memory_id, "statement": "", "kind": "",
+        "scope": [], "status": "retracted", "provenance": [],
+        "reason": (reason or "").strip(), "agent": agent.id})
 
 
 def promote(config: Config, agent: Agent, memory_id: str, *,
@@ -143,8 +172,9 @@ def promote(config: Config, agent: Agent, memory_id: str, *,
     resolving a contradiction is a decision, and this is not the place decisions
     are made.
     """
-    rows = [r for r in ledger.read(config, "semantic")
-            if r.get("agent") == agent.id and r.get("memory_id") == memory_id]
+    all_rows = [r for r in ledger.read(config, "semantic")
+                if r.get("agent") == agent.id]
+    rows = [r for r in all_rows if r.get("memory_id") == memory_id]
     if not rows:
         raise PromotionBlocked(f"no semantic entry {memory_id!r} for {agent.id}")
     cand = rows[-1]
@@ -152,6 +182,18 @@ def promote(config: Config, agent: Agent, memory_id: str, *,
         raise PromotionBlocked(
             f"{memory_id} is {cand.get('status')!r}, not a candidate — only a "
             f"candidate can be promoted")
+    # Promotion is an EVENT, so the candidate row keeps saying "candidate"
+    # forever — which made this repeatable, and each repeat asserted another
+    # identical active entry. The promotion event is what records that the
+    # candidate was consumed, and it is what makes a second call a no-op
+    # instead of a duplicate. (An append-only store cannot mark the old row;
+    # §2.3 is the same argument for supersession.)
+    already = [r for r in all_rows
+               if r.get("promoted_from") == memory_id and r.get("op") == "assert"]
+    if already:
+        raise PromotionBlocked(
+            f"{memory_id} was already promoted, as {already[-1]['memory_id']} — "
+            f"promoting it again would assert the same thing twice")
     unresolved = [c for c in (cand.get("contradicts") or [])
                   if c not in set(resolves or [])]
     still_active = {e.get("memory_id") for e in active_entries(config, agent)}
@@ -164,6 +206,7 @@ def promote(config: Config, agent: Agent, memory_id: str, *,
     rec = dict(cand)
     rec.update({"memory_id": _new_id(), "op": "assert", "status": "active",
                 "supersedes": None, "promoted_by": by,
+                "promoted_from": memory_id,
                 "provenance": list(cand.get("provenance") or []) + [memory_id]})
     return ledger.append(config, "semantic", rec)
 
@@ -212,33 +255,74 @@ def active_entries(config: Config, agent: Agent,
 
 def render(config: Config, agent: Agent,
            scope_filter: Optional[List[str]] = None) -> str:
-    """Format active entries for context injection.
+    """Format active entries for context injection. Text only.
 
-    Entries are injected unconditionally regardless of relevance score — a
-    constraint has no vocabulary in common with the task it constrains.
-    Cap is announced when hit so the LLM knows to ask for the full list.
+    Prefer `render_parts()` where the caller can record what was left out —
+    this wrapper exists for the many call sites that only want the block.
+    """
+    return render_parts(config, agent, scope_filter)[0]
+
+
+def render_parts(config: Config, agent: Agent,
+                 scope_filter: Optional[List[str]] = None,
+                 cap: int = INJECT_BYTE_CAP):
+    """The block, plus what it could not fit. Returns `(text, report)`.
+
+    **Protected entries go first, and are never the ones dropped.** This used
+    to walk the active list in ledger insertion order and stop at the byte cap,
+    so an owner constraint written after sixty learned lessons was silently
+    absent from the context of a consequential turn — the one failure §6.1 and
+    §7.1 exist to prevent, on the one path where it matters most. Measured:
+    60 lessons then one `never write to /prod` invariant, and the invariant was
+    not in `W_t`.
+
+    `report` names what was omitted and how many, so the gate can put it in the
+    manifest instead of the reader assuming completeness. [§0.1.7]
     """
     entries = active_entries(config, agent, scope_filter)
+    report = {"protected_total": 0, "protected_shown": 0,
+              "other_total": 0, "other_shown": 0, "omitted": 0,
+              "protected_dropped": 0, "ids": []}
     if not entries:
-        return ""
+        return "", report
+
+    protected, other = [], []
+    for e in entries:
+        (protected if e.get("kind") in PROTECTED_KINDS else other).append(e)
+    report["protected_total"] = len(protected)
+    report["other_total"] = len(other)
 
     lines = ["active knowledge / constraints:"]
     total_bytes = 0
-    shown = 0
-    for entry in entries:
+
+    def _line(entry):
         stmt = (entry.get("statement") or "").strip()
         if not stmt:
-            continue
-        kind = entry.get("kind", "")
+            return None
         scope_str = ", ".join(entry.get("scope") or [])
-        line = f"  [{kind}] ({scope_str}) {stmt}"
-        if total_bytes + len(line) > INJECT_BYTE_CAP:
-            remaining = len(entries) - shown
-            lines.append(f"  ... {remaining} more active entr{'y' if remaining == 1 else 'ies'} "
-                         f"not shown (byte cap {INJECT_BYTE_CAP} reached)")
-            break
-        lines.append(line)
-        total_bytes += len(line)
-        shown += 1
+        return f"  [{entry.get('kind', '')}] ({scope_str}) {stmt}"
 
-    return "\n".join(lines)
+    for group, key in ((protected, "protected_shown"), (other, "other_shown")):
+        for entry in group:
+            line = _line(entry)
+            if line is None:
+                continue
+            if total_bytes + len(line) > cap:
+                break
+            lines.append(line)
+            total_bytes += len(line)
+            report[key] += 1
+            report["ids"].append(entry.get("memory_id", ""))
+
+    report["protected_dropped"] = report["protected_total"] - report["protected_shown"]
+    report["omitted"] = ((report["protected_total"] - report["protected_shown"])
+                         + (report["other_total"] - report["other_shown"]))
+    if report["omitted"]:
+        lines.append(
+            f"  ... {report['omitted']} more active entr"
+            f"{'y' if report['omitted'] == 1 else 'ies'} not shown "
+            f"(byte cap {cap} reached"
+            + (f"; {report['protected_dropped']} of them are CONSTRAINTS"
+               if report["protected_dropped"] else "")
+            + ")")
+    return "\n".join(lines), report

@@ -150,3 +150,27 @@ def test_the_token_estimate_is_attributed():
     assert d.estimator() in ("tiktoken/cl100k_base", "bytes/3.5")
     assert d.estimate_tokens("") == 0
     assert d.estimate_tokens("hello world") > 0
+
+
+# ── reaching back: the three ways a turn asks for older memory ───────────────
+
+def test_a_recurrence_reaches_back_even_without_a_time_word():
+    """§16.10's case, and it was the one that failed live: a lesson written
+    about a failure is worthless if "why did it happen again?" is priced as
+    small talk and never retrieves it."""
+    assert d.asks_for_older_memory("why did the export time out again?")
+    assert d.asks_for_older_memory("the export timed out again — why?")
+    assert d.asks_for_older_memory("it keeps failing")
+    assert d.asks_for_older_memory("is this the same failure as before?")
+
+
+def test_a_question_about_something_that_went_wrong_reaches_back():
+    assert d.asks_for_older_memory("why is the build broken?")
+    assert d.asks_for_older_memory("what made the verifier reject it?")
+    assert not d.asks_for_older_memory("what is a Kalman filter?")
+
+
+def test_a_bare_again_is_still_just_a_follow_up():
+    """`say that again` points one line up; it does not want a search."""
+    assert not d.asks_for_older_memory("again")
+    assert not d.asks_for_older_memory("do that again")

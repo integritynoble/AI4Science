@@ -1324,9 +1324,18 @@ def run_common_repl(
                     _wk = _cfg.agents.get(_name)
                     if _wk is not None:
                         _route = _turn_route(_cfg, _wk, line)
-                        _ctx = _sa.workspace_context(_cfg, _wk, surface="cli",
-                                                     observation=line,
-                                                     route=_route)
+                        try:
+                            _ctx = _sa.workspace_context(_cfg, _wk, surface="cli",
+                                                         observation=line,
+                                                         route=_route)
+                        except _sa.ProtectedOverflow as _po:
+                            # Fail closed, out loud. §7.2 says a consequential
+                            # turn does not proceed with constraints missing,
+                            # and the one thing worse than stopping is
+                            # continuing with a context that quietly lost them.
+                            print(f"[sarsi-worker] I am not acting on that yet: "
+                                  f"{_po}", flush=True)
+                            continue
                 except Exception:
                     # No harness registry on this account -- most of this fleet.
                     # That must not cost the worker its workspace entirely: fall

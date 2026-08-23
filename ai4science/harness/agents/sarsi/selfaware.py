@@ -357,7 +357,12 @@ def _memory_indexes(config: Config, agent: Agent) -> list:
     return out
 
 
-GATE_VERSION = "gate/2"
+GATE_VERSION = "gate/3"
+
+
+class ProtectedOverflow(Exception):
+    """Owner constraints did not fit, on a turn that may not proceed without
+    them. §7.2's fail-closed rule, raised rather than silently truncated."""
 
 #: What each mode buys. Characters for the section caps (the assembler works in
 #: text), tokens for the recent window (the buffer is token-budgeted). These are
@@ -368,7 +373,11 @@ MODE_BUDGET = {
              "semantic": False, "self": "none", "plan": False},
     "REASON": {"recent_tokens": 3000, "episodic_chars": 1200, "lessons": 4,
                "semantic": "retrieved", "self": "cached", "plan": True},
-    "ACTION": {"recent_tokens": 0, "episodic_chars": 3000, "lessons": 8,
+    # ACTION carries recent dialogue too: §7.2 says "enough to resolve the
+    # request", and a consequential turn is exactly where an unresolved `that`
+    # is most expensive. It was 0 here, so the mode with the most at stake was
+    # the only one with no short-term memory.
+    "ACTION": {"recent_tokens": 2000, "episodic_chars": 3000, "lessons": 8,
                "semantic": "all-active", "self": "measured", "plan": True},
 }
 
@@ -439,7 +448,24 @@ def workspace_context(config: Config, agent: Agent, surface: str = "cli",
     if budget["semantic"] == "all-active":
         try:
             from ai4science.harness.agents.sarsi import semantic as _sem
-            add("semantic", _sem.render(config, agent))
+            text, rep = _sem.render_parts(config, agent)
+            add("semantic", text)
+            selected["semantic"] = [i for i in rep.get("ids", []) if i]
+            if rep.get("omitted"):
+                omitted["semantic"] = rep["omitted"]
+            if rep.get("protected_dropped"):
+                # §7.2: for a consequential turn, constraints that do not fit
+                # are NOT silently omitted. Proceeding would mean acting under
+                # rules the model was never shown, which is the one omission
+                # this gate exists to make impossible.
+                raise ProtectedOverflow(
+                    f"{rep['protected_dropped']} of {rep['protected_total']} "
+                    f"owner constraints do not fit the context budget. This is "
+                    f"an ACTION turn, so it stops here rather than proceeding "
+                    f"without them — narrow the scope, or compact the "
+                    f"constraint set, and say which.")
+        except ProtectedOverflow:
+            raise
         except Exception:
             pass
     elif budget["semantic"] == "retrieved":
@@ -449,9 +475,17 @@ def workspace_context(config: Config, agent: Agent, surface: str = "cli",
             got = _ret.retrieve(config, agent, query=query, task_id=task_id, k=6)
             add("semantic", _ret.render(config, agent, query=query,
                                         task_id=task_id, k=6))
-            selected["semantic"] = [e.get("id", "") for e in
-                                    (got.get("protected", []) + got.get("retrieved", []))]
+            selected["semantic"] = [
+                e.get("memory_id") or e.get("id", "")
+                for e in (got.get("protected", []) + got.get("retrieved", []))]
             selected["retrieval_mode"] = got.get("mode", "")
+            if got.get("error"):
+                # `retrieve()` catches its own store failures and returns an
+                # empty result, so this branch — not the except below — is how
+                # a real failure becomes visible. Without it a turn that lost
+                # every constraint to a corrupt store is byte-identical in the
+                # audit record to a clean turn with no memory at all.
+                omitted["semantic"] = f"retrieval failed: {got['error']}"
         except Exception as e:
             # Recorded, not swallowed. A turn answered without the memory it
             # asked for is a different event from a turn that had none, and
@@ -614,11 +648,20 @@ def _episodic(config: Config, agent: Agent, surface: str, observation: str,
         tid = f" [{e['task_id']}]" if e.get("task_id") else ""
         return f"  [{ts}]{tid} you: {inp}\n           worker: {out}"
 
+    # The scored slice gets its own room. Seeding `chars_used` with the
+    # unconditional last-3 anchor meant that once three chatty recent
+    # exchanges exceeded the cap, NOTHING scored could ever be admitted — so a
+    # same-task, keyword-matching older episode was crowded out by three
+    # irrelevant recent ones, which is precisely the failure §11.3(c) names.
+    # The anchor is still always shown; it just no longer spends the budget
+    # that exists to find what is relevant.
+    anchor_chars = sum(len(_fmt(e)) for e in recent)
+    room = max(cap // 2, cap - anchor_chars)
     admitted: list = []
-    chars_used = sum(len(_fmt(e)) for e in recent)
+    chars_used = 0
     for e in scored:
         fmt = _fmt(e)
-        if chars_used + len(fmt) > cap:
+        if chars_used + len(fmt) > room:
             break
         admitted.append(e)
         chars_used += len(fmt)

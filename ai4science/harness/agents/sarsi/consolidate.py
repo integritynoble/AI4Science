@@ -39,8 +39,13 @@ MIN_SUPPORT_FOR_CANDIDATE = 2
 MIN_SUPPORT_FOR_SKILL = 3
 
 #: Error patterns from these triggers are clustered for semantic candidates.
+#: `rollback` was missing, and it fell through BOTH arms of the loop: its
+#: outcome is "rolled_back", so the success arm skipped it too, and a rollback
+#: — one of §M5.1's declared hard triggers — could never become a candidate
+#: however many times it happened. The `kind` logic below already had a branch
+#: for it, which is how a dropped trigger stayed invisible.
 FAILURE_TRIGGERS = frozenset(
-    ("refuted_prediction", "refusal", "clash", "correction")
+    ("refuted_prediction", "refusal", "clash", "correction", "rollback")
 )
 
 #: A pass outcome that repeats produces a skill candidate.
@@ -95,10 +100,14 @@ def _propose_semantic_candidate(config: Config, agent: Agent,
     summary_parts = sorted({(ep.get("summary") or "")[:80] for ep in group})
     statement = (f"Repeated {trigger}: " + "; ".join(summary_parts[:3]))[:400]
 
-    # Infer scope from task_ids in the group
-    task_ids = [ep.get("task_id") for ep in group if ep.get("task_id")]
-    scope: List[str] = (["task:" + t for t in task_ids[:2]]
-                        if task_ids else ["global"])
+    # Scope covers EVERY task the evidence came from. It used to keep the
+    # first two silently, so a rule evidenced by four tasks was scoped to two
+    # of them and simply would not be retrieved for the other two — a silent
+    # cap, which §0.1.7 forbids, on the field that decides where the rule
+    # applies.
+    task_ids = sorted({ep.get("task_id") for ep in group if ep.get("task_id")})
+    scope: List[str] = (["task:" + t for t in task_ids] if task_ids
+                        else ["global"])
 
     evidence_refs = [ep.get("episode_id", "") for ep in group if ep.get("episode_id")]
 
@@ -119,6 +128,9 @@ def _propose_semantic_candidate(config: Config, agent: Agent,
                               status="candidate",   # never active until owner confirms
                               provenance=evidence_refs,
                               contradicts=contradicts,
+                              support_count=len(group),
+                              tags=sorted({t for ep in group
+                                           for t in (ep.get("tags") or [])}),
                               promoted_by="consolidator+verifier")
         return rec
     except Exception:

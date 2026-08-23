@@ -326,6 +326,12 @@ def assign(config: Config, agent: Agent, task: tsk.Task, *,
                    why=f"sarsi-claude assigned for {phase_str} of {task.id}; "
                    f"p={p_forecast:.1f} "
                    + ("(conservative — overconfidence detected)" if p_forecast < 0.7 else "(default)"))
+    except _fc.TooLate:
+        # M3.1: "registration must occur before ses.assign()". The comment
+        # above claimed this raise enforced the invariant while the blanket
+        # except below swallowed it — so a session could be spawned on an
+        # already-judged task with no forecast and no trace. It propagates.
+        raise
     except Exception:
         pass
 
@@ -1027,7 +1033,32 @@ def _acp_resume_brief(config: Config, agent: Agent, task: tsk.Task) -> str:
     if stale:
         lines += [stale, ""]
     plan = tsk.read_plan_or_none(config, agent, task)
-    index = tsk.earliest_incomplete(task)
+
+    # The checkpoint decides where a restart picks up — this is W3's actual
+    # requirement, and until now `checkpoint.resume_point()` had no caller at
+    # all: the live path read `earliest_incomplete()` off the task store, which
+    # resumes at the right phase but has no plan-hash guard behind it. So a
+    # plan rewritten under a running task resumed by phase INDEX, into work
+    # that number no longer refers to.
+    try:
+        from ai4science.harness.agents.sarsi import checkpoint as _ck
+        point = _ck.resume_point(config, agent, task)
+    except Exception:
+        point = None
+    if point is not None and not point.ok:
+        lines += [
+            "STOP — do not resume yet.",
+            point.why,
+            "",
+            "The phase numbers in the checkpoint no longer refer to the same "
+            "work. Ask the owner to rebase or replan before continuing; "
+            "picking a phase by its index would be a guess about which work "
+            "still counts.",
+        ]
+        return "\n".join(lines)
+
+    index = point.phase if (point is not None and point.phase is not None) \
+        else tsk.earliest_incomplete(task)
     if plan and index is not None and index < len(plan.phases):
         phase = plan.phases[index]
         lines.append(f"Resume at phase {index + 1}: {phase.title}")
@@ -1387,7 +1418,13 @@ def _verify_phase(config: Config, agent: Agent, task: tsk.Task, *,
     _det_result = None
     try:
         from ai4science.harness.agents.sarsi import verify as _det
-        _det_result = _det.check(criteria[index], work_dir_for(agent, task))
+        # `trusted` is the owner's agreement, not the worker's confidence. On
+        # the automatic path the SESSION writes plan0.md and its `Verified
+        # when:` lines become the criteria verbatim — so an unagreed command
+        # criterion is the judged party choosing its judge's code. [§M4.2]
+        _agreed = bool(getattr(task, "plan_owner_edited", False))
+        _det_result = _det.check(criteria[index], work_dir_for(agent, task),
+                                 trusted=_agreed)
     except Exception:
         _det_result = None      # the check itself errored — the LLM verifier judges
     if _det_result is not None and _det_result.get("state") in ("PASS", "FAIL"):
@@ -1406,6 +1443,16 @@ def _verify_phase(config: Config, agent: Agent, task: tsk.Task, *,
         from ai4science.harness.agents.sarsi import verifier as vf
         task = tsk.record_phase(config, agent, task, index, verdict, now=now)
         task.verdict = verdict
+        # The deterministic branch RETURNS below, so the checkpoint written at
+        # the end of this function was never reached from here — a task whose
+        # phases are all deterministically checkable (the shape M4 pushes
+        # toward) produced no checkpoint at all, and a restart had nothing to
+        # resume from.
+        try:
+            from ai4science.harness.agents.sarsi import checkpoint as _ck
+            _ck.write(config, agent, task)
+        except Exception:
+            pass
         ledger.append(config, "reports",
                       {"agent": agent.id, "task": task.id,
                        "state": "verified" if vf.is_pass(verdict) else "failed",
