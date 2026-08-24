@@ -102,13 +102,25 @@ def _failing(**kw):
     return {"state": "FAIL", "why": "not yet"}
 
 
-def _task(config, agent, rt):
+def _task(config, agent, rt, *, artifact="42\n"):
     d = wk.Directive(agent_id=agent.id, goal="write the report")
     t = tsk.create(config, agent, d)
     (tsk.dir_of(agent, t.id) / "plan0.md").write_text(PLAN)
     t = tsk.attach_plan(config, agent, t, pl.parse(PLAN))
     t.plan_agreed = True
     t = ses.assign(config, agent, t, runtime=rt, installed=lambda: set())
+    # The work these tests are about is SESSION RELEASE, and the task has to
+    # really verify for that to be reached. It used to reach it on `_passing`
+    # alone, over `out.txt exists` with no out.txt anywhere — which stopped
+    # working the moment `session.verify` began settling deterministic criteria
+    # itself instead of handing them to a model. The model was overruling a
+    # check that would have said no; these tests were passing on the strength
+    # of that. Now the file exists, the check agrees, and each test measures
+    # the thing its name claims.
+    if artifact is not None:
+        work = ses.work_dir_for(agent, t)
+        work.mkdir(parents=True, exist_ok=True)
+        (work / "out.txt").write_text(artifact)
     t.work_started_at = time.time()
     return tsk._touch(agent, t, time.time)
 
@@ -174,7 +186,7 @@ def test_a_failing_task_keeps_its_session(config, agent):
     """A FAIL is handed back for another attempt. Closing the session would
     make every failure terminal."""
     rt = Runtime()
-    t = _task(config, agent, rt)
+    t = _task(config, agent, rt, artifact=None)   # nothing was written
     t = ses.verify(config, agent, t, verifier=_failing, evidence="e",
                    runtime=rt, now=time.time)
     assert t.session is not None

@@ -147,6 +147,8 @@ def _propose_skill_candidate(config: Config, agent: Agent,
     task_ids = [ep.get("task_id") for ep in group if ep.get("task_id")]
     summaries = list({(ep.get("summary") or "")[:60] for ep in group})
     evidence_refs = [ep.get("episode_id", "") for ep in group if ep.get("episode_id")]
+    verified_criteria = sorted({c for ep in group
+                                for c in (ep.get("criteria") or []) if c})
 
     skill_id = f"skill_{uuid.uuid4().hex[:8]}"
     scope = list({f"task:{t}" for t in task_ids[:3]}) or ["global"]
@@ -164,6 +166,13 @@ def _propose_skill_candidate(config: Config, agent: Agent,
         "postconditions": [],     # owner fills in
         "rollback": "",           # owner fills in
         "evidence_refs": evidence_refs,
+        # The criteria that actually passed, every time, carried from the
+        # episodes. NOT written into `tests`: a skill whose tests the agent
+        # wrote for itself is the agent setting its own exam, which §13 puts
+        # outside mutable cognition. This is evidence the owner declares tests
+        # FROM — without it they were asked to fill in `tests` for a workflow
+        # whose proof the record had thrown away.
+        "verified_criteria": verified_criteria,
         "status": "candidate",    # never active until tests pass + owner confirms
         "agent_id": agent.id,
     }

@@ -464,9 +464,10 @@ def _goal(config, agent, t, tail, runtime):
     # answers are about it.
     tsk.clear_phase(t, None)
     memory.record(config, agent, "rollback",
-                  f"{t.id} rolled back: goal changed from {was[:120]!r}",
-                  f"the plan was re-drafted for the new goal: {goal[:200]}",
-                  now=time.time)
+                  f"rolled back: the goal changed from {was[:120]!r}",
+                  f"task {t.id}: the plan was re-drafted for the new goal: "
+                  f"{goal[:200]}",
+                  task_id=t.id, now=time.time)
     if owner_criteria:
         t.criteria = owner_criteria           # the owner's words survive
         t.plan_owner_edited = True
@@ -523,9 +524,10 @@ def _edit(config, agent, t, tail, runtime):
     # the PASS would carry a verdict about a question nobody asks any more.
     tsk.clear_phase(t, index)
     memory.record(config, agent, "rollback",
-                  f"{t.id} rolled back: phase {number} criterion replaced",
-                  f"the phase was judged against a standard that no longer exists; "
-                  f"it now reads: {criterion[:200]}", now=time.time)
+                  f"rolled back: a phase criterion was replaced",
+                  f"task {t.id}, phase {number}: it was judged against a "
+                  f"standard that no longer exists; it now reads: "
+                  f"{criterion[:200]}", task_id=t.id, now=time.time)
     t.plan_stale = False               # an edit is the mission restated
     t.plan_owner_edited = True
     t.plan_agreed = True               # you have settled it; no more drafting
@@ -653,7 +655,8 @@ def _classified(config: Config, agent: Agent, body: str, surface: str) -> str:
         if standing is not None:
             detail += f" (standing task: {standing.id} — {standing.goal[:120]})"
         memory.record(config, agent, "correction",
-                      f"owner corrected worker: {body[:120]}", detail)
+                      f"owner corrected worker: {body[:120]}", detail,
+                      task_id=standing.id if standing is not None else "")
         return _handled_here(
             f"[{agent.id}] noted — what would you like instead? "
             f"(/tasks shows what I am holding)")
