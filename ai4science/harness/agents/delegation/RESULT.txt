@@ -1,0 +1,60 @@
+task                   seed | bare   harn   | stub-bare stub-harn escal  | routed  
+--------------------------------------------------------------------------------------
+t0.csv_to_json            0 | FAIL   pass   | WRONG    held      yes    | pass    
+t0.csv_to_json            1 | FAIL   pass   | WRONG    held      yes    | pass    
+t0.csv_to_json            2 | FAIL   pass   | WRONG    held      yes    | pass    
+t0.extract_fields         0 | FAIL   pass   | WRONG    held      yes    | pass    
+t0.extract_fields         1 | FAIL   pass   | WRONG    held      yes    | pass    
+t0.extract_fields         2 | FAIL   pass   | WRONG    held      yes    | pass    
+t1.clean_dataset          0 | FAIL   pass   | WRONG    held      yes    | pass    
+t1.clean_dataset          1 | FAIL   pass   | WRONG    held      yes    | pass    
+t1.clean_dataset          2 | FAIL   pass   | WRONG    held      yes    | pass    
+t1.request_timeout        0 | FAIL   pass   | WRONG    held      yes    | pass    
+t1.request_timeout        1 | FAIL   pass   | WRONG    held      yes    | pass    
+t1.request_timeout        2 | FAIL   pass   | WRONG    held      yes    | pass    
+t2.pipeline               0 | FAIL   pass   | WRONG    held      yes    | pass    
+t2.pipeline               1 | FAIL   pass   | WRONG    held      yes    | pass    
+t2.pipeline               2 | FAIL   pass   | WRONG    held      yes    | pass    
+
+15 tasks x seeds, one solver family, four arms.
+
+ARM 1  bare, capable-but-careless        passed 0/15 (0%)
+ARM 2  harnessed, same solver            passed 15/15 (100%)
+
+  The solver is identical. The difference is that the class was
+  made checkable before the work and restartable during it.
+
+ARM 3  an executor that CANNOT succeed, whatever it is told:
+         bare      -- handed back as done, and wrong:  15/15 (100%)
+         harnessed -- handed back as done, and wrong:  0/15 (0%)
+         harnessed -- escalated or refused instead:    15/15 (100%)
+
+  This is the arm that matters. A retry loop runs a hopeless
+  executor three times and returns the third wrong answer. What
+  a delegation harness must never do is report it as done.
+
+ARM 4  routed over {stubborn, careless}, learning from verdicts
+         passed 15/15 (100%)
+
+  The router starts with no evidence, watches the independent
+  verifier reject the stubborn executor, classifies the second
+  failure as CAPABILITY rather than bad luck, and moves the work.
+
+WHAT THE COMPETENCE MODEL LEARNED
+---------------------------------
+
+executor       class                  P(succ)  evidence 
+--------------------------------------------------------------
+careless       t0.csv_to_json            0.50         6
+stubborn       t0.csv_to_json            0.25         2
+careless       t0.extract_fields         0.50         6
+stubborn       t0.extract_fields         0.25         2
+careless       t1.clean_dataset          0.50         6
+stubborn       t1.clean_dataset          0.25         2
+careless       t1.request_timeout        0.50         6
+stubborn       t1.request_timeout        0.25         2
+careless       t2.pipeline               0.50         6
+stubborn       t2.pipeline               0.25         2
+
+  Built only from independent verdicts. An executor's own
+  account of how it went never enters this table.
