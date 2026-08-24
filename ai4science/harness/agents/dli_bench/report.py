@@ -25,7 +25,7 @@ def frontier_table(cs: Dict[Tuple[str, str], Cell],
     Rows are intervention budgets, columns reliability thresholds, cells the
     hardest band held. This is the measurement; ``DL4`` is a caption for it.
     """
-    w = 12
+    w = 14
     out = ["%-6s" % "" + "".join(("p>=%.2f" % p).rjust(w) for p in ps)]
     out.append("-" * (6 + w * len(ps)))
     for h in budgets:
@@ -124,8 +124,32 @@ def full_report(episodes: Sequence[Episode], tasks: Dict[str, TaskSpec],
     L += ["", "  The general label is the MINIMUM across families. One domain "
           "does not", "  set the level: a system at DL4 on software and DL2 on "
           "research is not DL4.", "", "WHAT THIS DID NOT COVER", "-" * 23, ""]
-    for lv in missing_levels():
+    absent = missing_levels()
+    for lv in absent:
         L.append("  %-8s %s" % (lv, COVERAGE[lv]))
-    L += ["", "  A suite that covers less than its scale must say so. Levels "
-          "absent here", "  are absent from the evidence, not passed."]
+    if not absent:
+        L.append("  Every level is posed by something.")
+    # Every level being posed is not the same as coverage being complete, and
+    # printing only the first would read as the second.
+    try:
+        from .catalog import crosswalk, load
+        cards = load()
+        xw = crosswalk(cards)
+        gaps: Dict[str, List[str]] = {}
+        for c in cards:
+            if not xw[c.task_id]:
+                gaps.setdefault(c.level, [])
+                if c.family not in gaps[c.level]:
+                    gaps[c.level].append(c.family)
+        if gaps:
+            L += ["", "  Specified but not posed, by level and family:"]
+            for lv in sorted(gaps):
+                L.append("    %-9s %s" % (lv, ", ".join(sorted(gaps[lv]))))
+            n = sum(1 for c in cards if not xw[c.task_id])
+            L.append("    %d of %d catalogue cards have nothing that can run them."
+                     % (n, len(cards)))
+    except Exception:                       # the catalogue is optional
+        pass
+    L += ["", "  A suite that covers less than its scale must say so. What is "
+          "absent here", "  is absent from the evidence, not passed."]
     return "\n".join(L)

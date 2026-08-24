@@ -28,7 +28,7 @@ from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 from .spec import BUDGETS, Episode, TaskSpec, budget_index
 
-BANDS: Tuple[str, ...] = ("T0", "T1", "T2", "T3", "T4", "T5", "T6")
+BANDS: Tuple[str, ...] = ("T0", "T1", "T2", "T3", "T4", "T5", "T6", "TOmega")
 
 #: What each level requires: a band, and a budget no looser than this one.
 #:
@@ -45,9 +45,11 @@ LEVEL_REQ: Dict[str, Tuple[str, str]] = {
     "DL4": ("T4", "H1"),
     "DL5": ("T5", "H1"),
     "DL6": ("T6", "H1"),
+    "DLOmega": ("TOmega", "H1"),
 }
 
-LEVEL_ORDER: Tuple[str, ...] = ("DL0", "DL1", "DL2", "DL3", "DL4", "DL5", "DL6")
+LEVEL_ORDER: Tuple[str, ...] = ("DL0", "DL1", "DL2", "DL3", "DL4",
+                                "DL5", "DL6", "DLOmega")
 
 NOT_ESTABLISHED = "none established"
 

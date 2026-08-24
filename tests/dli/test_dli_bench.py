@@ -120,13 +120,18 @@ def test_every_verifier_says_what_it_misses(key, tmp_path):
     assert g.verify(tmp_path / "work", tmp_path / "keyed").note
 
 
-def test_coverage_names_what_is_not_built():
-    """A suite covering less than its scale must say so rather than let a short
-    list imply the rest passed."""
-    absent = {k for k, v in COVERAGE.items() if v.startswith("NOT BUILT")}
-    assert absent == {"DL4", "DL6", "DLOmega"}
-    for lvl in absent:
-        assert not any(g.level == lvl for g in GENERATORS.values())
+def test_coverage_matches_what_actually_exists():
+    """Coverage is a claim and must be checked against the registries rather
+    than maintained by hand. Every level marked built must be posed by
+    something, and every level marked absent by nothing."""
+    from ai4science.harness.agents.dli_bench.envs import ENVIRONMENTS
+    for lvl, state in COVERAGE.items():
+        posed = (any(g.level == lvl for g in GENERATORS.values())
+                 or any(e.level == lvl for e in ENVIRONMENTS.values()))
+        if state.startswith("NOT BUILT"):
+            assert not posed, "%s is marked absent and something poses it" % lvl
+        else:
+            assert posed, "%s is marked built and nothing poses it" % lvl
 
 
 # --------------------------------------------------------------- the policy
@@ -274,18 +279,25 @@ def test_catalogue_loads_all_96_cards():
                                          "planning", "document", "tools"}
 
 
-def test_crosswalk_only_claims_cards_a_generator_can_pose():
+def test_crosswalk_only_claims_cards_something_can_actually_pose():
+    """A card may be posed by a generator or by an environment. Either way the
+    level and family must match, or the crosswalk is claiming coverage it does
+    not have."""
     from ai4science.harness.agents.dli_bench import catalog
+    from ai4science.harness.agents.dli_bench.envs import ENVIRONMENTS
     cards = catalog.load()
     xw = catalog.crosswalk(cards)
     for c in cards:
         for key in xw[c.task_id]:
-            g = GENERATORS[key]
-            assert g.level == c.level and g.family == c.family
-    # The levels with no generator must claim nothing.
-    for c in cards:
-        if c.level in ("DL4", "DL6", "DLOmega"):
-            assert xw[c.task_id] == ()
+            poser = GENERATORS.get(key) or ENVIRONMENTS.get(key)
+            assert poser is not None, "%s claims %r, which is in neither registry" % (c.task_id, key)
+            assert poser.level == c.level and poser.family == c.family
+    # The upper levels are posed by environments, and only in their own family.
+    upper = [c for c in cards if c.level in ("DL4", "DL6", "DLOmega")]
+    claimed = [c for c in upper if xw[c.task_id]]
+    assert claimed, "the environments pose nothing; the crosswalk lost them"
+    for c in claimed:
+        assert all(k in ENVIRONMENTS for k in xw[c.task_id])
 
 
 def test_rescaling_beats_clamping_on_the_catalogue():

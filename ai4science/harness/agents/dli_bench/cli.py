@@ -5,6 +5,8 @@
     dli_bench build DIR --seeds 0-9  materialise the dataset and its manifest
     dli_bench verify DIR             score one completed instance
     dli_bench demo                   run the reference solvers and print a report
+    dli_bench envs                   the DL4/DL6/DLOmega environments
+    dli_bench run-env KEY --seed 0   drive one with a scripted policy
     dli_bench catalog                the 96 specified cards, and which can run
     dli_bench report EPISODES.jsonl  the frontier, from logged episodes
 """
@@ -133,12 +135,87 @@ def cmd_demo(a) -> int:
                     self_authored_criteria=0,
                     verifier_false_pass_rate=v.false_pass,
                     wall_seconds=1.0))
+    # The environments report into the same frontier. Without them the table
+    # stops at T5 and the upper levels look untested rather than passed.
+    if not a.only:
+        from .envs import COMPETENT, ENVIRONMENTS
+        from .spec import Difficulty, Loss
+        for k, es in ENVIRONMENTS.items():
+            for s_ in seeds:
+                env = es.instantiate(s_)
+                COMPETENT[k](env)
+                v = env.score()
+                tid = "%s#%d" % (k, s_)
+                specs[tid] = TaskSpec(
+                    task_id=tid, family=es.family, level=es.level,
+                    difficulty=es.difficulty, prompt=es.brief, loss=es.loss,
+                    verifier_note=es.verifier_note, seed=s_)
+                iv = Intervention(
+                    kind="approval", cognitive=False, cid=0,
+                    raised_at=t0.isoformat().replace("+00:00", "Z"),
+                    responded_at=(t0 + timedelta(seconds=40)).isoformat().replace("+00:00", "Z"),
+                    minutes=0.2, note="authorised the run")
+                episodes.append(Episode(
+                    task_id=tid, system="reference policies",
+                    budget="H1", band=es.difficulty.band, family=es.family,
+                    outcome="success" if v.passed else "failure",
+                    acceptance_locus="alpha2",
+                    verifier_id="dli_bench.envs/%s" % k,
+                    interventions=[iv],
+                    acceptance_events=1, self_authored_criteria=0,
+                    verifier_false_pass_rate=v.false_pass,
+                    wall_seconds=1.0))
+
     print(full_report(episodes, specs, system="reference solvers (harness check)"))
     if a.episodes:
         Path(a.episodes).write_text(
             "\n".join(e.to_json() for e in episodes) + "\n", encoding="utf-8")
         print("\nepisodes written to %s" % a.episodes)
     return 0
+
+
+def cmd_envs(_a) -> int:
+    from .envs import ENVIRONMENTS
+    for k, e in ENVIRONMENTS.items():
+        print("%-16s %-8s %-9s band=%-8s budget=%.0f" % (k, e.level, e.family,
+                                                         e.difficulty.band, e.budget))
+        print("    %s" % e.brief)
+        print("    checked by: %s" % e.verifier_note)
+        print()
+    print("An environment is not a task: the world acts on its own, on action")
+    print("count so a run reproduces, and scoring reads the transcript rather")
+    print("than the agent's account of itself.")
+    return 0
+
+
+def cmd_run_env(a) -> int:
+    from .envs import COMPETENT, ENVIRONMENTS, NAIVE
+    if a.key not in ENVIRONMENTS:
+        print("unknown environment %r; try: %s" % (a.key, ", ".join(ENVIRONMENTS)),
+              file=sys.stderr)
+        return 2
+    spec = ENVIRONMENTS[a.key]
+    env = spec.instantiate(a.seed, a.budget)
+    print("%s  seed=%d  budget=%.0f" % (spec.key, a.seed, env.budget))
+    print()
+    print(spec.brief)
+    print()
+    print(env.brief())
+    print()
+    policy = (NAIVE if a.policy == "naive" else COMPETENT)[spec.key]
+    policy(env)
+    v = env.score()
+    print("policy: %s" % a.policy)
+    print("actions: %d meaningful, %.1f of %.0f budget spent"
+          % (env.meaningful_actions, env.spent, env.budget))
+    fired = [e.kind for e in env.events if e.fired]
+    print("the world acted: %s" % ("; ".join(fired) or "nothing fired"))
+    print()
+    print(v.report())
+    if a.transcript:
+        Path(a.transcript).write_text(env.transcript_json() + "\n", encoding="utf-8")
+        print("\ntranscript written to %s" % a.transcript)
+    return 0 if v.passed else 1
 
 
 def cmd_catalog(a) -> int:
@@ -204,6 +281,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     d.add_argument("--only", nargs="*", default=None)
     d.add_argument("--episodes", default=None, help="also write the episode log here")
     d.set_defaults(fn=cmd_demo)
+
+    ev = sub.add_parser("envs", help="the DL4/DL6/DLOmega environments")
+    ev.set_defaults(fn=cmd_envs)
+
+    re_ = sub.add_parser("run-env", help="drive an environment with a scripted policy")
+    re_.add_argument("key")
+    re_.add_argument("--seed", type=int, default=0)
+    re_.add_argument("--budget", type=float, default=None)
+    re_.add_argument("--policy", choices=("competent", "naive"), default="competent")
+    re_.add_argument("--transcript", default=None)
+    re_.set_defaults(fn=cmd_run_env)
 
     c = sub.add_parser("catalog", help="the 96-card catalogue, and what can run it")
     c.add_argument("--runnable-only", action="store_true")

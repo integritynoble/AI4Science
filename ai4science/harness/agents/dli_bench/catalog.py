@@ -106,7 +106,7 @@ def load(path: Path = CATALOG) -> List[Card]:
         out.append(Card(
             task_id=r["task_id"],
             level=r["target_dl"].replace("Ω", "Omega"),
-            band=r["task_band"],
+            band=r["task_band"].replace("\u03a9", "Omega"),
             family=FAMILY_ALIAS.get(r["family"], r["family"]),
             title=r.get("task_title", ""),
             prompt=r.get("delegation_prompt", ""),
@@ -125,9 +125,18 @@ def load(path: Path = CATALOG) -> List[Card]:
 
 
 def executable_for(card: Card) -> Tuple[str, ...]:
-    """Generators that can pose this card: same level, same family."""
-    return tuple(sorted(k for k, g in GENERATORS.items()
-                        if g.level == card.level and g.family == card.family))
+    """What can pose this card: same level, same family.
+
+    Either a task generator or an environment. The upper levels are posed by
+    environments and the lower ones by generators, and a card does not care
+    which -- it cares whether anything can run it.
+    """
+    from .envs import ENVIRONMENTS
+    out = [k for k, g in GENERATORS.items()
+           if g.level == card.level and g.family == card.family]
+    out += [k for k, e in ENVIRONMENTS.items()
+            if e.level == card.level and e.family == card.family]
+    return tuple(sorted(out))
 
 
 def crosswalk(cards: Optional[Sequence[Card]] = None) -> Dict[str, Tuple[str, ...]]:
@@ -159,20 +168,20 @@ def coverage_report(cards: Optional[Sequence[Card]] = None) -> str:
         if lvl not in by_level:
             continue
         total, run = by_level[lvl]
-        gap = "" if run == total else COVERAGE.get(lvl, "")
-        if gap.startswith("built"):
+        gap = ""
+        if run != total:
             fams = sorted({c.family for c in cards
                            if c.level == lvl and not xw[c.task_id]})
-            gap = "no generator for: %s" % ", ".join(fams)
+            gap = "nothing poses: %s" % ", ".join(fams)
         L.append("%-10s %8d %10d   %s" % (lvl, total, run, gap[:44]))
 
     L += ["", "families with no executable generator at any level:"]
-    fams_run = {g.family for g in GENERATORS.values()}
+    from .envs import ENVIRONMENTS as _E
+    fams_run = {g.family for g in GENERATORS.values()} | {e.family for e in _E.values()}
     fams_all = {c.family for c in cards}
     L.append("  " + (", ".join(sorted(fams_all - fams_run)) or "none"))
 
-    mismatched = [c for c in cards if c.declared_band != c.band
-                  and c.band in ("T0", "T1", "T2", "T3", "T4", "T5", "T6")]
+    mismatched = [c for c in cards if c.declared_band != c.band]
     L += ["", "cards whose difficulty vector does not band where they claim: %d of %d"
           % (len(mismatched), len(cards))]
     if mismatched:

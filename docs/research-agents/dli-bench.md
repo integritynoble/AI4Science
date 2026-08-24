@@ -1,10 +1,11 @@
 # DLI-Bench — the delegation benchmark, built
 
-**Status: DL0–DL3 and DL5 run today. DL4, DL6 and DLΩ are specified and not
-built, and are named as absent rather than left to be inferred.** 120
-executable instances from 12 generators across four families, every one with a
-verifier shown to *pass a correct solution* as well as refuse an empty one,
-joined to a 96-card specification covering all eight levels. 111 tests.
+**Status: all eight levels run.** DL0–DL3 and DL5 are task generators — 120
+executable instances across four families. DL4, DL6 and DLΩ are **environments**,
+because a static task cannot pose them. Every verifier is shown to *pass
+competent work* as well as refuse an empty attempt, and every environment is
+shown to *be winnable* as well as to reject naive play. Joined to a 96-card
+specification covering all eight levels. 174 tests.
 
 The framework this implements is *Delegation Intelligence*, and the repairs it
 takes as read are in *Difficulty Is Not the Index*. The one-line version:
@@ -41,13 +42,15 @@ per-card fact:
 
 ```
 cards specified: 96
-cards a generator can pose: 22
-cards that are specification only: 74
+cards a generator can pose: 28
+cards that are specification only: 68
 ```
 
-That is the honest state: a plan for 96 tasks, and a measurement for 22 of
-them. The gaps are `document` and `planning` — no generator at any level — and
-DL4, DL6 and DLΩ, which need environments rather than tasks (§6).
+That is the honest state: a plan for 96 tasks, and a measurement for 28 of
+them — every *level* is now posed by something, but not every family at every
+level. The remaining gap is `document`, which nothing poses at any level, and
+the family/level cells the catalogue names that no generator or environment
+covers yet.
 
 ### The two scales disagreed, and it was a scale
 
@@ -226,31 +229,107 @@ impressive example is never enough.
 A system at DL3 on software and DL0 on tools is not DL3. Levels are reported
 per family and the general label is the **minimum** across them.
 
-## 6. What is not built
+## 6. The three environments
 
-Named rather than implied. A suite that covers less than its scale and stays
-quiet reads as though the rest passed.
+DL4, DL6 and DLΩ are not tasks, and the reason is structural rather than a
+matter of size. A task hands over a workspace and takes back a verdict. These
+levels need a **world that acts on its own**, so the agent's plan can be made
+wrong by something other than its own mistake.
 
-**DL4** needs a long-horizon environment: 20–100+ meaningful actions, an
-underspecified but resolvable question, an unexpected failure, forced
-replanning, a resource budget, and state that must survive. Composing the
-existing T2 and T3 generators into a chained project with injected perturbations
-is the cheapest honest route, and is not done.
+Three rules hold across all three. Hidden state is never in an observation —
+each hidden field is mutated after setup and the observation must not move, and
+that is a test. Events fire on **action count**, not wall clock, so a run
+reproduces and a slow agent is not a different experiment. And scoring reads the
+**transcript**, not the agent's account of itself.
 
-**DL6** cannot be posed by a static task. A mission needs a sandbox whose
-priorities change *during* the run — new failures appear, one planned project
-becomes unnecessary, evidence shifts — so that continuing the original plan is
-the wrong behaviour. The measurement is that fewer than 10% of tasks were
-human-generated, across at least three independently generated projects.
+```
+python -m ai4science.harness.agents.dli_bench envs
+python -m ai4science.harness.agents.dli_bench run-env dl6.mission --seed 4
+python -m ai4science.harness.agents.dli_bench run-env dl6.mission --policy naive
+```
 
-**DLΩ** needs a charter world with a hidden opportunity structure: `Q1…Qn` of
-differing value, some distractors, some unlocking others. Scoring must be
-validated utility and frontier expansion, never mission *count*, which rewards
-activity. And it needs at least five mission cycles where later missions exist
-because of earlier discoveries — one long run is not evidence of open-endedness.
+### DL4 · `dl4.project` — the plan has to change inside the run
 
-All three are environments rather than tasks, which is why they are a separate
-build and not three more rows in the table.
+> *Process the data, compare the three modelling approaches, choose the best on
+> validated evidence, hand back something reproducible. Stay inside the budget.*
+
+Four things are hidden, and each demands a different competence.
+
+| Hidden | What it tests |
+|---|---|
+| One source is corrupt | Looking before using. Invisible to an agent that does not inspect |
+| One approach does not apply here | Honesty. It fails rather than scoring badly; the brief said compare three |
+| Experiments are noisy, budget is finite | The resource decision. One run each picks wrong about 1 in 12; ten each makes it certain |
+| **The run is interrupted** | Memory. Working state is wiped; whatever was checkpointed survives |
+
+The interruption is the one a task cannot pose. It fires at a hidden action
+count, and the score asks for a checkpoint *before* it and a resume *after* it.
+
+### DL6 · `dl6.mission` — a mission is what you do when things change
+
+> *For this period: keep the service reliable and efficient, do not break
+> compatibility, stay inside the budget. No projects are supplied.*
+
+The world moves three times, and the middle one is the real test:
+
+1. **a defect appears** that did not exist when the agent made its plan;
+2. **the workload shifts** — one component becomes urgent and **another becomes
+   pointless**. An agent that keeps working the pointless one is executing a
+   plan, not running a mission. Scored as `actions_on_obsolete_component`;
+3. **the budget is cut**, so something has to be dropped *on purpose*. The
+   report must say what.
+
+One fix method breaks compatibility. Nothing says which; the evidence is in the
+component, for an agent that looks before it acts.
+
+The measurement is ≥3 agent-generated projects with real tasks, a
+human-generated task fraction below 10%, final health ≥0.75, and compatibility
+intact.
+
+### DLΩ · `dlomega.charter` — the agent chooses the problems
+
+> *Standing charter: find out what is true in this world and establish it,
+> within the rules and the budget. No mission is supplied.*
+
+A hidden opportunity graph of 14 questions. Three properties make choosing hard
+rather than merely long:
+
+- **Distractors** present a strong surface signal and are worth nothing.
+  Investigating far enough reveals it; committing on the signal does not. The
+  naive policy chases promise and validates nothing at all.
+- **Some unlock others.** A cheap, dull-looking question can open a chain worth
+  more than anything visible at the start, so the greedy order is not the good
+  one. That is what *frontier expansion* means operationally: not what you
+  solved, but what you made solvable.
+- **The world moves.** A new question opens; a line of inquiry closes. An agent
+  that surveys once has stopped looking.
+
+**Mission count is deliberately not rewarded.** A mission that validated nothing
+scores as though it was never opened, because counting missions rewards
+activity. What counts is validated utility, what was unlocked, and
+`missions_built_on_earlier_findings` — the only observable difference between an
+open-ended agent and one running a long list.
+
+### The Ω band
+
+`TΩ` is not "T5 but longer". T5 is *the method is unknown*; TΩ is *the problem
+is unchosen*. The band function requires novelty **and** ambiguity **and** a
+world that changes, so an unknown method alone bands T5 and a moving world with
+a given goal bands T6.
+
+### Proved both ways
+
+Each environment has a **competent** policy that must pass and a **naive** one
+that must fail — and the naive ones fail for the intended reason, not by
+accident:
+
+| | naive play | what it fails on |
+|---|---|---|
+| DL4 | trusts the brief, one run each, nothing persisted | never found the corrupt source; invented a score for the approach that does not apply |
+| DL6 | plans at the start, never looks again | health short of threshold; no agent-generated projects |
+| DLΩ | chases the strongest surface signal | 0 validated, 0 utility — the signal was the distractor |
+
+Five seeds each, both directions, in `tests/dli/test_dli_envs.py`.
 
 ## 7. Organizational delegation
 
@@ -274,5 +353,6 @@ ai4science/harness/agents/dli_bench/
 ├── cli.py          list / policy / build / verify / demo / report
 ├── tasks/          the generators
 └── dataset/manifest.jsonl    120 instances
-tests/dli/test_dli_bench.py   107 tests
+tests/dli/test_dli_bench.py   the tasks
+tests/dli/test_dli_envs.py    the environments      174 tests total
 ```

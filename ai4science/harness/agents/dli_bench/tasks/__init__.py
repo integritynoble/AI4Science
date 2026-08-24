@@ -32,14 +32,19 @@ COVERAGE: Dict[str, str] = {
     "DL1": "built -- 3 generators, exact verification",
     "DL2": "built -- 2 generators, withheld test suites",
     "DL3": "built -- 1 generator, measured against the original in-session",
-    "DL4": "NOT BUILT -- needs a long-horizon environment with injected failures "
-           "and a resource budget; see docs, section 'What is not built'",
+    "DL4": "built -- 1 environment: long horizon, a corrupt source nobody "
+           "names, an outage, a forced interruption, a budget",
     "DL5": "built -- 1 generator, sealed mechanism scored by extrapolation",
-    "DL6": "NOT BUILT -- needs a dynamic sandbox in which priorities change "
-           "during the run; a static task cannot pose a mission",
-    "DLOmega": "NOT BUILT -- needs a charter world with a hidden opportunity "
-               "structure and repeated mission cycles",
+    "DL6": "built -- 1 environment: a mission, with priorities that move "
+           "during the run and a budget cut partway",
+    "DLOmega": "built -- 1 environment: a charter, a hidden opportunity graph "
+               "with distractors and unlocks, scored on validated utility",
 }
+
+#: Levels posed by an environment rather than a task generator. Kept distinct
+#: because the interaction differs in kind: a task has a workspace and a
+#: verdict, an environment has a transcript and a world that acts on its own.
+ENVIRONMENT_LEVELS: Tuple[str, ...] = ("DL4", "DL6", "DLOmega")
 
 
 def by_level(level: str) -> Tuple[Generator, ...]:
@@ -52,3 +57,7 @@ def by_family(family: str) -> Tuple[Generator, ...]:
 
 def missing_levels() -> Tuple[str, ...]:
     return tuple(k for k, v in COVERAGE.items() if v.startswith("NOT BUILT"))
+
+
+def posed_by_environment(level: str) -> bool:
+    return level in ENVIRONMENT_LEVELS

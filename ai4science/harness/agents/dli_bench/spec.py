@@ -92,10 +92,20 @@ class Difficulty:
         different kind of task, not a longer one.
         """
         v = self.vector()
-        if v["novelty"] >= 4:
-            return "T5"
+        # Order matters, and the three special cases are ordered by how much of
+        # the problem the agent has to supply rather than by how hard it is.
+        if v["novelty"] >= 4 and v["change"] >= 3 and v["ambiguity"] >= 4:
+            # Nothing is delegated but the purpose: the agent chooses the
+            # problems, in a world that moves while it does.
+            return "TOmega"
         if v["change"] >= 3 and v["horizon"] >= 4:
+            # A mission: the goal is given, the projects are not, and the
+            # priorities move during the run.
             return "T6"
+        if v["novelty"] >= 4:
+            # The method is not known in advance. That is a different kind of
+            # task, not a longer one.
+            return "T5"
         weight = (v["horizon"] + v["coordination"] + v["uncertainty"]
                   + v["ambiguity"] + v["tooling"] + v["novelty"])
         if weight <= 2:
@@ -110,7 +120,8 @@ class Difficulty:
 
     @staticmethod
     def band_index(band: str) -> int:
-        return int(band[1:])
+        from .frontier import BANDS  # local: frontier imports spec
+        return BANDS.index(band)
 
 
 # --------------------------------------------------------------------------
