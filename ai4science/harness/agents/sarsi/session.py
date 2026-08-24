@@ -1043,6 +1043,23 @@ def _kickoff_marker(text: str) -> str:
     return (text or "")[:40]
 
 
+def runtime_for(task: tsk.Task, runtime: Optional[Any] = None) -> Any:
+    """The runtime that owns this task's session, by transport.
+
+    The public name, because two callers outside this module use it and always
+    did: `chat._guided` steers a plain line into a live session, and
+    `retry.hand_back` reopens one. The rename to `_rt` never reached either, so
+    both raised `AttributeError` the moment their own `runtime` was None — and
+    the web gateway passes no runtime at all. Nothing in the suite caught it
+    because every test hands one in; a live conversation found it on the second
+    turn after a task was filed.
+
+    Argument order is the caller's: the task is the subject, and an injected
+    runtime is the optional override.
+    """
+    return _rt(runtime, task)
+
+
 def _rt(runtime: Optional[Any], task: tsk.Task) -> Any:
     """The runtime that owns this task's session, by transport."""
     sess = task.session or {}

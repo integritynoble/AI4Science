@@ -31,6 +31,8 @@ Two things this deliberately will not do:
 """
 from __future__ import annotations
 
+import re
+
 from typing import Any, Dict, List, Optional
 
 from ai4science.harness.agents.sarsi.registry import Agent, Config
@@ -886,6 +888,53 @@ def _save_context_snapshot(agent: "Agent", ctx: str, observation: str = "", *,
         pass
 
 
+def record_route(agent: "Agent", route: Any, *, surface: str = "cli",
+                 observation: str = "") -> None:
+    """Record a routing decision for a turn that assembled NO context. [§11.2]
+
+    §11.2 requires that the router's decision be recorded in the context
+    manifest and replayable. It was recorded only when the gate ran — and the
+    gate does not run for a turn the door handles and returns: a greeting, a
+    correction, a directive that gets filed, or a request refused as "something
+    to DO". Measured on a ten-turn walk, 2026-08-24: five of ten turns left no
+    row at all, and **every ACTION-handled turn was in that set**. The most
+    consequential routing decisions on the door were the ones with no record.
+
+    The row carries no `gz_path` and an empty `sha256`, because there were no
+    context bytes: this turn's cost was zero, which is the finding. `replay`
+    therefore returns None for it, correctly — there is nothing to replay, and
+    a row claiming otherwise would be worse than no row.
+
+    Never raises. A missing audit line must not break the answer it describes.
+    """
+    import json
+    import uuid
+    from datetime import datetime, timezone
+    try:
+        record = {
+            "schema_version": 2,
+            "context_id": f"rt_{uuid.uuid4().hex[:12]}",
+            "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "surface": surface,
+            "sha256": "",
+            "byte_count": 0,
+            "gz_path": "",
+            "query_snippet": (observation or "")[:80],
+            "mode": getattr(route, "mode", ""),
+            "gate_version": GATE_VERSION,
+            "router_version": getattr(route, "router_version", ""),
+            "route": route.as_record() if hasattr(route, "as_record") else {},
+            "context": "none — the door answered this turn without the gate",
+            "sections": [],
+            "selected": {},
+            "omitted": {},
+        }
+        with (agent.agent_dir / "context_manifest.jsonl").open("a") as mf:
+            mf.write(json.dumps(record, sort_keys=True, default=str) + "\n")
+    except Exception:
+        pass
+
+
 def manifest(agent_dir: "Path", limit: int = 0) -> List[Dict[str, Any]]:
     """The context manifest, oldest-first. Rows that predate a schema version
     are returned as they were written — history is read, not rewritten."""
@@ -942,4 +991,23 @@ def is_about_self(line: str) -> bool:
     words = set(text.replace("?", " ").replace(",", " ").split())
     if not (words & set(_SELF) or any(p in text for p in ("i am", "am i"))):
         return False
-    return bool(words & set(_ABOUT))
+    if not (words & set(_ABOUT)):
+        return False
+    return not _PAST_TENSE.search(text)
+
+
+#: A question in the PAST TENSE is asking about history, and the self-model has
+#: no answer about history: it is a measurement of the state right now.
+#:
+#: Measured on a live conversation, 2026-08-24: "what did I ask you to do about
+#: the GAP-TV solver?" was answered with the canned self-model page, because
+#: "you" is a self word and "what" is in `_ABOUT`. So were "what did you find
+#: in the benchmark last week?" and "which solver did I tell you to use?" —
+#: every one a question about what happened, and every one met with a page
+#: about what the agent is. That is precisely the failure this predicate's own
+#: docstring names: a canned page standing in for a real answer.
+#:
+#: Falling through is not a refusal. The turn goes to the ordinary
+#: conversational path, where retrieval can find what actually happened —
+#: which is the right machinery for a question about the past.
+_PAST_TENSE = re.compile(r"\b(?:did|was|were|had|used\s+to)\b")

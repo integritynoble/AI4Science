@@ -12,6 +12,12 @@ def state_dir(tmp_path, monkeypatch):
 
 
 ALIVE = lambda pid: True
+#: `get_by_cwd` takes `alive` too, and a test that omits it asks the REAL
+#: process table whether pid 11 and pid 12 are running. On this host pid 11 is
+#: (a kernel thread) and pid 12 is not, so the two records stopped disagreeing,
+#: the refusal never fired, and `test_get_by_cwd_refuses_when_ceilings_disagree`
+#: failed for a reason that has nothing to do with supervisor.py. Whether a
+#: low-numbered pid happens to exist is not a property of the code under test.
 
 
 def test_create_allocates_default_name_from_cwd():
@@ -69,7 +75,7 @@ def test_close_releases_name():
 
 def test_get_by_cwd_for_hook_resolution():
     sup.create(pid=7, cwd="/home/me/proj", ceiling="A2", alive=ALIVE)
-    r = sup.get_by_cwd("/home/me/proj")
+    r = sup.get_by_cwd("/home/me/proj", alive=ALIVE)
     assert r and r["ceiling"] == "A2"
 
 
@@ -94,7 +100,7 @@ def test_get_by_cwd_refuses_when_ceilings_disagree():
     ceiling, which is at least deterministic and inspectable."""
     sup.create(pid=11, cwd="/home/me/shared", ceiling="A1", alive=ALIVE)
     sup.create(pid=12, cwd="/home/me/shared", ceiling="A3", alive=ALIVE)
-    assert sup.get_by_cwd("/home/me/shared") is None
+    assert sup.get_by_cwd("/home/me/shared", alive=ALIVE) is None
 
 
 def test_get_by_cwd_still_answers_when_ceilings_agree():
@@ -102,7 +108,7 @@ def test_get_by_cwd_still_answers_when_ceilings_agree():
     genuine DISAGREEMENT is unanswerable."""
     sup.create(pid=21, cwd="/home/me/agree", ceiling="A2", alive=ALIVE)
     sup.create(pid=22, cwd="/home/me/agree", ceiling="A2", alive=ALIVE)
-    r = sup.get_by_cwd("/home/me/agree")
+    r = sup.get_by_cwd("/home/me/agree", alive=ALIVE)
     assert r and r["ceiling"] == "A2"
 
 
