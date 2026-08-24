@@ -166,23 +166,20 @@ def test_the_standard_is_the_record_not_the_file(config, agent):
     """The property that must not move. The rewritten file drops `contains 42`;
     what is judged still has it.
 
-    Spied rather than checked, because `out.txt exists and contains 42` is a
-    COMPOUND criterion and `verify.check` cannot settle it: it splits on `and`
-    and the second clause, `contains 42`, names no file, so the whole thing
-    falls through to the model. That is a real limit of the checker and it is
-    the reason this test can still watch what the verifier was handed."""
-    t = _task(config, agent, released=True)
+    Shown with the artifact rather than by watching what the verifier is
+    handed. `out.txt exists and contains 42` became deterministic once the
+    checker learned to carry a subject across `and`, so out.txt says `7`: the
+    RECORDED criterion fails, the rewritten one would have passed, and a check
+    settles which of the two was applied."""
+    t = _task(config, agent, released=True, artifact="7\n")
     _rewrite(agent, t)
-    seen = {}
 
-    def spy(**kw):
-        seen.update(kw)
-        return {"state": "PASS", "why": "ok"}
+    t = ses.verify(config, agent, t, verifier=_passing, evidence="out.txt: 7",
+                   runtime=Runtime(), now=time.time)
 
-    ses.verify(config, agent, t, verifier=spy, evidence="e", runtime=Runtime(),
-               now=time.time)
-    judged = " ".join(seen.get("criteria") or [])
-    assert "42" in judged, seen
+    assert t.verdict["state"] == "FAIL", t.verdict
+    assert t.verdict.get("deterministic") is True
+    assert "42" in " ".join(t.verdict["criteria"])
 
 
 def test_a_session_cannot_lower_its_own_bar(config, agent):
