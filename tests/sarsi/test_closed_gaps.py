@@ -346,3 +346,57 @@ def test_a_session_that_spends_its_step_is_released(config, agent):
                           evidence="", engine="claude", index=0, now=time.time)
     assert t.session is None, "the tightened allowance is one phase"
     assert tsk.earliest_incomplete(t) == 1
+
+
+# ── the goal the plan carries is still the owner's goal ─────────────────────
+
+def _drift_case(config, agent, goal, plan_goal, criterion, content):
+    from ai4science.harness.agents.sarsi import plan as _pl
+    t = tsk.create(config, agent, wk.Directive(agent_id=agent.id, goal=goal))
+    P = _pl.Plan(goal=plan_goal,
+                 phases=[_pl.Phase(title="w", verified_when=criterion)])
+    (tsk.dir_of(agent, t.id) / "plan0.md").write_text(P.render())
+    t = tsk.attach_plan(config, agent, t, P)
+    t.plan_owner_edited = True
+    wd = ses.work_dir_for(agent, t)
+    wd.mkdir(parents=True, exist_ok=True)
+    (wd / criterion.split()[0]).write_text(content)
+    t = ses._verify_phase(config, agent, t, verifier=lambda **k: {"state": "FAIL"},
+                          evidence="", engine="stub", index=0, now=time.time)
+    return t.phase_verdicts["0"]
+
+
+def test_a_session_rewriting_the_goal_is_reported_on_the_verdict(config, agent):
+    """Found by running ten real tasks. The owner asked for RESULT.txt "saying
+    the run failed" against a criterion of "contains SUCCEEDED"; the session,
+    given authorship of plan0.md, resolved the contradiction by rewriting the
+    GOAL, wrote SUCCEEDED, and the deterministic check passed it. The task
+    reached `verified` with the instruction inverted — every part working, and
+    the criterion not being the point.
+
+    `criteria_drift` guarded the criteria and nothing guarded the goal."""
+    v = _drift_case(config, agent, "write RESULT.txt saying the run failed",
+                    "Produce RESULT.txt in this directory reporting SUCCEEDED",
+                    "RESULT.txt contains SUCCEEDED", "SUCCEEDED\n")
+    assert v["state"] == "PASS"          # the criterion really was met
+    assert "failed" in v["goal_drift"]   # and the verdict says what was dropped
+
+
+def test_but_a_faithful_rewording_is_not_reported(config, agent):
+    """`create` where the owner said `write` is the same instruction. A check
+    that fires on every rephrase is one nobody reads."""
+    v = _drift_case(config, agent, "write VERSION.txt containing the version 1.0.0",
+                    "Create VERSION.txt in this directory containing the version string 1.0.0",
+                    "VERSION.txt contains 1.0.0", "1.0.0\n")
+    assert "goal_drift" not in v
+
+
+def test_goal_drift_reports_and_never_adopts(config, agent):
+    """Same doctrine as `criteria_drift`: the file is writable by the party
+    being judged, so reconciling it is a decision, not a refresh."""
+    v = _drift_case(config, agent, "write RESULT.txt saying the run failed",
+                    "Produce RESULT.txt reporting SUCCEEDED",
+                    "RESULT.txt contains SUCCEEDED", "SUCCEEDED\n")
+    t = [x for x in tsk.all_of(config, agent) if x.id][-1]
+    assert t.goal == "write RESULT.txt saying the run failed"   # unchanged
+    assert v.get("goal_drift")

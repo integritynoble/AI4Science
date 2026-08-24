@@ -502,6 +502,37 @@ def _inside(name: str, cwd: Path) -> Optional[Path]:
         return None
 
 
+#: Names that mean the same program on a machine that has only one of them.
+#: PEP 394 guarantees `python3` and does NOT guarantee `python`, so a criterion
+#: written as `python -m pytest` is unrunnable on a perfectly normal host.
+_ALIASES = {"python": ("python3",), "python3": ("python",),
+            "pip": ("pip3",), "pip3": ("pip",),
+            "node": ("nodejs",), "nodejs": ("node",)}
+
+
+def _missing_command(cmd: str) -> Dict[str, Any]:
+    """UNVERIFIED, and it names the way out.
+
+    A missing binary is absence of evidence, not evidence of failure, so this
+    is never a FAIL — but "command not found: 'python'" leaves the reader to
+    work out that this box has `python3`. Measured on a real run: the session
+    wrote `python -m pytest tests -q` as its own criterion and the phase was
+    unjudgeable for a reason nobody could act on from the message alone.
+
+    It does NOT substitute the alternative. A check that quietly runs something
+    other than what the criterion named is no longer checking the criterion.
+    """
+    import shutil as _sh
+    head = (cmd.split() or [cmd])[0]
+    have = [alt for alt in _ALIASES.get(head, ()) if _sh.which(alt)]
+    hint = (f" — this machine has {', '.join(repr(h) for h in have)}; "
+            f"state the criterion with a command that exists here"
+            if have else
+            f" — nothing on PATH provides it, so no check can settle this "
+            f"criterion on this machine")
+    return _verdict(UNVERIFIED, f"command not found: {head!r}{hint}", check=cmd)
+
+
 def _check_exit_code(cmd: str, want: int, cwd: Path,
                      timeout: int) -> Dict[str, Any]:
     """A command that must exit with a SPECIFIC code."""
@@ -580,9 +611,7 @@ def _check_exit_zero(cmd: str, cwd: Path, timeout: int) -> Dict[str, Any]:
                         f"exit {r.returncode}: {err_snip}",
                         check=cmd)
     except FileNotFoundError:
-        return _verdict(UNVERIFIED,
-                        f"command not found: {cmd.split()[0]!r}",
-                        check=cmd)
+        return _missing_command(cmd)
     except RuntimeError as e:
         return _verdict(FAIL, str(e), check=cmd)
     except Exception as e:
@@ -606,8 +635,6 @@ def _check_output_contains(cmd: str, expected: str, cwd: Path,
                         f"Output: {sample}",
                         check=f"{cmd} | contains({needle!r})")
     except FileNotFoundError:
-        return _verdict(UNVERIFIED,
-                        f"command not found: {cmd.split()[0]!r}",
-                        check=cmd)
+        return _missing_command(cmd)
     except Exception as e:
         return _verdict(UNVERIFIED, f"check failed: {e}", check=cmd)

@@ -713,6 +713,24 @@ def check_expectations(config: Config, agent: Agent, *, now=time.time) -> list:
     return fired
 
 
+def _note_goal_drift(agent: Agent, task: tsk.Task,
+                     verdict: Dict[str, Any]) -> Dict[str, Any]:
+    """Put a rewritten goal ON the verdict, where a reader will meet it.
+
+    A verdict that says PASS about a criterion nobody disputes is still the
+    wrong answer if the goal underneath it was replaced — and the check cannot
+    see that, because the check judges the criterion it was given.
+    """
+    try:
+        note = tsk.goal_drift(agent, task)
+    except Exception:
+        return verdict
+    if note:
+        verdict = dict(verdict)
+        verdict["goal_drift"] = note
+    return verdict
+
+
 def _note_drift(agent: Agent, task: tsk.Task, verdict: Dict[str, Any],
                 drifted: List[int]) -> Dict[str, Any]:
     """Say on the verdict that the file has moved since it was released.
@@ -1589,6 +1607,7 @@ def _verify_phase(config: Config, agent: Agent, task: tsk.Task, *,
         # Still note any plan drift so the owner sees it.
         verdict = _note_drift(agent, task, verdict,
                               tsk.criteria_drift(agent, task))
+        verdict = _note_goal_drift(agent, task, verdict)
         from ai4science.harness.agents.sarsi import verifier as vf
         task = tsk.record_phase(config, agent, task, index, verdict, now=now)
         task.verdict = verdict
@@ -1681,6 +1700,7 @@ def _verify_phase(config: Config, agent: Agent, task: tsk.Task, *,
     verdict["independent"] = bool(engine and engine != ran_it)
     verdict = _note_drift(agent, task, verdict,
                           tsk.criteria_drift(agent, task))
+    verdict = _note_goal_drift(agent, task, verdict)
     verdict["criteria"] = [criteria[index]]
     verdict["phase"] = index + 1
     verdict["verifier"] = verifier_fingerprint()

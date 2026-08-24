@@ -386,6 +386,117 @@ def criteria_drift(agent: Agent, task: Task) -> List[int]:
     return [i for i, (a, b) in enumerate(zip(fresh, stored)) if a != b]
 
 
+#: Counting words a rewording cannot innocently drop.
+_NUMBER_WORDS = frozenset("""
+one two three four five six seven eight nine ten zero none single double
+""".split())
+
+#: Polarity. "write RESULT.txt saying the run FAILED" against a criterion of
+#: "contains SUCCEEDED" is the case this class exists for.
+_POLARITY = frozenset("""
+fail failed failing failure not no never without off false disabled disable
+empty missing absent negative down stopped refuse refused reject rejected
+""".split())
+
+#: Words too common to say anything about whether two goals mean the same.
+_GOAL_NOISE = frozenset("""
+a an the this that these those in on at of for to from with and or but is are
+be being been it its into within directory folder file files here please
+""".split()) | frozenset("""
+write writing create creating produce producing make making add adding
+generate generating record recording put putting draft drafting set setting
+""".split())
+#: The authoring verb is not the point — a plan that says "create" where the
+#: directive said "write" is the same instruction. What must survive is the
+#: OBJECT and its qualifiers, which is where "failed" lives.
+
+
+def _stem(word: str) -> str:
+    """Crude, and deliberately so — `rows`/`row`, `describing`/`describe`.
+
+    A drift report that fires on a plural is one nobody reads, and the point
+    here is to be quiet enough that the times it speaks are worth reading.
+    """
+    for suf in ("ing", "ed", "es", "s"):
+        if len(word) > len(suf) + 2 and word.endswith(suf):
+            return word[: -len(suf)]
+    return word
+
+
+def goal_drift(agent: Agent, task: Task) -> str:
+    """What the owner asked for that the plan no longer mentions ANYWHERE.
+
+    `criteria_drift` guards the criteria. Nothing guarded the GOAL — and when
+    the session writes `plan0.md` and the worker adopts it, the session is the
+    author of the goal line too.
+
+    Measured, 2026-08-24, across ten real tasks: asked for a score of **0.93**,
+    the plan said "at least 0.9" and the artifact was 0.9; asked for "exactly
+    two data rows", the plan asked only that the file contain a header, and
+    the artifact had three; asked for RESULT.txt "saying the run failed"
+    against a contradictory criterion, the session rewrote the GOAL to
+    "reporting SUCCEEDED", wrote SUCCEEDED, and the deterministic check passed
+    it. All three reached `verified`, and every component was working: the
+    criterion was met, and the criterion was not the point.
+
+    Compared against the WHOLE plan, not its heading — a title is a summary,
+    and a word it drops may well be carried by a phase. What this reports is a
+    word the owner used that the plan does not use at all.
+
+    Reports; never adopts. Same doctrine as `criteria_drift` and for the same
+    reason: the file is writable by the party being judged, so reconciling it
+    is a decision, not a refresh.
+    """
+    try:
+        raw = (dir_of(agent, task.id) / f"{task.plan_version or 'plan0'}.md").read_text()
+    except OSError:
+        return ""
+    if not raw.strip():
+        return ""
+    head = next((l[1:].strip() for l in raw.splitlines() if l.startswith("# ")), "")
+
+    import re as _re
+
+    def _tokens(text):
+        return [w for w in _re.findall(r"[a-z0-9._/-]+", (text or "").lower())]
+
+    plan_tokens = set(_tokens(raw)) | {_stem(w) for w in _tokens(raw)}
+
+    def _load_bearing(word):
+        """Only what a rewording CANNOT drop innocently.
+
+        Comparing every content word fired on nine of ten real tasks — synonyms
+        ("named"/"def"), a filename tokenised apart from its stem
+        ("design"/"design.md"), a plural. A report that speaks that often is
+        one nobody reads, and the whole value here is being quiet enough to be
+        worth reading.
+
+        These three cannot be paraphrased away:
+          * a NUMBER or version — 0.93 is not 0.9, and "two" is not "three";
+          * a FILENAME — CHANGELOG.md is a specific artifact;
+          * POLARITY — "failed", "false", "without", "never". This is the class
+            that caught the inversion, where the session rewrote the goal to
+            match a contradictory criterion.
+        """
+        if _re.fullmatch(r"[0-9]+(?:\.[0-9]+)*", word):
+            return True
+        if word in _NUMBER_WORDS:
+            return True
+        if "." in word and _re.search(r"\.[a-z0-9]{1,8}$", word):
+            return True
+        return word in _POLARITY
+
+    missing = sorted({w for w in _tokens(task.goal)
+                      if _load_bearing(w)
+                      and w not in plan_tokens and _stem(w) not in plan_tokens})
+
+    if not missing:
+        return ""
+    return (f"the plan does not mention {', '.join(repr(m) for m in missing)}, "
+            f"which you asked for: {task.goal!r}"
+            + (f" (the plan's own goal reads {head!r})" if head else ""))
+
+
 def adopt_criteria(agent: Agent, task: Task, *, now=time.time) -> List[int]:
     """The owner takes the plan FILE as the standard. Only they may.
 

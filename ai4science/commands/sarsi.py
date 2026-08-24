@@ -1073,9 +1073,21 @@ def run_cmd(agent_id: str = typer.Argument(..., help="Worker id"),
         console.print("it is drafting the plan from my initial one; "
                       "`sarsi supervise` collects it and shows what it needs",
                       style="dim", markup=False, highlight=False)
-    console.print(f"take the wheel yourself: tmux attach -t {name}   "
-                  f"(Ctrl-b d hands it back)", style="dim",
-                  markup=False, highlight=False)
+    # The way in depends on the TRANSPORT. This printed the tmux line for every
+    # session, including ACP ones the gateway owns — measured: `sarsi run` said
+    # "tmux attach -t sarsi-worker-36ca" for a session with `transport: acp`,
+    # and no such tmux session existed. Advice that sends the owner to a
+    # terminal which is not there is worse than no advice: it reads as the
+    # session being broken rather than as being reached a different way.
+    if (t.session or {}).get("transport") == "acp":
+        console.print(f"this session is driven over ACP by the gateway, not a "
+                      f"tmux pane — watch it with `sarsi why {agent_id} {t.id}` "
+                      f"and steer it with `sarsi guide`", style="dim",
+                      markup=False, highlight=False)
+    else:
+        console.print(f"take the wheel yourself: tmux attach -t {name}   "
+                      f"(Ctrl-b d hands it back)", style="dim",
+                      markup=False, highlight=False)
 
 
 @app.command("send", help="Ask to let one act leave the machine. Drafting is not sending.")
