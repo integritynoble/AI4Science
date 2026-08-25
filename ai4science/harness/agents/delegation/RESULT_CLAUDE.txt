@@ -1,0 +1,30 @@
+task                   seed | bare   harn   |  att accepted agreed    | bare_s harn_s
+--------------------------------------------------------------------------------------------
+t0.csv_to_json            0 | pass   pass   |    1 yes      yes       |     18     16
+t0.csv_to_json            1 | pass   pass   |    1 yes      yes       |     17     17
+t0.extract_fields         0 | pass   pass   |    1 yes      yes       |     13     13
+t0.extract_fields         1 | pass   pass   |    1 yes      yes       |     14     12
+t1.clean_dataset          0 | FAIL   pass   |    2 yes      yes       |     47    198
+t1.clean_dataset          1 | FAIL   pass   |    2 yes      yes       |     52    145
+t1.request_timeout        0 | pass   pass   |    1 yes      yes       |     18     21
+t1.request_timeout        1 | pass   pass   |    1 yes      yes       |     24     20
+t2.pipeline               0 | pass   pass   |    1 yes      yes       |     35     31
+t2.pipeline               1 | pass   pass   |    1 yes      yes       |     38     38
+
+executor: claude-code  2.1.234 (Claude Code)
+10 episodes. Small; a reading, not a rate.
+
+  bare       8/10 passed
+  harnessed  10/10 passed
+
+  turned around by the harness: 2
+  broken by the harness:        0
+
+  wrong work returned as done:
+    bare       2/10  (there is no acceptance step, so every
+                    failure is returned as a completed task)
+    harnessed  0/10  (accepted, and the benchmark disagrees)
+    held back  0     (not accepted, so not reported as done)
+
+  time: bare 276s total, harnessed 511s total
+        the harness costs wall-clock, and buys the acceptance step

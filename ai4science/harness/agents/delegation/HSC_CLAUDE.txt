@@ -1,0 +1,23 @@
+Harness Scaling Curve
+=====================
+
+model:  claude-code 2.1.234 (Claude Code)
+ladder: dli-ladder/HG0-HG3@2026-08-25
+
+rung  episodes      A_DI  HLIS_DI false-done      held attempts
+------------------------------------------------------------------
+HG0   12           0.933     93.3          2         0       12
+HG1   12           0.933     93.3          0         2       12
+HG2   12           0.967     96.7          0         1       15
+HG3   12           0.967     96.7          0         1       14
+
+curve: HG0 93.3 -> HG1 93.3 -> HG2 96.7 -> HG3 96.7
+
+HIL-Ceiling     96.7
+HIL-AUC         95.0
+Harness Gain     3.3
+HIL-Score       86.4   (v1.2 §14.3: .55 AUC + .35 Ceiling + .10 Harnessability)
+
+HLIS_DI is the delegation coordinate only. A full HLIS is a
+geometric mean over C, I, DI and SA; the other three are not
+instrumented here, so this is a curve through one coordinate.

@@ -239,7 +239,15 @@ class DelegationAgent:
             if ex is None:
                 break
             per_executor[ex.name] = per_executor.get(ex.name, 0) + 1
-            result = ex.execute(contract, ws, feedback)
+            try:
+                result = ex.execute(contract, ws, feedback)
+            except Exception as e:
+                # An executor that cannot run is an environment failure, not a
+                # result about the model, and it ends the run with a reason
+                # rather than a traceback.
+                out.trace.append("executor %s could not run: %s" % (ex.name, e))
+                out.refused = "the chosen executor could not run: %s" % e
+                break
             confidence = float(result.confidence)
 
             ask, why = rather_ask_than_guess(confidence, contract.p_star, contract.rho)

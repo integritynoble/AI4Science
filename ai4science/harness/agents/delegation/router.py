@@ -40,7 +40,15 @@ class Router:
 
     def __init__(self, executors: Sequence[Executor], competence: CompetenceModel,
                  risk_weight: float = 1.0, cost_weight: float = 0.05) -> None:
-        self.executors = list(executors)
+        # A criteria provider is not a candidate to do the work, and a
+        # prohibitive cost is not enough to keep it out. When every real
+        # executor has been excluded as incapable, the least-bad remaining
+        # option is whatever is left -- and the run crashed on exactly that.
+        # Non-executors are filtered from the pool rather than scored down.
+        self.executors = [e for e in executors
+                          if e.capabilities().get("kind") != "criteria-only"]
+        self.providers = [e for e in executors
+                          if e.capabilities().get("kind") == "criteria-only"]
         self.competence = competence
         self.risk_weight = risk_weight
         self.cost_weight = cost_weight

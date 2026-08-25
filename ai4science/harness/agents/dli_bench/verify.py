@@ -80,8 +80,11 @@ def run_hidden_tests(work: Path, keyed: Path, test_file: str,
     dst = work / ("_hidden_%s" % test_file)
     dst.write_bytes(src.read_bytes())
     try:
+        import shutil as _sh
+        py = sys.executable if not getattr(sys, "frozen", False) else (
+            _sh.which("python3") or _sh.which("python") or sys.executable)
         r = subprocess.run(
-            [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", str(dst)],
+            [py, "-m", "pytest", "-q", "-p", "no:cacheprovider", str(dst)],
             cwd=str(work), capture_output=True, text=True, timeout=timeout)
         tail = (r.stdout or "")[-1500:] + (r.stderr or "")[-500:]
         return r.returncode == 0, tail

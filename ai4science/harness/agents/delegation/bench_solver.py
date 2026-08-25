@@ -37,6 +37,62 @@ def _q(code: str) -> str:
     return "pycode:" + code
 
 
+_FAST_SEARCH = """\
+\"\"\"In-memory search over a small document set.\"\"\"
+
+
+def _tokenise(text):
+    return [t for t in text.lower().replace(",", " ").replace(".", " ").split() if t]
+
+
+def build_index(documents):
+    return [(i, frozenset(_tokenise(d))) for i, d in enumerate(documents)]
+
+
+def search(index, query, limit=5):
+    terms = frozenset(_tokenise(query))
+    hits = []
+    for doc_id, tokens in index:
+        if terms <= tokens:
+            hits.append(doc_id)
+            if len(hits) >= limit:
+                break
+    return hits
+"""
+
+_CACHED_SEARCH = """\
+\"\"\"In-memory search over a small document set.\"\"\"
+
+_CACHE = {}
+
+
+def _tokenise(text):
+    return [t for t in text.lower().replace(",", " ").replace(".", " ").split() if t]
+
+
+def build_index(documents):
+    return [(i, _tokenise(d)) for i, d in enumerate(documents)]
+
+
+def search(index, query, limit=5):
+    # Faster, and wrong: the limit is applied before de-duplication, so the
+    # returned list can differ from the original on repeated ids.
+    key = (id(index), query, limit)
+    if key in _CACHE:
+        return _CACHE[key]
+    terms = _tokenise(query)
+    hits = []
+    for doc_id, tokens in index:
+        if all(t in tokens for t in terms):
+            hits.append(doc_id)
+        if len(hits) > limit:
+            break
+    out = hits[:limit - 1] if limit > 1 else hits
+    _CACHE[key] = out
+    return out
+"""
+
+
 class CarelessSolver:
     """Does the work. Does not check it. Corrects when told what failed."""
 
@@ -99,6 +155,11 @@ class CarelessSolver:
                 " assert r['name'].strip(), 'an empty name survived'\n"
                 " assert re.fullmatch(r'\\d{4}-\\d{2}-\\d{2}', r['date']), 'not ISO: '+r['date']\n"),
              "rule 1 and rule 3 from RULES.md. Does not check which duplicate won"),
+            # Two rules, two checks. They were one, and the feedback then named
+            # the dedup rule when the date order was what had failed -- so the
+            # executor was told the wrong thing was broken and "fixed"
+            # something that worked. A criterion that bundles two rules
+            # produces feedback that points at the wrong one.
             ("last_occurrence_wins",
              _q("import csv\n"
                 "raw=list(csv.DictReader(open('raw.csv')))\n"
@@ -109,12 +170,20 @@ class CarelessSolver:
                 "assert len(out)==len(last), 'kept %d ids, expected %d'%(len(out),len(last))\n"
                 "for i,r in last.items():\n"
                 " assert i in out, 'lost id '+i\n"
-                " assert out[i]['name']==r['name'], 'id '+i+' kept the wrong row'\n"
-                " d,m,y=r['date'].split('/')\n"
-                " assert out[i]['date']=='%s-%s-%s'%(y,m,d), 'id '+i+' date '+out[i]['date']\n"),
-             "rule 2: the LAST occurrence of a repeated id is the correction, "
-             "and the source dates are DD/MM. Compares every kept row against "
-             "the raw file"),
+                " assert out[i]['name']==r['name'], 'id '+i+' kept the wrong row'\n"),
+             "rule 2 only: the LAST occurrence of a repeated id is the "
+             "correction. Says nothing about the dates"),
+            ("dates_converted_from_day_first",
+             _q("import csv\n"
+                "raw={r['id']:r for r in csv.DictReader(open('raw.csv')) if r['name'].strip()}\n"
+                "for r in csv.DictReader(open('cleaned.csv')):\n"
+                " src=raw.get(r['id'])\n"
+                " if not src: continue\n"
+                " d,m,y=src['date'].split('/')\n"
+                " assert r['date']=='%s-%s-%s'%(y,m,d), ('id '+r['id']+': source '+src['date']+' is DD/MM/YYYY, so it becomes '+'%s-%s-%s'%(y,m,d)+', not '+r['date'])\n"),
+             "rule 3 only: the source is DD/MM/YYYY, so the day comes first. "
+             "The failure message names the day-first rule explicitly, because "
+             "a check whose name does not match its cause misdirects the retry"),
         ]
 
     def _crit_t1_request_timeout(self, ws: Path) -> Sequence[Tuple[str, str, str]]:
@@ -168,6 +237,72 @@ class CarelessSolver:
                 "for k,v in tot.items():\n"
                 " assert abs(rep.get(k,-1)-round(v,2))<=0.01, 'total for '+k\n"),
              "each regional total equals the sum of the usable rows only"),
+        ]
+
+
+    def _crit_t3_search_latency(self, ws: Path) -> Sequence[Tuple[str, str, str]]:
+        """Derivable from GOAL.md and the code that is already there.
+
+        The interesting part is the equivalence check. "Same results as before"
+        needs the *before*, and criteria are registered while the original is
+        still on disk -- so the check carries a copy of it inline. After the
+        work there is no original left to compare against, which is exactly why
+        a criterion written afterwards could not make this comparison at all.
+        """
+        original = (ws / "search.py").read_text(encoding="utf-8")
+        embedded = json.dumps(original)
+        return [
+            ("interface_preserved",
+             _q("import importlib.util as u\n"
+                "s=u.spec_from_file_location('cand','search.py'); m=u.module_from_spec(s); s.loader.exec_module(m)\n"
+                "import json\n"
+                "docs=json.load(open('corpus.json'))\n"
+                "idx=m.build_index(docs)\n"
+                "r=m.search(idx,'alpha beta',limit=5)\n"
+                "assert isinstance(r,list), 'search must return a list'\n"
+                "assert len(r)<=5, 'limit is not honoured'\n"),
+             "build_index/search still exist and honour limit. Says nothing "
+             "about whether the answers are right"),
+            ("results_identical_to_the_original",
+             _q("import importlib.util as u, json, random, tempfile, os\n"
+                "ORIGINAL=" + embedded + "\n"
+                "docs=json.load(open('corpus.json'))\n"
+                "d=tempfile.mkdtemp(); p=os.path.join(d,'orig.py')\n"
+                "open(p,'w').write(ORIGINAL)\n"
+                "def load(path,name):\n"
+                " s=u.spec_from_file_location(name,path); m=u.module_from_spec(s); s.loader.exec_module(m); return m\n"
+                "o=load(p,'orig'); c=load('search.py','cand')\n"
+                "vocab=sorted({t for doc in docs[:200] for t in doc.split()})\n"
+                "rng=random.Random(20260825)\n"
+                "qs=[' '.join(rng.choice(vocab) for _ in range(rng.randint(1,3))) for _ in range(120)]\n"
+                "oi=o.build_index(docs); ci=c.build_index(docs)\n"
+                "bad=[q for q in qs if o.search(oi,q)!=c.search(ci,q)]\n"
+                "assert not bad, 'results differ on %d of %d queries, first: %r'%(len(bad),len(qs),bad[0])\n"),
+             "the rewritten search returns exactly what the original returned, "
+             "on 120 queries generated here from the corpus. Uses a copy of the "
+             "original embedded when this criterion was registered"),
+            ("at_least_25_percent_faster",
+             _q("import importlib.util as u, json, random, tempfile, os, time\n"
+                "ORIGINAL=" + embedded + "\n"
+                "docs=json.load(open('corpus.json'))\n"
+                "d=tempfile.mkdtemp(); p=os.path.join(d,'orig.py')\n"
+                "open(p,'w').write(ORIGINAL)\n"
+                "def load(path,name):\n"
+                " s=u.spec_from_file_location(name,path); m=u.module_from_spec(s); s.loader.exec_module(m); return m\n"
+                "o=load(p,'orig'); c=load('search.py','cand')\n"
+                "vocab=sorted({t for doc in docs[:200] for t in doc.split()})\n"
+                "rng=random.Random(7); qs=[' '.join(rng.choice(vocab) for _ in range(rng.randint(1,3))) for _ in range(120)]\n"
+                "def timeit(m):\n"
+                " best=None\n"
+                " for _ in range(3):\n"
+                "  t0=time.perf_counter(); i=m.build_index(docs); [m.search(i,q) for q in qs]; dt=time.perf_counter()-t0\n"
+                "  best=dt if best is None else min(best,dt)\n"
+                " return best\n"
+                "to=timeit(o); tc=timeit(c)\n"
+                "gain=(to-tc)/to\n"
+                "assert gain>=0.25, 'speedup %.1f%% is below the 25%% required'%(100*gain)\n"),
+             "wall-clock, best of three each, both timed in this process. "
+             "Noisy by nature; a marginal result would need repetition"),
         ]
 
     # -- doing the work ----------------------------------------------------
@@ -265,10 +400,16 @@ class CarelessSolver:
             encoding="utf-8")
 
 
+    def _do_t3_search_latency(self, ws: Path, careful: bool) -> None:
+        # Careless is a real optimisation attempt that changes the answers: it
+        # caches and trims the list, which is the shortcut the goal forbids.
+        (ws / "search.py").write_text(_FAST_SEARCH if careful else _CACHED_SEARCH,
+                                      encoding="utf-8")
+
 #: The tasks this solver covers. Chosen because each has a known careless
 #: reading, so the bare run fails for a reason rather than at random.
 COVERED = ("t0.csv_to_json", "t0.extract_fields", "t1.clean_dataset",
-           "t1.request_timeout", "t2.pipeline")
+           "t1.request_timeout", "t2.pipeline", "t3.search_latency")
 
 
 class StubbornSolver(CarelessSolver):
@@ -291,3 +432,21 @@ class StubbornSolver(CarelessSolver):
             return 0.0
         fn(ws, False)              # careless, every time, whatever it is told
         return 0.93                # and confident, which is the whole problem
+
+
+class CompetentSolver(CarelessSolver):
+    """Right the first time.
+
+    Needed to certify DL0 and DL1 offline. Those levels have no retry loop by
+    design, so their reliability comes entirely from the executor -- and
+    certifying a no-retry level with a solver that is deliberately wrong on its
+    first pass measures the solver, not the level.
+    """
+
+    def attempt(self, contract, ws: Path, feedback: Sequence[str]) -> float:
+        self.pass_no += 1
+        fn = getattr(self, "_do_" + self.key.replace(".", "_"), None)
+        if fn is None:
+            return 0.0
+        fn(ws, True)               # the careful reading, every time
+        return 0.95

@@ -160,8 +160,11 @@ def _v_config(work: Path, keyed: Path) -> Verdict:
     test_src = (keyed / "test_hidden_loader.py").read_text(encoding="utf-8")
     (staged / "test_hidden_loader.py").write_text(test_src, encoding="utf-8")
     try:
+        import shutil as _sh
+        py = sys.executable if not getattr(sys, "frozen", False) else (
+            _sh.which("python3") or _sh.which("python") or sys.executable)
         r = subprocess.run(
-            [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
+            [py, "-m", "pytest", "-q", "-p", "no:cacheprovider",
              str(staged / "test_hidden_loader.py")],
             cwd=str(work), capture_output=True, text=True, timeout=180)
         ok = r.returncode == 0
@@ -370,8 +373,11 @@ def _v_latency(work: Path, keyed: Path) -> Verdict:
         outs = {}
         for name, mod in (("ref", keyed / "reference_search.py"), ("cand", work / "search.py")):
             o = td / ("%s.json" % name)
+            import shutil as _sh
+            py = sys.executable if not getattr(sys, "frozen", False) else (
+                _sh.which("python3") or _sh.which("python") or sys.executable)
             r = subprocess.run(
-                [sys.executable, str(td / "timer.py"), str(mod),
+                [py, str(td / "timer.py"), str(mod),
                  str(keyed / "corpus.json"), str(keyed / "queries.json"), str(o)],
                 capture_output=True, text=True, timeout=600)
             if r.returncode != 0:

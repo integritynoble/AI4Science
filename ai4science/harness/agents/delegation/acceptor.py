@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from .criterion import Criterion, CriterionRegister
+from .interpreter import find as find_python
 
 
 @dataclass
@@ -69,14 +70,20 @@ def _run_check(check: str, cwd: Path, timeout: int, n: int = 0) -> Tuple[bool, s
     env = {"PATH": os.environ.get("PATH", ""), "HOME": str(cwd),
            "PYTHONDONTWRITEBYTECODE": "1"}
     if check.startswith("pycode:"):
+        py, why = find_python()
+        if py is None:
+            return False, "UNDECIDABLE: %s" % why
         f = cwd / ("_criterion_%d.py" % n)
         f.write_text(check[len("pycode:"):], encoding="utf-8")
-        cmd = [sys.executable, str(f)]
+        cmd = [py, str(f)]
     elif check.startswith("python:"):
         _, mod, fn = check.split(":", 2)
+        py, why = find_python()
+        if py is None:
+            return False, "UNDECIDABLE: %s" % why
         code = ("import importlib,sys;m=importlib.import_module(%r);"
                 "sys.exit(0 if m.%s() else 1)" % (mod, fn))
-        cmd = [sys.executable, "-c", code]
+        cmd = [py, "-c", code]
     else:
         cmd = ["bash", "-lc", check]
     try:

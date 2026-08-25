@@ -155,6 +155,39 @@ excludes a competent executor after an unlucky start, and an excluded executor
 never earns the evidence that would readmit it — the heroic-run error run
 backwards. The bar is now eight.
 
+## 6b. A real executor: Claude Code
+
+`claude_executor.py` puts the Claude Code CLI behind the same protocol. The
+adapter is deliberately thin — everything that makes delegation work is in the
+harness, and the executor is the replaceable part, so the adapter must not
+smuggle any of it back in.
+
+**It proposes no criteria.** The thing that will be judged does not write the
+judgement. A criterion proposed by the doer is the acceptance ceiling with extra
+steps, so the harness derives them and the executor never sees the register.
+
+**Two isolation barriers, neither of them a prompt.** The scripted solvers could
+not read the answer key because they had no shell. A real executor has one, and
+`work/` and `keyed/` are siblings in a benchmark instance — `../keyed` is one
+command away. So the key is *moved out of the tree* before any executor starts,
+and the executor additionally runs in a standalone copy with no parent to walk
+up into. An executor that can read the answer will eventually read it, and the
+measurement would then be of the directory layout. Both barriers are tested.
+
+**Confidence is self-reported and treated as such.** The escalation arithmetic
+needs a number, so the executor is asked for one — and the harness never trusts
+it, because an executor's account of how it went is a claim and the acceptor is
+somewhere else.
+
+The tool grant is narrow: `Read,Write,Edit,Bash,Glob,Grep`. No network, no
+sub-agents.
+
+```
+python -m ai4science.harness.agents.delegation.live_experiment --seeds 0-1
+```
+
+RESULTS_PLACEHOLDER
+
 ## 7. What this does not show
 
 **The careless solver's second pass is correct by construction.** Arm 2 shows

@@ -57,6 +57,9 @@ class Contract:
     task_id: str
     verifiability: Reading
     reversibility: Reading
+    #: The task as stated. Carried so an executor can be given it verbatim
+    #: rather than a paraphrase of it.
+    statement: str = ""
     value: float = 1.0
     c_detect: float = 0.0
     c_undo: float = 0.0
@@ -159,6 +162,7 @@ def read_task(task_id: str, statement: str, workspace: Optional[Path] = None,
     c_res = d.get("c_residual", float("inf") if outward else 0.0)
     return Contract(
         task_id=task_id,
+        statement=statement,
         verifiability=ver,
         reversibility=rev,
         value=d.get("value", 1.0),
