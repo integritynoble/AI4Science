@@ -409,6 +409,79 @@ def w_unicode_identity(work: Path, keyed: Path) -> None:
     (work / "unique.json").write_text(json.dumps(out, ensure_ascii=False),
                                       encoding="utf-8")
 
+
+# ---------------------------------------------------- DL4 expert projects
+
+def r_mini_language(work: Path, keyed: Path) -> None:
+    """A correct interpreter: the module's own reference, written out.
+
+    An ORACLE for the harness, not a solver -- it is the same code that produced
+    the expected values, so it proves the runner works and proves nothing about
+    the task's difficulty. The partial implementation below is the informative
+    one.
+    """
+    import inspect
+    import json as _json
+    from . import reference as _self          # noqa: F401  (path anchor)
+    from .tasks import expert
+    src = inspect.getsource(expert._mini_eval)
+    # The dialect varies per instance, so the oracle reads it rather than
+    # assuming the default -- an oracle that hard-coded one dialect would fail
+    # three instances in four and look like a broken task.
+    dialect = _json.loads((keyed / "dialect.json").read_text(encoding="utf-8"))
+    (work / "interp.py").write_text(
+        "from typing import Any, Dict, List, Optional\n\n"
+        "DIALECT = %r\n\n" % ({"div": dialect["div"], "eq": dialect["eq"]},)
+        + src.replace("def _mini_eval(", "def _run(")
+        + "\n\ndef evaluate(source):\n    return _run(source, dialect=DIALECT)\n",
+        encoding="utf-8")
+
+
+_PARTIAL_INTERP = """\
+\"\"\"A plausible partial reading of SPEC.md.
+
+It gets the common cases right and skips three rules that only show up in
+combination: `and`/`or` return a BOOLEAN rather than the operand, integer
+division floors instead of truncating toward zero, and equality coerces across
+types the way Python does. Each is the reading someone writes when they have
+skimmed the spec rather than held all of it at once.
+\"\"\"
+
+
+def evaluate(source):
+    try:
+        return _ev(source)
+    except Exception:
+        return "ERR"
+
+
+def _ev(src):
+    import ast
+    src = src.strip()
+    if not src:
+        return "ERR"
+    py = (src.replace(" and ", " and ").replace(" or ", " or ")
+             .replace("true", "True").replace("false", "False")
+             .replace("null", "None").replace("not ", "not "))
+    try:
+        node = ast.parse(py, mode="eval")
+    except SyntaxError:
+        return "ERR"
+    try:
+        v = eval(compile(node, "<mini>", "eval"), {"__builtins__": {}}, {})
+    except ZeroDivisionError:
+        return "ERR"
+    except Exception:
+        return "ERR"
+    if isinstance(v, float):
+        v = int(v)
+    return v
+"""
+
+
+def w_mini_language(work: Path, keyed: Path) -> None:
+    (work / "interp.py").write_text(_PARTIAL_INTERP, encoding="utf-8")
+
 #: generator key -> (correct solver, wrong-but-plausible solver or None)
 SOLVERS: Dict[str, Callable[[Path, Path], None]] = {
     "t0.csv_to_json": r_csv_to_json,
@@ -426,6 +499,7 @@ SOLVERS: Dict[str, Callable[[Path, Path], None]] = {
     "t3.causal_order": r_causal_order,
     "t3.dst_daily_totals": r_dst_daily_totals,
     "t3.unicode_identity": r_unicode_identity,
+    "t4.mini_language": r_mini_language,
 }
 
 WRONG: Dict[str, Callable[[Path, Path], None]] = {
@@ -438,4 +512,5 @@ WRONG: Dict[str, Callable[[Path, Path], None]] = {
     "t3.causal_order": w_causal_order,
     "t3.dst_daily_totals": w_dst_daily_totals,
     "t3.unicode_identity": w_unicode_identity,
+    "t4.mini_language": w_mini_language,
 }

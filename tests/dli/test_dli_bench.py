@@ -292,12 +292,17 @@ def test_crosswalk_only_claims_cards_something_can_actually_pose():
             poser = GENERATORS.get(key) or ENVIRONMENTS.get(key)
             assert poser is not None, "%s claims %r, which is in neither registry" % (c.task_id, key)
             assert poser.level == c.level and poser.family == c.family
-    # The upper levels are posed by environments, and only in their own family.
+    # The upper levels must be posed by something. Environments carry most of
+    # them; a single-shot generator can carry a DL4 card too, when its
+    # difficulty comes from the size of the specification rather than from a
+    # long-running world. Both registries are checked above, so all this needs
+    # to hold is that the upper levels are not empty and that environments are
+    # still doing the bulk of the work.
     upper = [c for c in cards if c.level in ("DL4", "DL6", "DLOmega")]
     claimed = [c for c in upper if xw[c.task_id]]
-    assert claimed, "the environments pose nothing; the crosswalk lost them"
-    for c in claimed:
-        assert all(k in ENVIRONMENTS for k in xw[c.task_id])
+    assert claimed, "nothing poses the upper levels; the crosswalk lost them"
+    keys = {k for c in claimed for k in xw[c.task_id]}
+    assert keys & set(ENVIRONMENTS), "no environment poses an upper-level card"
 
 
 def test_rescaling_beats_clamping_on_the_catalogue():
@@ -362,3 +367,55 @@ def test_the_deliverable_is_absent_before_the_work(key, tmp_path):
     spec = GENERATORS[key].instantiate(tmp_path, 0)
     for d in spec.deliverables:
         assert not (tmp_path / "work" / d).exists()
+
+
+# ---------------------------------------------- the T4 expert-project class
+
+def test_the_t4_class_grades_rather_than_only_passing(tmp_path):
+    """A T4 result should carry how much was right, not only whether it was.
+
+    The partial implementation gets most cases right and misses three rules that
+    only appear in combination. A pass/fail verdict would report that the same
+    way as producing nothing.
+    """
+    from ai4science.harness.agents.dli_bench.reference import SOLVERS, WRONG
+    g = GENERATORS["t4.mini_language"]
+
+    g.instantiate(tmp_path / "ok", 0)
+    SOLVERS["t4.mini_language"](tmp_path / "ok" / "work", tmp_path / "ok" / "keyed")
+    good = g.verify(tmp_path / "ok" / "work", tmp_path / "ok" / "keyed")
+    assert good.passed and good.metrics["accuracy"] == 1.0
+
+    g.instantiate(tmp_path / "part", 0)
+    WRONG["t4.mini_language"](tmp_path / "part" / "work", tmp_path / "part" / "keyed")
+    part = g.verify(tmp_path / "part" / "work", tmp_path / "part" / "keyed")
+    assert not part.passed
+    # Informative in between: not zero, not one.
+    assert 0.5 < part.metrics["accuracy"] < 1.0, part.metrics
+
+
+def test_the_t4_spec_is_complete_and_only_the_cases_are_hidden(tmp_path):
+    """The difficulty is scale, not concealment. Every rule the hidden cases
+    exercise is stated in the visible specification."""
+    spec = GENERATORS["t4.mini_language"].instantiate(tmp_path, 0)
+    text = (tmp_path / "work" / "SPEC.md").read_text(encoding="utf-8")
+    for rule in ("Short circuit", "Truthiness", "propagates", "shadows",
+                 "syntax error", "eagerly"):
+        assert rule in text, "the spec does not state %r" % rule
+    # Two rules vary by dialect. Whichever this instance drew, it must say so:
+    # a rule the spec leaves to the reader is a rule the reader can only guess.
+    assert ("truncating toward zero" in text) ^ ("toward negative infinity" in text), text[:400]
+    assert ("are never equal" in text) ^ ("comparing different types" in text), text[:400]
+    assert "cases.json" in spec.answer_key
+
+
+def test_an_interpreter_that_raises_is_not_merely_wrong(tmp_path):
+    """`evaluate` must never raise; the spec says so, and a crash is reported
+    separately from a wrong answer because they need different fixes."""
+    g = GENERATORS["t4.mini_language"]
+    g.instantiate(tmp_path, 0)
+    (tmp_path / "work" / "interp.py").write_text(
+        "def evaluate(source):\n    raise RuntimeError('boom')\n", encoding="utf-8")
+    v = g.verify(tmp_path / "work", tmp_path / "keyed")
+    assert not v.passed
+    assert any("raised" in r for r in v.reasons), v.reasons
