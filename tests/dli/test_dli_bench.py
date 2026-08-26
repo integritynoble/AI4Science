@@ -326,3 +326,39 @@ def test_coverage_report_names_what_cannot_run():
     for lvl in ("DL4", "DL6", "DLOmega"):
         assert lvl in text
     assert "document, planning" in text
+
+
+# ------------------------------------------- the trap classes, and their traps
+
+TRAPS = ("t3.causal_order", "t3.dst_daily_totals", "t3.unicode_identity")
+
+
+@pytest.mark.parametrize("key", TRAPS)
+def test_a_trap_class_bands_at_t3_and_names_its_trap(key):
+    g = GENERATORS[key]
+    assert g.difficulty.band == "T3" and g.level == "DL3"
+    # The trap is stated in the verifier note, so a reader of a result knows
+    # what the class was distinguishing rather than inferring it.
+    assert g.verifier_note.strip()
+
+
+@pytest.mark.parametrize("seed", range(6))
+def test_every_causal_order_instance_contains_its_trap(seed, tmp_path):
+    """`inc` is commutative, so a timestamp-sorted replay differs from a causal
+    one only when the skew reorders a `set` against an `inc` on the same field.
+    With random skew that sometimes did not happen, and about one instance in
+    eight scored a naive solver correct. The generator now checks."""
+    import json
+    GENERATORS["t3.causal_order"].instantiate(tmp_path, seed)
+    trap = json.loads((tmp_path / "keyed" / "trap.json").read_text())
+    assert trap["causal"] != trap["by_timestamp"], (
+        "seed %d built an instance whose trap does not fire" % seed)
+    assert trap["fields_that_differ"], "no field distinguishes the two replays"
+
+
+@pytest.mark.parametrize("key", TRAPS)
+def test_the_deliverable_is_absent_before_the_work(key, tmp_path):
+    """A criterion about the deliverable must be registrable before it exists."""
+    spec = GENERATORS[key].instantiate(tmp_path, 0)
+    for d in spec.deliverables:
+        assert not (tmp_path / "work" / d).exists()

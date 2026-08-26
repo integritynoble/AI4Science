@@ -316,6 +316,99 @@ def w_search_latency(work: Path, keyed: Path) -> None:
     return None
 
 
+
+# ---------------------------------------------------- DL3 trap classes
+
+def r_causal_order(work: Path, keyed: Path) -> None:
+    """Follow the parent chain, which is what the spec asks for."""
+    ops = [json.loads(l) for l in
+           (work / "ops.jsonl").read_text(encoding="utf-8").splitlines() if l.strip()]
+    by_parent = {o["parent"]: o for o in ops}
+    state: Dict[str, int] = {}
+    cur = None
+    while cur in by_parent:
+        o = by_parent[cur]
+        if o["op"] == "set":
+            state[o["field"]] = o["value"]
+        else:
+            state[o["field"]] = state.get(o["field"], 0) + o["value"]
+        cur = o["id"]
+    (work / "state.json").write_text(json.dumps(state, sort_keys=True), encoding="utf-8")
+
+
+def w_causal_order(work: Path, keyed: Path) -> None:
+    """Sort by timestamp: the reflex, and wrong when the clocks disagree."""
+    ops = [json.loads(l) for l in
+           (work / "ops.jsonl").read_text(encoding="utf-8").splitlines() if l.strip()]
+    state: Dict[str, int] = {}
+    for o in sorted(ops, key=lambda x: x["timestamp"]):
+        if o["op"] == "set":
+            state[o["field"]] = o["value"]
+        else:
+            state[o["field"]] = state.get(o["field"], 0) + o["value"]
+    (work / "state.json").write_text(json.dumps(state, sort_keys=True), encoding="utf-8")
+
+
+def r_dst_daily_totals(work: Path, keyed: Path) -> None:
+    """Convert into the named zone before taking the date."""
+    from datetime import datetime, timezone
+    from zoneinfo import ZoneInfo
+    tz = ZoneInfo("Europe/Berlin")
+    tot: Dict[str, float] = {}
+    with (work / "events.csv").open(encoding="utf-8", newline="") as fh:
+        for r in csv.DictReader(fh):
+            u = datetime.strptime(r["timestamp_utc"], "%Y-%m-%dT%H:%M:%SZ").replace(
+                tzinfo=timezone.utc)
+            d = u.astimezone(tz).date().isoformat()
+            tot[d] = round(tot.get(d, 0.0) + float(r["amount"]), 2)
+    (work / "totals.json").write_text(json.dumps(tot, sort_keys=True), encoding="utf-8")
+
+
+def w_dst_daily_totals(work: Path, keyed: Path) -> None:
+    """Slice the date off the UTC string; misfiles everything near local midnight."""
+    tot: Dict[str, float] = {}
+    with (work / "events.csv").open(encoding="utf-8", newline="") as fh:
+        for r in csv.DictReader(fh):
+            d = r["timestamp_utc"][:10]
+            tot[d] = round(tot.get(d, 0.0) + float(r["amount"]), 2)
+    (work / "totals.json").write_text(json.dumps(tot, sort_keys=True), encoding="utf-8")
+
+
+_ZERO_WIDTH = ("\u200b", "\u200c", "\u200d", "\ufeff")
+
+
+def _fold(s: str) -> str:
+    import unicodedata
+    s = "".join(ch for ch in s if ch not in _ZERO_WIDTH)
+    return unicodedata.normalize("NFKC", s)
+
+
+def r_unicode_identity(work: Path, keyed: Path) -> None:
+    """Compare folded; keep the first occurrence's original spelling."""
+    seen, out = set(), []
+    with (work / "ids.csv").open(encoding="utf-8", newline="") as fh:
+        for r in csv.DictReader(fh):
+            f = _fold(r["identifier"])
+            if f in seen:
+                continue
+            seen.add(f)
+            out.append({"identifier": r["identifier"], "label": r["label"]})
+    (work / "unique.json").write_text(json.dumps(out, ensure_ascii=False),
+                                      encoding="utf-8")
+
+
+def w_unicode_identity(work: Path, keyed: Path) -> None:
+    """Byte-exact comparison; keeps rows that render identically."""
+    seen, out = set(), []
+    with (work / "ids.csv").open(encoding="utf-8", newline="") as fh:
+        for r in csv.DictReader(fh):
+            if r["identifier"] in seen:
+                continue
+            seen.add(r["identifier"])
+            out.append({"identifier": r["identifier"], "label": r["label"]})
+    (work / "unique.json").write_text(json.dumps(out, ensure_ascii=False),
+                                      encoding="utf-8")
+
 #: generator key -> (correct solver, wrong-but-plausible solver or None)
 SOLVERS: Dict[str, Callable[[Path, Path], None]] = {
     "t0.csv_to_json": r_csv_to_json,
@@ -330,6 +423,9 @@ SOLVERS: Dict[str, Callable[[Path, Path], None]] = {
     "t2.pipeline": r_pipeline,
     "t3.search_latency": r_search_latency,
     "t5.hidden_law": r_hidden_law,
+    "t3.causal_order": r_causal_order,
+    "t3.dst_daily_totals": r_dst_daily_totals,
+    "t3.unicode_identity": r_unicode_identity,
 }
 
 WRONG: Dict[str, Callable[[Path, Path], None]] = {
@@ -339,4 +435,7 @@ WRONG: Dict[str, Callable[[Path, Path], None]] = {
     "t2.pipeline": w_pipeline,
     "t3.search_latency": w_search_latency,
     "t5.hidden_law": w_hidden_law,
+    "t3.causal_order": w_causal_order,
+    "t3.dst_daily_totals": w_dst_daily_totals,
+    "t3.unicode_identity": w_unicode_identity,
 }

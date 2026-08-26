@@ -337,23 +337,44 @@ def _b_latency(work: Path, keyed: Path, rng: random.Random) -> None:
 
 
 _TIMER = '''\
+"""Time both implementations in ONE process, interleaved.
+
+Timing them in separate blocks lets machine load drift between the blocks, and
+the verdict then depends on what else the box was doing: running every reference
+repetition first and every candidate repetition second made an UNCHANGED
+candidate look 25% faster under concurrent load, which is a false pass of the
+benchmark itself. Interleaving exposes both to the same drift, and the minimum
+of three discards the slow samples.
+"""
 import json, sys, time, importlib.util
 
-mod_path, corpus_path, queries_path, out_path = sys.argv[1:5]
-spec = importlib.util.spec_from_file_location("cand", mod_path)
-m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+ref_path, cand_path, corpus_path, queries_path, out_path = sys.argv[1:6]
 docs = json.load(open(corpus_path)); queries = json.load(open(queries_path))
 
-best = None
-results = None
-for _ in range(3):
+
+def load(path, name):
+    spec = importlib.util.spec_from_file_location(name, path)
+    m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+    return m
+
+
+def once(m):
     t0 = time.perf_counter()
     idx = m.build_index(docs)
     r = [m.search(idx, q) for q in queries]
-    dt = time.perf_counter() - t0
-    best = dt if best is None else min(best, dt)
-    results = r
-json.dump({"seconds": best, "results": results}, open(out_path, "w"))
+    return time.perf_counter() - t0, r
+
+
+ref, cand = load(ref_path, "ref"), load(cand_path, "cand")
+best_ref = best_cand = None
+res_ref = res_cand = None
+for _ in range(3):
+    dt, res_ref = once(ref)
+    best_ref = dt if best_ref is None else min(best_ref, dt)
+    dt, res_cand = once(cand)
+    best_cand = dt if best_cand is None else min(best_cand, dt)
+json.dump({"ref_seconds": best_ref, "cand_seconds": best_cand,
+           "ref_results": res_ref, "cand_results": res_cand}, open(out_path, "w"))
 '''
 
 
@@ -361,35 +382,36 @@ def _v_latency(work: Path, keyed: Path) -> Verdict:
     note = ("the candidate and the original are timed in the same session, "
             "best-of-three each, on 240 queries the agent never saw; results "
             "must match the reference exactly. Timing is wall-clock and "
-            "therefore noisy -- the 25% bar is checked against the best of "
-            "three runs of each, and a margin this small would need repetition "
-            "to be a measurement rather than a reading")
+            "therefore load-sensitive, so the two are timed INTERLEAVED in one "
+            "process, best of three each: timing them in separate blocks let "
+            "load drift between the blocks and made an unchanged candidate look "
+            "25% faster")
     if missing(work, "search.py"):
         return Verdict(False, {}, ("search.py is gone",), note, None)
     import tempfile
     with tempfile.TemporaryDirectory() as td:
         td = Path(td)
         (td / "timer.py").write_text(_TIMER, encoding="utf-8")
-        outs = {}
-        for name, mod in (("ref", keyed / "reference_search.py"), ("cand", work / "search.py")):
-            o = td / ("%s.json" % name)
-            import shutil as _sh
-            py = sys.executable if not getattr(sys, "frozen", False) else (
-                _sh.which("python3") or _sh.which("python") or sys.executable)
-            r = subprocess.run(
-                [py, str(td / "timer.py"), str(mod),
-                 str(keyed / "corpus.json"), str(keyed / "queries.json"), str(o)],
-                capture_output=True, text=True, timeout=600)
-            if r.returncode != 0:
-                return Verdict(False, {}, ("%s failed to run: %s" % (name, (r.stderr or "")[-400:]),),
-                               note, None)
-            outs[name] = json.loads(o.read_text())
+        out = td / "timing.json"
+        import shutil as _sh
+        py = sys.executable if not getattr(sys, "frozen", False) else (
+            _sh.which("python3") or _sh.which("python") or sys.executable)
+        r = subprocess.run(
+            [py, str(td / "timer.py"), str(keyed / "reference_search.py"),
+             str(work / "search.py"), str(keyed / "corpus.json"),
+             str(keyed / "queries.json"), str(out)],
+            capture_output=True, text=True, timeout=900)
+        if r.returncode != 0:
+            return Verdict(False, {},
+                           ("the timing run failed: %s" % (r.stderr or "")[-400:],),
+                           note, None)
+        outs = json.loads(out.read_text())
 
-    ref, cand = outs["ref"], outs["cand"]
-    n = len(ref["results"])
-    same = sum(1 for a, b in zip(ref["results"], cand["results"]) if a == b)
+    n = len(outs["ref_results"])
+    same = sum(1 for a, b in zip(outs["ref_results"], outs["cand_results"]) if a == b)
     fidelity = same / n if n else 0.0
-    speedup = (ref["seconds"] - cand["seconds"]) / ref["seconds"] if ref["seconds"] else 0.0
+    ref_s, cand_s = outs["ref_seconds"], outs["cand_seconds"]
+    speedup = (ref_s - cand_s) / ref_s if ref_s else 0.0
     reasons = []
     if fidelity < 0.99:
         reasons.append("results differ on %d of %d queries" % (n - same, n))
@@ -397,7 +419,7 @@ def _v_latency(work: Path, keyed: Path) -> Verdict:
         reasons.append("speedup %.1f%% is below the 25%% required" % (100 * speedup))
     return Verdict(not reasons,
                    {"speedup_fraction": speedup, "result_fidelity": fidelity,
-                    "reference_seconds": ref["seconds"], "candidate_seconds": cand["seconds"]},
+                    "reference_seconds": ref_s, "candidate_seconds": cand_s},
                    tuple(reasons), note, None)
 
 

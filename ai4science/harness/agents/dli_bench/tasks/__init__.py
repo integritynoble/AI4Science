@@ -14,10 +14,10 @@ from __future__ import annotations
 
 from typing import Dict, Tuple
 
-from . import atomic, multistep, routine, sealed
+from . import atomic, multistep, routine, sealed, traps
 from .base import Generator
 
-_MODULES = (atomic, routine, multistep, sealed)
+_MODULES = (atomic, routine, multistep, sealed, traps)
 
 GENERATORS: Dict[str, Generator] = {}
 for _m in _MODULES:
@@ -31,7 +31,8 @@ COVERAGE: Dict[str, str] = {
     "DL0": "built -- 5 generators, exact verification",
     "DL1": "built -- 3 generators, exact verification",
     "DL2": "built -- 2 generators, withheld test suites",
-    "DL3": "built -- 1 generator, measured against the original in-session",
+    "DL3": "built -- 4 generators: an in-session timing comparison, and "
+           "three classes whose obvious implementation is defensible and wrong",
     "DL4": "built -- 1 environment: long horizon, a corrupt source nobody "
            "names, an outage, a forced interruption, a budget",
     "DL5": "built -- 1 generator, sealed mechanism scored by extrapolation",
