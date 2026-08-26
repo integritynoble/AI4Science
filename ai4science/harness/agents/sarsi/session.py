@@ -338,10 +338,27 @@ def assign(config: Config, agent: Agent, task: tsk.Task, *,
                           f"supervision tightened: {sup.why[:120]}",
                           f"task {task.id}: {sup.as_record()}",
                           task_id=task.id)
-        _fc.record(config, agent, task, p_forecast,
-                   why=f"sarsi-claude assigned for {phase_str} of {task.id}; "
-                   f"p={p_forecast:.1f} "
-                   + ("(conservative — overconfidence detected)" if p_forecast < 0.7 else "(default)"))
+        # A forecast already on the task is somebody's estimate, and this one is
+        # a CONSTANT. Overwriting it made the calibration record score 0.7 (or
+        # 0.5) forever, so "overconfident" meant only that the default sits
+        # above the observed pass rate — a property of the default, not of
+        # anyone's judgement. §11.7 asks that scoring be immutable; it was
+        # immutable after the verdict, via `TooLate`, and freely rewritten
+        # right up to it.
+        #
+        # Registering only when none exists keeps §11.7's "pre-action forecast
+        # is recorded in the live path" — a task assigned with no estimate
+        # still gets one — while letting a considered estimate survive the
+        # assignment that acts on it. The tightening path still fires: the
+        # `refusal` episode above is written either way, and
+        # `require_deterministic` is read from `supervision()` in
+        # `_verify_phase` rather than from this number, so the BEHAVIOUR the
+        # policy buys does not depend on which estimate is stored.
+        if (task.forecast or {}).get("p") is None:
+            _fc.record(config, agent, task, p_forecast,
+                       why=f"sarsi-claude assigned for {phase_str} of {task.id}; "
+                       f"p={p_forecast:.1f} "
+                       + ("(conservative — overconfidence detected)" if p_forecast < 0.7 else "(default)"))
     except _fc.TooLate:
         # M3.1: "registration must occur before ses.assign()". The comment
         # above claimed this raise enforced the invariant while the blanket
@@ -707,8 +724,15 @@ def check_expectations(config: Config, agent: Agent, *, now=time.time) -> list:
         try:
             fired.append(_mem.record_episode(
                 config, agent, "expectation_timeout",
-                f"{t.id} passed its deadline with no verdict",
-                f"forecast p={fc_row.get('p')} registered {overdue + float(limit):.1f} "
+                # The ninth writer, found by the M5.5 trigger-coverage
+                # experiment after eight were fixed on 2026-08-24. The title is
+                # what `consolidate._fingerprint` clusters on, so a task id at
+                # the front makes every timeout its own group of one — and a
+                # worker that keeps blowing deadlines on one KIND of task is
+                # exactly the repeated pattern the offline pass exists to find.
+                f"passed its deadline with no verdict: {(t.goal or '')[:110]}",
+                f"task {t.id}: forecast p={fc_row.get('p')} registered "
+                f"{overdue + float(limit):.1f} "
                 f"minutes ago; limit was {limit} minutes and nothing has judged it",
                 task_id=t.id, outcome="fail", tags=["timeout", "forecast"],
                 now=now))
