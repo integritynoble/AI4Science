@@ -182,3 +182,97 @@ def test_and_a_task_with_no_declared_scope_narrows_nothing(config, agent):
                                mode="REASON", snapshot=False)
 
     assert any(c[:40] in ctx for c in CROWD), "the unscoped view is unchanged"
+
+
+# ── what applies is a different question from what is related ──────────────
+
+CURRENCY_Q = "what is the total of the April ledger in USD?"
+CURRENCY_LESSON = "amounts are in the account's own currency; EU is EUR at 1.10"
+UNITS_LESSON = "the ledger's amount column is in minor units (cents)"
+
+
+def _ledger(config, agent):
+    for stmt in (CURRENCY_LESSON, UNITS_LESSON):
+        sem.record(config, agent, stmt, kind="lesson", status="active",
+                   scope=["store:ledger"], promoted_by="owner")
+    return retrieval.retrieve(config, agent, query=CURRENCY_Q,
+                              scope=["store:ledger"], k=6)["retrieved"]
+
+
+def test_a_true_lesson_about_another_question_can_be_dropped(config, agent):
+    """The defect this exists for. Both lessons are true, both are about the
+    ledger, and one of them is not about the question — so ranking and filters
+    both admit it. Measured: the model applied both and answered 2.10 instead
+    of 210.00, five times out of five."""
+    entries = _ledger(config, agent)
+    assert len(entries) == 2
+
+    def judge(prompt):
+        assert CURRENCY_Q in prompt, "the judge is asked about THIS task"
+        # Keep whichever numbered line carries the currency lesson, whatever
+        # order retrieval put them in — a test that hard-codes the index passes
+        # for the wrong reason the day the ranking changes.
+        line = next(ln for ln in prompt.splitlines() if CURRENCY_LESSON in ln)
+        return f"KEEP={line.split('.')[0].strip()}"
+
+    kept, report = retrieval.applicable(CURRENCY_Q, entries, judge=judge)
+
+    assert [e["statement"] for e in kept] == [CURRENCY_LESSON]
+    assert report["why"] == "judged" and len(report["dropped"]) == 1
+
+
+@pytest.mark.parametrize("answer,why", [
+    ("KEEP=ALL", "said ALL"),
+    ("I am not sure", "nothing parseable"),
+    ("KEEP=9", "an index that does not exist"),
+    ("KEEP=", "an empty set"),
+])
+def test_every_uncertain_answer_keeps_everything(config, agent, answer, why):
+    """The bias is measured, not chosen. Telling the reader to weigh
+    applicability itself cost `UNITS` 5/5 → 2/5 and `EXCLUSIVE` 5/5 → 0/5, and
+    took repeat errors from 5 to 13 in 55. Dropping a lesson that applies is
+    worse than carrying one that does not, so every uncertain path keeps."""
+    entries = _ledger(config, agent)
+
+    kept, report = retrieval.applicable(CURRENCY_Q, entries,
+                                        judge=lambda p: answer)
+
+    assert len(kept) == len(entries), why
+    assert not report["dropped"]
+
+
+def test_a_judge_that_keeps_nothing_has_broken_not_judged(config, agent):
+    """A filter that empties the context is not a strict filter."""
+    entries = _ledger(config, agent)
+
+    kept, report = retrieval.applicable(CURRENCY_Q, entries,
+                                        judge=lambda p: "KEEP=")
+
+    assert len(kept) == len(entries)
+
+
+def test_a_judge_that_raises_keeps_everything(config, agent):
+    entries = _ledger(config, agent)
+
+    def boom(prompt):
+        raise RuntimeError("no engine")
+
+    kept, report = retrieval.applicable(CURRENCY_Q, entries, judge=boom)
+
+    assert len(kept) == len(entries)
+    assert "kept everything" in report["why"]
+
+
+def test_without_an_engine_the_gate_is_unchanged(config, agent):
+    """No engine must mean no filtering, never an empty context. On a host with
+    no reachable model the gate has to behave exactly as it did before."""
+    _ledger(config, agent)
+    d = wk.Directive(agent_id=agent.id, goal=CURRENCY_Q, scope=["store:ledger"])
+    t = tsk.create(config, agent, d)
+    from ai4science.harness.agents.sarsi import chat
+    chat._stand(config, agent, t.id, "cli")
+
+    ctx = sa.workspace_context(config, agent, observation=CURRENCY_Q,
+                               mode="REASON", snapshot=False)
+
+    assert CURRENCY_LESSON in ctx and UNITS_LESSON in ctx

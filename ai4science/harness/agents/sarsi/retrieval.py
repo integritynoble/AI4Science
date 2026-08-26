@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import os
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ai4science.harness.agents.sarsi import semantic as _sem
 from ai4science.harness.agents.sarsi.registry import Agent, Config
@@ -172,20 +172,146 @@ def retrieve(config: Config, agent: Agent,
     }
 
 
+#: What the judge is asked. Numbered, so the answer is indices and not prose to
+#: be matched back against statements — a judge that must quote the lesson can
+#: paraphrase it, and then the filter is matching on the paraphrase.
+_APPLICABILITY_PROMPT = """You are filtering remembered lessons for one task.
+
+THE TASK: {query}
+
+LESSONS (each was learned about the subject in brackets):
+{lessons}
+
+Which of these bear on THIS task? A lesson bears on it if acting on the lesson
+would change the answer. A lesson about a different subject does not bear on
+it, however true it is.
+
+Answer with the numbers alone on the last line, as KEEP=1,3 — or KEEP=ALL if
+you are not sure. When in doubt keep it: dropping a lesson that applies is
+worse than carrying one that does not."""
+
+
+def applicable(query: str, entries: List[Dict[str, Any]], *,
+               judge: Optional[Callable[[str], str]] = None
+               ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """Which retrieved lessons bear on THIS question. [§6.3]
+
+    Retrieval answers "what is related". This answers "what applies", and they
+    are different questions — which is the whole of the defect it exists for.
+    Measured on the M5.5 ablation, 2026-08-26: asked to total a ledger in USD,
+    the worker retrieved its own currency lesson AND a true lesson about a
+    different question — that the amount column is in minor units — applied
+    both, and answered 2.10 instead of 210.00, five times out of five. Both
+    statements are true and both are about the ledger, so no filter and no
+    ranking separates them.
+
+    **Conservative by construction, and the bias is measured rather than
+    chosen.** The attempt before this one told the reader to weigh
+    applicability itself, in the context: `UNITS` fell from 5/5 to 2/5,
+    `EXCLUSIVE` from 5/5 to 0/5, and repeat errors across the set went from 5
+    to 13 in 55. Discouraging a lesson that applies costs more than carrying
+    one that does not, so every uncertain path here KEEPS:
+
+      * no judge, or no engine behind it — keep all;
+      * the judge errors, times out, or answers nothing parseable — keep all;
+      * the judge says ALL, or names an index that does not exist — keep all;
+      * fewer than two entries — nothing to disambiguate, keep all.
+
+    The only way an entry is dropped is a judge that answered, parseably, with
+    a set of indices that excludes it.
+
+    Returns the surviving entries and a report. The report is not optional:
+    §0.1 rule 7 says a cap must say what it omitted and how much, and a filter
+    that silently halves the context is exactly the omission that rule is
+    about.
+    """
+    report = {"asked": False, "kept": len(entries), "dropped": [],
+              "why": "not asked"}
+    if len(entries) < 2:
+        report["why"] = "fewer than two entries — nothing to disambiguate"
+        return list(entries), report
+
+    call = judge
+    if call is None:
+        try:
+            from ai4science.harness.agents.sarsi import reply as _reply
+            call = _reply.engine()
+        except Exception:
+            call = None
+    if call is None:
+        report["why"] = "no engine — kept everything rather than guessing"
+        return list(entries), report
+
+    listed = "\n".join(
+        f"{i + 1}. [{', '.join(e.get('scope') or ['unscoped'])}] "
+        f"{(e.get('statement') or '').strip()}"
+        for i, e in enumerate(entries))
+    try:
+        answer = call(_APPLICABILITY_PROMPT.format(query=query, lessons=listed))
+    except Exception as exc:
+        report["why"] = f"the judge failed ({type(exc).__name__}) — kept everything"
+        return list(entries), report
+
+    report["asked"] = True
+    keep = _parse_keep(answer, len(entries))
+    if keep is None:
+        report["why"] = "the judge said ALL, or nothing parseable — kept everything"
+        return list(entries), report
+
+    kept = [e for i, e in enumerate(entries) if i in keep]
+    if not kept:
+        # A filter that empties the context has not judged, it has broken.
+        report["why"] = "the judge kept nothing — refused, and kept everything"
+        return list(entries), report
+    report.update(
+        kept=len(kept), why="judged",
+        dropped=[(e.get("memory_id") or "")
+                 for i, e in enumerate(entries) if i not in keep])
+    return kept, report
+
+
+def _parse_keep(answer: str, n: int) -> Optional[set]:
+    """The indices on the last `KEEP=` line, or None meaning keep everything."""
+    import re
+    hits = re.findall(r"KEEP\s*=\s*([A-Za-z0-9 ,]+)", answer or "", re.I)
+    if not hits:
+        return None
+    last = hits[-1].strip()
+    if last.upper().startswith("ALL"):
+        return None
+    want = set()
+    for part in last.split(","):
+        part = part.strip()
+        if not part.isdigit():
+            return None            # unparseable in any part -> keep everything
+        idx = int(part) - 1
+        if not 0 <= idx < n:
+            return None            # an index that does not exist -> keep all
+        want.add(idx)
+    return want or None
+
+
 def render(config: Config, agent: Agent,
            query: str = "", task_id: str = "",
            scope: Optional[List[str]] = None,
-           k: int = DEFAULT_K) -> str:
+           k: int = DEFAULT_K,
+           result: Optional[Dict[str, Any]] = None) -> str:
     """Format retrieved entries for context injection.
 
     Protected entries are labelled as constraints; retrieved entries follow.
     Returns empty string when nothing is available.
+
+    `result` renders a set the caller already has. The gate retrieves, filters
+    for applicability, and then renders — and before this it called `retrieve`
+    here a second time, which both cost a second pass and rendered the
+    UNFILTERED set, so any filtering upstream would have been silently undone.
     """
-    try:
-        result = retrieve(config, agent, query=query, task_id=task_id,
-                          scope=scope, k=k)
-    except Exception:
-        return ""
+    if result is None:
+        try:
+            result = retrieve(config, agent, query=query, task_id=task_id,
+                              scope=scope, k=k)
+        except Exception:
+            return ""
 
     lines: List[str] = []
     if result["protected"]:

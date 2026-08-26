@@ -521,8 +521,27 @@ def workspace_context(config: Config, agent: Agent, surface: str = "cli",
             scope = _standing_scope(config, agent, surface)
             got = _ret.retrieve(config, agent, query=query, task_id=task_id,
                                 scope=scope, k=6)
+            # Retrieval answers "what is related"; this asks "what applies",
+            # and they are different questions. A lesson can be true, be about
+            # the same store, rank first, and still not bear on what was asked
+            # — measured on the M5.5 ablation, where a true lesson about the
+            # ledger's units was applied to a question about its currency and
+            # produced 2.10 instead of 210.00, five times out of five.
+            #
+            # Conservative at every uncertain step, and the bias is measured:
+            # discouraging a lesson that applies cost more than carrying one
+            # that did not. Without an engine this is a no-op that keeps
+            # everything, so the gate behaves exactly as it did before.
+            kept, applied = _ret.applicable(query, got.get("retrieved") or [])
+            got["retrieved"] = kept
+            if applied.get("dropped"):
+                # §0.1 rule 7: a filter that silently halves the context is the
+                # omission the rule exists for.
+                omitted["not_applicable"] = applied["dropped"]
+                omitted["applicability_judge"] = applied["why"]
             add("semantic", _ret.render(config, agent, query=query,
-                                        task_id=task_id, scope=scope, k=6))
+                                        task_id=task_id, scope=scope, k=6,
+                                        result=got))
             selected["semantic"] = [
                 e.get("memory_id") or e.get("id", "")
                 for e in (got.get("protected", []) + got.get("retrieved", []))]
