@@ -26,6 +26,8 @@ from typing import Dict, List, Optional, Sequence, Tuple
 from ..dli_bench.tasks import GENERATORS
 from .bench_solver import COVERED, CarelessSolver
 from .claude_executor import ClaudeCodeExecutor, available
+from .codex_executor import CodexExecutor
+from .codex_executor import available as codex_available
 from .contract import read_task
 from .executor import CompetenceModel, SolverExecutor
 from .ladder import LADDER, BY_NAME, Curve, RungResult
@@ -35,8 +37,15 @@ from .loop import DelegationAgent
 BUDGET = "H1"
 
 
-def _run_rung(rung, key: str, seed: int, model: Optional[str], timeout: int
-              ) -> Tuple[bool, bool, int, float]:
+def _make_executor(family: str, model, timeout):
+    """The executor family under test. Both adapters obey the same protocol."""
+    if family == "codex":
+        return CodexExecutor(model=model, timeout=timeout)
+    return ClaudeCodeExecutor(model=model, timeout=timeout)
+
+
+def _run_rung(rung, key: str, seed: int, model: Optional[str], timeout: int,
+              family: str = "claude") -> Tuple[bool, bool, int, float]:
     """(verified success, returned-as-done-and-wrong, attempts, seconds)."""
     gen = GENERATORS[key]
     with tempfile.TemporaryDirectory(prefix="hsc-") as td:
@@ -45,7 +54,7 @@ def _run_rung(rung, key: str, seed: int, model: Optional[str], timeout: int
         keyed = td / "keys"
         shutil.move(str(td / "i" / "keyed"), str(keyed))
         ws = td / "i" / "work"
-        ex = ClaudeCodeExecutor(model=model, timeout=timeout)
+        ex = _make_executor(family, model, timeout)
         t0 = time.time()
 
         if not rung.acceptance:
@@ -72,11 +81,12 @@ def _run_rung(rung, key: str, seed: int, model: Optional[str], timeout: int
 
 
 def run(seeds: Sequence[int], keys: Sequence[str], model: Optional[str],
-        timeout: int, rungs: Sequence[str], verbose: bool = True) -> Curve:
-    ok, version = available()
+        timeout: int, rungs: Sequence[str], verbose: bool = True,
+        family: str = "claude") -> Curve:
+    ok, version = (codex_available() if family == "codex" else available())
     if not ok:
-        raise RuntimeError("claude CLI unavailable: %s" % version)
-    curve = Curve(model="claude-code %s" % version)
+        raise RuntimeError("%s CLI unavailable: %s" % (family, version))
+    curve = Curve(model="%s / model=%s" % (version, model or "default"))
 
     for name in rungs:
         rung = BY_NAME[name]
@@ -85,7 +95,8 @@ def run(seeds: Sequence[int], keys: Sequence[str], model: Optional[str],
         for key in keys:
             band = GENERATORS[key].difficulty.band
             for seed in seeds:
-                good, false_done, attempts, secs = _run_rung(rung, key, seed, model, timeout)
+                good, false_done, attempts, secs = _run_rung(
+                    rung, key, seed, model, timeout, family)
                 by_band.setdefault(band, []).append(good)
                 res.episodes += 1
                 res.attempts += attempts
@@ -112,6 +123,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     ap.add_argument("--rungs", nargs="*", default=[r.name for r in LADDER])
     ap.add_argument("--model", default=None)
     ap.add_argument("--timeout", type=int, default=420)
+    ap.add_argument("--family", choices=("claude", "codex"), default="claude")
     ap.add_argument("--out", default=None)
     a = ap.parse_args(argv)
     seeds: List[int] = []
@@ -121,7 +133,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             seeds.extend(range(int(x), int(y) + 1))
         elif part.strip():
             seeds.append(int(part))
-    c = run(seeds, a.only or list(COVERED), a.model, a.timeout, a.rungs)
+    c = run(seeds, a.only or list(COVERED), a.model, a.timeout, a.rungs,
+            family=a.family)
     print()
     print(c.report())
     if a.out:
