@@ -178,3 +178,75 @@ def test_a_route_only_row_does_not_claim_a_snapshot_it_never_took(
     row = sa.manifest(agent.agent_dir)[-1]
     assert row["byte_count"] == 0 and not row["gz_path"] and not row["sha256"]
     assert sa.replay(agent.agent_dir, row["context_id"]) is None
+
+
+# ── §11.2: an explanation is a question, not a job ─────────────────────────
+
+@pytest.mark.parametrize("line", [
+    "what is the difference between a plan phase and a criterion?",
+    "how does the readiness gate decide what to refresh?",
+    "why would a deterministic check be preferred to a model here?",
+])
+def test_a_conceptual_question_stays_conversational(config, agent, line):
+    """§11.2: "conceptual explanation with no side effect remains
+    conversational". CHAT or REASON both satisfy it — REASON buys retrieval,
+    which is a cost decision and not an action — what it must never do is reach
+    ACTION, because nothing about explaining a thing changes the world.
+
+    Measured once on the conversation walk (2026-08-24) and never pinned: turn
+    02 routed REASON and bought no executor. A behaviour observed once in a
+    walk is an anecdote until a test holds it."""
+    from ai4science.harness.agents.sarsi import intent as _intent, mode as _mode
+
+    route = _mode.route(line, intent_of=_intent.classify(line))
+
+    assert route.mode in (_mode.CHAT, _mode.REASON), (
+        f"{line!r} routed {route.mode}: {route.why}")
+
+
+@pytest.mark.parametrize("line", [
+    "what is the difference between a plan phase and a criterion?",
+    "how does the readiness gate decide what to refresh?",
+])
+def test_and_it_buys_no_executor_no_forecast_and_no_verifier(
+        config, agent, line, monkeypatch):
+    """The other half, and the one that matters for cost. An explanation may
+    pay for retrieval; it must not pay for the action pipeline.
+
+    Patched through `monkeypatch` rather than by hand: the first version of
+    this test restored in a `finally` that read the attribute back AFTER
+    replacing it, so it reinstalled its own wrapper and leaked a counter into
+    every later test in the process. `monkeypatch` undoes it at teardown, which
+    is the whole reason it exists."""
+    from ai4science.harness.agents.sarsi import (forecast as _fc, session as _ses,
+                                                 verify as _vf)
+    spent = []
+
+    def counted(mod, name):
+        original = getattr(mod, name)
+
+        def wrapper(*a, **kw):
+            spent.append(name)
+            return original(*a, **kw)
+
+        monkeypatch.setattr(mod, name, wrapper)
+
+    counted(_fc, "record")
+    counted(_ses, "assign")
+    counted(_vf, "check")
+
+    chat.handle(config, agent, line, surface="cli")
+
+    assert spent == [], f"an explanation paid for {spent}"
+
+
+def test_but_a_question_about_DOING_it_is_not_an_explanation(config, agent):
+    """The boundary. `how does X work` explains; `can you make X work` acts,
+    and the router must not read the second as the first — that is the
+    downgrade §7.0 forbids."""
+    from ai4science.harness.agents.sarsi import intent as _intent, mode as _mode
+
+    line = "can you make the readiness gate refresh that field?"
+    route = _mode.route(line, intent_of=_intent.classify(line))
+
+    assert route.mode == _mode.ACTION, route.why

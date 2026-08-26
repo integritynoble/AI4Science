@@ -9,6 +9,8 @@ The window is bounded in TOKENS, not messages: ten one-word turns are free and
 two that each pasted a traceback are not. What falls out of it is not deleted —
 it stays in the log, and the render says how much of it is not here.
 """
+import json
+
 import pytest
 
 from ai4science.harness.agents.sarsi import discourse as d, log, registry as reg
@@ -174,3 +176,45 @@ def test_a_bare_again_is_still_just_a_follow_up():
     """`say that again` points one line up; it does not want a search."""
     assert not d.asks_for_older_memory("again")
     assert not d.asks_for_older_memory("do that again")
+
+
+# ── §11.1: a conversation row written before the schema existed still loads ──
+
+def test_a_log_row_from_before_exchange_ids_still_reads(agent):
+    """M1 added `schema_version` and `exchange_id` to the conversation log. The
+    rows written before it have neither, and §0.1 rule 4 forbids a silent
+    migration — so the reader has to take them as they are.
+
+    Back-compatibility was tested for the manifest and for episode rows and not
+    for this store, which is the oldest of the three and the one with rows
+    predating every schema in the tree."""
+    agent.agent_dir.mkdir(parents=True, exist_ok=True)
+    (agent.agent_dir / "log-cli.jsonl").write_text(
+        # as written before M1: no schema_version, no exchange_id, no task_id
+        json.dumps({"at": "2026-01-01T00:00:00+00:00",
+                    "in": "what is the plan", "out": "here it is"}) + "\n"
+        + json.dumps({"schema_version": 1, "exchange_id": "x_new",
+                      "at": "2026-01-01T00:01:00+00:00",
+                      "in": "and after that", "out": "the next phase"}) + "\n")
+
+    buf = d.recent(agent.agent_dir, "cli")
+
+    assert len(buf.exchanges) == 2, buf.exchanges
+    assert buf.last_user == "and after that"
+    assert "what is the plan" in d.render(buf), "the old row is in the window"
+
+
+def test_and_the_old_row_contributes_no_id_rather_than_a_wrong_one(agent):
+    """`ids()` feeds the context manifest, which is what a replay resolves
+    against. Inventing an id for a row that never had one would put a
+    reference in the manifest that resolves to nothing — worse than a short
+    list, because the reader cannot tell a fabricated id from a lost row."""
+    agent.agent_dir.mkdir(parents=True, exist_ok=True)
+    (agent.agent_dir / "log-cli.jsonl").write_text(
+        json.dumps({"at": "2026-01-01T00:00:00+00:00", "in": "a", "out": "b"}) + "\n"
+        + json.dumps({"schema_version": 1, "exchange_id": "x_new",
+                      "at": "2026-01-01T00:01:00+00:00", "in": "c", "out": "d"}) + "\n")
+
+    buf = d.recent(agent.agent_dir, "cli")
+
+    assert buf.ids() == ["x_new"]

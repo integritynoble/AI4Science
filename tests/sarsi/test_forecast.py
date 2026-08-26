@@ -51,6 +51,22 @@ def _task(config, agent, goal="g"):
     return tsk.create(config, agent, wk.Directive(agent_id=agent.id, goal=goal))
 
 
+class _Rt:
+    """Starts nothing. These tests are about the number, not the session."""
+    def start(self, name, cwd, **kw): return {"ok": True, "name": name, "pid": 1, "cwd": cwd}
+    def send(self, name, text): return {"ok": True}
+    def stop(self, name): return {"ok": True}
+    def set_ceiling(self, name, c): return {"name": name, "ceiling": c}
+
+
+def _plan(config, agent, t):
+    """`assign` refuses a task with no plan, so give it the smallest real one."""
+    from ai4science.harness.agents.sarsi import plan as _pl
+    P = _pl.Plan(goal=t.goal, phases=[_pl.Phase(title="do", verified_when="out.txt exists")])
+    (tsk.dir_of(agent, t.id) / "plan0.md").write_text(P.render())
+    return tsk.attach_plan(config, agent, t, P)
+
+
 def _forecast_then_judge(config, agent, p, state, *, n=1):
     for _ in range(n):
         t = _task(config, agent)
@@ -254,3 +270,38 @@ def test_the_cli_refuses_with_a_nonzero_exit(config, monkeypatch):
     late = run("forecast", "sarsi-worker", t.id, "0.99")
     assert late.returncode != 0, late.stdout
     assert "already been judged" in (late.stdout + late.stderr), late.stdout
+
+
+# ── §11.7: scoring is immutable, before the verdict as well as after ────────
+
+def test_assign_does_not_overwrite_a_forecast_somebody_recorded(config):
+    """`TooLate` made the score immutable AFTER the verdict. Before it, the
+    estimate was freely rewritten: `session.assign` registered a constant over
+    whatever was there, so the calibration record scored 0.7 forever and
+    "overconfident" meant only that the default sits above the observed pass
+    rate — a property of the default, not of anyone's judgement."""
+    from ai4science.harness.agents.sarsi import session as ses
+    agent = config.agents["sarsi-worker"]
+    t = _task(config, agent)
+    _plan(config, agent, t)
+    t = fc.record(config, agent, t, 0.35, why="this family usually needs two tries")
+
+    t = ses.assign(config, agent, t, runtime=_Rt(), installed=lambda: set())
+
+    assert t.forecast["p"] == 0.35, t.forecast
+    assert "two tries" in t.forecast["why"]
+
+
+def test_but_a_task_assigned_with_no_estimate_still_gets_one(config):
+    """The other half. §11.7 also requires a pre-action forecast in the live
+    path, so registering-only-when-absent must not become registering never."""
+    from ai4science.harness.agents.sarsi import session as ses
+    agent = config.agents["sarsi-worker"]
+    t = _task(config, agent)
+    _plan(config, agent, t)
+    assert not (t.forecast or {}).get("p")
+
+    t = ses.assign(config, agent, t, runtime=_Rt(), installed=lambda: set())
+
+    assert t.forecast["p"] == 0.7
+    assert "assigned for" in t.forecast["why"]
