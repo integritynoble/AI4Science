@@ -505,9 +505,24 @@ def workspace_context(config: Config, agent: Agent, surface: str = "cli",
         try:
             from ai4science.harness.agents.sarsi import retrieval as _ret
             task_id = _standing_id(config, agent, surface)
-            got = _ret.retrieve(config, agent, query=query, task_id=task_id, k=6)
+            # The standing task's DECLARED scope. `retrieve` has always taken a
+            # `scope=` and filtered on it; this caller never passed one, so a
+            # learned lesson competed on keyword overlap against every other
+            # active entry in the store — and lost, as the store grew.
+            # Measured 2026-08-26 on the M5.5 ablation: fourteen entries, k=6,
+            # and the lesson that answered the query was outranked by six that
+            # merely shared words with it.
+            #
+            # None when the task declares none, never an empty list: a task
+            # that scoped nothing must see what it saw before. Silently
+            # narrowing it would be the same defect pointing the other way, and
+            # `active_entries` admits `global` under any filter, so a
+            # constraint that applies everywhere is never the thing dropped.
+            scope = _standing_scope(config, agent, surface)
+            got = _ret.retrieve(config, agent, query=query, task_id=task_id,
+                                scope=scope, k=6)
             add("semantic", _ret.render(config, agent, query=query,
-                                        task_id=task_id, k=6))
+                                        task_id=task_id, scope=scope, k=6))
             selected["semantic"] = [
                 e.get("memory_id") or e.get("id", "")
                 for e in (got.get("protected", []) + got.get("retrieved", []))]
@@ -733,6 +748,35 @@ def _fit_total(sections: list, mode: str):
             by_name[name] = kept + note
             trimmed[name] = f"trimmed {gone} bytes"
     return [(n, by_name[n]) for n, _ in sections if n in by_name], trimmed
+
+
+def _standing_scope(config: Config, agent: Agent, surface: str):
+    """What the standing task declared it is about, or None.
+
+    The directive carries `scope`, and the task keeps the directive. Returning
+    None rather than [] when nothing is declared is load-bearing: `retrieve`
+    treats a falsy scope as "no filter", and an empty list would read as a
+    filter that admits nothing.
+    """
+    try:
+        from ai4science.harness.agents.sarsi import task as _tsk
+        tid = _standing_id(config, agent, surface)
+        if not tid:
+            return None
+        t = _tsk.get(config, agent, tid)
+        declared = list((getattr(t, "directive", None) or {}).get("scope") or [])
+        # `global` is the DEFAULT a directive gets when nothing was declared,
+        # not a declaration. Passing it as a filter excluded every entry with a
+        # specific scope — `active_entries` admits an entry when `global` is in
+        # the ENTRY's scopes or when the filters overlap, and `["global"]`
+        # satisfies neither for a `store:ledger` lesson. So the fix for
+        # crowding hid more than the crowding did, on the very first task that
+        # declared nothing. Strip it, and treat what remains as the
+        # declaration.
+        specific = [x for x in declared if x != "global"]
+        return specific or None
+    except Exception:
+        return None
 
 
 def _standing_id(config: Config, agent: Agent, surface: str) -> str:

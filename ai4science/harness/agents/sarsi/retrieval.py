@@ -62,13 +62,34 @@ def _tokens(text: str) -> set:
 
 
 def _lexical_score(entry: Dict[str, Any], query_tokens: set,
-                   task_id: str) -> int:
-    """Score by task-id match and keyword overlap with the query."""
+                   task_id: str, scope: Optional[List[str]] = None) -> int:
+    """Score by scope match and keyword overlap with the query.
+
+    `task:{id}` was the only scope signal, and a lesson consolidated from
+    EARLIER, different tasks can never carry the current task's id — so learned
+    semantic memory competed on keyword overlap alone. Measured on the M5.5
+    ablation, 2026-08-26: at fourteen active entries the lesson that answered
+    the query did not make its own top six, beaten by six entries that shared
+    more words with the question than it did.
+
+    A non-task scope match is worth less than the task's own — a lesson about
+    this store is weaker evidence than a lesson about this task — and much more
+    than nothing, which is what it was worth before. Two rather than four, so a
+    same-task entry still wins, and a strong keyword match can still beat a
+    weak scope one.
+    """
     score = 0
-    # Task scope match is a strong signal — same-task entries are highly relevant.
     scopes = entry.get("scope") or []
+    # Task scope match is a strong signal — same-task entries are highly relevant.
     if task_id and f"task:{task_id}" in scopes:
         score += 4
+    elif scope:
+        # Any other declared overlap: the entry is about the thing being asked
+        # about. `global` is deliberately excluded — it matches everything, so
+        # rewarding it would rank the least specific entries highest.
+        shared = {x for x in scope if x != "global"} & {x for x in scopes if x != "global"}
+        if shared:
+            score += 2
     # Keyword overlap with query.
     stmt = (entry.get("statement") or entry.get("summary") or "")
     entry_tokens = _tokens(stmt)
@@ -78,13 +99,13 @@ def _lexical_score(entry: Dict[str, Any], query_tokens: set,
 
 
 def _semantic_score(entry: Dict[str, Any], query_tokens: set,
-                    task_id: str) -> float:
+                    task_id: str, scope: Optional[List[str]] = None) -> float:
     """Mode B: lexical score + TF-IDF-style token intersection boost.
 
     Uses relative overlap (Jaccard) rather than raw count, so short entries
     with high overlap beat long entries with incidental matches.
     """
-    base = _lexical_score(entry, query_tokens, task_id)
+    base = _lexical_score(entry, query_tokens, task_id, scope)
     stmt = (entry.get("statement") or entry.get("summary") or "")
     entry_tokens = _tokens(stmt)
     if entry_tokens:
@@ -137,11 +158,11 @@ def retrieve(config: Config, agent: Agent,
     # Score and rank candidates.
     if mode == "semantic":
         scored = sorted(candidates,
-                        key=lambda e: _semantic_score(e, query_tokens, task_id),
+                        key=lambda e: _semantic_score(e, query_tokens, task_id, scope),
                         reverse=True)
     else:
         scored = sorted(candidates,
-                        key=lambda e: _lexical_score(e, query_tokens, task_id),
+                        key=lambda e: _lexical_score(e, query_tokens, task_id, scope),
                         reverse=True)
 
     return {
