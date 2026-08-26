@@ -464,9 +464,10 @@ def _goal(config, agent, t, tail, runtime):
     # answers are about it.
     tsk.clear_phase(t, None)
     memory.record(config, agent, "rollback",
-                  f"{t.id} rolled back: goal changed from {was[:120]!r}",
-                  f"the plan was re-drafted for the new goal: {goal[:200]}",
-                  now=time.time)
+                  f"rolled back: the goal changed from {was[:120]!r}",
+                  f"task {t.id}: the plan was re-drafted for the new goal: "
+                  f"{goal[:200]}",
+                  task_id=t.id, now=time.time)
     if owner_criteria:
         t.criteria = owner_criteria           # the owner's words survive
         t.plan_owner_edited = True
@@ -523,9 +524,10 @@ def _edit(config, agent, t, tail, runtime):
     # the PASS would carry a verdict about a question nobody asks any more.
     tsk.clear_phase(t, index)
     memory.record(config, agent, "rollback",
-                  f"{t.id} rolled back: phase {number} criterion replaced",
-                  f"the phase was judged against a standard that no longer exists; "
-                  f"it now reads: {criterion[:200]}", now=time.time)
+                  f"rolled back: a phase criterion was replaced",
+                  f"task {t.id}, phase {number}: it was judged against a "
+                  f"standard that no longer exists; it now reads: "
+                  f"{criterion[:200]}", task_id=t.id, now=time.time)
     t.plan_stale = False               # an edit is the mission restated
     t.plan_owner_edited = True
     t.plan_agreed = True               # you have settled it; no more drafting
@@ -634,7 +636,18 @@ def _classified(config: Config, agent: Agent, body: str, surface: str) -> str:
                 f"sessions.\nheard on {surface}: {body}\n"
                 f"a worker takes goals — `sarsi agents` lists them.")
     from ai4science.harness.agents.sarsi import intent as _intent
+    from ai4science.harness.agents.sarsi import mode as _mode
     got = _intent.classify(body)
+    route = _mode.route(body, buf=_recent(config, agent, surface), intent_of=got)
+
+    def _handled_here(answer: str) -> str:
+        """A turn the door answers itself never reaches the gate, so the gate
+        never records how it was routed. §11.2 wants the router's decision in
+        the manifest; without this, the turns with no record were exactly the
+        ACTION ones — the decisions that matter most."""
+        from ai4science.harness.agents.sarsi import selfaware as _sa
+        _sa.record_route(agent, route, surface=surface, observation=body)
+        return answer
 
     if got.kind == "correction":
         standing = _standing(config, agent, surface)
@@ -642,25 +655,26 @@ def _classified(config: Config, agent: Agent, body: str, surface: str) -> str:
         if standing is not None:
             detail += f" (standing task: {standing.id} — {standing.goal[:120]})"
         memory.record(config, agent, "correction",
-                      f"owner corrected worker: {body[:120]}", detail)
-        return (f"[{agent.id}] noted — what would you like instead? "
-                f"(/tasks shows what I am holding)")
+                      f"owner corrected worker: {body[:120]}", detail,
+                      task_id=standing.id if standing is not None else "")
+        return _handled_here(
+            f"[{agent.id}] noted — what would you like instead? "
+            f"(/tasks shows what I am holding)")
 
     if got.kind == "greeting":
-        return (f"[{agent.id}] hello — /tasks shows what I am holding, "
-                f"/new <goal> opens a task.")
+        return _handled_here(
+            f"[{agent.id}] hello — /tasks shows what I am holding, "
+            f"/new <goal> opens a task.")
 
     if got.kind == "question":
-        from ai4science.harness.agents.sarsi import mode as _mode
-        route = _mode.route(body, buf=_recent(config, agent, surface),
-                            intent_of=got)
         if route.mode == _mode.ACTION:
             # A request with a question mark on it. Not answered as chat, and
             # not filed either — this door never files from plain prose.
             goal = _mode.action_goal(body)
-            return (f"[{agent.id}] that reads as something to DO, not a "
-                    f"question I should answer.\n"
-                    f"to file it: /new {goal}")
+            return _handled_here(
+                f"[{agent.id}] that reads as something to DO, not a "
+                f"question I should answer.\n"
+                f"to file it: /new {goal}")
         return _answered(config, agent, body, surface, route=route)
 
     if got.kind in ("meta", "ambiguous"):
@@ -669,15 +683,27 @@ def _classified(config: Config, agent: Agent, body: str, surface: str) -> str:
         # follow-up is the wrong answer when the last two turns say exactly
         # what it follows. The router already resolved the referent; if it
         # priced the turn as conversation, it is answered as conversation.
-        from ai4science.harness.agents.sarsi import mode as _mode
-        route = _mode.route(body, buf=_recent(config, agent, surface),
-                            intent_of=got)
         if route.mode == _mode.CHAT and route.referent:
             return _answered(config, agent, body, surface, route=route)
-        return f"[{agent.id}] {got.why}"
+        if route.mode == _mode.ACTION and route.referent:
+            # `do that` — the router resolved the referent from the recent
+            # window, and this used to throw it away and reply "I could not
+            # tell whether that is a goal", which is not true: it could tell
+            # enough to route the turn up. Saying what it takes the line to
+            # mean lets the owner confirm it in one keystroke instead of
+            # retyping the instruction. [plan v3 §11.2]
+            #
+            # It still does not FILE it. An elliptical instruction is the one
+            # place a referent could be resolved to the wrong turn, and this
+            # door never files from plain prose anyway — the offer stays
+            # explicit, exactly as it is for a request with a question mark.
+            goal = _mode.action_goal(route.referent)
+            return _handled_here(f"[{agent.id}] I take that as: {goal}\n"
+                                 f"if that is right: /new {goal}")
+        return _handled_here(f"[{agent.id}] {got.why}")
 
     # A directive is a goal — file it immediately like OpenClaw would. [spec §8]
-    return _new(config, agent, got.goal, surface)
+    return _handled_here(_new(config, agent, got.goal, surface))
 
 
 def _answered(config: Config, agent: Agent, body: str, surface: str,

@@ -81,6 +81,7 @@ def record_episode(config: Config, agent: Agent, trigger: str,
                    summary: str, detail: str = "", *,
                    task_id: str = "", phase_id: str = "",
                    outcome: str = "", tags: Optional[List[str]] = None,
+                   criteria: Optional[List[str]] = None,
                    lesson_ref: str = "", now=time.time) -> Dict[str, Any]:
     """Write an episode record to the ledger (episodes.jsonl).
 
@@ -104,6 +105,15 @@ def record_episode(config: Config, agent: Agent, trigger: str,
         "detail": (detail or "").strip()[:MAX_DETAIL],
         "tags": list(tags or [trigger]),
         "lesson_ref": lesson_ref or "",
+        # What was actually judged. Additive and optional: older rows have no
+        # such key and read exactly as they did. [§0.1 rule 4]
+        #
+        # A verified success is the only evidence a procedure can be built
+        # from, and the criteria are the part of it a procedure needs — they
+        # are the checks that passed. Without them the consolidator proposes a
+        # skill from three passes and cannot say what passed, so the owner
+        # filling in `tests` has to rediscover what the run already proved.
+        "criteria": list(criteria or []),
         "started_at": datetime.fromtimestamp(ts, tz=timezone.utc).isoformat(timespec="seconds"),
         "ended_at": datetime.fromtimestamp(ts, tz=timezone.utc).isoformat(timespec="seconds"),
     }
@@ -130,12 +140,17 @@ def _trigger_outcome(trigger: str) -> str:
 
 
 def record(config: Config, agent: Agent, trigger: str, title: str,
-           detail: str = "", *, now=time.time) -> Optional[Path]:
+           detail: str = "", *, task_id: str = "", now=time.time) -> Optional[Path]:
     """Write one lesson and prepend its line to the index.
 
     Also writes an episode record to the ledger (M5). The episode is what
     the offline consolidator reads; the lesson file is the short-cycle read
     path for the worker.
+
+    `task_id` goes in the episode's own field. It used to reach the ledger only
+    by being written into the TITLE, which put it in the prose the clusterer
+    reads and left `task_id` empty — so an episode could not be traced back to
+    its task, and no two failures ever looked alike. [§5.3]
 
     Returns the lesson path, or `None` when the trigger is not one of the
     fixed ones — a lesson written for any other reason is a note, and notes
@@ -164,7 +179,8 @@ def record(config: Config, agent: Agent, trigger: str, title: str,
     # short-cycle output and a full disk should not lose it.
     try:
         record_episode(config, agent, trigger, title, detail,
-                       lesson_ref=str(path.name), now=lambda: ts)
+                       task_id=task_id, lesson_ref=str(path.name),
+                       now=lambda: ts)
     except ledger.SecretInLedger:
         raise
     except Exception:

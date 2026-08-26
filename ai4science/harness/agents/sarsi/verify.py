@@ -187,8 +187,8 @@ def check(criterion: str, work_dir: Optional[Path],
         parts = [] if (_DIFF_SCOPED.search(crit) or _NO_FILES_OUTSIDE.search(crit)) \
             else _clauses(crit)
         if len(parts) > 1:
-            results = [check(c, work_dir, timeout=timeout, trusted=trusted,
-                             may_touch=may_touch, _depth=1) for c in parts]
+            results = _judge_clauses(parts, work_dir, timeout=timeout,
+                                     trusted=trusted, may_touch=may_touch)
             if any(r["state"] == FAIL for r in results):
                 bad = next(r for r in results if r["state"] == FAIL)
                 return _verdict(FAIL, f"one clause failed: {bad['why']}",
@@ -368,6 +368,75 @@ def _clauses(crit: str) -> list:
         i += 1
     parts.append("".join(buf))
     return [p.strip() for p in parts if p.strip()]
+
+
+#: The predicates that can be written with their subject elided, because the
+#: subject was named in an earlier clause: `out.txt exists and contains 42`.
+#: Anchored at the start — a clause that opens with the verb is the shape that
+#: has dropped its subject. Anything else means what it says.
+#: The pronoun is captured out, not merely allowed: the retry is built as
+#: `"<file> <predicate>"`, and `"out.txt it contains 42"` matches nothing. A
+#: session writes "out.txt exists and IT contains 42" as readily as the bare
+#: form, and both mean the same thing.
+_ELIDED_SUBJECT = re.compile(
+    r"^(?:it|which|that|and)?\s*"
+    r"((?:contains?|includes?|mentions?)\s+\S.*)$", re.I)
+
+
+def _named_file(clause: str) -> Optional[str]:
+    """The file this clause is about, if it names one."""
+    for pat, grp in ((_FILE_EXISTS, 1), (_FILE_CONTAINS, 1), (_FILE_HASH, 1),
+                     (_JSON_FIELD, 2)):
+        m = pat.search(clause)
+        if m:
+            return m.group(grp)
+    return None
+
+
+def _judge_clauses(parts: List[str], work_dir: Optional[Path], *, timeout: int,
+                   trusted: bool, may_touch: Optional[List[str]]) -> List[Dict[str, Any]]:
+    """Judge each clause, resolving a subject that an earlier clause established.
+
+    `out.txt exists and contains 42` is two checkable conditions, and the
+    second one was unjudgeable purely because its subject sits in the first.
+    Both halves match a pattern the moment the file is put back, so the whole
+    criterion used to fall through to a model for a reason that is grammar
+    rather than substance. Measured 2026-08-24: it is the shape three of this
+    tree's own tests are written around.
+
+    The elision is resolved ONLY when it cannot mean anything else:
+
+      * the clause matched nothing on its own — this repairs an ELISION, never
+        an unknown, so `and it reads well` stays unjudgeable;
+      * it opens with a predicate verb and names no file of its own;
+      * the clauses BEFORE it name exactly one distinct file. Two candidates
+        and nobody has said which, so nothing decides;
+      * and the reading taken is written into the verdict's `check`, because a
+        check that silently judges a file the criterion never spelled out is
+        confidently answering a question nobody asked.
+    """
+    results: List[Dict[str, Any]] = []
+    seen: List[str] = []
+    for clause in parts:
+        r = check(clause, work_dir, timeout=timeout, trusted=trusted,
+                  may_touch=may_touch, _depth=1)
+        mine = _named_file(clause)
+        elided = _ELIDED_SUBJECT.match(clause.strip())
+        if (r["state"] == UNVERIFIED and mine is None and elided
+                and len(set(seen)) == 1):
+            subject = seen[0]
+            retry = check(f"{subject} {elided.group(1)}", work_dir,
+                          timeout=timeout, trusted=trusted,
+                          may_touch=may_touch, _depth=1)
+            if retry["state"] in (PASS, FAIL):
+                retry = dict(retry)
+                retry["check"] = (retry.get("check", "")
+                                  + f" [subject from an earlier clause: {subject}]")
+                r = retry
+        if mine:
+            seen.append(mine)
+        results.append(r)
+    return results
 
 
 def _check_file_contains(name: str, want: str, cwd: Path) -> Dict[str, Any]:

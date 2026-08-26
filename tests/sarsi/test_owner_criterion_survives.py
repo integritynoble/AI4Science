@@ -66,6 +66,18 @@ def _task(config, agent):
                            pl.draft(d))
 
 
+def _artifact(agent, t, body="L1, L2 and L3\n"):
+    """`notes.md exists and names L1, L2 and L3.` has a deterministic clause in
+    it. Since `session.verify` began settling what code can settle (2026-08-24)
+    that clause FAILS outright when no notes.md exists, and the model is never
+    asked — which is correct, and not what these tests are about. They are
+    about WHICH criterion is judged, so the file exists and the compound falls
+    through to the verifier on its unjudgeable half."""
+    work = ses.work_dir_for(agent, t)
+    work.mkdir(parents=True, exist_ok=True)
+    (work / "notes.md").write_text(body)
+
+
 def _write_plan(agent, t, criterion):
     (tsk.dir_of(agent, t.id) / f"{t.plan_version}.md").write_text(
         f"# {t.goal}\n\n## Phase 1 — do it\nVerified when: {criterion}\n")
@@ -75,6 +87,7 @@ def _owner_sets(config, agent, t, criterion=OWNERS):
     """What the owner does: sharpen the plan file, then adopt it."""
     _write_plan(agent, t, criterion)
     tsk.adopt_criteria(agent, t)
+    _artifact(agent, t)
     return t
 
 

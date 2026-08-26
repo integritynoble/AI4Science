@@ -278,9 +278,11 @@ def assign(config: Config, agent: Agent, task: tsk.Task, *,
 
     if task.session:
         memory.record(config, agent, "clash",
-                      f"{task.id} already has session {task.session.get('name', '?')}",
-                      "assign() called on a task that already has a running session — "
-                      "exactly-once violated.")
+                      f"assign on a task that already has a session",
+                      f"task {task.id}: session "
+                      f"{task.session.get('name', '?')} was already running — "
+                      f"exactly-once violated.",
+                      task_id=task.id)
         return task
 
     # Readiness gate — sync self model and check for gaps before spawning.
@@ -302,7 +304,7 @@ def assign(config: Config, agent: Agent, task: tsk.Task, *,
         for gap in gaps:
             memory.record(config, agent, "refusal",
                           f"readiness gap before assign: {gap[:120]}",
-                          f"task {task.id}: {gap}")
+                          f"task {task.id}: {gap}", task_id=task.id)
         if got.exhausted:
             memory.record(config, agent, "refusal",
                           f"unmeasured after {_sm.DEFAULT_ATTEMPTS} attempts: "
@@ -334,7 +336,8 @@ def assign(config: Config, agent: Agent, task: tsk.Task, *,
             p_forecast = 0.5
             memory.record(config, agent, "refusal",
                           f"supervision tightened: {sup.why[:120]}",
-                          f"task {task.id}: {sup.as_record()}")
+                          f"task {task.id}: {sup.as_record()}",
+                          task_id=task.id)
         _fc.record(config, agent, task, p_forecast,
                    why=f"sarsi-claude assigned for {phase_str} of {task.id}; "
                    f"p={p_forecast:.1f} "
@@ -666,6 +669,7 @@ def _record_success(config: Config, agent: Agent, task: tsk.Task,
             task_id=task.id, outcome="pass",
             tags=["success", "workflow",
                   "deterministic" if verdict.get("deterministic") else "judged"],
+            criteria=list(task.criteria or []),
             now=now)
     except Exception:
         pass
@@ -1043,6 +1047,23 @@ def _kickoff_marker(text: str) -> str:
     return (text or "")[:40]
 
 
+def runtime_for(task: tsk.Task, runtime: Optional[Any] = None) -> Any:
+    """The runtime that owns this task's session, by transport.
+
+    The public name, because two callers outside this module use it and always
+    did: `chat._guided` steers a plain line into a live session, and
+    `retry.hand_back` reopens one. The rename to `_rt` never reached either, so
+    both raised `AttributeError` the moment their own `runtime` was None — and
+    the web gateway passes no runtime at all. Nothing in the suite caught it
+    because every test hands one in; a live conversation found it on the second
+    turn after a task was filed.
+
+    Argument order is the caller's: the task is the subject, and an injected
+    runtime is the optional override.
+    """
+    return _rt(runtime, task)
+
+
 def _rt(runtime: Optional[Any], task: tsk.Task) -> Any:
     """The runtime that owns this task's session, by transport."""
     sess = task.session or {}
@@ -1155,8 +1176,10 @@ def _deliver_kickoff_acp(config: Config, agent: Agent, task: tsk.Task,
 
     task.kickoff_unreachable = True
     memory.record(config, agent, "refusal",
-                  f"{task.id} kickoff undelivered: session {name!r} refused the brief",
-                  "The ACP session declined the kickoff prompt; a resume was attempted.",
+                  f"kickoff undelivered: the session refused the brief",
+                  f"task {task.id}, session {name!r}: the ACP session declined "
+                  f"the kickoff prompt; a resume was attempted.",
+                  task_id=task.id,
                   now=now)
     try:
         rt.resume(name, cwd)
@@ -1171,8 +1194,10 @@ def _deliver_kickoff_acp(config: Config, agent: Agent, task: tsk.Task,
         task.kickoff_tries += 1
         return tsk._touch(agent, task, now)
     memory.record(config, agent, "refusal",
-                  f"{task.id} kickoff undelivered: session {name!r} refused the resume brief",
-                  "The ACP session declined the resume brief after a resume attempt.",
+                  f"kickoff undelivered: the session refused the resume brief",
+                  f"task {task.id}, session {name!r}: the ACP session declined "
+                  f"the resume brief after a resume attempt.",
+                  task_id=task.id,
                   now=now)
     task.kickoff_tries += 1
     if task.kickoff_tries >= MAX_KICKOFF_TRIES:
@@ -1951,6 +1976,35 @@ def kickoff(task: tsk.Task, plan: Optional[pl.Plan],
     return "\n".join(lines)
 
 
+def _settle_deterministically(agent: Agent, task: tsk.Task,
+                              criteria: List[str]):
+    """Split criteria into {criterion: verdict} settled by code, and the rest.
+
+    `trusted` is the OWNER's agreement, not the worker's confidence — the same
+    rule `_verify_phase` applies, and for the same reason: on the automatic
+    path the session writes `plan0.md`, so an unagreed command criterion would
+    be the judged party choosing its judge's code. [§M4.2]
+    """
+    settled: Dict[str, Any] = {}
+    rest: List[str] = []
+    try:
+        from ai4science.harness.agents.sarsi import verify as _det
+    except Exception:
+        return {}, list(criteria)
+    trusted = bool(getattr(task, "plan_owner_edited", False))
+    work = work_dir_for(agent, task)
+    for c in criteria:
+        try:
+            r = _det.check(c, work, trusted=trusted)
+        except Exception:
+            r = None                # the check errored — the model judges it
+        if r is not None and r.get("state") in ("PASS", "FAIL"):
+            settled[c] = r
+        else:
+            rest.append(c)
+    return settled, rest
+
+
 def verify(config: Config, agent: Agent, task: tsk.Task, *,
            verifier: Callable[..., Dict[str, Any]], evidence: str = "",
            engine: Optional[str] = None, runtime: Optional[Any] = None,
@@ -2026,16 +2080,56 @@ def verify(config: Config, agent: Agent, task: tsk.Task, *,
                              runtime=runtime, now=now)
 
     criteria = list(task.criteria or [])
-    verdict = dict(verifier(goal=task.goal, criteria=criteria, evidence=evidence) or {})
+
+    # Deterministic first, here as in `_verify_phase`. §0.1 rule 6: if a pass
+    # condition can be expressed as a test, a file check, a JSON predicate or
+    # an exit code, do that rather than ask a model — and this path did not.
+    # It handed EVERY criterion to the verifier, including ones `verify.check`
+    # settles outright, which is the path `sarsi check <agent> <task>` takes
+    # whenever no `--phase` is given: the owner's default. Measured
+    # 2026-08-24: `verify.check` returned PASS on "manifest.json exists" while
+    # the model verifier's FAIL was recorded as the task's verdict.
+    settled, unsettled = _settle_deterministically(agent, task, criteria)
+
+    failed_checks = [c for c, r in settled.items() if r["state"] == "FAIL"]
+
+    if failed_checks or (settled and not unsettled):
+        # Either code answered everything, or it FAILED something. A check that
+        # failed is not up for review: a model PASS over it would be the judged
+        # party's opinion beating the evidence, which is the one direction that
+        # must never be possible.
+        named = failed_checks or list(settled)
+        verdict = {
+            "state": "FAIL" if failed_checks else "PASS",
+            "why": "; ".join(settled[c].get("why", "") for c in named)[:800],
+            "engine": "deterministic",
+            "independent": True,          # code check, not the executor's word
+            "deterministic": True,
+            "settled_by_check": list(settled),
+        }
+        if unsettled:
+            # Say what was NOT asked, so a reader never mistakes an unfinished
+            # judgement for a complete one. [§0.1 rule 7]
+            verdict["not_judged"] = list(unsettled)
+    else:
+        verdict = dict(verifier(goal=task.goal, criteria=unsettled or criteria,
+                                evidence=evidence) or {})
+        if settled:
+            verdict["settled_by_check"] = list(settled)
+
     verdict = _note_drift(agent, task, verdict, drifted)
-    verdict["engine"] = engine or "unknown"
+    verdict = _note_goal_drift(agent, task, verdict)
+    verdict["engine"] = verdict.get("engine") or engine or "unknown"
     # A different engine is the cheapest independence there is; when it is the
     # same one, say so rather than claiming an independence we do not have.
     # Compared against the engine that RAN the session: the live run recorded
     # `independent: true` for a claude-judged, claude-executed task because the
     # worker's planning model happened to be a different string.
     ran_it = (task.session or {}).get("engine") or agent.model or ""
-    verdict["independent"] = bool(engine and engine != ran_it)
+    if not verdict.get("deterministic"):
+        # A code check IS independent of whoever ran the session; only a model
+        # verdict has to argue for it by being a different engine.
+        verdict["independent"] = bool(engine and engine != ran_it)
     verdict["criteria"] = criteria
 
     from ai4science.harness.agents.sarsi import verifier as vf
@@ -2072,9 +2166,17 @@ def verify(config: Config, agent: Agent, task: tsk.Task, *,
     task.state = tsk.RUNNING
     task = tsk._touch(agent, task, now)
     why = verdict.get("why") or "the verifier was not satisfied"
+    # The TITLE is what `consolidate._fingerprint` clusters on — its first 40
+    # characters. Leading with the task id, which is 14 characters and different
+    # every time, meant two identical failures were two groups of one, and the
+    # semantic arm of the consolidator could never reach `MIN_SUPPORT` from the
+    # live path however often the same thing broke. The id belongs in the
+    # episode's own `task_id` field, where it is traceable and does not decide
+    # what looks like what. [§5.3, §11.9(b)]
     memory.record(config, agent, "refuted_prediction",
-                  f"{task.id} refuted: {task.goal[:120]}",
-                  f"the verifier said: {why[:800]}", now=now)
+                  f"refuted: {task.goal[:120]}",
+                  f"task {task.id}: the verifier said: {why[:800]}",
+                  task_id=task.id, now=now)
     steered = False
     # Not at an interface this loop cannot read. `check` on an attended agent
     # was typing this paragraph at whatever screen happened to be showing —

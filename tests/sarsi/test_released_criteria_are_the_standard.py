@@ -102,7 +102,15 @@ def _passing(**kw):
     return {"state": "PASS", "why": "out.txt is there and says 42"}
 
 
-def _task(config, agent, *, released):
+def _task(config, agent, *, released, artifact="42\n"):
+    """`artifact` is what out.txt holds. `"42"` meets the RECORDED criterion,
+    `"7"` meets only the rewritten one — which is how "a session cannot lower
+    its own bar" is now shown with evidence rather than with a stub's opinion.
+
+    Written for every test here, not just the per-phase one. The whole-task
+    path did not run deterministic checks at all until 2026-08-24, so these
+    tests reached their verdicts on `_passing` alone — over `out.txt exists
+    and contains 42` with no out.txt anywhere."""
     d = wk.Directive(agent_id=agent.id, goal="write the report")
     t = tsk.create(config, agent, d)
     (tsk.dir_of(agent, t.id) / "plan0.md").write_text(PLAN)
@@ -116,6 +124,10 @@ def _task(config, agent, *, released):
         # the wrong thing. That confusion was in the code too.
         t.released_at = time.time()
         t.work_started_at = time.time()
+    if artifact is not None:
+        work = ses.work_dir_for(agent, t)
+        work.mkdir(parents=True, exist_ok=True)
+        (work / "out.txt").write_text(artifact)
     tsk._touch(agent, t, time.time)
     return t
 
@@ -152,25 +164,28 @@ def test_and_the_verdict_says_the_file_has_since_changed(config, agent):
 
 def test_the_standard_is_the_record_not_the_file(config, agent):
     """The property that must not move. The rewritten file drops `contains 42`;
-    what is judged still has it."""
-    t = _task(config, agent, released=True)
+    what is judged still has it.
+
+    Shown with the artifact rather than by watching what the verifier is
+    handed. `out.txt exists and contains 42` became deterministic once the
+    checker learned to carry a subject across `and`, so out.txt says `7`: the
+    RECORDED criterion fails, the rewritten one would have passed, and a check
+    settles which of the two was applied."""
+    t = _task(config, agent, released=True, artifact="7\n")
     _rewrite(agent, t)
-    seen = {}
 
-    def spy(**kw):
-        seen.update(kw)
-        return {"state": "PASS", "why": "ok"}
+    t = ses.verify(config, agent, t, verifier=_passing, evidence="out.txt: 7",
+                   runtime=Runtime(), now=time.time)
 
-    ses.verify(config, agent, t, verifier=spy, evidence="e", runtime=Runtime(),
-               now=time.time)
-    judged = " ".join(seen.get("criteria") or [])
-    assert "42" in judged, seen
+    assert t.verdict["state"] == "FAIL", t.verdict
+    assert t.verdict.get("deterministic") is True
+    assert "42" in " ".join(t.verdict["criteria"])
 
 
 def test_a_session_cannot_lower_its_own_bar(config, agent):
     """The whole reason the refusal existed. A file rewritten to something the
     work DOES meet must not turn a failing task into a passing one."""
-    t = _task(config, agent, released=True)
+    t = _task(config, agent, released=True, artifact="7\n")
     _rewrite(agent, t)                       # criterion relaxed to "out.txt exists"
 
     def strict(**kw):
@@ -226,7 +241,6 @@ def test_a_phase_verdict_carries_the_same_note(config, agent):
     # `out.txt exists and contains 42` is deterministic since M4. The subject
     # here is the DRIFT NOTE on the verdict, so the artifact is written and the
     # verdict is a real one.
-    (ses.work_dir_for(agent, t) / "out.txt").write_text("42\n")
     t = ses.verify(config, agent, t, verifier=_passing, evidence="out.txt: 42",
                    runtime=Runtime(), phase=0, now=time.time)
     got = t.phase_verdicts.get("0") or {}
