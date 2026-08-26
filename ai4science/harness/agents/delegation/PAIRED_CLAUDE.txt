@@ -1,0 +1,27 @@
+Paired HG0/HG1 measurement
+==========================
+
+executor: 2.1.234 (Claude Code) / model=default
+episodes: 12   (one execution each, both rungs scored from it)
+
+band   episodes  pass rate shared by both rungs
+--------------------------------------------------------
+T0     4         1.000     yes
+T1     4         0.500     yes
+T2     2         1.000     yes
+T3     2         1.000     yes
+
+GROSS A_DI (v1.3 primitive)
+  HG0 0.933   HG1 0.933   difference 0.000000
+  Identical by construction: the same artifacts, one verdict each.
+
+OUTCOME SPLIT (what the rungs actually differ in)
+  HG0  delivered wrong: 2   held back: 0
+  HG1  delivered wrong: 0   held back: 2   false rejections: 0
+
+NET A_DI (v1.4 primitive, rho=1)
+  HG0 0.867   HG1 0.933   difference +0.067
+
+Proposition 1 predicts the gross difference is exactly zero. Under the
+paired design it is zero by construction rather than by luck, and the
+whole of the acceptance rung's contribution appears in the net figure.

@@ -226,3 +226,48 @@ def test_a_criteria_provider_is_not_in_the_routing_pool():
     # the provider.
     from ai4science.harness.agents.delegation.contract import read_task
     assert r.choose(read_task("t", "x"), "cls", exclude=["real"]).executor is None
+
+
+# ------------------------------------------------------------- paired design
+
+def test_the_paired_design_shares_one_verdict_between_the_rungs():
+    """The property that makes Proposition 1 controlled rather than observed.
+
+    Under pairing the two rungs read one set of artifacts and one verifier
+    verdict, so their gross surfaces are identical by construction. A non-zero
+    difference would mean a defect in the measuring harness, not a fact about
+    acceptance.
+    """
+    from ai4science.harness.agents.delegation.paired import (
+        PairedEpisode, _surface, _weighted)
+    # Each band needs a mixed outcome for the subtraction to bite. A band whose
+    # pass rate equals its false-completion rate nets to zero under both
+    # scorings, because the net surface floors at zero -- see the note in the
+    # paper: a band where everything wrong was delivered scores nothing, which
+    # is correct and means the metric saturates at the bottom.
+    eps = [PairedEpisode("t1.a", "T1", 0, True, True, 2, 1.0),
+           PairedEpisode("t1.b", "T1", 1, False, False, 2, 1.0),
+           PairedEpisode("t2.c", "T2", 0, True, True, 2, 1.0),
+           PairedEpisode("t2.d", "T2", 1, False, True, 2, 1.0)]
+    surface = _surface(eps)
+    # One surface, so one gross figure however the rungs treated the failures.
+    assert _weighted(surface) == _weighted(surface)
+
+    by = {}
+    for e in eps:
+        by.setdefault(e.band, []).append(e)
+    fc0 = {b: sum(x.hg0_false_completion for x in v) / len(v) for b, v in by.items()}
+    fc1 = {b: sum(x.hg1_false_completion for x in v) / len(v) for b, v in by.items()}
+    # HG0 delivers every failure; HG1 delivers only the ones it accepted.
+    assert _weighted(surface, fc0) < _weighted(surface, fc1)
+
+
+def test_the_four_paired_outcomes_are_mutually_exclusive():
+    from ai4science.harness.agents.delegation.paired import PairedEpisode
+    cases = [(True, True), (True, False), (False, True), (False, False)]
+    for verdict, accepted in cases:
+        e = PairedEpisode("k", "T1", 0, verdict, accepted, 1, 0.0)
+        flags = [e.hg1_false_completion, e.hg1_held_back, e.hg1_false_rejection]
+        assert sum(flags) <= 1, "an episode landed in two outcome buckets"
+        # HG0 has no acceptance step, so a wrong result is always delivered.
+        assert e.hg0_false_completion == (not verdict)
