@@ -11,11 +11,13 @@ Without those last two, a bad answer cannot be attributed. A routing mistake
 and a retrieval mistake look identical in the bytes.
 """
 import json
+import random
 
 import pytest
 
-from ai4science.harness.agents.sarsi import (log, mode, registry as reg,
-                                             selfaware as sa, semantic)
+from ai4science.harness.agents.sarsi import (discourse, log, mode,
+                                             registry as reg, selfaware as sa,
+                                             semantic)
 
 
 @pytest.fixture(autouse=True)
@@ -48,10 +50,45 @@ def test_a_stored_context_id_reproduces_the_exact_bytes(config, agent):
     assert back == ctx
 
 
+def _overflow_the_recent_window(agent, mode_name="CHAT", margin=2.0):
+    """Log more than the window can hold, so something is genuinely left out.
+
+    Sized from the budget rather than guessed. The first version of this test
+    wrote thirty turns of `"x" * 400` and assumed they would overflow; they do
+    not. Repeated characters are nearly free under a BPE tokenizer -- 400 of
+    them cost about 55 tokens, not the ~115 a byte-ratio estimate gives -- so
+    the fixture came to roughly half the 6000-token CHAT window and nothing was
+    ever omitted. The assertion below then read a key the assembler had no
+    reason to write.
+
+    So: varied text, which a tokenizer cannot compress, and a count derived
+    from the budget in force. This stays correct if the budget changes and on a
+    machine with no tokenizer installed, where estimates run higher still.
+    """
+    budget = sa.MODE_BUDGET[mode_name]["recent_tokens"]
+    words = ("alpha beta gamma delta epsilon zeta eta theta iota kappa"
+             " lambda mu nu xi omicron pi rho sigma tau upsilon").split()
+    rng = random.Random(20260826)
+
+    def line(tag, i):
+        body = " ".join("%s%d" % (rng.choice(words), rng.randint(0, 9999))
+                        for _ in range(60))
+        return f"{tag} {i} {body}"
+
+    logged = 0
+    per_exchange = None
+    while logged < budget * margin:
+        i = 0 if per_exchange is None else i + 1
+        prompt, reply = line("turn", i), line("reply", i)
+        log.append(agent.agent_dir, "cli", prompt, reply)
+        per_exchange = discourse.estimate_tokens(prompt + reply)
+        logged += per_exchange
+    return budget, logged
+
+
 def test_the_manifest_names_the_ids_the_budget_and_what_was_left_out(config, agent):
-    for i in range(30):
-        log.append(agent.agent_dir, "cli", f"turn {i} " + "x" * 400,
-                   f"reply {i} " + "y" * 400)
+    budget, logged = _overflow_the_recent_window(agent)
+    assert logged > budget, "the fixture must exceed the window it is testing"
     sa.workspace_context(config, agent, observation="why?",
                          route=mode.route("why?"))
     row = _last(agent)
