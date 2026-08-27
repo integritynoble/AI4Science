@@ -28,6 +28,7 @@ import inspect
 import os
 import pathlib
 import subprocess
+import time
 import sys
 
 import pytest
@@ -53,6 +54,14 @@ def _init(state):
 
 
 def _drive(keys, env):
+    """Drive the REAL CLI in a subprocess — which is the point, and the cost.
+
+    Filing a directive through the door starts a session, and on a machine with
+    `openclaw` on PATH that is a genuine gateway bridge. The conftest guards
+    that stop this in-process cannot reach a child interpreter: it has its own
+    Python and never sees a monkeypatch. So a test that drives the CLI for real
+    has to clean up after itself, and `_reap_bridges` below is that.
+    """
     try:
         p = subprocess.run([sys.executable, "-m", "ai4science.cli", "chat",
                             "--mode", "unified-LLM"], input=keys,
@@ -60,6 +69,56 @@ def _drive(keys, env):
     except (subprocess.TimeoutExpired, FileNotFoundError) as e:
         pytest.skip(f"cannot drive the REPL here: {type(e).__name__}")
     return p.stdout + p.stderr
+
+
+def _reap_bridges(before):
+    """Kill the gateway bridges this test's CLI subprocess left behind.
+
+    By PID, and it has to be. The first attempt drove `sarsi stop` in another
+    subprocess, which cannot work by construction: `ses.stop` resolves a
+    runtime whose `_clients` cache is empty in a fresh interpreter, finds no
+    client for the session name, and no-ops. The bridge is a GRANDCHILD of this
+    test — spawned by the CLI child — so nothing in-process holds a handle on
+    it and only its pid reaches it.
+
+    Same technique as the session-scoped reaper in `tests/conftest.py`, scoped
+    to this test. Both exist on purpose: that one is the backstop for anything
+    that slips through, this one keeps the suite green for a test that
+    deliberately drives the real CLI and therefore deliberately spawns.
+    """
+    import signal
+    leaked = _openclaw_pids() - before
+    for pid in leaked:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except (ProcessLookupError, PermissionError):
+            pass
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline and (_openclaw_pids() & leaked):
+        time.sleep(0.5)
+    for pid in _openclaw_pids() & leaked:
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
+
+
+def _openclaw_pids():
+    """Live `openclaw` / `openclaw-acp` pids, as a set."""
+    try:
+        out = subprocess.run(["ps", "-eo", "pid,comm"], capture_output=True,
+                             text=True, timeout=20).stdout
+    except Exception:
+        return set()
+    pids = set()
+    for line in out.splitlines()[1:]:
+        parts = line.split(None, 1)
+        if len(parts) == 2 and parts[1].strip() in ("openclaw", "openclaw-acp"):
+            try:
+                pids.add(int(parts[0]))
+            except ValueError:
+                pass
+    return pids
 
 
 def _owner_guide_calls():
@@ -128,7 +187,7 @@ def test_both_doors_into_guidance_make_the_same_call():
                        for k in kwnames), f"{where}: {sorted(kwnames)}"
 
 
-def test_entering_a_task_mode_changes_no_grant_or_ceiling_record(tmp_path):
+def test_entering_a_task_mode_changes_no_grant_or_ceiling_record(tmp_path, request):
     """Entering and leaving a task mode moves no byte on disk.
 
     The `guided on` assertion carries the same weight as `create it?` in
@@ -138,6 +197,8 @@ def test_entering_a_task_mode_changes_no_grant_or_ceiling_record(tmp_path):
     state = tmp_path / "state"
     env = _init(state)
 
+    _bridges = _openclaw_pids()
+    request.addfinalizer(lambda: _reap_bridges(_bridges))
     made = _drive("/sarsi-worker\nwrite a GAP-TV solver for CASSI\n\n/exit\n", env)
 
     os.environ["SARSI_STATE_DIR"] = str(state)

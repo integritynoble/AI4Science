@@ -58,13 +58,36 @@ def _restore_agent_registry():
         _reg.AGENT_ALIASES.update(saved_aliases)
 
 
-class _SpawnRefused(BaseException):
-    """BaseException on purpose — see the fixture below."""
+class _SpawnRefused(RuntimeError):
+    """An ordinary error, so production's own handling deals with it.
+
+    A `BaseException` here was tried and is wrong: `session.assign` treats a
+    failed start as a start that failed, which is exactly what happened, and
+    letting an unstoppable exception tear through that path makes tests fail
+    for the refusal rather than for anything they assert. The LOUD half of this
+    is `_reap_leaked_acp_bridges` below, which reports every process that
+    escaped — a refusal that changes nothing needs no shouting, and one that
+    escapes gets shouted about by the net."""
 
 
 @pytest.fixture(autouse=True)
 def _no_real_acp_spawn(monkeypatch):
-    """No test may spawn a real ACP bridge. Same doctrine as the fixtures
+    """No test may spawn a real ACP bridge.
+
+    **This is one of three mechanisms and none is redundant.** They are ordered
+    by what they can reach, not by preference:
+
+      * the ENV guard (layer 0) crosses a process boundary, so it is the only
+        one that stops a bridge started by a test's SUBPROCESS;
+      * the in-process guards (layers 1-3) name the call that tried, which is
+        what makes an accidental spawn diagnosable rather than merely absent;
+      * `_reap_leaked_acp_bridges` below is the NET: it diffs the live process
+        set across the session and kills what appeared, knowing nothing about
+        the client API — so it still holds if that API changes, and it catches
+        a test that deliberately opted back in and then failed to close.
+
+    Delete any one and the leak returns through the others' blind spot.
+ Same doctrine as the fixtures
     above, and a worse failure than either of them.
 
     `acp.AcpClient.connect` runs `subprocess.Popen` on the real `openclaw acp`
@@ -85,30 +108,57 @@ def _no_real_acp_spawn(monkeypatch):
     or `wire` (which every `test_acp_*` file already does), and a test that
     reached this by accident gets told which call it was.
     """
+    # `SARSI_LIVE_TEST=1` is the one run that MEANS it. `test_live_e2e.py` and
+    # `test_live_acp_e2e.py` exist to drive a real sarsi-claude end to end, and
+    # a guard that disarmed them would delete the only tests that prove the
+    # transports work at all — the ACP one is the whole reason the 85-minute
+    # stall went unnoticed for as long as it did.
+    #
+    # The exemption covers EVERY layer, which is a correction: exempting only
+    # the env layer left the three in-process ones refusing, so the live test
+    # failed inside the guard instead of against the gateway. A partial
+    # stand-down is not a stand-down.
+    #
+    # The session-scoped net below still runs under the flag, so a live bridge
+    # is permitted — but not permitted to escape.
+    if os.environ.get("SARSI_LIVE_TEST"):
+        return
+
     from ai4science.harness.agents.sarsi import acp as _acp
 
-    # Layer 1 — the ordinary path does not spawn.
+    # Layer 0 — the ENVIRONMENT, and the only layer that reaches a grandchild.
     #
-    # `chat.handle` -> `_new` -> `session.assign` -> `acp.AcpRuntime.start` is
-    # production behaviour: filing a directive through the door STARTS a
-    # session. A unit test about directive framing therefore reached a real
-    # gateway, which is how `test_a_framed_directive_is_filed_with_the_framing_
-    # stripped` came to leave an orphan behind it.
+    # The three layers below patch objects in THIS interpreter, so they cover a
+    # test that calls the code directly and nothing else. Measured with a
+    # per-test pid diff over the suite, five tests are not that shape — they
+    # drive the real CLI in a SUBPROCESS:
     #
-    # Stubbed at `start`/`send` rather than at the factory, so
-    # `openclaw_acp_runtime` still builds its real argv and a test can still
-    # assert on it. The acceptance shape matches the real one: `start` returns
-    # an acceptance, never a verdict.
-    def fake_start(self, name, cwd, **kw):
-        return {"ok": True, "name": name, "pid": -1, "cwd": cwd,
-                "acp": True, "stubbed_by": "tests/conftest.py"}
+    #     tests/sarsi/test_live_e2e.py
+    #     tests/test_repl_mode_never_widens_authority.py
+    #     tests/test_repl_live_keystrokes.py
+    #     tests/work/test_agent_llm_live.py
+    #     tests/work/test_rsi_llm_e2e.py
+    #
+    # That subprocess has its own interpreter and never sees a monkeypatch; its
+    # bridge is a GRANDCHILD of the test. An inherited environment variable is
+    # what crosses that boundary, and production honours it at both spawn
+    # sites. `monkeypatch.setenv` restores it per test, so a run that means to
+    # start a real bridge can still unset it.
+    monkeypatch.setenv(_acp.SPAWN_DISABLED_ENV, "1")
 
-    def fake_send(self, name, text, **kw):
-        return {"ok": True, "stubbed_by": "tests/conftest.py"}
-
-    monkeypatch.setattr(_acp.AcpRuntime, "start", fake_start, raising=False)
-    monkeypatch.setattr(_acp.AcpRuntime, "send", fake_send, raising=False)
-
+    # Stub the SPAWN, never the API.
+    #
+    # The first version replaced `AcpRuntime.start` and `.send` outright, and
+    # that deleted the coverage seven tests exist for: `test_acp_a_governance`
+    # asserts that a governed `start` writes its hook BEFORE connecting and
+    # refuses when the wire fails, and `test_acp_a_verdict` asserts how `send`
+    # classifies end-turn, refusal, silence and transport failure. Those inject
+    # their own `wire=`/`connect=` and never reach a real process — stubbing
+    # the methods made all of them assert against a stub.
+    #
+    # So only the two places that actually run `subprocess.Popen` are blocked.
+    # A test with an injected wire is untouched; a test that would spawn for
+    # real is refused.
     # Layer 2 — the backstop, and it raises something no `except Exception`
     # can swallow. Production wraps the spawn broadly, so an `AssertionError`
     # here stopped the leak and told nobody: the test passed, and the reason it

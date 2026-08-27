@@ -374,6 +374,13 @@ class StdioConnection:
         self.stderr_path = stderr_path or ""
         self._id = 0
         self._stderr = open(stderr_path, "ab") if stderr_path else subprocess.DEVNULL
+        # The gateway binary is the one that detaches and accumulates. Peers a
+        # test spawns on purpose (a stalling script, a dying one) exit with it
+        # and are none of this guard's business.
+        if any("openclaw" in str(a) for a in argv):
+            from ai4science.harness.agents.sarsi.acp import (
+                _refuse_if_spawn_disabled)
+            _refuse_if_spawn_disabled(argv)
         self.proc = subprocess.Popen(
             argv, cwd=cwd or None, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=self._stderr, text=True, bufsize=1,
