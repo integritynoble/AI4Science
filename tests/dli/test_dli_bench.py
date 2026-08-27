@@ -616,3 +616,59 @@ def test_the_escalation_protocol_is_documented_in_every_instance(tmp_path):
         kinds.add(json.loads((root / "keyed" / "key.json")
                              .read_text(encoding="utf-8"))["underdetermined"])
     assert kinds == {True, False}, "every instance is the same kind: %s" % kinds
+
+
+def test_the_regime_switch_family_is_harder_than_the_single_forms(tmp_path):
+    """The three closed forms are recognisable on sight and a frontier executor
+    passes all of them. The regime-switch family exists to sit outside that,
+    and the claim needs a control rather than an argument.
+
+    A competent single-form fit -- least squares over all three families, best
+    one wins, extrapolate -- must do materially worse on regime-switch
+    instances than on single-form ones. If it ever stops doing worse, the
+    boundary has become recoverable by smooth fitting and the family has
+    stopped adding anything.
+    """
+    import json
+    from ai4science.harness.agents.dli_bench.reference import s_hidden_law
+    g = GENERATORS["t5.hidden_law"]
+    passed = {"single": [0, 0], "switch": [0, 0]}
+    for seed in range(14):
+        root = tmp_path / ("s%d" % seed)
+        g.instantiate(root, seed)
+        kind = json.loads((root / "keyed" / "truth.json").read_text(
+            encoding="utf-8"))["kind"]
+        bucket = "switch" if kind == "regime_switch" else "single"
+        s_hidden_law(root / "work", root / "keyed")
+        v = g.verify(root / "work", root / "keyed")
+        passed[bucket][0] += v.passed
+        passed[bucket][1] += 1
+
+    assert passed["switch"][1] >= 2, "no regime-switch instances drawn in 14 seeds"
+    assert passed["single"][1] >= 2, "no single-form instances drawn in 14 seeds"
+    assert passed["switch"][0] == 0, (
+        "a single-form fit passed a regime-switch instance: %s" % (passed,))
+
+
+def test_the_regime_boundary_is_visible_in_what_the_agent_is_given(tmp_path):
+    """A boundary on one side of every observation is undiscoverable, and
+    grading an undiscoverable boundary is unfair rather than hard. This is the
+    check that three earlier item defects in this suite did not have."""
+    import json
+    from ai4science.harness.agents.dli_bench.tasks.sealed import _regime_of
+    g = GENERATORS["t5.hidden_law"]
+    seen = 0
+    for seed in range(20):
+        root = tmp_path / ("s%d" % seed)
+        g.instantiate(root, seed)
+        key = json.loads((root / "keyed" / "truth.json").read_text(encoding="utf-8"))
+        if key["kind"] != "regime_switch":
+            continue
+        seen += 1
+        obs = json.loads((root / "work" / "observations.json").read_text(
+            encoding="utf-8"))
+        hot = sum(_regime_of(key["params"], o["a"], o["b"]) for o in obs) / len(obs)
+        assert 0.15 <= hot <= 0.85, (
+            "seed %d shows one regime in %.0f%% of observations; the boundary "
+            "cannot be found from this" % (seed, hot * 100))
+    assert seen >= 3, "only %d regime-switch instances in 20 seeds" % seen

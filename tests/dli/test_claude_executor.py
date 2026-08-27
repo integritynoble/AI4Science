@@ -158,3 +158,39 @@ def test_the_executor_actually_does_a_task_end_to_end():
         assert (td / "i" / "work" / "answer.txt").exists(), (
             "the executor produced no deliverable: %s" % r.note)
         assert gen.verify(td / "i" / "work", keyed).passed
+
+
+def test_the_timeout_fires_when_a_grandchild_holds_the_pipe(tmp_path):
+    """subprocess.run() with capture_output kills only the direct child and then
+    keeps waiting for the stdout pipe, which the CLI's own children still hold
+    open, so the call never returns.
+
+    This cost a real measurement: a discovery probe sat for fifty minutes
+    against a fifteen-minute limit, silent, which is indistinguishable from a
+    slow task. The episode that eventually came back was scored as producing no
+    output when it had in fact been killed.
+    """
+    import time
+    from ai4science.harness.agents.delegation.claude_executor import ClaudeCodeExecutor
+    from ai4science.harness.agents.delegation.contract import Contract, Reading
+
+    fake = tmp_path / "hangs"
+    fake.write_text("#!/bin/bash\nsleep 600 &\nsleep 600\n", encoding="utf-8")
+    fake.chmod(0o755)
+
+    ws = tmp_path / "work"
+    ws.mkdir()
+    ex = ClaudeCodeExecutor(name="fake", timeout=5, binary=str(fake))
+    contract = Contract(task_id="t",
+                        verifiability=Reading(4, "n/a"),
+                        reversibility=Reading(4, "a scratch directory"),
+                        statement="do nothing")
+
+    t0 = time.time()
+    result = ex.execute(contract, ws, [])
+    elapsed = time.time() - t0
+
+    assert elapsed < 60, (
+        "the executor did not return within its own timeout (%.0fs); the "
+        "process group is not being killed" % elapsed)
+    assert "timed out" in result.note

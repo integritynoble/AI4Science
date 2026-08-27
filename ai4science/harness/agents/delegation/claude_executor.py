@@ -27,6 +27,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import tempfile
 import time
@@ -144,12 +145,29 @@ class ClaudeCodeExecutor:
                 cmd += ["--model", self.model]
             env = dict(os.environ)
             env.pop("ANTHROPIC_API_KEY", None)   # use the configured session
+            # The executor is put in its own process group so the timeout can
+            # kill the whole tree. subprocess.run() kills only the direct child
+            # and then keeps waiting for the stdout pipe, which the CLI's own
+            # children still hold open -- so a run that exceeds the timeout
+            # hangs forever instead of timing out. Observed: a probe sat for
+            # fifty minutes on a fifteen-minute limit, producing no output and
+            # no error, which looks exactly like a slow task.
+            proc = subprocess.Popen(cmd, cwd=str(sandbox), env=env, text=True,
+                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                    start_new_session=True)
             try:
-                r = subprocess.run(cmd, cwd=str(sandbox), capture_output=True,
-                                   text=True, timeout=self.timeout, env=env)
-                out, err, code = r.stdout or "", r.stderr or "", r.returncode
+                out, err = proc.communicate(timeout=self.timeout)
+                code = proc.returncode
             except subprocess.TimeoutExpired:
-                out, err, code = "", "timed out after %ds" % self.timeout, 124
+                try:
+                    os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                except (ProcessLookupError, PermissionError):   # pragma: no cover
+                    proc.kill()
+                try:
+                    out, err = proc.communicate(timeout=30)
+                except subprocess.TimeoutExpired:               # pragma: no cover
+                    out, err = "", ""
+                out, err, code = out or "", "timed out after %ds" % self.timeout, 124
 
             # Copy back everything the executor produced or changed.
             for src in sandbox.rglob("*"):

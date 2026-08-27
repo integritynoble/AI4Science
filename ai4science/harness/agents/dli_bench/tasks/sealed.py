@@ -30,10 +30,23 @@ from .base import Generator
 
 #: Mechanism families. Each is a closed form with parameters drawn per seed, so
 #: two seeds are two different laws rather than two samples of one.
-FAMILIES = ("damped_wave", "inverse_square_pair", "saturating_growth")
+FAMILIES = ("damped_wave", "inverse_square_pair", "saturating_growth",
+            "regime_switch")
 
 
 def _law(kind: str, p: dict):
+    if kind == "regime_switch":
+        # Two mechanisms and a boundary, all three of which have to be
+        # recovered. The three single-form families are recognisable on sight
+        # by anything that has seen a physics textbook, and a frontier executor
+        # passes all of them; this one cannot be matched to a remembered shape,
+        # because the shape depends on a latent boundary that is not in the
+        # observable. Everything else about the task is unchanged: one fixed
+        # rule, the same noise, the same extrapolation bar.
+        lo = _law(p["lo_kind"], p["lo"])
+        hi = _law(p["hi_kind"], p["hi"])
+        u, v, t = p["u"], p["v"], p["t"]
+        return lambda a, b: lo(a, b) if (u * a + v * b) < t else hi(a, b)
     if kind == "damped_wave":
         return lambda a, b: p["A"] * math.exp(-p["lam"] * a) * math.sin(p["k"] * b) + p["c"]
     if kind == "inverse_square_pair":
@@ -42,6 +55,14 @@ def _law(kind: str, p: dict):
 
 
 def _params(kind: str, rng: random.Random) -> dict:
+    if kind == "regime_switch":
+        singles = ("damped_wave", "inverse_square_pair", "saturating_growth")
+        lo_kind, hi_kind = rng.sample(singles, 2)
+        return {"lo_kind": lo_kind, "lo": _params(lo_kind, rng),
+                "hi_kind": hi_kind, "hi": _params(hi_kind, rng),
+                "u": round(rng.uniform(0.5, 1.5), 3),
+                "v": round(rng.uniform(0.5, 1.5), 3),
+                "t": round(rng.uniform(4.0, 7.0), 3)}
     if kind == "damped_wave":
         return {"A": round(rng.uniform(2, 6), 3), "lam": round(rng.uniform(0.1, 0.5), 3),
                 "k": round(rng.uniform(0.8, 2.5), 3), "c": round(rng.uniform(-2, 2), 3)}
@@ -52,6 +73,20 @@ def _params(kind: str, rng: random.Random) -> dict:
     return {"L": round(rng.uniform(4, 10), 3), "k": round(rng.uniform(0.6, 2.0), 3),
             "m": round(rng.uniform(1, 4), 3), "B": round(rng.uniform(-1.5, 1.5), 3),
             "c": round(rng.uniform(-2, 2), 3)}
+
+
+def _regime_of(p, a, b):
+    return (p["u"] * a + p["v"] * b) >= p["t"]
+
+
+def _both_regimes_present(p, points, floor=0.15):
+    """A boundary that is on one side of every observation is not discoverable,
+    and a task that grades an undiscoverable boundary is unfair rather than
+    hard. Checked on the actual points, not argued from the ranges.
+    """
+    n = len(points)
+    hot = sum(1 for q in points if _regime_of(p, q[0], q[1]))
+    return floor <= hot / n <= 1.0 - floor
 
 
 def _b_law(work: Path, keyed: Path, rng: random.Random) -> None:
@@ -66,6 +101,20 @@ def _b_law(work: Path, keyed: Path, rng: random.Random) -> None:
         a, b = rng.uniform(lo, hi), rng.uniform(lo, hi)
         noise = rng.gauss(0, 0.02 * max(1.0, abs(f(a, b))))
         train.append({"a": round(a, 5), "b": round(b, 5), "y": round(f(a, b) + noise, 6)})
+    if kind == "regime_switch":
+        # Redraw the boundary until both regimes are genuinely represented in
+        # what the agent gets to see. Without this the instance sometimes hands
+        # over a single regime and grades the other one.
+        for _ in range(200):
+            if _both_regimes_present(p, [(t["a"], t["b"]) for t in train]):
+                break
+            p["t"] = round(rng.uniform(4.0, 7.0), 3)
+        else:                                  # pragma: no cover - safety valve
+            raise RuntimeError("could not place a discoverable boundary")
+        f = _law(kind, p)
+        for t in train:
+            noise = rng.gauss(0, 0.02 * max(1.0, abs(f(t["a"], t["b"]))))
+            t["y"] = round(f(t["a"], t["b"]) + noise, 6)
     (work / "observations.json").write_text(json.dumps(train), encoding="utf-8")
 
     # The held-out grid is OUTSIDE the training box on at least one coordinate.

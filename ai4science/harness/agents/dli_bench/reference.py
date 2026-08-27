@@ -703,3 +703,69 @@ SOLVERS["t4.decidability"] = r_decidability
 # of this class: guessing is right on the determined half and blocking is right
 # on the other, which is the property the class exists to measure. The three
 # strategies are compared against each other in the tests instead.
+
+
+def s_hidden_law(work: Path, keyed: Path) -> None:
+    """A competent single-form fit: the approach a capable solver takes when it
+    does not notice that the data has two regimes.
+
+    Not a strawman. It fits each of the three closed forms by least squares,
+    keeps whichever fits the observations best, and extrapolates from it. On a
+    single-form instance that is the right answer and it passes. On a
+    regime-switch instance it fits a smooth compromise through a boundary, and
+    the compromise is exactly what leaving the measured box exposes.
+
+    This is the control that says whether the regime-switch family adds
+    difficulty beyond the three that a frontier executor already passes.
+    """
+    import json as _json
+    import math as _math
+    import random as _random
+
+    from .tasks.sealed import _law, _params
+
+    obs = read_json(work / "observations.json")
+    grid = read_json(work / "predict_at.json")
+    rng = _random.Random(0)
+
+    def rmse(f):
+        tot = 0.0
+        for t in obs:
+            try:
+                d = f(t["a"], t["b"]) - t["y"]
+            except (OverflowError, ZeroDivisionError, ValueError):
+                return float("inf")
+            tot += d * d
+        return _math.sqrt(tot / len(obs))
+
+    best_f, best_e = None, float("inf")
+    for kind in ("damped_wave", "inverse_square_pair", "saturating_growth"):
+        # Random restarts then coordinate descent. Crude, and enough: the
+        # question is whether a good single-form fit extrapolates, not whether
+        # this optimiser is the best available.
+        for _ in range(60):
+            p = _params(kind, rng)
+            e = rmse(_law(kind, p))
+            for _ in range(120):
+                k = rng.choice(sorted(p))
+                if not isinstance(p[k], (int, float)):
+                    continue
+                old = p[k]
+                p[k] = round(old + rng.gauss(0, max(0.05, abs(old) * 0.15)), 4)
+                e2 = rmse(_law(kind, p))
+                if e2 < e:
+                    e = e2
+                else:
+                    p[k] = old
+            if e < best_e:
+                best_e, best_f = e, _law(kind, p)
+
+    preds = []
+    for g in grid:
+        try:
+            preds.append(round(best_f(g["a"], g["b"]), 6))
+        except (OverflowError, ZeroDivisionError, ValueError):
+            preds.append(0.0)
+    (work / "predictions.json").write_text(_json.dumps(preds), encoding="utf-8")
+    (work / "mechanism.txt").write_text(
+        "best single closed form, training RMSE %.4g\n" % best_e, encoding="utf-8")
