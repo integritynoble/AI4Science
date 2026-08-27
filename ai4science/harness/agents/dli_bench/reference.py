@@ -482,6 +482,122 @@ def _ev(src):
 def w_mini_language(work: Path, keyed: Path) -> None:
     (work / "interp.py").write_text(_PARTIAL_INTERP, encoding="utf-8")
 
+def r_shift_schedule(work: Path, keyed: Path) -> None:
+    """The exact optimiser, written out from the module that built the key.
+
+    Like the interpreter oracle this proves the runner works, not that the task
+    is easy. The greedy below is the informative one: it is feasible every
+    time and still fails most instances, which is exactly the failure mode the
+    class exists to detect.
+    """
+    import inspect
+    import json as _json
+    from .tasks import expert
+    variant = _json.loads((keyed / "variant.json").read_text(encoding="utf-8"))
+    (work / "solve.py").write_text(
+        "REUSE = %r\n\n" % (variant["reuse"],)
+        + inspect.getsource(expert._sched_optimum).replace(
+            "def _sched_optimum(", "def _optimum(")
+        + "\n\n" + _EXACT_SELECTION,
+        encoding="utf-8")
+
+
+#: The optimum cost is not an answer -- the task asks for a selection. This
+#: recovers one by re-walking the same states and taking any pattern that lies
+#: on a cheapest path.
+_EXACT_SELECTION = """\
+def solve(days, patterns):
+    target = _optimum(days, patterns, REUSE)
+    dem = tuple(days)
+    goal = dem
+    start = tuple([0] * len(days))
+
+    def apply(state, pat):
+        s = list(state)
+        for d in pat["days"]:
+            if s[d] < dem[d]:
+                s[d] += 1
+        return tuple(s)
+
+    # Depth-first over states, pruned by the exact cost-to-go, so the first
+    # complete path found is optimal.
+    best_rest = {}
+
+    def rest(state, allowed):
+        key = (state, allowed)
+        if key not in best_rest:
+            sub = [patterns[i] for i in sorted(allowed)] if not REUSE else patterns
+            need = [max(0, dem[i] - state[i]) for i in range(len(days))]
+            best_rest[key] = _optimum(need, [
+                {"days": [d for d in p["days"] if need[d] > 0], "cost": p["cost"]}
+                for p in sub], REUSE)
+        return best_rest[key]
+
+    chosen, state = [], start
+    allowed = frozenset(range(len(patterns)))
+    spent = 0
+    while state != goal:
+        for i in sorted(allowed):
+            p = patterns[i]
+            nxt = apply(state, p)
+            if nxt == state:
+                continue
+            nxt_allowed = allowed if REUSE else allowed - {i}
+            r = rest(nxt, nxt_allowed)
+            if r is not None and spent + p["cost"] + r == target:
+                chosen.append(i)
+                spent += p["cost"]
+                state = nxt
+                allowed = nxt_allowed
+                break
+        else:                                  # pragma: no cover - unreachable
+            raise RuntimeError("no pattern lies on a cheapest path")
+    return chosen
+"""
+
+
+_GREEDY_SOLVE = """\
+\"\"\"A plausible reading of SPEC.md that optimises locally.
+
+Take the pattern with the lowest cost per still-needed day, repeat until every
+day is covered. Always feasible when a feasible selection exists, and not
+always minimal -- which the visible examples are too few to reveal.
+\"\"\"
+
+REUSE = %r
+
+
+def solve(days, patterns):
+    need = list(days)
+    used = []
+    while any(need):
+        best, best_ratio = None, None
+        for i, p in enumerate(patterns):
+            if not REUSE and i in used:
+                continue
+            gain = sum(1 for d in p["days"] if need[d] > 0)
+            if not gain:
+                continue
+            ratio = p["cost"] / gain
+            if best_ratio is None or ratio < best_ratio:
+                best, best_ratio = i, ratio
+        if best is None:
+            return used
+        used.append(best)
+        for d in patterns[best]["days"]:
+            if need[d] > 0:
+                need[d] -= 1
+    return used
+"""
+
+
+def w_shift_schedule(work: Path, keyed: Path) -> None:
+    import json as _json
+    variant = _json.loads((keyed / "variant.json").read_text(encoding="utf-8"))
+    (work / "solve.py").write_text(_GREEDY_SOLVE % (variant["reuse"],),
+                                   encoding="utf-8")
+
+
 #: generator key -> (correct solver, wrong-but-plausible solver or None)
 SOLVERS: Dict[str, Callable[[Path, Path], None]] = {
     "t0.csv_to_json": r_csv_to_json,
@@ -500,6 +616,7 @@ SOLVERS: Dict[str, Callable[[Path, Path], None]] = {
     "t3.dst_daily_totals": r_dst_daily_totals,
     "t3.unicode_identity": r_unicode_identity,
     "t4.mini_language": r_mini_language,
+    "t4.shift_schedule": r_shift_schedule,
 }
 
 WRONG: Dict[str, Callable[[Path, Path], None]] = {
@@ -513,4 +630,5 @@ WRONG: Dict[str, Callable[[Path, Path], None]] = {
     "t3.dst_daily_totals": w_dst_daily_totals,
     "t3.unicode_identity": w_unicode_identity,
     "t4.mini_language": w_mini_language,
+    "t4.shift_schedule": w_shift_schedule,
 }

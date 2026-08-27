@@ -501,4 +501,339 @@ mini_language = Generator(
     build=_b_lang, verify=_v_lang,
 )
 
-ALL = (mini_language,)
+
+
+
+# ---------------------------------------------------------------------------
+# t4.shift_schedule -- difficulty by search rather than by rule count.
+#
+# The mini-language class is hard because the specification is large. This one
+# is short enough to read in a minute and hard for a different reason: the
+# answer requires an exact optimiser. Greedy set cover is feasible and usually
+# close, and "close" scores zero here, so an implementation that looks right on
+# the visible examples still fails most hidden instances. Nothing is concealed
+# and nothing is tricky -- the cost of a selection is arithmetic anyone can
+# check. What is hard is being sure no cheaper selection exists.
+# ---------------------------------------------------------------------------
+
+_SCHED_SPEC_TEMPLATE = """\
+# Minimum-cost shift cover  (variant @@VARIANT@@)
+
+Implement `solve(days, patterns)` in `solve.py`.
+
+## Input
+
+`days` is a list of integers: `days[i]` is how many shifts must cover day `i`.
+Each is 1, 2 or 3.
+
+`patterns` is a list of `{"days": [...], "cost": int}`. A pattern covers each
+day in its `days` list exactly once, for the stated cost. Costs are positive.
+
+## What to return
+
+A list of indices into `patterns` -- the selection you choose. The selection is
+**feasible** when, for every day `i`, the number of chosen patterns covering `i`
+is at least `days[i]`. Its **cost** is the sum of the chosen patterns' costs.
+
+Return a feasible selection of **minimum total cost**. Every instance you are
+given has at least one feasible selection.
+
+@@REUSE_RULE@@
+
+Order does not matter, and neither does which minimum-cost selection you return
+when several tie. Only feasibility and total cost are scored.
+
+## Rules
+
+1. `solve` must not raise, and must not read or write files.
+2. It gets at most 10 seconds per instance.
+3. Nothing is imported for you. The standard library is available.
+
+## Deliverable
+
+`solve.py` defining `solve(days, patterns)`.
+"""
+
+_SCHED_RUNNER = '''\
+import json, sys, time, importlib.util
+
+mod_path, cases_path, out_path = sys.argv[1], sys.argv[2], sys.argv[3]
+spec = importlib.util.spec_from_file_location("cand", mod_path)
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+
+cases = json.load(open(cases_path))
+infeasible, suboptimal, crashed, slow = [], [], [], []
+stopped = None
+for c in cases:
+    days, pats, opt = c["days"], c["patterns"], c["optimum"]
+    reuse = c["reuse"]
+    t0 = time.time()
+    try:
+        sel = mod.solve(json.loads(json.dumps(days)),
+                        json.loads(json.dumps(pats)))
+    except Exception as e:
+        crashed.append({"id": c["id"], "err": "%s: %s" % (type(e).__name__, e)})
+        continue
+    elapsed = time.time() - t0
+    # The specification promises ten seconds per instance. A limit that is
+    # stated and not enforced is a rule the reader is graded on twice: once by
+    # believing it and once by not.
+    if elapsed > 10.0:
+        slow.append({"id": c["id"], "seconds": round(elapsed, 1)})
+        # Five is enough to know. Running the other fifty-five spends ten
+        # minutes to reach the same verdict and blows the outer timeout, which
+        # then reports "the runner timed out" -- true, and not the reason.
+        if len(slow) >= 5:
+            stopped = c["id"] + 1
+            break
+        continue
+    try:
+        sel = [int(x) for x in sel]
+    except Exception:
+        infeasible.append({"id": c["id"], "why": "not a list of indices"})
+        continue
+    if any(x < 0 or x >= len(pats) for x in sel):
+        infeasible.append({"id": c["id"], "why": "index out of range"})
+        continue
+    if not reuse and len(set(sel)) != len(sel):
+        infeasible.append({"id": c["id"], "why": "a pattern is used twice"})
+        continue
+    cover = [0] * len(days)
+    for x in sel:
+        for d in pats[x]["days"]:
+            cover[d] += 1
+    short = [i for i, need in enumerate(days) if cover[i] < need]
+    if short:
+        infeasible.append({"id": c["id"], "why": "day %d covered %d, needs %d"
+                           % (short[0], cover[short[0]], days[short[0]])})
+        continue
+    cost = sum(pats[x]["cost"] for x in sel)
+    if cost != opt:
+        suboptimal.append({"id": c["id"], "cost": cost, "optimum": opt})
+
+json.dump({"total": len(cases), "infeasible": infeasible, "slow": slow,
+           "stopped_after": stopped,
+           "suboptimal": suboptimal, "crashed": crashed}, open(out_path, "w"))
+'''
+
+
+def _sched_optimum(days, patterns, reuse):
+    """Exact minimum cost. Coverage past a day's demand is worthless, so a state
+    is the per-day covered count capped at demand -- a few thousand states, not
+    2**n selections."""
+    import heapq
+
+    dem = tuple(days)
+    goal = dem
+
+    def apply(state, pat):
+        s = list(state)
+        for d in pat["days"]:
+            if s[d] < dem[d]:
+                s[d] += 1
+        return tuple(s)
+
+    start = tuple([0] * len(days))
+    if reuse:
+        # Any pattern any number of times: a shortest path over states.
+        best = {start: 0}
+        pq = [(0, start)]
+        while pq:
+            c, st = heapq.heappop(pq)
+            if c > best.get(st, float("inf")):
+                continue
+            if st == goal:
+                return c
+            for p in patterns:
+                nxt = apply(st, p)
+                if nxt == st:
+                    continue
+                nc = c + p["cost"]
+                if nc < best.get(nxt, float("inf")):
+                    best[nxt] = nc
+                    heapq.heappush(pq, (nc, nxt))
+        return None
+    # Each pattern at most once: one pass per pattern over the state map.
+    best = {start: 0}
+    for p in patterns:
+        for st, c in list(best.items()):
+            nxt = apply(st, p)
+            nc = c + p["cost"]
+            if nc < best.get(nxt, float("inf")):
+                best[nxt] = nc
+    return best.get(goal)
+
+
+def _sched_greedy(days, patterns, reuse):
+    """What a plausible implementation does: take the pattern with the best
+    cost per still-needed day, repeat. Always feasible when feasible, often not
+    optimal -- which is the whole point of the class."""
+    need = list(days)
+    used, total = [], 0
+    while any(need):
+        best, best_ratio = None, None
+        for i, p in enumerate(patterns):
+            if not reuse and i in used:
+                continue
+            gain = sum(1 for d in p["days"] if need[d] > 0)
+            if not gain:
+                continue
+            ratio = p["cost"] / gain
+            if best_ratio is None or ratio < best_ratio:
+                best, best_ratio = i, ratio
+        if best is None:
+            return None, None
+        used.append(best)
+        total += patterns[best]["cost"]
+        for d in patterns[best]["days"]:
+            if need[d] > 0:
+                need[d] -= 1
+    return used, total
+
+
+SCHED_VARIANTS = (
+    {"reuse": False, "variant": "A",
+     "reuse_rule": ("Each pattern may be chosen **at most once**. A selection "
+                    "that lists the same index twice is not feasible.")},
+    {"reuse": True, "variant": "B",
+     "reuse_rule": ("A pattern may be chosen **any number of times**, and "
+                    "repeats count separately toward coverage. Listing the "
+                    "same index twice pays its cost twice.")},
+)
+
+
+def _sched_instance(rng, reuse):
+    n = rng.randint(7, 9)
+    days = [rng.choice([1, 1, 2, 2, 3]) for _ in range(n)]
+    pats = []
+    for _ in range(rng.randint(11, 15)):
+        k = rng.randint(1, min(4, n))
+        cover = sorted(rng.sample(range(n), k))
+        # Cost near-proportional to coverage, jittered enough that cost per day
+        # is a misleading guide -- if it were not, greedy would be optimal and
+        # the class would measure nothing.
+        cost = max(1, int(round(4 * k + rng.uniform(-2.5, 3.5))))
+        pats.append({"days": cover, "cost": cost})
+    return days, pats
+
+
+def _b_sched(work: Path, keyed: Path, rng: random.Random) -> None:
+    variant = dict(rng.choice(SCHED_VARIANTS))
+    reuse = variant["reuse"]
+    spec_text = _SCHED_SPEC_TEMPLATE
+    for token, field in (("@@VARIANT@@", "variant"), ("@@REUSE_RULE@@", "reuse_rule")):
+        spec_text = spec_text.replace(token, variant[field])
+    (work / "SPEC.md").write_text(spec_text, encoding="utf-8")
+    (work / "solve.py").write_text(
+        '"""Implement solve() per SPEC.md."""\n\n\n'
+        "def solve(days, patterns):\n"
+        '    raise NotImplementedError("see SPEC.md")\n', encoding="utf-8")
+
+    cases, hard = [], 0
+    guard = 0
+    while len(cases) < 60:
+        guard += 1
+        if guard > 20000:                      # pragma: no cover - safety valve
+            raise RuntimeError("could not draw enough solvable instances")
+        days, pats = _sched_instance(rng, reuse)
+        opt = _sched_optimum(days, pats, reuse)
+        if opt is None:
+            continue                           # no feasible selection: discard
+        _, gcost = _sched_greedy(days, pats, reuse)
+        beats_greedy = gcost is None or gcost > opt
+        # Keep the set weighted toward instances where the obvious method is
+        # wrong. Verified per instance at build time rather than assumed: the
+        # jitter makes greedy optimal often enough that assuming would be wrong.
+        if not beats_greedy and hard * 2 < len(cases):
+            continue
+        if beats_greedy:
+            hard += 1
+        cases.append({"id": len(cases), "days": days, "patterns": pats,
+                      "optimum": opt, "reuse": reuse})
+
+    if hard * 3 < len(cases):                  # pragma: no cover - safety valve
+        raise RuntimeError("greedy is optimal on too many instances (%d/%d)"
+                           % (hard, len(cases)))
+
+    (work / "examples.json").write_text(json.dumps(
+        [{"days": c["days"], "patterns": c["patterns"], "minimum_cost": c["optimum"]}
+         for c in cases[:4]], indent=2), encoding="utf-8")
+    (keyed / "cases.json").write_text(json.dumps(cases), encoding="utf-8")
+    (keyed / "variant.json").write_text(
+        json.dumps({"reuse": reuse, "variant": variant["variant"],
+                    "greedy_suboptimal": hard, "instances": len(cases)},
+                   sort_keys=True), encoding="utf-8")
+    (keyed / "runner.py").write_text(_SCHED_RUNNER, encoding="utf-8")
+
+
+def _v_sched(work: Path, keyed: Path) -> Verdict:
+    note = ("%d hidden instances per seed. A selection is scored only if it is "
+            "feasible, and then only if its total cost equals the optimum, "
+            "which is computed exactly at build time. Infeasible, suboptimal "
+            "and crashed are reported separately because they need different "
+            "fixes: the first is a misread specification, the second an "
+            "insufficient search, the third a bug")
+    if missing(work, "solve.py"):
+        return Verdict(False, {}, ("solve.py is gone",), note % 0, 0.0)
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        out = Path(td) / "res.json"
+        py = sys.executable if not getattr(sys, "frozen", False) else (
+            shutil.which("python3") or shutil.which("python") or sys.executable)
+        try:
+            r = subprocess.run(
+                [py, str(keyed / "runner.py"), str(work / "solve.py"),
+                 str(keyed / "cases.json"), str(out)],
+                capture_output=True, text=True, timeout=600)
+        except subprocess.TimeoutExpired:
+            return Verdict(False, {}, ("the instance runner timed out",), note % 0, 0.0)
+        if r.returncode != 0:
+            return Verdict(False, {},
+                           ("solve.py could not be imported or run: %s"
+                            % (r.stderr or "")[-300:],), note % 0, 0.0)
+        res = json.loads(out.read_text())
+
+    total = res["total"]
+    inf, sub, crashed = res["infeasible"], res["suboptimal"], res["crashed"]
+    slow = res.get("slow", [])
+    reasons = []
+    if crashed:
+        reasons.append("solve() raised on %d instance(s). First: %s"
+                       % (len(crashed), crashed[0]["err"][:80]))
+    if inf:
+        reasons.append("%d of %d selections were not feasible. First: instance "
+                       "%d, %s" % (len(inf), total, inf[0]["id"], inf[0]["why"]))
+    if sub:
+        e = sub[0]
+        reasons.append("%d of %d selections were feasible but not minimal. "
+                       "First: instance %d cost %d, optimum %d"
+                       % (len(sub), total, e["id"], e["cost"], e["optimum"]))
+    stopped = res.get("stopped_after")
+    unattempted = (total - stopped) if stopped else 0
+    if slow:
+        reasons.append("%d instance(s) took longer than the 10s the "
+                       "specification allows. First: instance %d at %.1fs%s"
+                       % (len(slow), slow[0]["id"], slow[0]["seconds"],
+                          "; stopped there, %d not attempted" % unattempted
+                          if unattempted else ""))
+    right = total - len(inf) - len(sub) - len(crashed) - len(slow) - unattempted
+    return Verdict(not reasons,
+                   {"instances": float(total), "optimal": float(right),
+                    "feasible": float(total - len(inf) - len(crashed)
+                                      - len(slow) - unattempted),
+                    "accuracy": right / max(1, total)},
+                   tuple(reasons), note % total, 0.0)
+
+
+shift_schedule = Generator(
+    key="t4.shift_schedule", family="planning", level="DL4",
+    difficulty=_T4, loss=Loss(value=1.0, c_detect=0.4, c_undo=0.3),
+    prompt="Read SPEC.md and implement what it describes in solve.py.",
+    deliverables=("solve.py",),
+    verifier_note=("60 hidden instances per seed; a selection scores only if it "
+                   "is feasible and its cost equals the exact optimum"),
+    build=_b_sched, verify=_v_sched,
+)
+
+ALL = (mini_language, shift_schedule)

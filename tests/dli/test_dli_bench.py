@@ -465,3 +465,79 @@ def test_an_interpreter_that_raises_is_not_merely_wrong(tmp_path):
     v = g.verify(tmp_path / "work", tmp_path / "keyed")
     assert not v.passed
     assert any("raised" in r for r in v.reasons), v.reasons
+
+
+def test_the_t4_search_class_separates_feasible_from_optimal(tmp_path):
+    """The greedy is the plausible wrong answer, and it is wrong in a way a
+    feasibility check cannot see: it never returns an invalid schedule.
+
+    If this ever reports the greedy as feasible on fewer than every instance,
+    the class has stopped measuring what it was built to measure -- an item
+    that rejects the greedy for infeasibility is testing reading, not search.
+    """
+    from ai4science.harness.agents.dli_bench.reference import SOLVERS, WRONG
+    g = GENERATORS["t4.shift_schedule"]
+
+    g.instantiate(tmp_path / "ok", 0)
+    SOLVERS["t4.shift_schedule"](tmp_path / "ok" / "work", tmp_path / "ok" / "keyed")
+    exact = g.verify(tmp_path / "ok" / "work", tmp_path / "ok" / "keyed")
+    assert exact.passed and exact.metrics["accuracy"] == 1.0, exact.reasons
+
+    g.instantiate(tmp_path / "gr", 0)
+    WRONG["t4.shift_schedule"](tmp_path / "gr" / "work", tmp_path / "gr" / "keyed")
+    greedy = g.verify(tmp_path / "gr" / "work", tmp_path / "gr" / "keyed")
+    assert not greedy.passed
+    assert greedy.metrics["feasible"] == greedy.metrics["instances"]
+    assert greedy.metrics["accuracy"] < 0.5, greedy.metrics
+
+
+def test_the_search_class_is_verified_hard_at_build_time_not_assumed(tmp_path):
+    """The cost jitter makes greedy optimal often enough that assuming it is not
+    would be wrong. The builder replays both solvers per instance and keeps the
+    set weighted toward the ones where the obvious method loses."""
+    import json
+    g = GENERATORS["t4.shift_schedule"]
+    for seed in range(3):
+        g.instantiate(tmp_path / ("s%d" % seed), seed)
+        v = json.loads((tmp_path / ("s%d" % seed) / "keyed" / "variant.json")
+                       .read_text(encoding="utf-8"))
+        assert v["greedy_suboptimal"] * 3 >= v["instances"], v
+
+
+def test_the_search_class_reports_four_failure_modes_apart(tmp_path):
+    """Misread the specification, searched too shallowly, crashed, too slow.
+    They need different repairs, so a single failed bucket would be useless."""
+    g = GENERATORS["t4.shift_schedule"]
+    g.instantiate(tmp_path, 0)
+    work, keyed = tmp_path / "work", tmp_path / "keyed"
+
+    work.joinpath("solve.py").write_text(
+        "def solve(days, patterns):\n    return []\n", encoding="utf-8")
+    assert "not feasible" in " ".join(g.verify(work, keyed).reasons)
+
+    work.joinpath("solve.py").write_text(
+        "def solve(days, patterns):\n    raise RuntimeError('boom')\n", encoding="utf-8")
+    assert "raised" in " ".join(g.verify(work, keyed).reasons)
+
+    work.joinpath("solve.py").write_text(
+        "def solve(days, patterns):\n    return list(range(len(patterns)))\n",
+        encoding="utf-8")
+    # Every pattern is always feasible and never cheapest.
+    assert "not minimal" in " ".join(g.verify(work, keyed).reasons)
+
+
+def test_a_slow_solver_is_named_slow_rather_than_timing_out_the_runner(tmp_path):
+    """The specification promises ten seconds per instance. Before the runner
+    stopped early, sixty slow instances blew the outer timeout and the verdict
+    read 'the runner timed out' -- true, and not the reason."""
+    g = GENERATORS["t4.shift_schedule"]
+    g.instantiate(tmp_path, 0)
+    (tmp_path / "work" / "solve.py").write_text(
+        "import time\n\n\ndef solve(days, patterns):\n"
+        "    time.sleep(11)\n    return list(range(len(patterns)))\n", encoding="utf-8")
+    v = g.verify(tmp_path / "work", tmp_path / "keyed")
+    assert not v.passed
+    joined = " ".join(v.reasons)
+    assert "longer than the 10s" in joined, v.reasons
+    assert "not attempted" in joined, v.reasons
+    assert "timed out" not in joined, v.reasons
