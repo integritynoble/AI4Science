@@ -409,6 +409,52 @@ def test_the_t4_spec_is_complete_and_only_the_cases_are_hidden(tmp_path):
     assert "cases.json" in spec.answer_key
 
 
+def test_the_spec_text_and_the_answer_key_agree_about_the_dialect(tmp_path):
+    """Every dialect-varying rule must be *stated* in the dialect it is *graded* in.
+
+    This is not hypothetical. The equality rule was templated in the dialect
+    table but its token was missing from the specification body, so a dialect-D
+    instance told the reader "values of different types are never equal" and
+    then graded cross-type equality as ERR. Two different models produced the
+    same answer to the same case and both were marked wrong -- which is what a
+    self-contradictory instance looks like from the outside, and is
+    indistinguishable from a hard task unless something checks the text against
+    the key.
+    """
+    from ai4science.harness.agents.dli_bench.reference import SOLVERS
+    import importlib.util
+
+    g = GENERATORS["t4.mini_language"]
+    seen = set()
+    for seed in range(12):
+        root = tmp_path / ("s%d" % seed)
+        g.instantiate(root, seed)
+        text = (root / "work" / "SPEC.md").read_text(encoding="utf-8")
+        SOLVERS["t4.mini_language"](root / "work", root / "keyed")
+
+        spec = importlib.util.spec_from_file_location(
+            "interp_%d" % seed, root / "work" / "interp.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+
+        # Division: the specification states the value of -7 / 2. The key must
+        # produce exactly that.
+        stated = -3 if "truncating toward zero" in text else -4
+        assert "-7 / 2` is `%d`" % stated in text, text
+        assert mod.evaluate("-7 / 2") == stated, (
+            "seed %d states -7 / 2 is %d" % (seed, stated))
+
+        # Equality: same check, for the rule that actually broke.
+        cross_is_err = "comparing different types" in text
+        got = mod.evaluate('1 == "a"')
+        assert got == ("ERR" if cross_is_err else False), (
+            "seed %d: the spec says cross-type equality is %s, the key says %r"
+            % (seed, "ERR" if cross_is_err else "False", got))
+        seen.add((stated, cross_is_err))
+
+    assert len(seen) >= 3, "the seeds barely vary the dialect: %r" % (seen,)
+
+
 def test_an_interpreter_that_raises_is_not_merely_wrong(tmp_path):
     """`evaluate` must never raise; the spec says so, and a crash is reported
     separately from a wrong answer because they need different fixes."""

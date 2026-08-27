@@ -79,8 +79,7 @@ Parentheses group.
    is `ERR`.
 5. **Ordering** (`< <= > >=`) requires two integers or two strings; strings
    compare by Unicode code point. Any other combination is `ERR`.
-6. **Equality** (`== !=`) is allowed between any two values and never errors.
-   Values of different types are never equal. `null == null` is true.
+6. **Equality** (`== !=`) @@EQ_RULE@@ `null == null` is true.
 7. **Unary `-`** requires an integer, else `ERR`. **Unary `not`** applies to any
    value and returns a boolean, the negation of its truthiness.
 8. **`ERR` propagates.** If evaluating an operand yields `ERR`, the whole
@@ -91,7 +90,10 @@ Parentheses group.
    `let` binds looser than every operator: `let x = 1 in x + 1` is `let x = 1 in
    (x + 1)`. The bound expression is evaluated **eagerly**, before the body, and
    rule 8 applies to it: if it yields `ERR` the whole `let` is `ERR`, *even when
-   the name is never used*. `let` is not a short circuit.
+   the name is never used*. `let` is not a short circuit. Because it is looser
+   than every operator, a `let` cannot be the operand of one: `-let x = 1 in x`
+   is a syntax error, and so is `1 + let x = 1 in x`. Parenthesise to use one as
+   an operand.
 10. **A syntax error is `ERR`.** So is an empty source.
 
 ## Deliverable
