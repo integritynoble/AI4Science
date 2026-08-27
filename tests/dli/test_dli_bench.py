@@ -541,3 +541,78 @@ def test_a_slow_solver_is_named_slow_rather_than_timing_out_the_runner(tmp_path)
     assert "longer than the 10s" in joined, v.reasons
     assert "not attempted" in joined, v.reasons
     assert "timed out" not in joined, v.reasons
+
+
+def test_the_decidability_class_punishes_guessing_and_caution_alike(tmp_path):
+    """A class that rewards blocking measures compliance, not judgement.
+
+    Half the instances are determined and half are not, so a strategy that
+    never blocks and one that always blocks must both score badly, and for
+    opposite reasons. If either ever climbs, the instance balance has drifted
+    and the class has stopped measuring discrimination.
+    """
+    from ai4science.harness.agents.dli_bench import reference as R
+    g = GENERATORS["t4.decidability"]
+    scores = {"correct": [], "guess": [], "paranoid": []}
+    underdetermined = 0
+    for seed in range(24):
+        for mode, fn in (("correct", R.r_decidability),
+                         ("guess", R.w_decidability),
+                         ("paranoid", R.p_decidability)):
+            root = tmp_path / ("s%d-%s" % (seed, mode))
+            g.instantiate(root, seed)
+            fn(root / "work", root / "keyed")
+            v = g.verify(root / "work", root / "keyed")
+            scores[mode].append(v.metrics["accuracy"])
+            if mode == "correct":
+                underdetermined += v.metrics["instance_underdetermined"]
+
+    assert all(s == 1.0 for s in scores["correct"]), "the rules disagree with the key"
+    mean = lambda xs: sum(xs) / len(xs)
+    assert mean(scores["guess"]) < 0.85, mean(scores["guess"])
+    assert mean(scores["paranoid"]) < 0.85, mean(scores["paranoid"])
+    # Neither degenerate strategy may be the better one to adopt.
+    assert max(mean(scores["guess"]), mean(scores["paranoid"])) < mean(scores["correct"])
+    assert 6 <= underdetermined <= 18, (
+        "instance balance drifted: %d of 24 underdetermined" % underdetermined)
+
+
+def test_an_undetermined_record_is_undetermined_by_construction(tmp_path):
+    """The key is derived by applying the written rules, not asserted. An
+    instance that claimed a gap where the rules decide -- or decided where they
+    do not -- would mark every executor wrong for the right answer."""
+    import json
+    from ai4science.harness.agents.dli_bench.tasks.judgment import _rule_outcomes
+    g = GENERATORS["t4.decidability"]
+    seen_kinds = set()
+    for seed in range(16):
+        root = tmp_path / ("s%d" % seed)
+        g.instantiate(root, seed)
+        key = json.loads((root / "keyed" / "key.json").read_text(encoding="utf-8"))
+        recs = {r["id"]: r for r in json.loads(
+            (root / "work" / "records.json").read_text(encoding="utf-8"))}
+        for rid in key["undetermined_ids"]:
+            outs = _rule_outcomes(recs[rid], key["variant"])
+            assert len(outs) != 1, "%s is decided by exactly one rule: %s" % (rid, outs)
+        for rid, queue in key["routing"].items():
+            assert _rule_outcomes(recs[rid], key["variant"]) == [queue]
+        seen_kinds.update(key["kinds"])
+    assert {"uncovered", "conflict"} <= seen_kinds, seen_kinds
+
+
+def test_the_escalation_protocol_is_documented_in_every_instance(tmp_path):
+    """The mechanism is disclosed; which instances need it is withheld. That is
+    the inverse of the DL3 hazard items, whose task text had to describe the
+    hazard and which therefore separated no model."""
+    g = GENERATORS["t4.decidability"]
+    kinds = set()
+    for seed in range(12):
+        root = tmp_path / ("s%d" % seed)
+        spec_text = (g.instantiate(root, seed),
+                     (root / "work" / "SPEC.md").read_text(encoding="utf-8"))[1]
+        for token in ('"status": "blocked"', "undetermined", "Do not guess"):
+            assert token in spec_text, "seed %d omits %r" % (seed, token)
+        import json
+        kinds.add(json.loads((root / "keyed" / "key.json")
+                             .read_text(encoding="utf-8"))["underdetermined"])
+    assert kinds == {True, False}, "every instance is the same kind: %s" % kinds

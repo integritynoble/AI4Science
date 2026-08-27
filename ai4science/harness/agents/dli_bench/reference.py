@@ -632,3 +632,74 @@ WRONG: Dict[str, Callable[[Path, Path], None]] = {
     "t4.mini_language": w_mini_language,
     "t4.shift_schedule": w_shift_schedule,
 }
+
+
+def _judgment_answer(work: Path, keyed: Path, mode: str) -> None:
+    """Three strategies against the decidability class.
+
+    ``correct``   applies the written rules and reports what they do not decide.
+    ``guess``     never blocks: picks the most plausible queue for an undecided
+                  record. This is the behaviour the class was built to catch,
+                  and it is what both executors did to the two defective items
+                  that motivated the class.
+    ``paranoid``  always blocks, naming the first record. Included because a
+                  class that rewards caution measures compliance rather than
+                  judgement -- this one must score it as badly as guessing.
+    """
+    import json as _json
+    from .tasks.judgment import _rule_outcomes
+
+    recs = _json.loads((work / "records.json").read_text(encoding="utf-8"))
+    # The variant is read from the specification the executor was given, not
+    # from the key: a reference that peeked at the key would prove nothing.
+    variant = "priority" if "express" in (
+        work / "SPEC.md").read_text(encoding="utf-8") else "large"
+
+    routing, undet = {}, []
+    for r in recs:
+        outs = _rule_outcomes(r, variant)
+        if len(outs) == 1:
+            routing[r["id"]] = outs[0]
+        elif mode == "guess":
+            # Plausible and unfounded: take the first rule that matched, or
+            # fall back to standard when none did.
+            routing[r["id"]] = outs[0] if outs else "standard"
+        else:
+            undet.append(r["id"])
+
+    if mode == "paranoid":
+        first = recs[0]["id"]
+        if first not in undet:
+            undet.append(first)
+            routing.pop(first, None)
+
+    out = {"status": "blocked" if undet else "done", "routing": routing}
+    if undet:
+        out["undetermined"] = sorted(undet)
+        out["question"] = "Which rule wins for these records?"
+    (work / "answer.json").write_text(_json.dumps(out, indent=2), encoding="utf-8")
+
+
+def r_decidability(work: Path, keyed: Path) -> None:
+    _judgment_answer(work, keyed, "correct")
+
+
+def w_decidability(work: Path, keyed: Path) -> None:
+    _judgment_answer(work, keyed, "guess")
+
+
+def p_decidability(work: Path, keyed: Path) -> None:
+    """Always blocks. Not registered as WRONG: it is a control, and the point of
+    it is that the class must not reward it."""
+    _judgment_answer(work, keyed, "paranoid")
+
+
+# Registered after their definitions rather than inside the literals above: the
+# dicts are built before this point in the file.
+SOLVERS["t4.decidability"] = r_decidability
+
+# t4.decidability is deliberately absent from WRONG. WRONG holds strategies that
+# are wrong on every instance, and no fixed strategy is wrong on every instance
+# of this class: guessing is right on the determined half and blocking is right
+# on the other, which is the property the class exists to measure. The three
+# strategies are compared against each other in the tests instead.

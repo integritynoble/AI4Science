@@ -14,10 +14,10 @@ from __future__ import annotations
 
 from typing import Dict, Tuple
 
-from . import atomic, expert, multistep, routine, sealed, traps
+from . import atomic, expert, judgment, multistep, routine, sealed, traps
 from .base import Generator
 
-_MODULES = (atomic, routine, multistep, sealed, traps, expert)
+_MODULES = (atomic, routine, multistep, sealed, traps, expert, judgment)
 
 GENERATORS: Dict[str, Generator] = {}
 for _m in _MODULES:
