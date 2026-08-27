@@ -51,7 +51,25 @@ RA = REPO / "docs/research-agents"
 ALIAS = {"imaging": "computational-imaging"}
 
 #: Pages that are not agents.
-NOT_AGENTS = {"README", "lifecycle", "medical-physics-3d-plan"}
+#:
+#: `delegation-agent`, `dli-bench` and `harness-ladder` are RESULT pages — a
+#: harness, a benchmark and a scaling ladder — not field agents. They have no
+#: field, no subfield boundaries and no expert panel, so a scope object would
+#: have nothing true to say: §13j's scope is "set by the field's experts", and
+#: these have no field for experts to bound.
+#:
+#: Excluding them restores the checks rather than weakening them. Both tests
+#: were failing on a false premise: `delegation-agent` was reported as "has no
+#: implementation and its page does not say so" while its page opens with
+#: "built and measured on this machine, 57 tests" — its implementation is
+#: `ai4science.harness.agents.delegation`, which is not a research agent and
+#: was never going to appear in that registry.
+#:
+#: The teeth stay where they were: a real field agent added without a scope
+#: object still fails, because the only way out is this list and this list
+#: needs a reason written next to it.
+NOT_AGENTS = {"README", "lifecycle", "medical-physics-3d-plan",
+              "delegation-agent", "dli-bench", "harness-ladder"}
 
 #: A page may be absent from the code only if it says so in these words. This is
 #: the check with teeth: an unbuilt agent whose page reads like a built one is
