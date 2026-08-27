@@ -1071,6 +1071,59 @@ def _kickoff_marker(text: str) -> str:
     return (text or "")[:40]
 
 
+def acp_status(task: tsk.Task, *, home=None) -> Optional[Dict[str, Any]]:
+    """What the gateway recorded about this task's ACP session, or None.
+
+    An ACP session has no tmux pane, so the supervision loop cannot read a
+    screen to learn how it is doing — and reading one anyway is what made the
+    `do → run → supervise` path stall silently: `TmuxPane.capture` correctly
+    returns None for a pane that does not exist, `tick` coerced it to `""`, and
+    every screen-based branch then reasoned about a blank terminal.
+
+    What an ACP session does expose is openclaw's own session store, and the
+    session record already carries the key: `openclaw_id`. Looked up BY KEY
+    rather than by "started after this spawn" — `session_store_lookup`'s
+    time-window match exists for `spawn`, which has no id yet, and it refuses
+    when several sessions match. Here the id is known, so the answer is exact.
+
+    None means **unknown**, never "ended": no store, no entry, or an unreadable
+    one are all absence of evidence, which is the same rule the store's own
+    lookup states and the one a stall detector must not get wrong.
+    """
+    import json as _json
+    import os as _os
+    from pathlib import Path as _Path
+
+    sess = task.session or {}
+    key = sess.get("openclaw_id")
+    if not key or sess.get("transport") != "acp":
+        return None
+    root = _Path(home) if home is not None else _Path(_os.path.expanduser("~"))
+    engine = str(sess.get("engine") or "claude")
+    path = root / ".openclaw" / "agents" / engine / "sessions" / "sessions.json"
+    try:
+        data = _json.loads(path.read_text())
+        entry = data.get(key) if isinstance(data, dict) else None
+    except Exception:
+        return None
+    if not isinstance(entry, dict):
+        return None
+    return {"status": str(entry.get("status") or ""),
+            "started_at": entry.get("startedAt"),
+            "ended_at": entry.get("endedAt"),
+            "session_key": key}
+
+
+def acp_ended(status: Optional[Dict[str, Any]]) -> bool:
+    """Has the gateway session finished? Unknown is not finished."""
+    if not status:
+        return False
+    if status.get("ended_at"):
+        return True
+    return str(status.get("status") or "").lower() in (
+        "ended", "closed", "completed", "finished", "failed", "error")
+
+
 def runtime_for(task: tsk.Task, runtime: Optional[Any] = None) -> Any:
     """The runtime that owns this task's session, by transport.
 

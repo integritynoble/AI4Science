@@ -1410,6 +1410,14 @@ def supervise_cmd(agent_id: str = typer.Argument(..., help="Worker id"),
         console.print("a gate is waiting for you: tmux attach -t "
                       f"{(final.session or {}).get('name', '?')}", style="yellow",
                       markup=False, highlight=False)
+    # A stall reported once is a finding; the same line six times was the
+    # symptom. `run` stops on these, so this says what the owner can do about
+    # it rather than leaving them to read `planning` and guess.
+    stalled = next((a for a in actions
+                    if a.kind in ("acp-silent", "acp-ended-empty")), None)
+    if stalled is not None:
+        console.print(f"\nthe session produced nothing: {stalled.detail}",
+                      style="yellow", markup=False, highlight=False)
 
 
 @app.command("release", help="Let a planned, granted task start working its plan.")

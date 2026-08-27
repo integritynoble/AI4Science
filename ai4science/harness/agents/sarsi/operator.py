@@ -159,10 +159,133 @@ class Action:
     detail: str = ""
 
 
+#: Names that are there because the session opened, or because the WORKER put
+#: them there — not because the executor did anything.
+#:
+#: `evidence_roots` deliberately includes the task's own folder, which is where
+#: the worker writes `task.json`, `plan0.md` and its checkpoints before any
+#: executor runs. Counting those as the session's output is the same mistake as
+#: counting `.claude`, one level up: it makes a stalled run read as a working
+#: one, which is precisely the thing this pass exists to tell apart. The first
+#: live stall left a workspace holding only `.claude` and `.git` — and a task
+#: folder holding the worker's own two files.
+_OPENED_NOT_WORKED = {".claude", ".git", ".gitignore", "task.json",
+                      "checkpoint.json", "reports.jsonl"}
+
+#: `plan0.md`, `plan1.md`, … — the worker drafts the seed and adopts what comes
+#: back, so the file exists before the executor has done anything with it.
+_WORKER_FILE = __import__("re").compile(r"^plan\d*\.md$", __import__("re").I)
+
+#: How long a session may show nothing before showing nothing is the finding.
+#: A session five seconds old has started, not stalled, and calling it silent
+#: at once replaces one useless report with another.
+_SILENCE_GRACE_S = 120.0
+
+
+def _acp_progress(agent: Agent, task: tsk.Task) -> list:
+    """What this session has actually put on disk, dotfiles excluded."""
+    made = []
+    for root in tsk.evidence_roots(agent, task):
+        try:
+            made += [p.name for p in root.iterdir()
+                     if p.name not in _OPENED_NOT_WORKED
+                     and not _WORKER_FILE.match(p.name)]
+        except Exception:
+            continue
+    return sorted(set(made))
+
+
+def _acp_tick(config: Config, agent: Agent, task: tsk.Task, *, acts, runtime,
+              verifier, engine, home, now) -> Action:
+    """One supervision pass over a session with no screen.
+
+    The `do → run → supervise` path stalled here, and the half that belongs to
+    this repo is that a pass could not tell a working session from a stopped
+    one. `supervise_cmd` hands `operator.run` a `TmuxPane` unconditionally; an
+    ACP session has no pane; `capture` returns None; `tick` coerced it to `""`;
+    and gate detection, busy detection, stranded-prompt detection and steering
+    all then reasoned about a blank terminal and learned nothing. Six passes
+    reported `planning` six times while the session sat alive and empty.
+
+    Everything screen-based is dropped here rather than fed an empty string,
+    because none of it means anything without a terminal — and typing into a
+    pane that does not exist sends keystrokes somewhere.
+
+    **Verification is the exception, and it is kept.** `evd.gather` reads the
+    evidence ROOTS and `ses.verify` judges artifacts; the screen was only ever
+    supplementary. It is the one branch that works unchanged over a transport
+    with no screen, and without it the ACP path could never finish a task at
+    all.
+
+    What replaces the screen is the gateway's own session store plus what the
+    workspace holds, which together answer the question the loop actually has:
+    is this thing working, or is it just alive?
+    """
+    from ai4science.harness.agents.sarsi import evidence as evd, session as ses
+
+    # Verify first — the same ordering the tmux pass uses, and for the same
+    # reason: a finished session that keeps being reported on is a pass spent
+    # not noticing it finished.
+    planning = task.state == tsk.PLANNING
+    if verifier is not None and not planning:
+        here = tsk.earliest_incomplete(task)
+        criteria = ([task.criteria[here]]
+                    if here is not None and here < len(task.criteria or [])
+                    else list(task.criteria or []))
+        proof = evd.gather(tsk.evidence_roots(agent, task), criteria)
+        task = ses.verify(config, agent, task, verifier=verifier,
+                          evidence=proof, engine=engine, runtime=runtime,
+                          phase=here, now=now)
+        if task.state == tsk.VERIFIED:
+            return Action("verified", "the goal is met")
+
+    status = ses.acp_status(task, home=home)
+    made = _acp_progress(agent, task)
+    started = (status or {}).get("started_at")
+    age = None
+    if isinstance(started, (int, float)):
+        age = max(0.0, float(now()) - float(started) / 1000.0)
+    mins = f"{age / 60:.0f} min" if age is not None else "an unknown time"
+
+    if ses.acp_ended(status):
+        if made:
+            return Action("acp-ended", f"the session ended after {mins}; it left "
+                                       f"{', '.join(made[:6])} — judge it with "
+                                       f"`sarsi check {agent.id} {task.id}`")
+        # An ended session and an empty workspace is not "still planning".
+        _report(config, agent, task, state="stalled",
+                evidence=f"acp session {(status or {}).get('session_key')} ended "
+                         f"after {mins} having produced nothing", now=now)
+        return Action("acp-ended-empty",
+                      f"the session ended after {mins} and produced nothing — "
+                      f"the run failed rather than finished. `sarsi why "
+                      f"{agent.id} {task.id}` has the trace; re-running needs "
+                      f"`sarsi run` again.")
+
+    if made:
+        return Action("acp-working",
+                      f"alive {mins}, and it has written {', '.join(made[:6])}")
+
+    if age is not None and age < _SILENCE_GRACE_S:
+        return Action("acp-starting", f"alive {mins}, nothing on disk yet")
+
+    # Alive, past the grace, and nothing to show. THIS is the stall, and naming
+    # it is the whole point: the loop used to report the task's own state back
+    # at the owner, which said `planning` however long the session sat there.
+    _report(config, agent, task, state="stalled",
+            evidence=f"acp session alive {mins} with an empty workspace", now=now)
+    return Action("acp-silent",
+                  f"alive {mins} and has produced nothing. The gateway session "
+                  f"is running and this loop has no screen to read, so it "
+                  f"cannot tell work from a stall — treat it as stalled. "
+                  f"`sarsi why {agent.id} {task.id}` shows what was asked; "
+                  f"`sarsi stop {agent.id} {task.id}` ends it.")
+
+
 def tick(config: Config, agent: Agent, task: tsk.Task, *, pane: Any,
          acts=None, runtime: Optional[Any] = None,
          verifier: Optional[Callable[..., dict]] = None,
-         model: Optional[Callable[[str], str]] = None,
+         model: Optional[Callable[[str], str]] = None, home=None,
          engine: Optional[str] = None, accept_seed: bool = False,
          now=time.time) -> Action:
     """One supervision pass over one session, in this order:
@@ -183,6 +306,10 @@ def tick(config: Config, agent: Agent, task: tsk.Task, *, pane: Any,
     if task.steering_paused:
         # Interact pauses the worker, and the operator IS the worker.
         return Action("paused", "the owner has the wheel")
+
+    if (task.session or {}).get("transport") == "acp":
+        return _acp_tick(config, agent, task, acts=acts, runtime=runtime,
+                         verifier=verifier, engine=engine, home=home, now=now)
 
     screen = pane.capture(session) or ""
 
@@ -410,13 +537,14 @@ def run(config: Config, agent: Agent, task: tsk.Task, *, pane: Any,
         model: Optional[Callable[[str], str]] = None,
         engine: Optional[str] = None,
         passes: int = 20, interval: float = 3.0, accept_seed: bool = False,
-        sleep=time.sleep) -> list:
+        sleep=time.sleep, home=None) -> list:
     """Supervise until the goal is verified, the owner takes over, or the budget
     runs out. Stops on a verdict — it does not keep guiding a finished session."""
     seen = []
     for i in range(passes):
         action = tick(config, agent, task, pane=pane, verifier=verifier,
-                      model=model, engine=engine, accept_seed=accept_seed)
+                      model=model, engine=engine, accept_seed=accept_seed,
+                      home=home)
         seen.append(action)
         # Three of these are states the loop has finished with. The other two
         # are things another pass cannot bring closer, and both were found by
@@ -434,8 +562,17 @@ def run(config: Config, agent: Agent, task: tsk.Task, *, pane: Any,
         #
         # `over-budget` deliberately stays OUT: the owner can raise a budget
         # from another terminal, so that one really can change under the loop.
+        #   * the three `acp-*` terminals below. A gateway session that has
+        #     ENDED cannot do more work whatever the loop does, and one that is
+        #     alive-and-empty past the grace is the stall this pass exists to
+        #     name — polling it again produces the same sentence, which is the
+        #     `planning, planning, planning` the whole fix is about.
+        #     `acp-working` and `acp-starting` are deliberately NOT terminal:
+        #     those are the cases where another pass really does learn
+        #     something.
         if action.kind in ("no-session", "done", "paused", "verified",
-                           "awaiting-grant", "attended", "asks-owner"):
+                           "awaiting-grant", "attended", "asks-owner",
+                           "acp-ended", "acp-ended-empty", "acp-silent"):
             break
         if i + 1 < passes:
             sleep(interval)
