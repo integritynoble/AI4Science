@@ -40,9 +40,29 @@ print("WORKER-DONE")
 '''
 
 
-def _spawn_and_drive(inputs, settle=0.6, total_timeout=12.0, driver=_DRIVER):
+def _spawn_and_drive(inputs, settle=0.6, total_timeout=12.0, driver=_DRIVER,
+                     awaits=None, await_timeout=8.0):
     """Fork a PTY child running the driver, feed `inputs` (list of bytes) with a
-    pause between each, and return (raw_bytes, pyte_screen_lines)."""
+    pause between each, and return (raw_bytes, pyte_screen_lines).
+
+    `awaits`, if given, is a list parallel to `inputs`: before writing
+    `inputs[i]`, pump until `awaits[i]` has appeared in the child's output (or
+    `await_timeout` passes). `None` entries just take the fixed `settle`.
+
+    **Why a marker and not a longer sleep.** These tests were intermittently
+    failing in full-suite runs and passing in isolation, including under
+    deliberate CPU saturation. The cause is that `settle` asserts how long the
+    child takes to paint, and nothing enforces it: if the picker has not
+    rendered when the arrow keys are written, prompt_toolkit is still in
+    `read_input`, the arrows go to the line editor, and Enter then confirms
+    option 0. That is exactly the observed failure — `CHOSE-IDX:0` where the
+    test wants 1 — reproduced deterministically by making the child sleep 1.4s
+    before opening the picker.
+
+    A bigger `settle` would only move the threshold and slow every passing run.
+    Waiting for the thing itself removes the assumption: on an idle box it
+    returns as soon as the frame lands, and on a loaded one it waits.
+    """
     repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     pid, fd = pty.fork()
     if pid == 0:  # child
@@ -71,10 +91,39 @@ def _spawn_and_drive(inputs, settle=0.6, total_timeout=12.0, driver=_DRIVER):
                 stream.feed(chunk)
         return True
 
+    def _pump_until(marker, deadline):
+        """Pump until `marker` shows up in the child's output, or `deadline`.
+
+        `raw` accumulates, so a marker that has already been seen matches at
+        once — deliberate: these are one-shot 'has it appeared yet' gates, not
+        edge detectors.
+        """
+        needle = marker if isinstance(marker, bytes) else marker.encode()
+        while time.monotonic() < deadline:
+            if needle in raw:
+                return True
+            r, _, _ = select.select([fd], [], [], 0.05)
+            if fd in r:
+                try:
+                    chunk = os.read(fd, 65536)
+                except OSError:
+                    return needle in raw
+                if not chunk:
+                    return needle in raw
+                raw.extend(chunk)
+                stream.feed(chunk)
+        return needle in raw
+
     start = time.monotonic()
     # let the app paint its first frame
     _pump(start + settle)
-    for data in inputs:
+    for i, data in enumerate(inputs):
+        want = awaits[i] if awaits else None
+        if want is not None:
+            _pump_until(want, time.monotonic() + await_timeout)
+            # The marker is in the byte stream; give the frame it belongs to a
+            # moment to finish painting before typing into it.
+            _pump(time.monotonic() + 0.2)
         os.write(fd, data)
         _pump(time.monotonic() + settle)
     # drain to completion / timeout
@@ -349,7 +398,9 @@ def test_permission_picker_arrow_keys():
     # open the picker, Down twice (→ No), Up once (→ "don't ask again"), Enter.
     raw, lines = _spawn_and_drive(
         [b"go\r", b"\x1b[B", b"\x1b[B", b"\x1b[A", b"\r", b"/exit\r"],
-        driver=_DRIVER_PICK, settle=0.8, total_timeout=14.0)
+        driver=_DRIVER_PICK, settle=0.8, total_timeout=14.0,
+        # Do not send an arrow until the picker is actually on screen.
+        awaits=[None, "DECIDE NOW", None, None, None, None])
     text = "\n".join(lines)
     assert b"DECIDE NOW" in raw                        # the picker rendered
     assert "CHOSE-IDX:1" in text, f"arrow selection wrong:\n{text}"
@@ -359,7 +410,8 @@ def test_permission_picker_number_jump():
     # press '3' to jump straight to (and confirm) option 3 (index 2 = No).
     raw, lines = _spawn_and_drive(
         [b"go\r", b"3", b"/exit\r"],
-        driver=_DRIVER_PICK, settle=0.8, total_timeout=14.0)
+        driver=_DRIVER_PICK, settle=0.8, total_timeout=14.0,
+        awaits=[None, "DECIDE NOW", None])
     assert "CHOSE-IDX:2" in "\n".join(lines)
 
 
@@ -436,6 +488,7 @@ def test_busy_message_is_queued_not_interleaved():
         _os.execvp("python3", ["python3", "-c", _DRIVER_BUSY])
         _os._exit(127)
     screen = pyte.Screen(80, 24); stream = pyte.ByteStream(screen)
+    raw = bytearray()
     def pump(dl):
         while _t.monotonic() < dl:
             r, _, _ = select.select([fd], [], [], 0.1)
@@ -443,10 +496,76 @@ def test_busy_message_is_queued_not_interleaved():
                 try: c = _os.read(fd, 65536)
                 except OSError: return
                 if not c: return
-                stream.feed(c)
-    t0 = _t.monotonic(); pump(t0 + 1.5)
-    _os.write(fd, b"start\r"); pump(_t.monotonic() + 1.0)
-    _os.write(fd, b"queued one\r"); pump(_t.monotonic() + 0.8)
+                raw.extend(c); stream.feed(c)
+    def pump_until_screen(pred, limit=8.0):
+        """Pump until `pred(screen.display)` holds, or `limit` seconds pass.
+
+        Tests CURRENT state, where `pump_until` tests "has this ever been
+        printed". The difference is not academic: `(queued)` is rendered for
+        the `start` message too (`❯ start  (queued)`), so waiting for it in the
+        accumulated stream matched instantly, the screenshot was taken before
+        the app had drawn anything, and this test failed MORE often than the
+        fixed sleep it replaced.
+        """
+        dl = _t.monotonic() + limit
+        while _t.monotonic() < dl:
+            if pred(screen.display):
+                return True
+            r, _, _ = select.select([fd], [], [], 0.05)
+            if fd in r:
+                try: c = _os.read(fd, 65536)
+                except OSError: break
+                if not c: break
+                raw.extend(c); stream.feed(c)
+        return pred(screen.display)
+
+    def pump_until(marker, limit=8.0):
+        """Pump until `marker` has appeared in the output, or `limit` passes.
+
+        `raw` accumulates, so this answers "has this been printed at all",
+        never "is it on screen now" — use `pump_until_screen` for the second.
+        Only markers that appear ONCE are safe here.
+        """
+        needle = marker.encode() if isinstance(marker, str) else marker
+        dl = _t.monotonic() + limit
+        while _t.monotonic() < dl:
+            if needle in raw:
+                return True
+            r, _, _ = select.select([fd], [], [], 0.05)
+            if fd in r:
+                try: c = _os.read(fd, 65536)
+                except OSError: break
+                if not c: break
+                raw.extend(c); stream.feed(c)
+        return needle in raw
+
+    # Every gate here is a CONDITION, not a duration, and this test is why the
+    # distinction matters. It has to type into a WINDOW: after the stream has
+    # started (or `tok_rows` is empty and the position assertion has nothing to
+    # stand on) and before it ends (or the run is inconclusive). The window is
+    # ~4s wide on an idle box, and the fixed 1.5s/1.0s pauses asserted where in
+    # that window we would land rather than checking.
+    #
+    # "⏎ send" is the composer footer, which renders only once the box is
+    # accepting input. `tok3` means the stream is genuinely under way — the
+    # position assertion below needs `tok` rows to exist, and it is still only
+    # ~0.6s into a 4s stream, so the message lands early in the window with
+    # plenty of room before tok19.
+    #
+    # The last gate waits for the RENDERED ROW, and it has to. `(queued)` alone
+    # is not a marker for this message: the app draws it for `start` as well,
+    # so waiting for it in the accumulated stream returned instantly and the
+    # screenshot caught the frame before the message was drawn.
+    t0 = _t.monotonic()
+    pump_until("⏎ send")
+    pump(_t.monotonic() + 0.2)
+    _os.write(fd, b"start\r")
+    pump_until("tok3")
+    pump(_t.monotonic() + 0.2)
+    _os.write(fd, b"queued one\r")
+    pump_until_screen(
+        lambda d: any("queued one" in ln and "(queued)" in ln for ln in d),
+        limit=5.0)
     mid = [ln.rstrip() for ln in screen.display]
     midtext = "\n".join(mid)
     assert "queued one" in midtext and "(queued)" in midtext, \
