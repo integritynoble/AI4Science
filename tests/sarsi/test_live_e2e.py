@@ -74,7 +74,19 @@ def test_sarsi_worker_drives_claude_to_verified(sarsi_env):
     task   = tsk.create(config, agent, directive, backend="sarsi-claude")
     draft  = dr(pl.draft(directive), phases=(phase,), work_root=str(workdir))
     task   = tsk.attach_plan(config, agent, task, draft)
-    task   = tsk.adopt_plan(config, agent, task, draft)   # plan_agreed=True → working ceiling
+    # `set_owner_plan`, not `adopt_plan`. Both agree the plan and reach the
+    # working ceiling, but only one records WHO wrote it, and `ses.verify`
+    # reads exactly that: `trusted = plan_owner_edited`. Under `adopt_plan`
+    # ("a plan the SESSION wrote") this criterion names a command, so it is
+    # classified judgmental and handed to the model verifier — which here is a
+    # stub that returns UNVERIFIED, so the task can never reach `verified` and
+    # the loop abstains for all 40 passes.
+    #
+    # That is the correct rule, not a bug: an executor that writes its own
+    # `Verified when:` line would otherwise choose the code that judges it
+    # [§M4.2]. The criterion itself was always fine — `verify.check` with
+    # `trusted=True` returns PASS on it. Here the OWNER wrote it: this test did.
+    task   = tsk.set_owner_plan(config, agent, task, draft.render())
 
     runtime = ses.MachineRuntime()
     # installed=lambda: set() bypasses the ai4science agent-registry check;

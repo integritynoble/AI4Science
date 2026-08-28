@@ -1,0 +1,24 @@
+[Unit]
+Description=Exercise the real sarsi ACP transport against a live engine
+Documentation=file:/home/spiritai/pwm/Physics_World_Model/AI4Science/ops/sarsi_live_gate.py
+# The bridge talks to the gateway. Ordering only -- if the gateway is down the
+# gate SHOULD fail, because the transport really is broken then.
+After=openclaw-gateway.service
+
+[Service]
+Type=oneshot
+# openclaw is a node script under nvm, and a user unit does not inherit the
+# login PATH. The harness can resolve it by globbing ~/.nvm, but naming it here
+# means a failure is a failure rather than a fallback quietly picking a
+# different node than the one the operator tested with.
+Environment=PATH=/home/spiritai/.nvm/versions/node/v24.14.0/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/python3 /home/spiritai/pwm/Physics_World_Model/AI4Science/ops/sarsi_live_gate.py
+TimeoutStartSec=3900
+# No Restart= and NO SuccessExitStatus=. Both of those re-label a failure as
+# healthy, and this box has already hidden two real outages behind exactly
+# them (11,396 restarts on one; two weeks of no recording on the other). A
+# gate that lies about running is worse than no gate, and this one exists
+# precisely because a green suite lied about a dead transport for months.
+
+[Install]
+WantedBy=default.target

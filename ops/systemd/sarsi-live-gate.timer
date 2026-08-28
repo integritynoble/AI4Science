@@ -1,0 +1,12 @@
+[Unit]
+Description=Nightly check that sarsi-worker can still drive sarsi-claude
+
+[Timer]
+# After bundle-sweep (04:30) so two heavy jobs do not overlap on this box.
+OnCalendar=*-*-* 05:15:00
+# If the box was down at 05:15, take the missed run rather than skipping a day.
+Persistent=true
+RandomizedDelaySec=600
+
+[Install]
+WantedBy=timers.target
