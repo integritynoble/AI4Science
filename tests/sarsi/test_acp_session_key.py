@@ -148,3 +148,37 @@ def test_an_unreadable_config_is_not_evidence_of_a_missing_agent(monkeypatch,
 
     assert acp.openclaw_agent_ids() is None
     acp.openclaw_acp_runtime("anything-at-all")
+
+
+# ── the handshake has to outlast a cold start ──────────────────────────────
+
+def test_the_connect_timeout_survives_a_cold_handshake():
+    """The nightly gate failed attempt 1 on EVERY scheduled run, always with
+    `no response to initialize`, always passing on the retry.
+
+    That is not a flake, it is the cost of first contact. Measured on the box,
+    two connections back to back: cold `initialize` 39.81s, warm 7.09s, with
+    `session/new` fast either way — so the wait is the agent runtime waking,
+    not the protocol.
+
+    The old 30s could not pass a cold handshake. This asserts the ceiling stays
+    clear of the measurement rather than asserting an exact number, because the
+    point is the margin: a value that merely squeaks past 40s would put the
+    nightly gate back on a knife edge.
+    """
+    assert acp.CONNECT_TIMEOUT >= 120, (
+        f"CONNECT_TIMEOUT={acp.CONNECT_TIMEOUT}s leaves no room over a cold "
+        f"handshake measured at ~40s")
+
+    # Read the SOURCE, not the live attribute.
+    #
+    # `conftest._no_real_acp_spawn` replaces `AcpClient.connect` with a refusal
+    # stub for every test, and that stub carries its own `timeout: float = 30.0`.
+    # Introspecting the bound method here therefore reports the guard's default
+    # and never the code's — the first version of this test failed against
+    # `30.0 == 180` while the module was already correct.
+    import inspect
+    src = inspect.getsource(acp)
+    assert "def connect(self, timeout: float = CONNECT_TIMEOUT)" in src, \
+        "connect() must take its default from the documented constant, so the "\
+        "measurement and the value cannot drift apart"

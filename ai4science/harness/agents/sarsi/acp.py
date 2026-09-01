@@ -56,6 +56,30 @@ import time
 from typing import Any, Dict, List, Optional
 
 PROMPT_TIMEOUT = 600
+
+#: How long the ACP `initialize` handshake may take.
+#:
+#: MEASURED, not chosen. The nightly live gate failed its first attempt on
+#: every single scheduled run — 2026-08-28 (twice), 08-29, 08-30, 08-31 — always
+#: with `TimeoutError: no response to initialize (id=1)`, and always passed on
+#: the retry ~90s later. Seven for seven is not a flake, it is the normal cost
+#: of first contact, and the retry was hiding it.
+#:
+#: Two back-to-back connections, same box, same agent:
+#:
+#:     cold   initialize  39.81s     session/new  0.60s
+#:     warm   initialize   7.09s     session/new  0.30s
+#:
+#: The old value was 30s, so a cold handshake could not pass. `session/new` is
+#: fast either way, which is what says the cost is in waking the agent runtime
+#: rather than anywhere in the protocol.
+#:
+#: 180s is deliberately far above the 40s measured: this bounds a pathology, it
+#: does not pace anything. A warm connect still returns in ~7s and pays none of
+#: it, and the failure this replaces was a REAL transport that had simply not
+#: finished waking. Raising it costs nothing on the happy path and stops the
+#: gate from reporting a green PASS built on a retry.
+CONNECT_TIMEOUT = 180
 _CMD = ["opencode", "acp", "--pure"]  # kept for legacy; use openclaw_acp_runtime()
 
 # The four-outcome verdict is shared with the sibling backend rather than
@@ -107,7 +131,7 @@ class AcpClient:
 
     # -- lifecycle ---------------------------------------------------------
 
-    def connect(self, timeout: float = 30.0) -> None:
+    def connect(self, timeout: float = CONNECT_TIMEOUT) -> None:
         env = None
         if self._cmd and "openclaw" in str(self._cmd[0]):
             # openclaw is a Node.js script; ensure node is discoverable even
