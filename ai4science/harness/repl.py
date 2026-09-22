@@ -1123,6 +1123,20 @@ def run_common_repl(
     # the ledger points at a session no workspace index maps to.
     _sid = session_id or secrets.token_hex(8)
 
+    # A durable session budget (A03): AI4SCIENCE_SESSION_CAP_PWM=<pwm> caps this
+    # session and every sub-agent it dispatches; the ledger lives beside the
+    # transcript and survives a kill. Unset and no ledger on disk → uncapped,
+    # exactly as before. A resume reopens the ledger; it cannot change the cap.
+    from ai4science.harness.runtime import budget as _budget_mod
+    _budget = None
+    try:
+        _cap_env = os.environ.get("AI4SCIENCE_SESSION_CAP_PWM")
+        _budget = _budget_mod.open_for_session(
+            persistence.sessions_dir(), _sid,
+            float(_cap_env) if _cap_env not in (None, "") else None)
+    except Exception as _bexc:
+        print(f"[harness] session budget unavailable: {_bexc}", flush=True)
+
     def _make_wrapped_meter(b: str, m: str):
         """Return a meter that accumulates into turn_tokens AND calls real meter."""
         real = make_meter(backend=b, model=m, session=_sid)
@@ -1155,7 +1169,47 @@ def run_common_repl(
         )
         if spec.system_prompt:
             child.history.insert(0, Message(role="system", content=spec.system_prompt))
+        if _budget is not None:
+            # Every dispatch is a budgeted action: reserved before the child's
+            # first token, reconciled with its metered cost after, left
+            # `unknown` if the process dies in between.
+            _b, _m = active_backend, active_model
+            _budget_mod.guard_session(
+                child, _budget, action_id=_budget.next_id(f"task:{_sid}"),
+                estimate_pwm=_subagent_reserve(),
+                cost_of=lambda u: _turn_cost_for(_b, _m, u)[0],
+                note=f"sub-agent {spec.name}")
         return child
+
+    def _subagent_reserve() -> float:
+        try:
+            return max(0.0, float(os.environ.get("AI4SCIENCE_SUBAGENT_RESERVE_PWM", "0")))
+        except (TypeError, ValueError):
+            return 0.0
+
+    def _summarize_for_compaction(transcript: str) -> str:
+        """One low-reasoning call on the session's current brand. Compaction
+        treats an exception or an empty summary as 'not this turn'."""
+        from ai4science.harness.events import TextDelta, Usage
+        hist = [Message(role="system", content=(
+                    "Summarize this transcript so the same assistant can continue the "
+                    "work. Keep: decisions and approvals, file paths touched, commands "
+                    "run with their results, open items and unresolved errors. Plain "
+                    "text, at most 400 words, no preamble.")),
+                Message(role="user", content=transcript[-80_000:])]
+        parts: list = []
+        for ev in session.adapter.stream(hist, [], model=session.model, reasoning="low"):
+            if isinstance(ev, TextDelta):
+                parts.append(ev.text)
+            elif isinstance(ev, Usage):
+                session.meter(ev)
+        return "".join(parts).strip()
+
+    def _compact_limit() -> int:
+        try:
+            return max(0, int(os.environ.get("AI4SCIENCE_COMPACT_CHARS", "300000")))
+        except (TypeError, ValueError):
+            return 300000
 
     def _build_session() -> AgentSession:
         s = AgentSession(
@@ -1174,6 +1228,11 @@ def run_common_repl(
             # Persist after every tool result: a session killed mid-turn resumes
             # at its last tool call, not at its last finished turn.
             on_checkpoint=lambda: persistence.save(_sid, workspace, session.history),
+            # Long sessions stay inside the window: past the limit, the older
+            # transcript is summarized on the current brand, never split from a
+            # tool exchange and never losing the system prompt (compaction.py).
+            compact_limit_chars=_compact_limit(),
+            summarize=_summarize_for_compaction,
             registry=_registry_for_spec(
                 active_spec, is_subagent=False,
                 ctx=_make_build_context(
@@ -1230,6 +1289,15 @@ def run_common_repl(
     print(f"  {_dim}tips{_rst}   /help · /agent · /model · /exit · Ctrl-C interrupts", flush=True)
     print(f"  {_dim}pwm{_rst}    {_dim}{_gate} · session {_sid} (resume: --resume {_sid}){_rst}",
           flush=True)
+    if _budget is not None:
+        _snap = _budget.snapshot()
+        _unk = len(_snap["unknown"])
+        print(f"  {_dim}budget{_rst} {_dim}{_snap['used_pwm']:g} of {_snap['cap_pwm']:g} PWM "
+              f"in use or unresolved · {len(_snap['actions'])} dispatch(es){_rst}", flush=True)
+        if _unk:
+            print(f"  {_yellow}⚠ {_unk} dispatch(es) with unknown outcome{_rst} {_dim}— "
+                  f"still counted against the cap; /cost lists them. They are not "
+                  f"re-run automatically.{_rst}", flush=True)
     # Remind logged-out users to sign in — when the gate is on, turns are blocked
     # ("could not verify your PWM balance") until they do. Not on the own-LLM
     # route: free work needs no account, so there is nothing to remind about.
@@ -1548,6 +1616,15 @@ def run_common_repl(
                     print(f"[harness] cost: {summary}", flush=True)
                 except Exception as e:
                     print(f"[harness] cost unavailable: {e}", flush=True)
+                if _budget is not None:
+                    _snap = _budget.snapshot()
+                    print(f"[harness] session budget: {_snap['used_pwm']:g} of "
+                          f"{_snap['cap_pwm']:g} PWM in use or unresolved "
+                          f"({_snap['remaining_pwm']:g} remaining)", flush=True)
+                    for a in _snap["actions"]:
+                        cost = a["actual_pwm"] if a["actual_pwm"] is not None else a["estimate_pwm"]
+                        print(f"  {a['status']:<9} {a['id']}  {cost:g} PWM  {a['note'] or ''}",
+                              flush=True)
                 continue
 
             # /files lists workspace files — handle inline.

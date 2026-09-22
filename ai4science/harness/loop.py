@@ -11,6 +11,29 @@ from ai4science.harness.tools.base import Registry
 MAX_TOOL_ITERATIONS = 50
 
 
+def _result_cap() -> int:
+    """Longest tool result kept in the transcript. One `cat` of a large log
+    must not fill the model's window for the rest of the session; the model
+    is told how much was cut and can read a narrower range. 0 disables."""
+    import os
+    try:
+        return max(0, int(os.environ.get("AI4SCIENCE_TOOL_RESULT_CHARS", "120000")))
+    except (TypeError, ValueError):
+        return 120000
+
+
+def _capped_result(result: str) -> str:
+    cap = _result_cap()
+    if not cap or len(result) <= cap:
+        return result
+    head = cap * 2 // 3
+    tail = cap - head
+    return (result[:head]
+            + f"\n…[truncated {len(result) - cap} chars of tool output; narrow the "
+              f"command or read a smaller range]…\n"
+            + result[-tail:])
+
+
 def run_loop(*, adapter, model: str, reasoning: str, history: List[Message],
              workspace: Path, registry: Registry, gate: PermissionGate,
              on_text: Callable[[str], None], meter: Callable[[Usage], None],
@@ -132,10 +155,11 @@ def run_loop(*, adapter, model: str, reasoning: str, history: List[Message],
             # suppress the `⎿` summary (empty string) to avoid doubling.
             if streamed and _supp["n"] > 0:
                 on_text(f"\x1b[2m  ⎿ (+{_supp['n']} more lines)\x1b[0m\n")
-            on_tool_end(tc.name, "" if streamed else str(result))
-            history.append(Message(role="tool", content=str(result), tool_call_id=tc.id))
+            result = _capped_result(str(result))
+            on_tool_end(tc.name, "" if streamed else result)
+            history.append(Message(role="tool", content=result, tool_call_id=tc.id))
             try:
-                on_tool_result(tc.name, tc.arguments, str(result))
+                on_tool_result(tc.name, tc.arguments, result)
                 on_checkpoint()
             except Exception:
                 pass            # bookkeeping never ends a turn

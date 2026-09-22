@@ -263,3 +263,33 @@ def test_empty_repository_and_dirty_repository(tmp_path):
     status = subprocess.run(["git", "status", "--short"], cwd=dirty, capture_output=True, text=True).stdout
     assert " M analysis.py" in status and "?? scratch.txt" in status
     assert (dirty / "scratch.txt").read_text() == "user's untracked scratch\n"
+
+
+# ── U06: long context — many large tool outputs, bounded history, valid transcript ──
+
+def test_long_context_stays_bounded_and_valid(tmp_path, monkeypatch):
+    monkeypatch.setenv("AI4SCIENCE_TOOL_RESULT_CHARS", "5000")
+    ws = _project(tmp_path)
+    (ws / "big.txt").write_text("line\n" * 20_000)             # ~100k chars
+    script = []
+    for i in range(8):
+        script.append([ToolCall(f"c{i}", "read", {"path": "big.txt"}), Done("tool_use")])
+        script.append([TextDelta(f"turn {i} done"), Done("end")])
+    summaries = []
+
+    def summarize(t):
+        summaries.append(len(t))
+        return "SUMMARY of earlier work"
+
+    s = _session(ws, script, compact_limit_chars=12_000, summarize=summarize)
+    for i in range(8):
+        assert f"turn {i} done" in s.run_turn(f"read big {i}")
+        answered = {m.tool_call_id for m in s.history if m.role == "tool"}
+        for m in s.history:
+            if m.role == "assistant":
+                assert all(tc.id in answered for tc in m.tool_calls)
+    total = sum(len(m.content) for m in s.history)
+    assert total < 40_000, total
+    assert summaries, "compaction never ran"
+    tool_msgs = [m for m in s.history if m.role == "tool"]
+    assert all("truncated" in m.content and len(m.content) < 5_500 for m in tool_msgs)
