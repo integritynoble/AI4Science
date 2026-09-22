@@ -126,3 +126,69 @@ def test_callback_allows_bash_with_auto_yes(tmp_path):
     result = asyncio.run(cb("Bash", {"command": "ls -la"}, None))
     from claude_agent_sdk import PermissionResultAllow
     assert isinstance(result, PermissionResultAllow)
+
+
+# ─── Read-only tools are sandboxed too (regression: they previously were not) ──
+
+
+def test_callback_denies_read_outside_workspace(tmp_path):
+    """A Read of a path outside the workspace — e.g. a sibling `private/`
+    directory holding a scenario's answer key — must be denied, not silently
+    allowed just because Read is in AUTO_ALLOW_TOOLS."""
+    cb = make_workspace_permission_callback(tmp_path, auto_yes=False)
+    outside = tmp_path.parent / "private" / "key.json"
+    result = asyncio.run(cb("Read", {"file_path": str(outside)}, None))
+    from claude_agent_sdk import PermissionResultDeny
+    assert isinstance(result, PermissionResultDeny)
+    assert "outside the workspace" in result.message
+
+
+def test_callback_denies_read_via_relative_traversal(tmp_path):
+    cb = make_workspace_permission_callback(tmp_path, auto_yes=False)
+    result = asyncio.run(cb("Read", {"file_path": "../private/key.json"}, None))
+    from claude_agent_sdk import PermissionResultDeny
+    assert isinstance(result, PermissionResultDeny)
+
+
+def test_callback_allows_grep_with_no_path_arg(tmp_path):
+    """Grep/Glob without an explicit path search cwd (already the
+    workspace) — omitting the argument must not be treated as a violation."""
+    cb = make_workspace_permission_callback(tmp_path, auto_yes=False)
+    result = asyncio.run(cb("Grep", {"pattern": "TODO"}, None))
+    from claude_agent_sdk import PermissionResultAllow
+    assert isinstance(result, PermissionResultAllow)
+
+
+def test_callback_denies_grep_with_path_outside_workspace(tmp_path):
+    cb = make_workspace_permission_callback(tmp_path, auto_yes=False)
+    outside = str(tmp_path.parent / "private")
+    result = asyncio.run(cb("Grep", {"pattern": "answer", "path": outside}, None))
+    from claude_agent_sdk import PermissionResultDeny
+    assert isinstance(result, PermissionResultDeny)
+
+
+def test_callback_denies_bash_read_of_sibling_private_dir(tmp_path):
+    """The bug this whole set of tests exists for: a read-only bash command
+    (auto-allowed for Claude Code parity) previously skipped the sandbox
+    check entirely, so `cat ../private/key.json` next to a scenario
+    workspace could read the answer key straight off disk."""
+    cb = make_workspace_permission_callback(tmp_path, auto_yes=False)
+    result = asyncio.run(cb("Bash", {"command": "cat ../private/key.json"}, None))
+    from claude_agent_sdk import PermissionResultDeny
+    assert isinstance(result, PermissionResultDeny)
+
+
+def test_callback_denies_bash_ls_parent_even_read_only(tmp_path):
+    cb = make_workspace_permission_callback(tmp_path, auto_yes=True)
+    result = asyncio.run(cb("Bash", {"command": "ls .."}, None))
+    from claude_agent_sdk import PermissionResultDeny
+    assert isinstance(result, PermissionResultDeny)
+
+
+def test_callback_still_allows_ordinary_read_only_bash(tmp_path):
+    """The fix must not over-block: an ordinary read-only command that
+    stays inside the workspace is still auto-allowed."""
+    cb = make_workspace_permission_callback(tmp_path, auto_yes=False)
+    result = asyncio.run(cb("Bash", {"command": "ls -la"}, None))
+    from claude_agent_sdk import PermissionResultAllow
+    assert isinstance(result, PermissionResultAllow)

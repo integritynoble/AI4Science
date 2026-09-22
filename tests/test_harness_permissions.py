@@ -1,5 +1,5 @@
 from pathlib import Path
-from ai4science.harness.permissions import PermissionGate, SandboxError, _preview
+from ai4science.harness.permissions import PermissionGate, SandboxError, _bash_cmd_safe, _preview
 
 
 def test_write_preview_is_clean_listing_not_diff():
@@ -51,3 +51,20 @@ def test_sandbox_blocks_protected_paths(tmp_path):
     for bad in ["judge/x.py", "hidden_tests/t.py", "../escape.py"]:
         ok, reason = gate.allow("write", {"path": bad, "content": "x"})
         assert ok is False and "sandbox" in reason.lower()
+
+
+def test_bash_cmd_safe_blocks_bare_parent_reference():
+    """Regression: `_BASH_BLOCK` used to require a trailing `/` after `..`,
+    so `cd ..`/`ls ..` — the ordinary, slash-free way to reference the
+    parent directory — were not recognized as an escape at all."""
+    for cmd in ["ls ..", "cd ..", "ls -la ..", "cd .. && cat key.json",
+               "cd ..;ls", "grep -r foo ..", "find .. -name x"]:
+        ok, reason = _bash_cmd_safe(cmd)
+        assert ok is False, f"{cmd!r} should be blocked"
+        assert "sandbox" in reason.lower()
+
+
+def test_bash_cmd_safe_still_allows_ordinary_commands():
+    for cmd in ["ls -la", "cat README.md", "echo hello", "ls ...", "mkdir mydir..other"]:
+        ok, _ = _bash_cmd_safe(cmd)
+        assert ok is True, f"{cmd!r} should not be blocked"
