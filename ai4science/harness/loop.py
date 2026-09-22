@@ -11,13 +11,43 @@ from ai4science.harness.tools.base import Registry
 MAX_TOOL_ITERATIONS = 50
 
 
+def _result_cap() -> int:
+    """Longest tool result kept in the transcript. One `cat` of a large log
+    must not fill the model's window for the rest of the session; the model
+    is told how much was cut and can read a narrower range. 0 disables."""
+    import os
+    try:
+        return max(0, int(os.environ.get("AI4SCIENCE_TOOL_RESULT_CHARS", "120000")))
+    except (TypeError, ValueError):
+        return 120000
+
+
+def _capped_result(result: str) -> str:
+    cap = _result_cap()
+    if not cap or len(result) <= cap:
+        return result
+    head = cap * 2 // 3
+    tail = cap - head
+    return (result[:head]
+            + f"\n…[truncated {len(result) - cap} chars of tool output; narrow the "
+              f"command or read a smaller range]…\n"
+            + result[-tail:])
+
+
 def run_loop(*, adapter, model: str, reasoning: str, history: List[Message],
              workspace: Path, registry: Registry, gate: PermissionGate,
              on_text: Callable[[str], None], meter: Callable[[Usage], None],
              on_tool: Callable[[str], None] = lambda name: None,
              on_tool_start: Callable[[str, dict], None] = lambda name, args: None,
-             on_tool_end: Callable[[str, str], None] = lambda name, result: None) -> str:
-    """Drive one user turn to completion (text + any tool calls). Returns final text."""
+             on_tool_end: Callable[[str, str], None] = lambda name, result: None,
+             on_tool_result: Callable[[str, dict, str], None] = lambda name, args, result: None,
+             on_checkpoint: Callable[[], None] = lambda: None) -> str:
+    """Drive one user turn to completion (text + any tool calls). Returns final text.
+
+    `on_tool_result` receives the FULL result of every tool call (on_tool_end
+    gets "" for streamed tools, which is a display concern). `on_checkpoint`
+    fires after each tool result lands in `history`, so a caller can persist
+    the transcript at every step a kill could interrupt."""
     final_text_parts: List[str] = []
 
     for _ in range(MAX_TOOL_ITERATIONS):
@@ -84,7 +114,14 @@ def run_loop(*, adapter, model: str, reasoning: str, history: List[Message],
                 result = f"[blocked] {reason}"
             else:
                 try:
-                    tool = registry.get(tc.name)
+                    try:
+                        tool = registry.get(tc.name)
+                    except KeyError:
+                        # Name the gap, not the key: a bare "[error] 'foo'" is
+                        # what a model retries blindly; a list is what it uses.
+                        raise RuntimeError(
+                            f"unknown tool {tc.name!r}; available: "
+                            f"{', '.join(registry.names())}")
                     if tool.streams:
                         # Cap the LIVE display like Claude Code: stream just a
                         # short peek, then hide the rest (the agent still receives
@@ -118,8 +155,14 @@ def run_loop(*, adapter, model: str, reasoning: str, history: List[Message],
             # suppress the `⎿` summary (empty string) to avoid doubling.
             if streamed and _supp["n"] > 0:
                 on_text(f"\x1b[2m  ⎿ (+{_supp['n']} more lines)\x1b[0m\n")
-            on_tool_end(tc.name, "" if streamed else str(result))
-            history.append(Message(role="tool", content=str(result), tool_call_id=tc.id))
+            result = _capped_result(str(result))
+            on_tool_end(tc.name, "" if streamed else result)
+            history.append(Message(role="tool", content=result, tool_call_id=tc.id))
+            try:
+                on_tool_result(tc.name, tc.arguments, result)
+                on_checkpoint()
+            except Exception:
+                pass            # bookkeeping never ends a turn
             if interrupt.requested():
                 interrupted = True
         if interrupted:

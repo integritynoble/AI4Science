@@ -141,6 +141,11 @@ def _maybe_offer_login() -> None:
     if str(os.environ.get("AI4SCIENCE_PWM_GATE", "")).strip().lower() in (
             "0", "false", "no", "off"):
         return
+    # Free work needs no account: on the own-LLM route there is nothing to sign
+    # in for, so a user with their own credential is never asked to.
+    from ai4science import funding
+    if not funding.resolve().pays_pwm:
+        return
     token = os.environ.get("PWM_TOKEN") or os.environ.get("PWM_ONBOARD_TOKEN")
     if not token:
         try:

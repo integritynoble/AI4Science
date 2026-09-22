@@ -48,7 +48,8 @@ def _shortcwd(p) -> str:
 #: call these unknown — the same defect wearing a helpful face.
 _LOOP_COMMANDS = ("model", "agent", "mode", "cost", "files", "agents", "mcp",
                   "feedback", "login", "whoami",
-                  "install-agent", "uninstall-agent")
+                  "install-agent", "uninstall-agent",
+                  "decisions", "approve", "reject")
 
 _COMMAND_WORD = re.compile(r"^/([A-Za-z][A-Za-z0-9_-]*)(\s|$)")
 
@@ -494,6 +495,11 @@ def _dispatch_slash(line: str, state: dict) -> tuple[bool, str]:
                       "/agent [name|specific <q>] /do <goal> /tasks /login "
                       "/whoami /feedback <text> /readonly /yes /default "
                       "/cost /files /subagents /exit\n"
+                      "  project state: /decisions (approved + proposed) "
+                      "/approve <key>=<value> | /approve <#proposal> "
+                      "/reject <#proposal> — the owner's approved decisions "
+                      "are shown to the agent every turn and override chat, "
+                      "notes and files\n"
                       "  agents: /install-agent [name] (add to /agent picker) "
                       "/uninstall-agent [name] (remove from picker)\n"
                       "  tasks: /task (all boards) /<task-name> or /tsk_… "
@@ -1122,6 +1128,27 @@ def run_common_repl(
     # under this id, and it has to be the SAME one persistence.save() uses or
     # the ledger points at a session no workspace index maps to.
     _sid = session_id or secrets.token_hex(8)
+    # The PWM proxy binds a receipt to (payer, session, operation, request id)
+    # (F02, 2026-09-22): give it this session's real id, so a retried request
+    # id under a DIFFERENT session can never be answered from this session's
+    # receipt, and this session's own receipts are listable by session.
+    os.environ["AI4SCIENCE_SESSION_ID"] = _sid
+
+    # A durable session budget (A03): AI4SCIENCE_SESSION_CAP_PWM=<pwm> caps this
+    # session and every sub-agent it dispatches; the ledger lives beside the
+    # transcript and survives a kill. Unset and no ledger on disk → uncapped,
+    # exactly as before. A resume reopens the ledger; it cannot change the cap.
+    from ai4science.harness.runtime import budget as _budget_mod
+    from ai4science.harness.runtime import decisions as _decisions_mod
+    _journal = _decisions_mod.Journal(workspace)
+    _budget = None
+    try:
+        _cap_env = os.environ.get("AI4SCIENCE_SESSION_CAP_PWM")
+        _budget = _budget_mod.open_for_session(
+            persistence.sessions_dir(), _sid,
+            float(_cap_env) if _cap_env not in (None, "") else None)
+    except Exception as _bexc:
+        print(f"[harness] session budget unavailable: {_bexc}", flush=True)
 
     def _make_wrapped_meter(b: str, m: str):
         """Return a meter that accumulates into turn_tokens AND calls real meter."""
@@ -1155,7 +1182,50 @@ def run_common_repl(
         )
         if spec.system_prompt:
             child.history.insert(0, Message(role="system", content=spec.system_prompt))
+        for _t in _decisions_mod.decision_tools(workspace):
+            child.registry.add(_t)
+        _decisions_mod.refresh_state_message(child.history, _journal)
+        if _budget is not None:
+            # Every dispatch is a budgeted action: reserved before the child's
+            # first token, reconciled with its metered cost after, left
+            # `unknown` if the process dies in between.
+            _b, _m = active_backend, active_model
+            _budget_mod.guard_session(
+                child, _budget, action_id=_budget.next_id(f"task:{_sid}"),
+                estimate_pwm=_subagent_reserve(),
+                cost_of=lambda u: _turn_cost_for(_b, _m, u)[0],
+                note=f"sub-agent {spec.name}")
         return child
+
+    def _subagent_reserve() -> float:
+        try:
+            return max(0.0, float(os.environ.get("AI4SCIENCE_SUBAGENT_RESERVE_PWM", "0")))
+        except (TypeError, ValueError):
+            return 0.0
+
+    def _summarize_for_compaction(transcript: str) -> str:
+        """One low-reasoning call on the session's current brand. Compaction
+        treats an exception or an empty summary as 'not this turn'."""
+        from ai4science.harness.events import TextDelta, Usage
+        hist = [Message(role="system", content=(
+                    "Summarize this transcript so the same assistant can continue the "
+                    "work. Keep: decisions and approvals, file paths touched, commands "
+                    "run with their results, open items and unresolved errors. Plain "
+                    "text, at most 400 words, no preamble.")),
+                Message(role="user", content=transcript[-80_000:])]
+        parts: list = []
+        for ev in session.adapter.stream(hist, [], model=session.model, reasoning="low"):
+            if isinstance(ev, TextDelta):
+                parts.append(ev.text)
+            elif isinstance(ev, Usage):
+                session.meter(ev)
+        return "".join(parts).strip()
+
+    def _compact_limit() -> int:
+        try:
+            return max(0, int(os.environ.get("AI4SCIENCE_COMPACT_CHARS", "300000")))
+        except (TypeError, ValueError):
+            return 300000
 
     def _build_session() -> AgentSession:
         s = AgentSession(
@@ -1171,6 +1241,14 @@ def run_common_repl(
             meter=_make_wrapped_meter(active_backend, active_model),
             on_tool=lambda name: turn_tools.add(name),
             on_tool_start=_show_tool_start, on_tool_end=_show_tool_end,
+            # Persist after every tool result: a session killed mid-turn resumes
+            # at its last tool call, not at its last finished turn.
+            on_checkpoint=lambda: persistence.save(_sid, workspace, session.history),
+            # Long sessions stay inside the window: past the limit, the older
+            # transcript is summarized on the current brand, never split from a
+            # tool exchange and never losing the system prompt (compaction.py).
+            compact_limit_chars=_compact_limit(),
+            summarize=_summarize_for_compaction,
             registry=_registry_for_spec(
                 active_spec, is_subagent=False,
                 ctx=_make_build_context(
@@ -1181,6 +1259,8 @@ def run_common_repl(
                     writable_roots=writable_roots,
                 )),
         )
+        for _t in _decisions_mod.decision_tools(workspace):
+            s.registry.add(_t)
         # Seed the system prompt on every build (initial AND /clear rebuild) so the
         # mode grounding survives a /clear and /mode switches re-ground.
         seed_prompt = active_spec.system_prompt or system_prompt
@@ -1204,7 +1284,10 @@ def run_common_repl(
                  "gpt-5.5-codex": "ChatGPT 5.5 Codex",
                  "gemini-3.1-pro-preview": "Gemini 3.1 Pro"}
     _m = _friendly.get(active_model, active_model)
-    _gate = ("gate on — turns charged in PWM" if gate.enabled else "gate off")
+    from ai4science import funding as _funding
+    _route = _funding.resolve()
+    _gate = ("gate on — turns charged in PWM" if gate.enabled
+             else ("your own LLM — 0 PWM" if not _route.pays_pwm else "gate off"))
     # Login status: is a PWM token available? (env or saved account)
     def _signed_in() -> bool:
         import os as _os
@@ -1224,9 +1307,23 @@ def run_common_repl(
     print(f"  {_dim}tips{_rst}   /help · /agent · /model · /exit · Ctrl-C interrupts", flush=True)
     print(f"  {_dim}pwm{_rst}    {_dim}{_gate} · session {_sid} (resume: --resume {_sid}){_rst}",
           flush=True)
+    _cur, _pend = _journal.current(), _journal.pending()
+    if _cur or _pend:
+        print(f"  {_dim}state{_rst}  {_dim}{len(_cur)} approved decision(s), "
+              f"{len(_pend)} open proposal(s) · /decisions{_rst}", flush=True)
+    if _budget is not None:
+        _snap = _budget.snapshot()
+        _unk = len(_snap["unknown"])
+        print(f"  {_dim}budget{_rst} {_dim}{_snap['used_pwm']:g} of {_snap['cap_pwm']:g} PWM "
+              f"in use or unresolved · {len(_snap['actions'])} dispatch(es){_rst}", flush=True)
+        if _unk:
+            print(f"  {_yellow}⚠ {_unk} dispatch(es) with unknown outcome{_rst} {_dim}— "
+                  f"still counted against the cap; /cost lists them. They are not "
+                  f"re-run automatically.{_rst}", flush=True)
     # Remind logged-out users to sign in — when the gate is on, turns are blocked
-    # ("could not verify your PWM balance") until they do.
-    if not _logged_in:
+    # ("could not verify your PWM balance") until they do. Not on the own-LLM
+    # route: free work needs no account, so there is nothing to remind about.
+    if not _logged_in and _route.pays_pwm:
         _why = ("turns are blocked until you sign in" if gate.enabled
                 else "sign in to earn/spend PWM")
         print(f"  {_yellow}⚠ not signed in{_rst} {_dim}— run {_rst}{_coral}/login{_rst}"
@@ -1533,6 +1630,40 @@ def run_common_repl(
                       flush=True)
                 continue
 
+            # /decisions /approve /reject — approved project state (A03):
+            # the owner's, kept apart from the chat, shown to the agent every
+            # turn. Only the owner approves; the agent may only propose.
+            if cmd in ("decisions", "approve", "reject"):
+                try:
+                    if cmd == "decisions":
+                        print(f"[harness] {_journal.render()}", flush=True)
+                    elif cmd == "approve":
+                        a = (arg or "").strip()
+                        if a.startswith("#") and a[1:].isdigit() or a.isdigit():
+                            r = _journal.approve_proposal(int(a.lstrip("#")),
+                                                          source="owner:/approve")
+                        elif "=" in a:
+                            k, _, v = a.partition("=")
+                            r = _journal.approve(k, v, source="owner:/approve")
+                        else:
+                            print("[harness] usage: /approve <key>=<value>  or  "
+                                  "/approve <#proposal>", flush=True)
+                            continue
+                        print(f"[harness] approved #{r.id}: {r.key} = {r.value}"
+                              + (f" (supersedes #{r.supersedes})" if r.supersedes else ""),
+                              flush=True)
+                    else:
+                        a = (arg or "").strip().lstrip("#")
+                        if not a.isdigit():
+                            print("[harness] usage: /reject <#proposal>", flush=True)
+                            continue
+                        r = _journal.reject(int(a), source="owner:/reject")
+                        print(f"[harness] rejected proposal #{r.supersedes}: {r.key} = {r.value}",
+                              flush=True)
+                except (ValueError, PermissionError) as e:
+                    print(f"[harness] {e}", flush=True)
+                continue
+
             # /cost needs the live session's ledger — handle inline.
             if cmd == "cost":
                 try:
@@ -1541,6 +1672,15 @@ def run_common_repl(
                     print(f"[harness] cost: {summary}", flush=True)
                 except Exception as e:
                     print(f"[harness] cost unavailable: {e}", flush=True)
+                if _budget is not None:
+                    _snap = _budget.snapshot()
+                    print(f"[harness] session budget: {_snap['used_pwm']:g} of "
+                          f"{_snap['cap_pwm']:g} PWM in use or unresolved "
+                          f"({_snap['remaining_pwm']:g} remaining)", flush=True)
+                    for a in _snap["actions"]:
+                        cost = a["actual_pwm"] if a["actual_pwm"] is not None else a["estimate_pwm"]
+                        print(f"  {a['status']:<9} {a['id']}  {cost:g} PWM  {a['note'] or ''}",
+                              flush=True)
                 continue
 
             # /files lists workspace files — handle inline.
@@ -1610,6 +1750,10 @@ def run_common_repl(
             from ai4science.harness import interrupt
             from ai4science.harness import tui as _tui
             interrupt.clear()                   # stale Esc must not kill this turn
+            # The approved project state is re-read from the journal every turn
+            # and placed after the system prompt: compaction, a resume or a
+            # newer suggestion cannot displace it.
+            _decisions_mod.refresh_state_message(session.history, _journal)
             turn_tokens["total"] = 0
             turn_calls["n"] = 0
             _live_tok["n"] = 0
@@ -1628,6 +1772,11 @@ def run_common_repl(
             print(toolfmt.fmt_turn_footer(seconds=elapsed,
                                           tools=turn_calls["n"],
                                           tokens=turn_tokens["total"]), flush=True)
+            # The harness's own word on verification (U05): failed/absent test
+            # runs are stated here from the tool log, not from the answer.
+            _vnote = session.verification_note(result or "")
+            if _vnote:
+                print(f"\x1b[33m{_vnote}\x1b[0m", flush=True)
             # One-sentence recap after substantial turns (Claude Code parity).
             # Decoration only — any failure is swallowed.
             from ai4science.harness import recap as recap_mod
@@ -1686,6 +1835,10 @@ def run_common_repl(
         except KeyboardInterrupt:
             _intr.clear()
             print("\n[harness] turn stopped — type a new message.", flush=True)
+            try:
+                persistence.save(_sid, workspace, session.history)
+            except Exception:
+                pass
         except Exception as exc:
             # Walk the orchestration chain automatically: Opus 4.8 → GPT-5.5 →
             # Gemini (see routing.AGENT_CHAINS). If the primary model is

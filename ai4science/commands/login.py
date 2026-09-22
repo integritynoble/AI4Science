@@ -47,8 +47,13 @@ def _login_pwm(base: Optional[str]) -> None:
     who = acct.get("email") or f"user #{acct.get('user_id')}"
     console.print(f"[green]✓ Logged in to {target}[/green] as [bold]{who}[/bold]"
                   + (f"  wallet [magenta]{acct['wallet']}[/magenta]" if acct.get("wallet") else ""))
-    console.print("[dim]  stored: a revocable pwm_ API key (chmod 600) — never a private key.\n"
-                  "  The PWM gate now uses it automatically when AI4SCIENCE_PWM_GATE=1.[/dim]")
+    console.print("[dim]  stored: a revocable pwm_ API key (chmod 600) — never a private key.[/dim]")
+    # Logging in is authentication. It selects the PWM route only when the user
+    # has nothing of their own to run on; an own LLM stays selected and free.
+    from ai4science import funding
+    note = funding.after_pwm_login()
+    if note:
+        console.print(f"[dim]  {note}[/dim]")
 
 
 def _reachable(provider: str, auth: str) -> Optional[bool]:
@@ -75,7 +80,13 @@ def _finish_own(provider: str, auth: str, api_key: Optional[str]) -> None:
         console.print(f"[red]{e}[/red]")
         raise typer.Exit(2)
     console.print(f"[green]✓ Logged in[/green] with your own [bold]{provider}[/bold] "
-                  f"via [bold]{auth}[/bold]. No PWM is spent — usage is on your account.")
+                  f"via [bold]{auth}[/bold]. 0 PWM — usage is on your own LLM account; "
+                  "no PWM login, balance or platform fee.")
+    # An own-LLM login is the selection of the free route; a stale explicit
+    # `funding pwm` would otherwise keep charging for a credential they just gave.
+    from ai4science import funding
+    if funding.resolve().route == funding.PWM:
+        funding.select(funding.OWN)
     r = _reachable(provider, auth)
     if r is True:
         console.print("[dim]  reachable on this server ✓[/dim]")
@@ -210,8 +221,43 @@ def whoami() -> None:
         who = acct.get("email") or f"user #{acct.get('user_id')}"
         console.print(f"[bold]PWM account:[/bold] {who} [dim]({acct.get('base')})[/dim]"
                       + (f"  wallet [magenta]{acct['wallet']}[/magenta]" if acct.get("wallet") else ""))
+    from ai4science import funding as _funding
+    r = _funding.resolve()
+    console.print(f"[bold]Funding:[/bold] {r.label} [dim]({r.reason}; change with "
+                  "[/dim][cyan]ai4science funding own|pwm[/cyan][dim])[/dim]")
     console.print(f"[dim]Source preference: {user_cfg.preference()} "
                   "(change with [/dim][cyan]ai4science prefer <user|wallet|provider_id>[/cyan][dim])[/dim]")
+
+
+def funding(
+    route: Optional[str] = typer.Argument(
+        None, help="own | pwm | clear  (no argument: show the route in force)"),
+) -> None:
+    """Choose who pays for LLM turns: your own LLM (0 PWM) or PWM-funded system LLMs.
+
+    A PWM login by itself never selects the paid route once you have your own
+    LLM; this command is the explicit switch."""
+    from ai4science import funding as _funding
+    if route is None:
+        r = _funding.resolve()
+        console.print(f"[bold]Funding:[/bold] {r.label}")
+        console.print(f"[dim]  why: {r.reason}[/dim]")
+        return
+    if route.strip().lower() == "clear":
+        _funding.clear()
+        r = _funding.resolve()
+        console.print(f"[green]✓ Explicit selection cleared.[/green] Now: {r.label} "
+                      f"[dim]({r.reason})[/dim]")
+        return
+    try:
+        r = _funding.select(route)
+    except ValueError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(2)
+    console.print(f"[green]✓ Funding set:[/green] {r.label}")
+    if r.route == _funding.PWM and not pwm_account.load():
+        console.print("[yellow]  no PWM login yet — run [cyan]ai4science login[/cyan] "
+                      "before a PWM-funded turn can be served.[/yellow]")
 
 
 def prefer(
