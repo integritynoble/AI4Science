@@ -48,7 +48,8 @@ def _shortcwd(p) -> str:
 #: call these unknown — the same defect wearing a helpful face.
 _LOOP_COMMANDS = ("model", "agent", "mode", "cost", "files", "agents", "mcp",
                   "feedback", "login", "whoami",
-                  "install-agent", "uninstall-agent")
+                  "install-agent", "uninstall-agent",
+                  "decisions", "approve", "reject")
 
 _COMMAND_WORD = re.compile(r"^/([A-Za-z][A-Za-z0-9_-]*)(\s|$)")
 
@@ -494,6 +495,11 @@ def _dispatch_slash(line: str, state: dict) -> tuple[bool, str]:
                       "/agent [name|specific <q>] /do <goal> /tasks /login "
                       "/whoami /feedback <text> /readonly /yes /default "
                       "/cost /files /subagents /exit\n"
+                      "  project state: /decisions (approved + proposed) "
+                      "/approve <key>=<value> | /approve <#proposal> "
+                      "/reject <#proposal> — the owner's approved decisions "
+                      "are shown to the agent every turn and override chat, "
+                      "notes and files\n"
                       "  agents: /install-agent [name] (add to /agent picker) "
                       "/uninstall-agent [name] (remove from picker)\n"
                       "  tasks: /task (all boards) /<task-name> or /tsk_… "
@@ -1128,6 +1134,8 @@ def run_common_repl(
     # transcript and survives a kill. Unset and no ledger on disk → uncapped,
     # exactly as before. A resume reopens the ledger; it cannot change the cap.
     from ai4science.harness.runtime import budget as _budget_mod
+    from ai4science.harness.runtime import decisions as _decisions_mod
+    _journal = _decisions_mod.Journal(workspace)
     _budget = None
     try:
         _cap_env = os.environ.get("AI4SCIENCE_SESSION_CAP_PWM")
@@ -1169,6 +1177,9 @@ def run_common_repl(
         )
         if spec.system_prompt:
             child.history.insert(0, Message(role="system", content=spec.system_prompt))
+        for _t in _decisions_mod.decision_tools(workspace):
+            child.registry.add(_t)
+        _decisions_mod.refresh_state_message(child.history, _journal)
         if _budget is not None:
             # Every dispatch is a budgeted action: reserved before the child's
             # first token, reconciled with its metered cost after, left
@@ -1243,6 +1254,8 @@ def run_common_repl(
                     writable_roots=writable_roots,
                 )),
         )
+        for _t in _decisions_mod.decision_tools(workspace):
+            s.registry.add(_t)
         # Seed the system prompt on every build (initial AND /clear rebuild) so the
         # mode grounding survives a /clear and /mode switches re-ground.
         seed_prompt = active_spec.system_prompt or system_prompt
@@ -1289,6 +1302,10 @@ def run_common_repl(
     print(f"  {_dim}tips{_rst}   /help · /agent · /model · /exit · Ctrl-C interrupts", flush=True)
     print(f"  {_dim}pwm{_rst}    {_dim}{_gate} · session {_sid} (resume: --resume {_sid}){_rst}",
           flush=True)
+    _cur, _pend = _journal.current(), _journal.pending()
+    if _cur or _pend:
+        print(f"  {_dim}state{_rst}  {_dim}{len(_cur)} approved decision(s), "
+              f"{len(_pend)} open proposal(s) · /decisions{_rst}", flush=True)
     if _budget is not None:
         _snap = _budget.snapshot()
         _unk = len(_snap["unknown"])
@@ -1608,6 +1625,40 @@ def run_common_repl(
                       flush=True)
                 continue
 
+            # /decisions /approve /reject — approved project state (A03):
+            # the owner's, kept apart from the chat, shown to the agent every
+            # turn. Only the owner approves; the agent may only propose.
+            if cmd in ("decisions", "approve", "reject"):
+                try:
+                    if cmd == "decisions":
+                        print(f"[harness] {_journal.render()}", flush=True)
+                    elif cmd == "approve":
+                        a = (arg or "").strip()
+                        if a.startswith("#") and a[1:].isdigit() or a.isdigit():
+                            r = _journal.approve_proposal(int(a.lstrip("#")),
+                                                          source="owner:/approve")
+                        elif "=" in a:
+                            k, _, v = a.partition("=")
+                            r = _journal.approve(k, v, source="owner:/approve")
+                        else:
+                            print("[harness] usage: /approve <key>=<value>  or  "
+                                  "/approve <#proposal>", flush=True)
+                            continue
+                        print(f"[harness] approved #{r.id}: {r.key} = {r.value}"
+                              + (f" (supersedes #{r.supersedes})" if r.supersedes else ""),
+                              flush=True)
+                    else:
+                        a = (arg or "").strip().lstrip("#")
+                        if not a.isdigit():
+                            print("[harness] usage: /reject <#proposal>", flush=True)
+                            continue
+                        r = _journal.reject(int(a), source="owner:/reject")
+                        print(f"[harness] rejected proposal #{r.supersedes}: {r.key} = {r.value}",
+                              flush=True)
+                except (ValueError, PermissionError) as e:
+                    print(f"[harness] {e}", flush=True)
+                continue
+
             # /cost needs the live session's ledger — handle inline.
             if cmd == "cost":
                 try:
@@ -1694,6 +1745,10 @@ def run_common_repl(
             from ai4science.harness import interrupt
             from ai4science.harness import tui as _tui
             interrupt.clear()                   # stale Esc must not kill this turn
+            # The approved project state is re-read from the journal every turn
+            # and placed after the system prompt: compaction, a resume or a
+            # newer suggestion cannot displace it.
+            _decisions_mod.refresh_state_message(session.history, _journal)
             turn_tokens["total"] = 0
             turn_calls["n"] = 0
             _live_tok["n"] = 0
