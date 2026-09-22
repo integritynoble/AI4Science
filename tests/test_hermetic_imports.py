@@ -61,12 +61,19 @@ def _unguarded_out_of_repo_imports(path: Path) -> list[str]:
     return offenders
 
 
-@pytest.mark.parametrize("path", _test_modules(), ids=lambda p: str(p.name))
-def test_out_of_repo_imports_are_guarded(path: Path) -> None:
-    """No test module may import an out-of-repo sibling before skipping on it."""
-    offenders = _unguarded_out_of_repo_imports(path)
-    assert not offenders, (
-        f"{path.relative_to(TESTS.parent)} imports an out-of-repo module at "
-        f"collection time: {offenders}. Guard it with "
-        f'pytest.importorskip("pwm_control_plane") placed above the import.'
+def test_out_of_repo_imports_are_guarded() -> None:
+    """No test module may import an out-of-repo sibling before skipping on it.
+
+    One test rather than one per module on purpose: it adds a single item to
+    the collected count, which is the number this guard exists to protect.
+    """
+    bad = {
+        str(p.relative_to(TESTS.parent)): offenders
+        for p in _test_modules()
+        if (offenders := _unguarded_out_of_repo_imports(p))
+    }
+    assert not bad, (
+        "these modules import an out-of-repo sibling at collection time, so "
+        'pip install -e ".[dev]" && pytest cannot collect them: '
+        f'{bad}. Put pytest.importorskip("pwm_control_plane") above the import.'
     )
