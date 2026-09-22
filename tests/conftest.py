@@ -27,6 +27,37 @@ def _isolate_pwm_login(monkeypatch, tmp_path_factory):
 
 
 @pytest.fixture(autouse=True)
+def _isolate_home(monkeypatch, tmp_path_factory):
+    """No test may read the *real* `$HOME`.
+
+    Same doctrine as `_isolate_pwm_login` above: whatever the machine running
+    the suite happens to have in its home directory is not a property of the
+    code under test.
+
+    Measured: `tests/machine/test_sessions.py::test_find_sessions_reports_governance`
+    is the one failure left after the packaging seams are closed, and it is not
+    a code failure. `sessions._governed` (ai4science/harness/agents/machine/sessions.py:83)
+    falls back to `~/.claude/settings.json` when the project has no settings of
+    its own, so on any machine whose own `~/.claude/settings.json` wires the
+    `machine.hook` PreToolUse hook, the test's deliberately *un*governed
+    project reads as governed and `assert by_pid[222]["governed"] is False`
+    fails. The same file's `session_dir` (`:164`) reads `~/.claude/projects`.
+
+    `HOME` and `USERPROFILE` both, because `os.path.expanduser` prefers `HOME`
+    on POSIX and falls back to `USERPROFILE` on Windows. `Path.home()` goes
+    through `expanduser` too, so this covers both spellings.
+
+    The directory is real and writable rather than nonexistent, so code that
+    legitimately creates state under `~` still works -- it just does not see,
+    and cannot corrupt, the developer's own.
+    """
+    home = tmp_path_factory.mktemp("home")
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    yield
+
+
+@pytest.fixture(autouse=True)
 def _restore_agent_registry():
     """Put the global agent registry back exactly as it was, for every test.
 

@@ -58,6 +58,46 @@ dev = [
   "pytest-cov>=4.1",
   "build>=1.2",
   "twine>=5.0",
+  # --- what the SUITE needs beyond the runtime, and why it is here ---------
+  #
+  # The contract in README.md is that `pip install -e ".[dev]"` alone must be
+  # enough to COLLECT the suite. Collecting is not running: measured on a fresh
+  # venv at daf66277, `[dev]` collected cleanly and then failed 82 tests, 81 of
+  # which were the environment and not the code. Two things were missing.
+  #
+  # 1. `claude-agent-sdk` -- the SDK behind `ai4science chat` / `--mode claude`
+  #    (ai4science/commands/chat.py:494, ai4science/agents/claude_agent.py:170).
+  #    It is a PRODUCT import, declared as the `claude` extra above and
+  #    installed by default by install.sh:203; it is repeated here because the
+  #    tests import it directly (tests/test_chat.py:313 monkeypatches
+  #    `claude_agent_sdk.list_sessions`) and `[dev]` must stand alone.
+  "claude-agent-sdk>=0.1",
+  #
+  # 2. The eight first-party agent packages. The agents they ship are NOT
+  #    built-in specs -- `ai4science/harness/agents/specs/` has no paper.py,
+  #    cancer.py, unified_llm.py, claude_code.py ... on purpose (the split is
+  #    documented at the top of this file). Around fifty tests assert on the
+  #    registry those packages populate through entry points, e.g.
+  #    tests/test_phase3_agents_via_packages.py:17 and
+  #    tests/sarsi/test_backends.py:32. Without them those tests do not skip:
+  #    they fail, on every machine that is not the maintainer's.
+  #
+  #    This is a cycle in the metadata -- these pin `pwm-agent-core>=1,<2` and
+  #    this IS pwm-agent-core -- which is exactly why they are not in
+  #    `dependencies`. As an extra it is inert for every consumer of the
+  #    runtime and resolved by the editable install for developers; the same
+  #    list install.sh:141 already installs.
+  "pwm-agent-research",
+  "pwm-agent-paper",
+  "pwm-agent-imaging",
+  "pwm-agent-drug",
+  "pwm-agent-cancer",
+  "pwm-agent-unified",
+  "pwm-agent-claude-gpu",
+  "pwm-agent-codex-gpu",
+  #
+  # NOT here, and cannot be: `pwm_control_plane` is not published, and the
+  # `claude` CLI is npm rather than pip. `scripts/dev-venv.sh` installs those.
   # The foundry/control-plane tests stand a real ASGI server up over a UNIX
   # socket to drive the agent through it; uvicorn is what runs it. It is a test
   # dependency only -- nothing under ai4science/ imports it at module level
