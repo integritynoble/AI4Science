@@ -291,6 +291,45 @@ def test_a_candidate_is_not_a_reference_until_something_outside_the_model_checks
     promoted.check_seal()
 
 
+def test_promoting_a_candidate_does_not_spend_the_money_twice(tmp_path):
+    task = ldct_judge_task()
+    store = ReferenceStore(tmp_path / "records.jsonl")
+    candidate, _ = record_run("claude-haiku-4-5", task, tier="basic",
+                              runner=fake_runner(envelope(cost=0.25)))
+    store.put(candidate)
+    assert store.total_cost_usd() == 0.25
+    store.put(candidate.promote("criterion:" + task.task_id))
+    # Two records, one call's worth of money.
+    assert len(store.all()) == 2
+    assert store.total_cost_usd() == 0.25
+    # The promoted reference can still say what it cost.
+    promoted = store.get(candidate.record_id + "+verified")
+    assert promoted.cost_usd == 0.25
+    assert promoted.notes["cost_counted_under"] == candidate.record_id
+
+
+def test_the_shipped_store_holds_a_basic_and_a_strong_reference_and_their_candidates():
+    if not RECORDS.exists():
+        pytest.skip("no recorded runs on this checkout")
+    task = ldct_judge_task()
+    store = ReferenceStore(RECORDS)
+    by_status = {}
+    for r in store.all():
+        by_status.setdefault((r.tier, r.status), []).append(r)
+    for tier in ("basic", "strong"):
+        assert by_status.get((tier, "candidate")), "%s candidate missing" % tier
+        refs = by_status.get((tier, "reference")) or []
+        assert refs, "%s reference missing" % tier
+        for r in refs:
+            # Promoted by the fixture's own criterion, which is a weaker stamp
+            # than a person's and is distinguishable from one.
+            assert r.verified_by == "criterion:" + task.task_id
+            assert not r.verified_by.startswith("human:")
+            assert r.grade["score"] == 1.0
+            assert r.grade["negative_control_passed"] is True
+            assert r.notes["promoted_from"] in {c.record_id for c in store.all()}
+
+
 def test_the_store_is_append_only_so_a_reference_cannot_be_replaced(tmp_path):
     store = ReferenceStore(tmp_path / "records.jsonl")
     store.put(a_record(record_id="ref"))

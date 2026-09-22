@@ -172,10 +172,17 @@ class ReferenceRecord:
         """
         if not (verified_by or "").strip():
             raise RecordInvalid("promotion must name what checked the output")
+        # The calls travel with the promotion so the reference can still say
+        # what it cost, but the spend is NOT counted twice: the money was spent
+        # once, by the candidate, and `total_cost_usd` skips a record that says
+        # whose cost it is repeating.
+        notes = dict(self.notes)
+        notes["cost_counted_under"] = self.record_id
+        notes["promoted_from"] = self.record_id
         return replace(self, status="reference", verified_by=verified_by,
                        grade=grade if grade is not None else self.grade,
                        record_id=self.record_id + "+verified",
-                       seal=None).sealed()
+                       notes=notes, seal=None).sealed()
 
     # -- serialisation ----------------------------------------------------
     def to_dict(self) -> Dict[str, Any]:
@@ -266,9 +273,15 @@ class ReferenceStore:
 
     # -- cost -------------------------------------------------------------
     def total_cost_usd(self) -> float:
-        """Every call in the store, summed. Calls that could not be priced are
-        excluded from the sum and listed by `cost_not_measured`."""
-        return round(sum(r.cost_usd or 0.0 for r in self.all()), 6)
+        """Money actually spent, summed over every call in the store.
+
+        A promoted record repeats its candidate's calls so that a reference can
+        still say what it cost; it is skipped here, because the spend happened
+        once. Calls that could not be priced are excluded from the sum and
+        listed by `cost_not_measured`.
+        """
+        return round(sum(r.cost_usd or 0.0 for r in self.all()
+                         if not r.notes.get("cost_counted_under")), 6)
 
     def cost_not_measured(self) -> List[str]:
         out: List[str] = []

@@ -45,6 +45,14 @@ def main(argv=None) -> int:
                           "nothing and keeps a paid-for call from being wasted "
                           "when the record was refused for a fixable reason.")
 
+    pro = sub.add_parser("promote", help="candidate → reference, naming the check")
+    pro.add_argument("--record-id", required=True)
+    pro.add_argument("--verified-by", required=True,
+                     help="what checked the output: 'criterion:<task_id>' for "
+                          "the fixture's own answer key, or 'human:<name>' when "
+                          "a person signed it. A criterion check is the weaker "
+                          "of the two and the record keeps them distinguishable.")
+
     sub.add_parser("list", help="every record, seals re-checked")
     sub.add_parser("verify", help="re-check every seal; exit 1 if any is broken")
     sub.add_parser("cost", help="cost per call and the sum")
@@ -102,6 +110,29 @@ def main(argv=None) -> int:
         return 0
 
     store = _store(a.store)
+
+    if a.cmd == "promote":
+        candidate = store.get(a.record_id)
+        if a.verified_by.startswith("criterion:"):
+            want = a.verified_by.split(":", 1)[1]
+            if want != task.task_id:
+                raise SystemExit(
+                    "criterion %r is not this task's (%r) — a promotion must "
+                    "name the check that actually ran" % (want, task.task_id))
+            grade = task.grade(candidate.output)
+            if grade["score"] < 1.0 or not grade["negative_control_passed"]:
+                raise SystemExit(
+                    "the criterion did not pass this output (%d/%d, negative "
+                    "control %s) — nothing to promote"
+                    % (grade["correct"], grade["of"],
+                       "passed" if grade["negative_control_passed"] else "MISSED"))
+        else:
+            grade = candidate.grade
+        promoted = store.put(candidate.promote(a.verified_by, grade=grade))
+        print("promoted %s -> %s (verified_by=%s); the candidate %s stays on "
+              "the file" % (candidate.record_id, promoted.record_id,
+                            promoted.verified_by, candidate.record_id))
+        return 0
 
     if a.cmd == "list":
         for r in store.all():

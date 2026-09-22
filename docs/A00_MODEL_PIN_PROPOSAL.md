@@ -36,5 +36,7 @@ caveat recorded beside it, or (b) require a dated revision, which means obtainin
 the identity from a path that reports one — the Anthropic API's response
 `model` field rather than the CLI envelope — before A00 is called done.
 
-See `docs/REFERENCE_RECORDS.md` for the mechanism and for why both records are
-`status: candidate` rather than `reference`.
+See `docs/REFERENCE_RECORDS.md` for the mechanism, and for why the two
+references on the file are stamped `criterion:…` rather than `human:…` — a
+weaker check, kept distinguishable from a person's, with the raw candidates left
+on the file beside them.

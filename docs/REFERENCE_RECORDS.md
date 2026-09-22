@@ -25,14 +25,24 @@ Promotion is a separate act (`ReferenceRecord.promote`) and writes a *new*
 record, so the sealed candidate stays on the file and the promotion can be
 audited against what the model actually said.
 
-**The two runs this repo ships are therefore candidates, not references.** They
-are graded 3/3 against the fixture's own answer key, which is a real check by
-something outside the model — enough for `verified_by="criterion:…"` — but
-nobody has promoted them, because the grade checks only that the model applied a
-criterion correctly on three frozen metric bundles. A radiologist has not looked
-at anything. Tier ("basic"/"strong") describes how much capability was spent;
-status describes how much trust was earned. They are different axes and the
-record keeps them apart.
+**What this repo ships, exactly.** Four records: a basic and a strong
+**candidate** (what the two models produced), and a basic and a strong
+**reference**, each promoted with `verified_by="criterion:ldct-judge-3-candidates/1"`
+— checked by the fixture's own answer key, which is outside the model and was
+fixed before the run. The candidates stay on the file, so each reference can be
+audited back to the raw output it came from.
+
+A criterion check is the **weaker** of the two stamps and the record keeps them
+distinguishable: `criterion:…` says the model applied an expert-fixed rule
+correctly to three frozen metric bundles; `human:<name>` would say a person with
+the field's training looked at the answer. No radiologist has looked at
+anything here, and no record claims one did. Tier ("basic"/"strong") describes
+how much capability was spent; status describes how much trust was earned. They
+are different axes and the record keeps them apart.
+
+Promotion does not spend the money twice: the promoted record carries the
+candidate's calls so it can still say what it cost, and
+`notes.cost_counted_under` takes it out of `ReferenceStore.total_cost_usd`.
 
 ## The frozen task, and its fixture
 
@@ -83,6 +93,10 @@ below the metered figure. Anything unmeasurable is named in
   one call and $0.0060 on the next, because cache creation is charged once and
   read cheaply afterwards. A cost recorded in a reference is what *that* call
   cost, not a forecast.
+- **A criterion-verified reference is not a human-verified one.** A05's
+  "validation against strong reference" is only as strong as the check behind the
+  reference, and the check behind these two is a three-case rule application, not
+  a reader study.
 - **Two 3/3 candidates do not rank two models.** Both models scored full marks on
   a three-case task; that says the task does not separate them, not that they are
   equivalent.
