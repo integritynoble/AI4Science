@@ -8,7 +8,14 @@ implement Claude-Code-style permission prompts:
   - Ask the user y/N.
   - Reject anything that would touch a path outside the workspace.
 
-Read-only tools (Read, Grep, Glob) are auto-approved.
+Read-only tools (Read, Grep, Glob) are auto-approved *without a confirmation
+prompt*, but not without a sandbox check: a path argument, when one is
+given, must still resolve inside the workspace, and a Bash command is
+checked for a parent-directory escape or a protected-directory reference
+before its read-only/mutating classification is even consulted. Neither
+check existed before; a read-only ``Bash`` command in particular could
+previously reach anything on disk (``cat ../private/key.json``, ``ls ..``)
+with no gate at all.
 
 The "user always reviews" hard rule is preserved at the *change* level:
 the agent never edits without an explicit yes for THAT specific change.
@@ -59,13 +66,48 @@ def make_workspace_permission_callback(
     workspace = workspace.resolve()
 
     async def can_use_tool(tool_name: str, input_dict: Dict[str, Any], _ctx: Any):
-        # Read-only tools: always allow.
+        # Read-only tools: allowed, but a path argument (when one is given —
+        # Grep/Glob may omit it and search cwd, which is already the
+        # workspace) must still resolve inside it. Without this check a
+        # `Read` of `../private/key.json` or an absolute path elsewhere on
+        # disk was silently allowed, defeating the sandbox the docstring
+        # above promises for every tool, not just the mutating ones.
         if tool_name in AUTO_ALLOW_TOOLS:
+            path_arg = (input_dict.get("file_path") or input_dict.get("path")
+                       or input_dict.get("notebook_path"))
+            if path_arg and not _is_inside_workspace(Path(path_arg), workspace):
+                return PermissionResultDeny(
+                    message=(f"path {path_arg!r} is outside the workspace "
+                             f"({workspace}); ai4science only allows reads "
+                             f"inside the current contribution workspace"),
+                    interrupt=False,
+                )
+            # Glob's `pattern` and Grep's `glob` are paths too: an absolute
+            # pattern or a `..` segment reaches outside the workspace even
+            # when no path argument is given.
+            for key in ("pattern", "glob") if tool_name in ("Glob", "Grep") else ():
+                if key == "pattern" and tool_name == "Grep":
+                    continue  # Grep's pattern is a regex, not a path
+                pat = input_dict.get(key)
+                if pat and _pattern_escapes(pat):
+                    return PermissionResultDeny(
+                        message=(f"{key} {pat!r} reaches outside the workspace "
+                                 f"({workspace}); use a relative pattern"),
+                        interrupt=False,
+                    )
             return PermissionResultAllow()
 
-        # Read-only shell commands: allow without prompting (Claude Code parity).
+        # Bash is gated by two independent checks, in order: a command that
+        # references a protected directory or escapes the workspace via
+        # `../` is refused outright, before classification or auto_yes ever
+        # apply — a read-only command was previously exempt from this,
+        # so `cat ../private/key.json` or `ls ..` sailed through as
+        # "read-only" with no sandbox check at all.
         if tool_name == "Bash":
-            from ai4science.harness.permissions import is_read_only_bash
+            from ai4science.harness.permissions import _bash_cmd_safe, is_read_only_bash
+            safe, reason = _bash_cmd_safe(input_dict.get("command", ""))
+            if not safe:
+                return PermissionResultDeny(message=reason, interrupt=False)
             if is_read_only_bash(input_dict.get("command", "")):
                 return PermissionResultAllow()
 
@@ -104,6 +146,13 @@ def make_workspace_permission_callback(
         )
 
     return can_use_tool
+
+
+def _pattern_escapes(pattern: str) -> bool:
+    """True iff a glob pattern is absolute, home-relative, or has a `..` segment."""
+    if pattern.startswith(("/", "~", "\\")) or (len(pattern) > 1 and pattern[1] == ":"):
+        return True
+    return ".." in pattern.replace("\\", "/").split("/")
 
 
 def _is_inside_workspace(p: Path, workspace: Path) -> bool:
