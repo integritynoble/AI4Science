@@ -23,6 +23,19 @@ def _turn_cap() -> Optional[str]:
     return raw or None
 
 
+def _session_id() -> Optional[str]:
+    """AI4SCIENCE_SESSION_ID: the harness session id (repl.py's `_sid`), set
+    once per process. Sent as X-PWM-Session-Id so the platform's receipt is
+    bound to (payer, session, operation, request id), not the request id
+    alone — a retried request id under a DIFFERENT session is a new claim,
+    never answered from another session's receipt. Unset (a bare script or
+    library call with no persistent session) → the platform defaults the
+    session to the request id itself: one turn, its own singleton thread."""
+    import os
+    raw = (os.environ.get("AI4SCIENCE_SESSION_ID") or "").strip()
+    return raw or None
+
+
 class ProxyAdapter:
     def __init__(self, *, backend: str, base: str, token: str):
         self.backend = backend
@@ -55,6 +68,9 @@ class ProxyAdapter:
         cap = _turn_cap()
         if cap:
             headers["X-PWM-Cap"] = cap
+        session_id = _session_id()
+        if session_id:
+            headers["X-PWM-Session-Id"] = session_id
         try:
             with httpx.stream("POST", f"{self.base}/api/v1/llm/proxy",
                               json=body, headers=headers, timeout=600) as r:

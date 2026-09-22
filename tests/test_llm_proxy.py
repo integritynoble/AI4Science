@@ -109,3 +109,23 @@ def test_proxy_adapter_sends_request_id_and_cap_and_keeps_receipt(monkeypatch):
     first = a.last_request_id
     list(a.stream([], [], model="m", reasoning="low"))
     assert a.last_request_id != first and "X-PWM-Cap" not in seen["headers"]
+
+
+def test_proxy_adapter_sends_the_harness_session_id_when_set(monkeypatch):
+    import json
+    import httpx
+    from ai4science.harness.adapters.proxy import ProxyAdapter
+    seen = {}
+
+    def fake_stream(method, url, json=None, headers=None, timeout=None):
+        seen.update(headers=headers)
+        return _FakeResp([])
+
+    monkeypatch.setattr(httpx, "stream", fake_stream)
+    a = ProxyAdapter(backend="anthropic", base="https://x.example", token="pwm_t")
+    monkeypatch.delenv("AI4SCIENCE_SESSION_ID", raising=False)
+    list(a.stream([], [], model="m", reasoning="low"))
+    assert "X-PWM-Session-Id" not in seen["headers"]           # unset: no header, platform defaults it
+    monkeypatch.setenv("AI4SCIENCE_SESSION_ID", "sess-abc123")
+    list(a.stream([], [], model="m", reasoning="low"))
+    assert seen["headers"]["X-PWM-Session-Id"] == "sess-abc123"

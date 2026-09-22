@@ -1128,6 +1128,11 @@ def run_common_repl(
     # under this id, and it has to be the SAME one persistence.save() uses or
     # the ledger points at a session no workspace index maps to.
     _sid = session_id or secrets.token_hex(8)
+    # The PWM proxy binds a receipt to (payer, session, operation, request id)
+    # (F02, 2026-09-22): give it this session's real id, so a retried request
+    # id under a DIFFERENT session can never be answered from this session's
+    # receipt, and this session's own receipts are listable by session.
+    os.environ["AI4SCIENCE_SESSION_ID"] = _sid
 
     # A durable session budget (A03): AI4SCIENCE_SESSION_CAP_PWM=<pwm> caps this
     # session and every sub-agent it dispatches; the ledger lives beside the
