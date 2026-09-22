@@ -75,9 +75,25 @@ Metered, not estimated. `total_cost_usd` from
 `claude -p --output-format json` is the provider's own figure and is what
 `CallCost.usd` returns. This repo's cache-aware recomputation
 (`ai4science/llm/pricing.price_session`) is stored **beside** it, never instead
-of it, because the two disagree: on the shipped runs the recomputation is 20-25%
-below the metered figure. Anything unmeasurable is named in
-`CallCost.not_measured` rather than guessed.
+of it — and keeping both is what found a pricing bug.
+
+**The table was 20% low on Haiku 4.5.** `PRICES_USD_PER_M` listed
+`claude-haiku-4-5` at $0.80/$4.00 per 1M. Against the provider's meter the
+recomputation came out at metered/computed = **1.2500 on two independent calls**:
+1329 in / 477 out / 22,483 cache-read computed $0.0047698 against a meter reading
+$0.0059623, and 1319 in / 17 out computed $0.0011232 against $0.0014040. At
+**$1.00/$5.00** both reproduce the meter to the last digit it reports. Opus 5's
+$5.00/$25.00 was already exact (computed $0.0138565, metered $0.0138565), as was
+`CACHE_READ = 0.1`. The table is corrected, with that evidence in the comment,
+and `test_the_price_table_reproduces_the_providers_meter_on_the_shipped_records`
+guards it.
+
+Two details that decide whether the two numbers are comparable at all: the
+recomputation covers **every model the call billed**, not just the one that
+answered — one `--model claude-opus-5` invocation also bills a
+`claude-haiku-4-5-20251001` side call — and `per_model_usd` keeps the
+composition. Anything unmeasurable is named in `CallCost.not_measured` rather
+than guessed.
 
 ## What this does not establish
 

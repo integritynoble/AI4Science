@@ -357,3 +357,22 @@ def test_the_shipped_records_are_real_runs_with_a_metered_cost():
         assert r.cost_usd and r.cost_usd > 0
     # The pilot's whole spend, in one number.
     assert store.total_cost_usd() < 2.0, "the pilot was capped at $2"
+
+
+def test_the_price_table_reproduces_the_providers_meter_on_the_shipped_records():
+    """The recomputation is a cross-check, so it has to be worth checking.
+
+    `ai4science/llm/pricing.py` listed Haiku 4.5 at $0.80/$4.00 per 1M, which
+    came out uniformly 20% under the provider's own `total_cost_usd` on two
+    independent calls; at $1.00/$5.00 it matches to the last digit the meter
+    reports. This test is the guard on that correction — if the table drifts
+    from the meter again, the recomputation stops being evidence of anything.
+    """
+    if not RECORDS.exists():
+        pytest.skip("no recorded runs on this checkout")
+    for r in ReferenceStore(RECORDS).all():
+        for c in r.calls:
+            assert c.usd_recomputed is not None
+            assert c.usd_metered == pytest.approx(c.usd_recomputed, rel=0.005), (
+                "%s: this repo prices the call at $%s and the provider metered "
+                "$%s" % (r.record_id, c.usd_recomputed, c.usd_metered))

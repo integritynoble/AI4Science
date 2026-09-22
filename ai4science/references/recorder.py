@@ -107,26 +107,43 @@ def cost_of(envelope: Dict[str, Any], revision: Optional[str]) -> CallCost:
     if inp is None or out is None:
         not_measured.append("token counts incomplete")
 
+    # The recomputation covers EVERY model the call billed, not just the one
+    # that answered, so that it and `usd_metered` measure the same thing. Pricing
+    # only the answering model would make the two disagree for a reason that is
+    # arithmetic rather than a pricing-table error, and the whole point of
+    # keeping both numbers is that a disagreement means something.
     recomputed = None
-    if revision:
-        # Price on the canonical family name — the price table is keyed by
-        # family, not by dated revision.
-        canonical = mu.get("canonicalModel") or revision
-        priced = pricing.price_session(canonical, input=inp or 0, output=out or 0,
-                                       cached=cread or 0, cache_write=cwrite or 0)
-        recomputed = priced["usd"]
-        if not priced["known_model"]:
+    all_usage = {k: v for k, v in (envelope.get("modelUsage") or {}).items()
+                 if isinstance(v, dict)}
+    if all_usage:
+        total, unknown = 0.0, []
+        for name, u in all_usage.items():
+            # The price table is keyed by family, not by dated revision.
+            canonical = u.get("canonicalModel") or name
+            priced = pricing.price_session(
+                canonical, input=u.get("inputTokens") or 0,
+                output=u.get("outputTokens") or 0,
+                cached=u.get("cacheReadInputTokens") or 0,
+                cache_write=u.get("cacheCreationInputTokens") or 0)
+            total += priced["usd"]
+            if not priced["known_model"]:
+                unknown.append(canonical)
+        recomputed = round(total, 6)
+        if unknown:
             not_measured.append(
-                "no list price for %r — the recomputation used the fallback "
-                "rate and is a guess (the metered figure is not)" % canonical)
+                "no list price for %s — the recomputation used the fallback "
+                "rate and is a guess for those (the metered figure is not)"
+                % ", ".join(sorted(unknown)))
+    elif revision:
+        not_measured.append("no per-model usage to recompute a price from")
 
-    per_model = {k: float(v.get("costUSD"))
-                 for k, v in (envelope.get("modelUsage") or {}).items()
-                 if isinstance(v, dict) and v.get("costUSD") is not None}
+    per_model = {k: float(v["costUSD"]) for k, v in all_usage.items()
+                 if v.get("costUSD") is not None}
     if len(per_model) > 1:
         not_measured.append(
-            "this one call billed %d models (%s); usd_metered is the whole "
-            "call, and only the answering model's tokens are broken out"
+            "this one call billed %d models (%s); usd_metered and "
+            "usd_recomputed cover all of them, and the token counts above are "
+            "the answering model's alone"
             % (len(per_model), ", ".join(sorted(per_model))))
 
     return CallCost(

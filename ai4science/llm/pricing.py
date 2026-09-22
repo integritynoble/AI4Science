@@ -24,7 +24,15 @@ PRICES_USD_PER_M: Dict[str, Tuple[float, float]] = {
     "claude-opus-5":          (5.0, 25.0),    # official list price (same as Opus 4.8's current list)
     "claude-opus-4-8":        (15.0, 75.0),
     "claude-sonnet-4-6":      (3.0, 15.0),
-    "claude-haiku-4-5":       (0.80, 4.0),
+    # MEASURED, not looked up: at (1.00, 5.00) this table reproduces the
+    # provider's own `total_cost_usd` to the last digit it reports, on two
+    # independent calls — 1329 in / 477 out / 22,483 cache-read priced at
+    # $0.0059623 against a meter reading $0.0059623, and 1319 in / 17 out at
+    # $0.0014040 against $0.0014040. The previous (0.80, 4.00) was uniformly
+    # 20% low (metered/computed = 1.2500 on both), which understated every
+    # Haiku fee built on it. Evidence: docs/references/records.jsonl,
+    # docs/REFERENCE_RECORDS.md.
+    "claude-haiku-4-5":       (1.00, 5.0),
     # OpenAI
     "gpt-5.5":                (1.25, 10.0),
     "gpt-5.5-nano":           (0.05, 0.40),
