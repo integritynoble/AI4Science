@@ -1171,6 +1171,9 @@ def run_common_repl(
             meter=_make_wrapped_meter(active_backend, active_model),
             on_tool=lambda name: turn_tools.add(name),
             on_tool_start=_show_tool_start, on_tool_end=_show_tool_end,
+            # Persist after every tool result: a session killed mid-turn resumes
+            # at its last tool call, not at its last finished turn.
+            on_checkpoint=lambda: persistence.save(_sid, workspace, session.history),
             registry=_registry_for_spec(
                 active_spec, is_subagent=False,
                 ctx=_make_build_context(
@@ -1632,6 +1635,11 @@ def run_common_repl(
             print(toolfmt.fmt_turn_footer(seconds=elapsed,
                                           tools=turn_calls["n"],
                                           tokens=turn_tokens["total"]), flush=True)
+            # The harness's own word on verification (U05): failed/absent test
+            # runs are stated here from the tool log, not from the answer.
+            _vnote = session.verification_note(result or "")
+            if _vnote:
+                print(f"\x1b[33m{_vnote}\x1b[0m", flush=True)
             # One-sentence recap after substantial turns (Claude Code parity).
             # Decoration only — any failure is swallowed.
             from ai4science.harness import recap as recap_mod
@@ -1690,6 +1698,10 @@ def run_common_repl(
         except KeyboardInterrupt:
             _intr.clear()
             print("\n[harness] turn stopped — type a new message.", flush=True)
+            try:
+                persistence.save(_sid, workspace, session.history)
+            except Exception:
+                pass
         except Exception as exc:
             # Walk the orchestration chain automatically: Opus 4.8 → GPT-5.5 →
             # Gemini (see routing.AGENT_CHAINS). If the primary model is
