@@ -15,6 +15,7 @@ in a real podman sandbox, and lets the REAL vendored judge (via the service's
 import subprocess, sys
 import pytest
 from pathlib import Path
+pytest.importorskip("pwm_control_plane")  # sibling dist, not installed by [dev]
 from pwm_control_plane.sandbox import podman_available
 from ai4science.harness.agents.imaging.agent import run_imaging_task
 from ai4science.harness.control_plane.client import ControlPlaneClient

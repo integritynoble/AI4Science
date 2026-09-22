@@ -13,6 +13,7 @@ import json, os, tempfile, threading, time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 import httpx, uvicorn, pytest
+pytest.importorskip("pwm_control_plane")  # sibling dist, not installed by [dev]
 from pwm_control_plane.sandbox import podman_available
 from pwm_control_plane.owner_auth import sign_owner_str
 from pwm_control_plane.foundry import _hash

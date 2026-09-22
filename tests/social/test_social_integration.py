@@ -32,6 +32,7 @@ from pathlib import Path
 import pytest
 import uvicorn
 
+pytest.importorskip("pwm_control_plane")  # sibling dist, not installed by [dev]
 from pwm_control_plane.sandbox import podman_available
 
 from ai4science.harness.control_plane.client import ControlPlaneClient

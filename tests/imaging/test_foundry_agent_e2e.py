@@ -7,6 +7,7 @@ attestation or the binding and the pass assertion fails)."""
 import json, threading, time
 import httpx, uvicorn, pytest
 from pathlib import Path
+pytest.importorskip("pwm_control_plane")  # sibling dist, not installed by [dev]
 from pwm_control_plane.sandbox import podman_available
 from pwm_control_plane.owner_auth import sign_owner_str
 from pwm_control_plane.foundry import _hash

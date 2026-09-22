@@ -58,6 +58,18 @@ dev = [
   "pytest-cov>=4.1",
   "build>=1.2",
   "twine>=5.0",
+  # The foundry/control-plane tests stand a real ASGI server up over a UNIX
+  # socket to drive the agent through it; uvicorn is what runs it. It is a test
+  # dependency only -- nothing under ai4science/ imports it at module level
+  # (ai4science/harness/llm_gateway.py:94 imports it inside main(), and that
+  # module is an optional host service, see the `gateway` extra).
+  "uvicorn>=0.27",
+]
+gateway = [
+  # `python -m ai4science.harness.llm_gateway` -- the founder-credentialed host
+  # LLM gateway. Not part of the CLI or the library, so not a core dependency.
+  "fastapi>=0.110",
+  "uvicorn>=0.27",
 ]
 claude = [
   # Real Claude integration. Also requires the `claude` CLI on PATH

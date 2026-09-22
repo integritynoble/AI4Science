@@ -236,7 +236,7 @@ $env:AI4SCIENCE_VERSION="0.6.26"; irm https://raw.githubusercontent.com/integrit
 
 Already installed? Switch lines without reinstalling: `ai4science update --rc` (or `--stable` / `--dev`). The same installer is mirrored at `https://physicsworldmodel.org/install.sh` and `/install.ps1`, and the website documents it at [physicsworldmodel.org/start#install-version](https://physicsworldmodel.org/start#install-version). Released tags: see [Releases](https://github.com/integritynoble/AI4Science/releases) (latest stable **v0.6.26**).
 
-From source (to modify / run tests): `git clone … && pip install -e ".[dev]" && pytest`. Full step-by-step for any OS incl. Windows: [`docs/INSTALL.md`](docs/INSTALL.md). Maintainers: [`docs/RELEASING.md`](docs/RELEASING.md).
+From source (to modify / run tests): `git clone … && pip install -e ".[dev]" && pytest`. That is the whole contract — `[dev]` alone must collect the entire suite with zero errors, and [`scripts/check-hermetic.sh`](scripts/check-hermetic.sh) proves it from a fresh venv. Tests that need the `pwm_control_plane` sibling (not on PyPI) or podman skip rather than failing to import. Full step-by-step for any OS incl. Windows: [`docs/INSTALL.md`](docs/INSTALL.md). Maintainers: [`docs/RELEASING.md`](docs/RELEASING.md).
 
 ## 5. Quickstart
 

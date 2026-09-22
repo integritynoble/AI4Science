@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 import uvicorn
 
+pytest.importorskip("pwm_control_plane")  # sibling dist, not installed by [dev]
 from pwm_control_plane.sandbox import podman_available
 from pwm_control_plane.eval_scenes import generate_held_out
 from pwm_control_plane.owner_auth import sign_owner

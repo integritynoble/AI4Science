@@ -18,6 +18,7 @@ itself is unit-tested in test_llm_recall.py.
 import json
 import pytest
 from pathlib import Path
+pytest.importorskip("pwm_control_plane")  # sibling dist, not installed by [dev]
 from pwm_control_plane.sandbox import podman_available
 from ai4science.harness.control_plane.client import ControlPlaneClient
 from ai4science.harness.runtime.task_store import TaskStore

@@ -6,6 +6,7 @@ then proves the I2->I0 interaction switch changes the next decision.
 """
 import pytest
 from pathlib import Path
+pytest.importorskip("pwm_control_plane")  # sibling dist, not installed by [dev]
 from pwm_control_plane.sandbox import podman_available
 from ai4science.harness.control_plane.client import ControlPlaneClient
 from ai4science.harness.runtime.contract import compile_contract
