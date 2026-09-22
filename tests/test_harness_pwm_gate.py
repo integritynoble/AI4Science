@@ -74,8 +74,15 @@ def test_charge_zero_amount_is_noop(monkeypatch):
     assert g.charge(0.0, "0xW", "p", "idem")[0] is True
 
 
-def test_from_env_auto_enabled_when_logged_in(monkeypatch):
-    # Logged in (token present) → gate ON automatically, no flag needed.
+def test_from_env_auto_enabled_when_logged_in(monkeypatch, tmp_path):
+    # A token with no credential of the user's own → the PWM route → gate ON,
+    # no flag needed. (An own credential would make it the free route: see
+    # tests/test_funding_route.py.)
+    monkeypatch.setenv("AI4SCIENCE_USER_CONFIG", str(tmp_path / "user.json"))
+    monkeypatch.setenv("AI4SCIENCE_KEYS", str(tmp_path / "keys.json"))
+    monkeypatch.delenv("AI4SCIENCE_FUNDING", raising=False)
+    from ai4science.harness.adapters import creds
+    monkeypatch.setattr(creds, "available", lambda b: False)
     monkeypatch.delenv("AI4SCIENCE_PWM_GATE", raising=False)
     monkeypatch.setenv("PWM_TOKEN", "pwm_k")
     assert PwmGate.from_env().enabled is True

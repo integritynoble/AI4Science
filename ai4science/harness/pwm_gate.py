@@ -21,9 +21,10 @@ class PwmGate:
     """Gate the agent on the user's earned PWM balance (off-chain ledger).
 
     check() blocks a turn when balance <= min_balance; charge() debits the metered
-    per-turn PWM to the provider wallet via /spend. On automatically once a pwm_
-    token is remembered (logged in); AI4SCIENCE_PWM_GATE=0 opts out, no token runs
-    free (dev/CI)."""
+    per-turn PWM to the provider wallet via /spend. On when the PWM funding
+    route is selected AND a pwm_ token is present (see ai4science.funding); a
+    user on their own LLM runs free, and the gate then reads no balance and
+    posts no spend. AI4SCIENCE_PWM_GATE=0 opts out; no token runs free (dev/CI)."""
 
     def __init__(self, *, token: Optional[str], base: str, enabled: bool,
                  min_balance: float = 0.0):
@@ -165,11 +166,26 @@ class PwmGate:
             except Exception:
                 pass
         base = base or "https://physicsworldmodel.org"
-        # On automatically once an identity is remembered (logged in / PWM_TOKEN):
-        # logging in is all it takes to earn + spend PWM. AI4SCIENCE_PWM_GATE=0
-        # (false/no/off) is the explicit opt-out; no token → always off so
-        # dev/CI run free.
+        # A remembered identity is not authorization to spend. The gate is on
+        # only when the PWM route is *selected* (ai4science.funding: an explicit
+        # choice, or a PWM login being the only credential) and a token exists.
+        # AI4SCIENCE_PWM_GATE=0 (false/no/off) is the explicit opt-out; no token
+        # → always off so dev/CI run free.
+        from ai4science import funding
         _g = os.environ.get("AI4SCIENCE_PWM_GATE")
         explicit_off = _g is not None and not _truthy(_g)
-        enabled = bool(token) and not explicit_off
+        enabled = bool(token) and not explicit_off and funding.resolve().pays_pwm
         return cls(token=token, base=base, enabled=enabled)
+
+    @classmethod
+    def for_selected_service(cls) -> "PwmGate":
+        """The gate for a paid component the user picked on purpose (a priced
+        plug-in, tool or specialist). Selecting it is the authorization, so this
+        is on whenever a token exists — on the own route too — and off without
+        one or under AI4SCIENCE_PWM_GATE=0. The per-turn LLM meter stays on
+        from_env(); only the selected service is billable."""
+        g = cls.from_env()
+        _g = os.environ.get("AI4SCIENCE_PWM_GATE")
+        explicit_off = _g is not None and not _truthy(_g)
+        g.enabled = bool(g.token) and not explicit_off
+        return g

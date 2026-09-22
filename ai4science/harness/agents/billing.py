@@ -20,8 +20,10 @@ from ai4science.harness.agents.spec import AgentSpec
 def _gate(gate=None):
     if gate is not None:
         return gate
+    # A paid plug-in is a service the user selected; that selection — not the
+    # funding route of the LLM turn — is what makes it billable.
     from ai4science.harness.pwm_gate import PwmGate
-    return PwmGate.from_env()
+    return PwmGate.for_selected_service()
 
 
 def register_plugin_contribution(spec: AgentSpec, *, agent_name: Optional[str] = None,

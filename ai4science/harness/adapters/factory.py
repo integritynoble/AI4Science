@@ -40,7 +40,26 @@ def _truthy(v) -> bool:
 
 
 def adapter_for(backend: str):
+    """The adapter that serves `backend` under the funding route in force.
+
+    own  → a local credential, or nothing. Never the PWM proxy: a user on their
+           own LLM is not switched to a paid route because a backend they picked
+           has no key here, and never after a failure.
+    pwm  → a local (wallet-bound) credential when there is one, else the
+           platform proxy on the PWM login. No login → a plain error, not a
+           silent free turn.
+    """
+    from ai4science import funding
     from ai4science.harness.adapters import creds as _creds
+    route = funding.resolve()
+    if route.pays_pwm and not _local_available(backend):
+        pc = _proxy_creds()
+        if pc is None:
+            raise RuntimeError(
+                "PWM-funded LLMs are selected but there is no PWM login — run "
+                "`ai4science login`, or `ai4science funding own` to use your own LLM")
+        from ai4science.harness.adapters.proxy import ProxyAdapter
+        return ProxyAdapter(backend=backend, base=pc[0], token=pc[1])
     # OpenAI runs via the codex/ChatGPT OAuth subscription when present — the
     # api-key path 401s in this deployment. (Responses API, not chat/completions.)
     if backend == "openai":
@@ -48,13 +67,6 @@ def adapter_for(backend: str):
         if codex_creds.codex_available():
             from ai4science.harness.adapters.codex import CodexAdapter
             return CodexAdapter()
-    # No local credential for this backend? Serve it through the founder gateway
-    # (charged in PWM) if the user is logged in to physicsworldmodel.org.
-    if not _local_available(backend):
-        pc = _proxy_creds()
-        if pc is not None:
-            from ai4science.harness.adapters.proxy import ProxyAdapter
-            return ProxyAdapter(backend=backend, base=pc[0], token=pc[1])
     c = _creds.resolve(backend)
     if c.kind == "anthropic":
         return AnthropicAdapter(creds=c)
@@ -72,8 +84,13 @@ def _local_available(backend: str) -> bool:
 
 
 def harness_available(backend: str) -> bool:
-    # Available if served locally OR through the founder proxy (PWM login).
-    return _local_available(backend) or _proxy_creds() is not None
+    """Served locally, or — only on the PWM route — through the platform proxy.
+    On the own route a PWM login makes nothing available: that is the free
+    route, and it must not grow paid backends because a token is remembered."""
+    if _local_available(backend):
+        return True
+    from ai4science import funding
+    return funding.resolve().pays_pwm and _proxy_creds() is not None
 
 
 def make_meter(*, backend: str, model: str,

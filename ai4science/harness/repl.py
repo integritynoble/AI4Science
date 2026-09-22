@@ -1204,7 +1204,10 @@ def run_common_repl(
                  "gpt-5.5-codex": "ChatGPT 5.5 Codex",
                  "gemini-3.1-pro-preview": "Gemini 3.1 Pro"}
     _m = _friendly.get(active_model, active_model)
-    _gate = ("gate on — turns charged in PWM" if gate.enabled else "gate off")
+    from ai4science import funding as _funding
+    _route = _funding.resolve()
+    _gate = ("gate on — turns charged in PWM" if gate.enabled
+             else ("your own LLM — 0 PWM" if not _route.pays_pwm else "gate off"))
     # Login status: is a PWM token available? (env or saved account)
     def _signed_in() -> bool:
         import os as _os
@@ -1225,8 +1228,9 @@ def run_common_repl(
     print(f"  {_dim}pwm{_rst}    {_dim}{_gate} · session {_sid} (resume: --resume {_sid}){_rst}",
           flush=True)
     # Remind logged-out users to sign in — when the gate is on, turns are blocked
-    # ("could not verify your PWM balance") until they do.
-    if not _logged_in:
+    # ("could not verify your PWM balance") until they do. Not on the own-LLM
+    # route: free work needs no account, so there is nothing to remind about.
+    if not _logged_in and _route.pays_pwm:
         _why = ("turns are blocked until you sign in" if gate.enabled
                 else "sign in to earn/spend PWM")
         print(f"  {_yellow}⚠ not signed in{_rst} {_dim}— run {_rst}{_coral}/login{_rst}"

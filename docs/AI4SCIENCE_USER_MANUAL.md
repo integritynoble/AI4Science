@@ -151,9 +151,16 @@ key — and stores it at `~/.config/ai4science/pwm_account.json` (permissions
 0600).
 
 ```bash
-ai4science whoami                   # shows your account + bound wallet
-export AI4SCIENCE_PWM_GATE=1        # turn billing on (off by default)
+ai4science whoami                   # shows your account, bound wallet, and funding route
+ai4science funding                  # who pays: own (your LLM, 0 PWM) or pwm (PWM-funded)
+ai4science funding pwm              # switch to PWM-funded system LLMs on purpose
 ```
+
+Your own LLM is always the free route: 0 PWM, no PWM login, no balance check,
+no platform fee, and never a silent switch to PWM when a backend has no key or
+a call fails. A PWM login selects the paid route only when it is the only
+credential you have; once you log in with your own LLM it stops selecting
+anything, and `ai4science funding pwm` is the explicit switch.
 
 To disconnect: `ai4science logout` (and revoke the key on your account page).
 
@@ -389,8 +396,10 @@ any time on your account page and via the API.
   revocable token; receiving needs no key at all.
 - The stored CLI token can only spend your *site ledger* balance on agent
   usage. Leaked? Revoke it on the account page — damage stops instantly.
-- Billing is **off by default**: nothing charges until you set
-  `AI4SCIENCE_PWM_GATE=1` with a logged-in account.
+- Billing follows the **funding route**: your own LLM never charges PWM.
+  PWM-funded turns charge only on the `pwm` route (`ai4science funding pwm`,
+  `AI4SCIENCE_PWM_GATE=1`, or a PWM login with no LLM of your own) with a
+  logged-in account.
 
 ## Troubleshooting
 
@@ -400,7 +409,7 @@ any time on your account page and via the API.
 | `login expired / could not verify your PWM balance` | `ai4science login --pwm` again (or set `PWM_TOKEN` directly for scripts). |
 | Browser shows a different code than the terminal | **Deny it.** Someone else may be phishing an approval; restart `login --pwm`. |
 | A turn charged but the agent errored | Charges are per completed turn; transient provider errors are not billed. Check `/model` to switch brands. |
-| Want to stop billing immediately | `unset AI4SCIENCE_PWM_GATE` (and/or `ai4science logout`). |
+| Want to stop billing immediately | `ai4science funding own` (or `AI4SCIENCE_PWM_GATE=0`, or `ai4science logout`). |
 | `error: externally-managed-environment` when installing (Debian/Ubuntu) | Use the one-line installer, or add `--break-system-packages` to pip. After that, `ai4science update` handles it automatically. |
 | Upgraded but behavior didn't change | pip caches the GitHub zip by URL — use `ai4science update` (it forces a fresh download), then **restart** any running `ai4science chat` session. |
 | Full TUI doesn't appear | It's the default since 0.5.5 (`ai4science version`; `ai4science update` to upgrade) but needs a real terminal — a TTY on **both** stdin and stdout (pipes/CI fall back to the plain REPL). To force a tier: `AI4SCIENCE_TUI=full`/`box`; to turn it off: `AI4SCIENCE_TUI=off`. |

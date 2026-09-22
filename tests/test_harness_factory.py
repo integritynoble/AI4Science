@@ -45,12 +45,28 @@ def test_harness_available(monkeypatch):
 
 
 def test_harness_available_via_proxy(monkeypatch):
-    # no local credential, but a PWM login -> served by the founder proxy
+    # no local credential, but the PWM route selected and a PWM login -> served
+    # by the platform proxy
+    from ai4science import funding
     from ai4science.harness.adapters import factory, creds
     monkeypatch.setattr(creds, "available", lambda b: False)
     monkeypatch.setattr(factory, "_proxy_creds",
                         lambda: ("pwm_k", "https://physicsworldmodel.org"))
+    monkeypatch.setattr(funding, "resolve",
+                        lambda: funding.Route(funding.PWM, "test", True))
     assert factory.harness_available("anthropic") is True
+
+
+def test_harness_available_ignores_the_proxy_on_the_own_route(monkeypatch):
+    # the same machine on the free route: a remembered PWM login adds nothing
+    from ai4science import funding
+    from ai4science.harness.adapters import factory, creds
+    monkeypatch.setattr(creds, "available", lambda b: False)
+    monkeypatch.setattr(factory, "_proxy_creds",
+                        lambda: ("pwm_k", "https://physicsworldmodel.org"))
+    monkeypatch.setattr(funding, "resolve",
+                        lambda: funding.Route(funding.OWN, "test", False))
+    assert factory.harness_available("anthropic") is False
 
 
 def test_stream_no_key_guard(tmp_path):

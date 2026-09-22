@@ -98,19 +98,40 @@ def stop(config: Config, now=time.time) -> Status:
     return status(config)
 
 
-def supplied(config: Config, *, kind: str, pwm: float, now=time.time) -> Status:
+def supplied(config: Config, *, kind: str, pwm: float, receipt: Optional[str] = None,
+             now=time.time) -> Status:
     """Record capacity supplied to somebody else's run.
 
     Refused when the node is not running: a record that kept growing for a
     stopped node would credit the owner for something their machine did not do.
+
+    Refused for an amount that is not a positive finite number: ``nan`` or
+    ``inf`` would turn the budget arithmetic into nonsense, a negative would be
+    a way to *un*-supply, and zero is nothing to record.
+
+    A ``receipt`` names the delivery. The same receipt a second time records
+    nothing and returns the status as it stands — a retry, a replayed message
+    or a duplicate dispatch cannot count twice. The same receipt with a
+    different amount is refused: that is not a retry, it is a conflict.
     """
+    amount = _amount(pwm)
     here = status(config)
     if not here.running:
         raise NotAnAgent(f"the exchange node is not running, so nothing was "
                          f"supplied — {here.why}")
-    ledger.append(config, STREAM,
-                  {"event": "supplied", "kind": str(kind),
-                   "pwm": float(pwm)}, now=now)
+    if receipt is not None:
+        receipt = str(receipt)
+        seen = _receipts(config)
+        if receipt in seen:
+            if seen[receipt] != amount:
+                raise NotAnAgent(
+                    f"receipt {receipt!r} was already recorded for "
+                    f"{seen[receipt]:g} PWM, not {amount:g} — a conflict, not a retry")
+            return here
+    row: Dict[str, Any] = {"event": "supplied", "kind": str(kind), "pwm": amount}
+    if receipt is not None:
+        row["receipt"] = receipt
+    ledger.append(config, STREAM, row, now=now)
     after = status(config)
     if not after.running:
         # Reaching the budget stops it. Recorded as its own event so the owner
@@ -132,7 +153,11 @@ def status(config: Config) -> Status:
     for e in events:
         kind = e.get("event")
         if kind == "started":
-            started, budget, why = True, float(e.get("budget") or 0.0), ""
+            # Each start is its own bounded run: what an earlier run supplied
+            # stays in the ledger but does not count against the new budget,
+            # or a node restarted with `--budget-pwm 10` after supplying 7
+            # would stop after 3.
+            started, budget, why, earned = True, float(e.get("budget") or 0.0), "", 0.0
         elif kind == "stopped":
             started = False
             # Kept: "the owner stopped it" and "it finished its budget" are
@@ -162,6 +187,27 @@ def tasks_of(config: Config) -> List[Any]:
     raise NotAnAgent(
         "the exchange node holds no task list. It is not a worker: it supplies "
         "capacity to other people's runs and never touches yours")
+
+
+def _amount(pwm) -> float:
+    try:
+        value = float(pwm)
+    except (TypeError, ValueError):
+        raise NotAnAgent(f"a supply must be a number of PWM, not {pwm!r}")
+    if value != value or value in (float("inf"), float("-inf")) or value <= 0:
+        raise NotAnAgent(f"a supply must be a positive finite amount of PWM, "
+                         f"not {pwm!r}")
+    return value
+
+
+def _receipts(config: Config) -> Dict[str, float]:
+    """Every receipt ever recorded here, with its amount — across starts, so a
+    delivery replayed after a restart still counts once."""
+    seen: Dict[str, float] = {}
+    for e in _rows(config):
+        if e.get("event") == "supplied" and e.get("receipt") is not None:
+            seen[str(e["receipt"])] = float(e.get("pwm") or 0.0)
+    return seen
 
 
 # ── the registry file ─────────────────────────────────────────────────

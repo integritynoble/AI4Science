@@ -25,10 +25,18 @@ def test_event_roundtrip():
 
 
 def test_factory_picks_proxy_when_no_local_cred(monkeypatch, tmp_path):
+    # A token and no credential of the user's own anywhere: the PWM route is
+    # the only one that can serve, so the proxy does. (With an own credential
+    # it would be the free route and never the proxy — tests/test_funding_route.py.)
     monkeypatch.setenv("AI4SCIENCE_PWM_ACCOUNT", str(tmp_path / "a.json"))
+    monkeypatch.setenv("AI4SCIENCE_USER_CONFIG", str(tmp_path / "user.json"))
+    monkeypatch.setenv("AI4SCIENCE_KEYS", str(tmp_path / "keys.json"))
+    monkeypatch.delenv("AI4SCIENCE_FUNDING", raising=False)
+    monkeypatch.delenv("AI4SCIENCE_PWM_GATE", raising=False)
     monkeypatch.setenv("PWM_TOKEN", "pwm_x")
     monkeypatch.setenv("PWM_BASE", "https://mirror.example")
-    from ai4science.harness.adapters import factory
+    from ai4science.harness.adapters import factory, creds
+    monkeypatch.setattr(creds, "available", lambda b: False)
     monkeypatch.setattr(factory, "_local_available", lambda b: False)
     a = factory.adapter_for("anthropic")
     assert type(a).__name__ == "ProxyAdapter" and a.base == "https://mirror.example"
