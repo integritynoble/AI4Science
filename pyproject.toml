@@ -108,6 +108,13 @@ dev = [
   # (ai4science/harness/llm_gateway.py:94 imports it inside main(), and that
   # module is an optional host service, see the `gateway` extra).
   "uvicorn>=0.27",
+  # The research-agent suite (tests/research_agents/) runs rdkit and pydicom
+  # inside the runners (fetch/runners.py:193, payload/screening/generate.py:134):
+  # rdkit computes the Morgan fingerprints the drug-design benchmark is built on,
+  # at benchmark-generation time and not merely at fetch time. These mirror the
+  # `research-agents` extra below so the two stay in step.
+  "rdkit>=2023.9",
+  "pydicom>=2.4",
 ]
 gateway = [
   # `python -m ai4science.harness.llm_gateway` -- the founder-credentialed host
