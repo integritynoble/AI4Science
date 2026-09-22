@@ -25,9 +25,58 @@ session: ask it for a GAP-TV implementation and it writes one, there and then.
 The other is a sarsi roster agent, which holds tasks and drives Claude Code
 sessions. `/work` has to say which it did.
 """
+import json
+
 import pytest
 
 from ai4science.harness import repl
+
+
+@pytest.fixture(autouse=True)
+def _own_sarsi_registry(monkeypatch, tmp_path):
+    """Give this file its own roster instead of borrowing the developer's.
+
+    Every assertion below about `/sarsi-worker` and `/tsk_…` needs a registry
+    to resolve against, and until now it silently used whatever
+    `~/.sarsi/sarsi.json` the machine happened to have. That passed on the
+    maintainer's box and nowhere else; once `tests/conftest.py::_isolate_home`
+    started pointing `$HOME` at a tmp dir -- correctly, so that
+    `~/.claude/settings.json` cannot decide a result -- there was no registry
+    left and two tests failed for the environment rather than the code:
+
+      * `test_the_verb_the_message_suggests_is_really_wired`
+        `resolve_name` (repl.py:419) asks `_roster_agents()`, which loads the
+        registry from `state_dir()` = `$HOME/.sarsi` (sarsi/state.py:27).
+        Empty roster -> `sarsi-worker` is not a roster name -> `_dispatch_slash`
+        falls off its end and returns `(False, "")` -> `assert handled is True`.
+
+      * `test_a_task_id_opens_it_in_guided_mode`
+        `/tsk_…` IS handled unconditionally (repl.py:551), so the failure was
+        the message: `_task_slash` catches `reg.ConfigError` and answers "no
+        sarsi registry on this machine yet" (repl.py:615-617), which does not
+        contain the task id the test looks for.
+
+    `SARSI_STATE_DIR` is the seam the product already exposes for this
+    (sarsi/state.py:23), so this needs no change to `$HOME` and does not
+    weaken the isolation above.
+
+    Seeded from `reg.default_config()` rather than a hand-written roster on
+    purpose: `sarsi-worker` is in the SHIPPED roster (registry.py:304), so
+    these tests assert against the roster the product actually defines. A
+    hand-rolled fixture naming `sarsi-worker` would still pass if the product
+    dropped it, which is the one regression this file exists to catch.
+
+    `owner_id` is not decoration: `parse` refuses a telegram channel without
+    one ("without it every inbound message is from a stranger"), and that
+    refusal is itself a `ConfigError`, which `_task_slash` reports with the
+    very same "no sarsi registry on this machine yet" text as a missing file.
+    Seeding without it therefore looks exactly like seeding nothing.
+    """
+    from ai4science.harness.agents.sarsi import registry as reg
+    monkeypatch.setenv("SARSI_STATE_DIR", str(tmp_path))
+    (tmp_path / "sarsi.json").write_text(
+        json.dumps(reg.default_config(owner_id="1")))
+    yield
 
 
 # ── what counts as an attempt at all ──────────────────────────────────

@@ -47,6 +47,13 @@ dependencies = [
   "pyreadline3>=3.4; sys_platform == 'win32'",    # arrow keys/history on Windows
   "optiland>=0.6.0",                              # Optical design simulation (Phase 0)
   "rayoptics>=0.9.8",                             # Optical design ray tracing (Phase 0)
+  # A PRODUCT import, not a test one: `ai4science chat` / `--mode claude` import
+  # it at module scope (ai4science/agents/claude_agent.py:170,
+  # ai4science/commands/chat.py:494), and install.sh:203 already installs it by
+  # default. It was only ever reachable through the `claude`/`dev` extras, which
+  # made the shipped CLI's default path depend on an extra. It is on PyPI and
+  # pulls in no first-party package, so there is no cycle here.
+  "claude-agent-sdk>=0.1",
   # NOTE: core does NOT depend on the pwm-agent-* packages (that would be a
   # dependency cycle). The full framework (core + all agents) is the separate
   # `pwm-ai4science` meta-package.
@@ -65,13 +72,10 @@ dev = [
   # venv at daf66277, `[dev]` collected cleanly and then failed 82 tests, 81 of
   # which were the environment and not the code. Two things were missing.
   #
-  # 1. `claude-agent-sdk` -- the SDK behind `ai4science chat` / `--mode claude`
-  #    (ai4science/commands/chat.py:494, ai4science/agents/claude_agent.py:170).
-  #    It is a PRODUCT import, declared as the `claude` extra above and
-  #    installed by default by install.sh:203; it is repeated here because the
-  #    tests import it directly (tests/test_chat.py:313 monkeypatches
-  #    `claude_agent_sdk.list_sessions`) and `[dev]` must stand alone.
-  "claude-agent-sdk>=0.1",
+  # 1. `claude-agent-sdk` -- no longer listed here. It is a PRODUCT import and
+  #    now sits in `dependencies` above, so the runtime carries it and `[dev]`
+  #    gets it for free. The tests that import it directly (tests/test_chat.py:313
+  #    monkeypatches `claude_agent_sdk.list_sessions`) are satisfied either way.
   #
   # 2. The eight first-party agent packages. The agents they ship are NOT
   #    built-in specs -- `ai4science/harness/agents/specs/` has no paper.py,

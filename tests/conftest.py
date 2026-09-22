@@ -12,8 +12,35 @@ import os
 import signal
 import subprocess
 import time
+from pathlib import Path
 
 import pytest
+
+# --- the corpus pointer, captured BEFORE `_isolate_home` moves `$HOME` -------
+#
+# Two things must be true at once and they pull against each other:
+#
+#   * `_isolate_home` below repoints `$HOME` at a tmp dir, because
+#     `sessions._governed` reads `~/.claude/settings.json` and the developer's
+#     own settings must not decide a test's result;
+#   * the imaging/research e2e tests read a real, multi-gigabyte corpus that
+#     lives under `~/.ai4science/data` (runners/corpus.py:31) and is NOT
+#     reproducible in a tmp dir.
+#
+# Isolating `$HOME` without this line silently moves the corpus root into the
+# tmp dir, so every corpus-backed test degrades to `CorpusMissing` and skips --
+# a green run that checked nothing.
+#
+# This is a module-level statement, not a fixture, on purpose: `corpus.py`
+# binds `DEFAULT_ROOT` at IMPORT time, and conftest is imported before any test
+# module, so a `monkeypatch.setenv` in a fixture would always be too late.
+#
+# `setdefault`, so a host that keeps its corpus elsewhere (or a CI box with
+# none) just exports `AI4SCIENCE_DATA` and this defers to it. No host-specific
+# path is baked into the repo.
+_REAL_HOME = Path(os.path.expanduser("~"))
+os.environ.setdefault("AI4SCIENCE_DATA",
+                      str(_REAL_HOME / ".ai4science" / "data"))
 
 
 @pytest.fixture(autouse=True)
@@ -54,6 +81,11 @@ def _isolate_home(monkeypatch, tmp_path_factory):
     home = tmp_path_factory.mktemp("home")
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("USERPROFILE", str(home))
+    # Re-assert the corpus root inside the isolated home, so a test that clears
+    # the environment still finds the real data. The value was resolved at
+    # import (top of this file) against the REAL home; repeating it here is
+    # what keeps "isolate `$HOME`" from meaning "lose the corpus".
+    monkeypatch.setenv("AI4SCIENCE_DATA", os.environ["AI4SCIENCE_DATA"])
     yield
 
 
