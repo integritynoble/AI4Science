@@ -192,3 +192,20 @@ def test_callback_still_allows_ordinary_read_only_bash(tmp_path):
     result = asyncio.run(cb("Bash", {"command": "ls -la"}, None))
     from claude_agent_sdk import PermissionResultAllow
     assert isinstance(result, PermissionResultAllow)
+
+
+def test_callback_denies_glob_pattern_outside_workspace(tmp_path):
+    """Glob's `pattern` and Grep's `glob` are paths too — a `..` segment or an
+    absolute pattern reaches the sibling `private/` dir with no `path` arg."""
+    cb = make_workspace_permission_callback(tmp_path, auto_yes=True)
+    from claude_agent_sdk import PermissionResultAllow, PermissionResultDeny
+    for tool, args in [("Glob", {"pattern": "../private/*"}),
+                       ("Glob", {"pattern": str(tmp_path.parent / "private" / "*")}),
+                       ("Glob", {"pattern": "src/../../private/*"}),
+                       ("Grep", {"pattern": "x", "glob": "../private/*"})]:
+        result = asyncio.run(cb(tool, args, None))
+        assert isinstance(result, PermissionResultDeny), (tool, args)
+    for tool, args in [("Glob", {"pattern": "**/*.py"}),
+                       ("Grep", {"pattern": r"\.\./", "glob": "*.py"})]:
+        result = asyncio.run(cb(tool, args, None))
+        assert isinstance(result, PermissionResultAllow), (tool, args)

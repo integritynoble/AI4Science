@@ -82,6 +82,19 @@ def make_workspace_permission_callback(
                              f"inside the current contribution workspace"),
                     interrupt=False,
                 )
+            # Glob's `pattern` and Grep's `glob` are paths too: an absolute
+            # pattern or a `..` segment reaches outside the workspace even
+            # when no path argument is given.
+            for key in ("pattern", "glob") if tool_name in ("Glob", "Grep") else ():
+                if key == "pattern" and tool_name == "Grep":
+                    continue  # Grep's pattern is a regex, not a path
+                pat = input_dict.get(key)
+                if pat and _pattern_escapes(pat):
+                    return PermissionResultDeny(
+                        message=(f"{key} {pat!r} reaches outside the workspace "
+                                 f"({workspace}); use a relative pattern"),
+                        interrupt=False,
+                    )
             return PermissionResultAllow()
 
         # Bash is gated by two independent checks, in order: a command that
@@ -133,6 +146,13 @@ def make_workspace_permission_callback(
         )
 
     return can_use_tool
+
+
+def _pattern_escapes(pattern: str) -> bool:
+    """True iff a glob pattern is absolute, home-relative, or has a `..` segment."""
+    if pattern.startswith(("/", "~", "\\")) or (len(pattern) > 1 and pattern[1] == ":"):
+        return True
+    return ".." in pattern.replace("\\", "/").split("/")
 
 
 def _is_inside_workspace(p: Path, workspace: Path) -> bool:
