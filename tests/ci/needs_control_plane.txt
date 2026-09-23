@@ -1,0 +1,16 @@
+# Modules that import pwm_control_plane (a private package, not on PyPI).
+# CI installs it only when the CONTROL_PLANE_READ_TOKEN secret is set; without
+# it these cannot be collected, and the gate reports them as NOT RUN.
+tests/imaging/test_agent_e2e.py
+tests/imaging/test_foundry_agent_e2e.py
+tests/imaging/test_imaging_external_eval_integration.py
+tests/imaging/test_llm_e2e.py
+tests/imaging/test_rsi_round_integration.py
+tests/imaging/test_rsi_search_integration.py
+tests/learning/test_learning_foundry_e2e.py
+tests/process_learning/test_process_learning_foundry_e2e.py
+tests/research/test_research_foundry_e2e.py
+tests/runtime/test_pev_e2e.py
+tests/social/test_social_foundry_e2e.py
+tests/social/test_social_integration.py
+tests/work/test_work_foundry_e2e.py
