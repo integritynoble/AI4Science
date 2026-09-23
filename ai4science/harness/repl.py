@@ -1874,6 +1874,8 @@ def run_common_repl(
                 except (ValueError, OSError):
                     pass
 
+        if getattr(session.adapter, "bills_server_side", False):
+            turn_cost["pwm"] = 0.0      # the platform already charged this turn
         ok, _creason = gate.charge(turn_cost["pwm"], turn_cost["wallet"],
                                    purpose=f"ai4science:{active_spec.name}:{active_model}",
                                    idempotency_key=f"{_sid}:{turn_counter['n']}")

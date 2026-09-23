@@ -37,6 +37,11 @@ def _session_id() -> Optional[str]:
 
 
 class ProxyAdapter:
+    #: The platform charges every proxied turn itself (from the gateway's
+    #: `bill` line). The usage events it forwards are for display only; the
+    #: client must not price them and charge the same turn again.
+    bills_server_side = True
+
     def __init__(self, *, backend: str, base: str, token: str):
         self.backend = backend
         self.base = base.rstrip("/")

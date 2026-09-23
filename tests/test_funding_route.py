@@ -22,6 +22,8 @@ def clean(tmp_path, monkeypatch):
         monkeypatch.delenv(var, raising=False)
     from ai4science.harness.adapters import creds
     monkeypatch.setattr(creds, "available", lambda b: False)
+    from ai4science.harness.adapters import factory
+    monkeypatch.setattr(factory, "_NOTICED_OWN_KEY", set())
     return tmp_path
 
 
@@ -173,16 +175,28 @@ def test_pwm_route_without_a_login_is_an_error_not_a_free_turn(clean, monkeypatc
         factory.adapter_for("gemini")
 
 
-def test_pwm_route_prefers_a_local_credential_over_the_proxy(clean, monkeypatch):
+def test_pwm_route_ignores_the_users_own_key_and_says_so(clean, monkeypatch, capsys):
+    """Routes don't mix: with PWM selected, a turn is never served on the
+    user's own key (which would bill them twice — the provider AND PWM). The
+    own key is ignored for the turn, with one line saying so."""
     from ai4science.harness.adapters import factory, creds
-    from ai4science.harness.adapters.creds import CredInfo
-    from ai4science.harness.adapters.openai import OpenAIAdapter
-    monkeypatch.setattr(creds, "available", lambda b: b == "gemini")
-    monkeypatch.setattr(creds, "resolve",
-                        lambda b: CredInfo("openai_compat", "http://x", "k", "m"))
+    from ai4science.harness.adapters.proxy import ProxyAdapter
+    monkeypatch.setattr(creds, "available", lambda b: b == "anthropic")
     monkeypatch.setenv("AI4SCIENCE_FUNDING", "pwm")
     _pwm_login()
-    assert isinstance(factory.adapter_for("gemini"), OpenAIAdapter)
+    assert isinstance(factory.adapter_for("anthropic"), ProxyAdapter)
+    assert isinstance(factory.adapter_for("anthropic"), ProxyAdapter)
+    notice = [l for l in capsys.readouterr().err.splitlines() if "own anthropic key" in l]
+    assert len(notice) == 1 and "ai4science funding own" in notice[0]
+
+
+def test_pwm_route_availability_is_the_proxy_not_a_local_key(clean, monkeypatch):
+    from ai4science.harness.adapters import factory, creds
+    monkeypatch.setattr(creds, "available", lambda b: b == "anthropic")
+    monkeypatch.setenv("AI4SCIENCE_FUNDING", "pwm")
+    assert factory.harness_available("anthropic") is False     # no PWM login
+    _pwm_login()
+    assert factory.harness_available("anthropic") is True
 
 
 # ── the gate ─────────────────────────────────────────────────────────
@@ -248,3 +262,59 @@ def test_chat_still_offers_login_when_pwm_is_selected_without_a_token(clean, mon
     monkeypatch.setattr("builtins.input", lambda *a: "n")
     chat._maybe_offer_login()
     assert any("not signed in" in s for s in shown)
+
+
+# ── a turn is charged once, by whoever served it ─────────────────────
+
+class _FakeGatewayStream:
+    """What the platform proxy streams back: its receipt, the gateway's text
+    and usage events (forwarded), done. The platform has already charged."""
+    status_code = 200
+    LINES = ['{"t": "receipt", "request_id": "r1", "status": "dispatched"}',
+             '{"t": "text", "text": "hi"}',
+             '{"t": "usage", "input": 1000, "output": 500, "total": 1500}',
+             '{"t": "done", "stop_reason": "end_turn"}']
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def iter_lines(self):
+        return iter(self.LINES)
+
+    def close(self):
+        pass
+
+
+def test_a_proxied_turn_is_not_charged_again_by_the_client(clean, monkeypatch):
+    """The platform proxy charges the turn server-side. The client must not
+    price the forwarded usage and POST /spend for the same turn."""
+    import httpx
+    from ai4science.harness import repl as repl_mod
+    from ai4science.harness.pwm_gate import PwmGate
+    _pwm_login()
+    monkeypatch.setattr(httpx, "stream", lambda *a, **k: _FakeGatewayStream())
+    monkeypatch.setattr(repl_mod.routing, "_select_source",
+                        lambda backend: ("src", "pid", "0xWALLET", 1.0))
+    monkeypatch.setattr(repl_mod.pricing, "price_call",
+                        lambda model, usage, price_multiplier=1.0: {"pwm": 0.5, "usd": 0.1})
+    charged = []
+
+    def _charge(self, amount, wallet, **kw):
+        charged.append(amount)
+        return True, ""
+    monkeypatch.setattr(PwmGate, "charge", _charge)
+    monkeypatch.setattr(PwmGate, "check", lambda self, *a, **k: (True, ""))
+    inputs = iter(["hello"])
+
+    def _input(*a, **k):
+        try:
+            return next(inputs)
+        except StopIteration:
+            raise EOFError()
+    monkeypatch.setattr("builtins.input", _input)
+    repl_mod.run_common_repl(clean, backend="anthropic", model="claude-sonnet-5")
+    assert charged, "the turn never reached the charge step"
+    assert all(a == 0 for a in charged), f"client charged {charged} on top of the platform"
