@@ -15,11 +15,42 @@ from ai4science.harness import proxy_proto as proto
 from ai4science.harness.events import Done, Message, TextDelta, ToolSpec
 
 
+def _turn_cap() -> Optional[str]:
+    """AI4SCIENCE_TURN_CAP_PWM: the most PWM one turn may cost. Sent as
+    X-PWM-Cap; the platform charges min(usage, cap) and records the rest."""
+    import os
+    raw = (os.environ.get("AI4SCIENCE_TURN_CAP_PWM") or "").strip()
+    return raw or None
+
+
+def _session_id() -> Optional[str]:
+    """AI4SCIENCE_SESSION_ID: the harness session id (repl.py's `_sid`), set
+    once per process. Sent as X-PWM-Session-Id so the platform's receipt is
+    bound to (payer, session, operation, request id), not the request id
+    alone — a retried request id under a DIFFERENT session is a new claim,
+    never answered from another session's receipt. Unset (a bare script or
+    library call with no persistent session) → the platform defaults the
+    session to the request id itself: one turn, its own singleton thread."""
+    import os
+    raw = (os.environ.get("AI4SCIENCE_SESSION_ID") or "").strip()
+    return raw or None
+
+
 class ProxyAdapter:
+    #: The platform charges every proxied turn itself (from the gateway's
+    #: `bill` line). The usage events it forwards are for display only; the
+    #: client must not price them and charge the same turn again.
+    bills_server_side = True
+
     def __init__(self, *, backend: str, base: str, token: str):
         self.backend = backend
         self.base = base.rstrip("/")
         self.token = token
+        #: The platform's receipt for the last turn ({"request_id", "status",
+        #: "pwm_charged", "over_cap_pwm", ...}); None before the first turn.
+        #: A client that crashes can reconcile GET /api/v1/llm/receipts/{id}.
+        self.last_receipt: Optional[dict] = None
+        self.last_request_id: Optional[str] = None
 
     def stream(self, messages: List[Message], tools: List[ToolSpec], *,
                model: str, reasoning: str = "low") -> Iterator[object]:
@@ -31,8 +62,20 @@ class ProxyAdapter:
             "messages": [proto.msg_to_wire(m) for m in messages],
             "tools": [proto.tool_to_wire(t) for t in tools],
         }
+        import secrets
+        self.last_request_id = secrets.token_urlsafe(12)
+        self.last_receipt = None
         headers = {"Authorization": f"Bearer {self.token}",
-                   "content-type": "application/json"}
+                   "content-type": "application/json",
+                   # Idempotent on the platform: a retry with the same id is
+                   # answered from the receipt, never served or charged twice.
+                   "X-Request-Id": self.last_request_id}
+        cap = _turn_cap()
+        if cap:
+            headers["X-PWM-Cap"] = cap
+        session_id = _session_id()
+        if session_id:
+            headers["X-PWM-Session-Id"] = session_id
         try:
             with httpx.stream("POST", f"{self.base}/api/v1/llm/proxy",
                               json=body, headers=headers, timeout=600) as r:
@@ -57,6 +100,9 @@ class ProxyAdapter:
                             continue
                         if d.get("t") == "bill":
                             continue            # billing handled server-side
+                        if d.get("t") == "receipt":
+                            self.last_receipt = d   # the platform's word, kept for /cost
+                            continue
                         ev = proto.event_from_wire(d)
                         if ev is not None:
                             yield ev

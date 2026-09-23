@@ -65,3 +65,52 @@ def test_append_repairs_torn_write_so_next_record_survives(tmp_path):
     st3 = TaskStore(Path(tmp_path)).resume("t6")
     assert st3 is not None
     assert any(j.get("plan") == "s2-redone" for j in st3.journal)  # committed step NOT dropped
+
+
+# ── a crash remnant is expected; corruption nothing explains is not ──────
+
+def test_repaired_torn_tail_is_counted_and_not_corruption(tmp_path):
+    from ai4science.harness.runtime.task_store import StoreIntegrityError
+    c = compile_contract(objective="x", capability_profile="A1")
+    store = TaskStore(Path(tmp_path))
+    st = store.open_or_resume("t7", c)
+    store.record(st, kind="step", payload={"plan": "s1"})
+    p = Path(tmp_path) / "t7.jsonl"
+    raw = p.read_text()
+    p.write_text(raw[: len(raw) - 4])                       # crash mid-append
+    st2 = TaskStore(Path(tmp_path)).open_or_resume("t7", c)
+    TaskStore(Path(tmp_path)).record(st2, kind="step", payload={"plan": "s2"})
+    st3 = TaskStore(Path(tmp_path)).resume("t7", strict=True)   # must NOT raise
+    assert st3.integrity == {"torn_tails": 1, "unexplained_corruption": 0}
+    assert [j["plan"] for j in st3.journal] == ["s2"]
+
+
+def test_unexplained_interior_corruption_is_surfaced_and_refused_under_strict(tmp_path):
+    from ai4science.harness.runtime.task_store import StoreIntegrityError
+    c = compile_contract(objective="x", capability_profile="A1")
+    store = TaskStore(Path(tmp_path))
+    st = store.open_or_resume("t8", c)
+    for n in ("s1", "s2", "s3"):
+        store.record(st, kind="step", payload={"plan": n})
+    p = Path(tmp_path) / "t8.jsonl"
+    lines = p.read_text().splitlines()
+    lines[2] = lines[2][:10] + "}}}garbage"                  # interior line, no marker after it
+    p.write_text("\n".join(lines) + "\n")
+    tolerant = TaskStore(Path(tmp_path)).resume("t8")
+    assert tolerant is not None
+    assert [j["plan"] for j in tolerant.journal] == ["s1", "s3"]   # history after it survives
+    assert tolerant.integrity == {"torn_tails": 0, "unexplained_corruption": 1}
+    import pytest
+    with pytest.raises(StoreIntegrityError, match=r"line\(s\) \[3\]"):
+        TaskStore(Path(tmp_path)).resume("t8", strict=True)
+    with pytest.raises(StoreIntegrityError):
+        TaskStore(Path(tmp_path)).open_or_resume("t8", c, strict=True)
+
+
+def test_clean_log_reports_clean_integrity(tmp_path):
+    c = compile_contract(objective="x", capability_profile="A1")
+    store = TaskStore(Path(tmp_path))
+    st = store.open_or_resume("t9", c)
+    store.record(st, kind="step", payload={"plan": "s1"})
+    assert TaskStore(Path(tmp_path)).resume("t9").integrity == {
+        "torn_tails": 0, "unexplained_corruption": 0}

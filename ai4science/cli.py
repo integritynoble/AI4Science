@@ -146,6 +146,7 @@ app.command("login", help="Log in via browser approval on physicsworldmodel.org 
 app.command("whoami", help="Show how the agent is currently powered.")(login_cmd.whoami)
 app.command("logout", help="Clear the current login.")(login_cmd.logout)
 app.command("prefer", help="Set credential preference: user | wallet | <provider_id>.")(login_cmd.prefer)
+app.command("funding", help="Who pays for LLM turns: own (your LLM, 0 PWM) | pwm (PWM-funded system LLMs). No argument shows the route in force.")(login_cmd.funding)
 
 from ai4science.commands import update as update_cmd
 app.command("update", help="Upgrade ai4science to the latest build (like `claude update`).")(update_cmd.update)
@@ -685,7 +686,7 @@ def main() -> None:
     _subcommands = {
         "init", "contribute", "validate", "judge", "overseer", "package",
         "submit", "status", "version", "agents", "chat", "compute", "llm",
-        "stake", "plugins", "tools", "login", "whoami", "logout", "prefer", "update",
+        "stake", "plugins", "tools", "login", "whoami", "logout", "prefer", "funding", "update",
         "register-agent", "feedback", "report-bug", "sarsi", "acp", "research",
     }
     if any(tok in _subcommands for tok in argv_raw):
@@ -707,7 +708,7 @@ def main() -> None:
             "init", "contribute", "validate", "judge", "overseer",
             "package", "submit", "status", "version", "agents", "chat",
             "compute", "llm", "stake", "plugins", "tools", "login", "whoami", "logout",
-            "prefer", "update", "register-agent", "sarsi", "acp", "research",
+            "prefer", "funding", "update", "register-agent", "sarsi", "acp", "research",
         }
         if argv[0] not in registered:
             # A mistyped subcommand (e.g. `ai4science dispatch --provider …`,

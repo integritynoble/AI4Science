@@ -25,7 +25,8 @@ class AgentSession:
                  on_tool_end: Callable[[str, str], None] = lambda name, result: None,
                  compact_limit_chars: int = 0,
                  summarize: Optional[Callable[[str], str]] = None,
-                 writable_roots: Optional[List[Path]] = None) -> None:
+                 writable_roots: Optional[List[Path]] = None,
+                 on_checkpoint: Callable[[], None] = lambda: None) -> None:
         self.adapter = adapter
         self.model = model
         self.backend = backend
@@ -45,6 +46,19 @@ class AgentSession:
                                    writable_roots=writable_roots)
         self.compact_limit_chars = compact_limit_chars
         self.summarize = summarize
+        self.on_checkpoint = on_checkpoint
+        #: The harness's own record of the test/check commands the LAST turn
+        #: ran and how they ended (ai4science.harness.verification). Reset per
+        #: turn; the REPL prints a line from it that the model cannot write.
+        self.turn_checks: list = []
+
+    def _record_check(self, name: str, args: dict, result: str) -> None:
+        if name != "bash":
+            return
+        from ai4science.harness import verification
+        c = verification.classify(str(args.get("cmd", "")), result)
+        if c is not None:
+            self.turn_checks.append(c)
 
     def set_brand(self, adapter, model: str, backend: str) -> None:
         """Swap the brand mid-session; history is preserved (brand-neutral)."""
@@ -57,10 +71,17 @@ class AgentSession:
                 self.history, limit_chars=self.compact_limit_chars,
                 summarize=self.summarize)
         self.history.append(Message(role="user", content=user_input, images=list(images or [])))
+        self.turn_checks = []
         return run_loop(
             adapter=self.adapter, model=self.model, reasoning=self.reasoning,
             history=self.history, workspace=self.workspace, registry=self.registry,
             gate=self.gate, on_text=self.on_text, meter=self.meter,
             on_tool=self.on_tool,
             on_tool_start=self.on_tool_start, on_tool_end=self.on_tool_end,
+            on_tool_result=self._record_check, on_checkpoint=self.on_checkpoint,
         )
+
+    def verification_note(self, final_text: str):
+        """The harness's line about this turn's checks, or None."""
+        from ai4science.harness import verification
+        return verification.summarize(self.turn_checks, final_text)
