@@ -1,0 +1,20 @@
+#!/bin/sh
+set -eu
+PREFIX=${AI4SCIENCE_PREFIX:-"$HOME/.local/ai4science"}
+BIN="$PREFIX/bin/opencode"
+if [ ! -x "$BIN" ]; then
+  echo "AI4Science common mode is not installed. Run common-mode/install.sh or install.ps1." >&2
+  exit 127
+fi
+export OPENCODE_CONFIG_DIR="$PREFIX/config"
+export OPENCODE_CONFIG="$PREFIX/config/opencode.json"
+export XDG_CONFIG_HOME="$PREFIX/xdg/config"
+export XDG_DATA_HOME="$PREFIX/xdg/data"
+export XDG_CACHE_HOME="$PREFIX/xdg/cache"
+export XDG_STATE_HOME="$PREFIX/xdg/state"
+export OPENCODE_DISABLE_AUTOUPDATE=1
+export OPENCODE_DISABLE_MODELS_FETCH=1
+export OPENCODE_DISABLE_DEFAULT_PLUGINS=1
+export OPENCODE_DISABLE_LSP_DOWNLOAD=1
+export AI4SCIENCE_OPENAI_BASE_URL=${AI4SCIENCE_OPENAI_BASE_URL:-http://127.0.0.1:8000/v1}
+exec "$BIN" "$@"

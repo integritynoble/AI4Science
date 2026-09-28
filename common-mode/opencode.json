@@ -1,0 +1,21 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "autoupdate": false,
+  "plugin": [],
+  "mcp": {},
+  "provider": {
+    "openai": {
+      "name": "AI4Science user OpenAI-compatible endpoint",
+      "options": {
+        "baseURL": "{env:AI4SCIENCE_OPENAI_BASE_URL}"
+      },
+      "models": {
+        "local-model": {
+          "name": "Local model"
+        }
+      }
+    }
+  },
+  "model": "openai/local-model",
+  "small_model": "openai/local-model"
+}
