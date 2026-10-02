@@ -1,0 +1,61 @@
+#!/bin/sh
+set -eu
+# Installed beside the native executable; no Node, git, or npm launcher.
+ai4science_prefix=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
+ai4science_config="$ai4science_prefix/var/config/opencode"
+umask 077
+mkdir -p "$ai4science_config" "$ai4science_prefix/var/home" "$ai4science_prefix/var/managed"
+if [ "$(uname -s)" = Darwin ]; then
+  for ai4science_plist in "/Library/Managed Preferences/$(id -un)/ai.opencode.managed.plist" "/Library/Managed Preferences/ai.opencode.managed.plist"; do
+    if [ -e "$ai4science_plist" ]; then
+      echo 'AI4Science cannot isolate OpenCode managed preferences on this Mac. Ask your administrator to remove the OpenCode profile before using this wrapper.' >&2
+      exit 1
+    fi
+  done
+fi
+# The dedicated XDG roots isolate config AND stored auth, sessions, and caches.
+export XDG_CONFIG_HOME="$ai4science_prefix/var/config"
+export XDG_DATA_HOME="$ai4science_prefix/var/data"
+export XDG_CACHE_HOME="$ai4science_prefix/var/cache"
+export XDG_STATE_HOME="$ai4science_prefix/var/state"
+export PATH="$ai4science_prefix/var/cache/opencode/bin:$PATH"
+export OPENCODE_CONFIG_DIR="$ai4science_config"
+export OPENCODE_CONFIG="$ai4science_config/opencode.json"
+export OPENCODE_TEST_HOME="$ai4science_prefix/var/home"
+export OPENCODE_TEST_MANAGED_CONFIG_DIR="$ai4science_prefix/var/managed"
+export OPENCODE_DISABLE_PROJECT_CONFIG=1
+export OPENCODE_DISABLE_AUTOUPDATE=1
+export OPENCODE_DISABLE_MODELS_FETCH=1
+export OPENCODE_DISABLE_DEFAULT_PLUGINS=1
+export OPENCODE_DISABLE_CLAUDE_CODE=1
+export OPENCODE_DISABLE_EXTERNAL_SKILLS=1
+export OPENCODE_DISABLE_LSP_DOWNLOAD=1
+export OPENCODE_DISABLE_FFF=1
+export OPENCODE_DISABLE_TERMINAL_TITLE=1
+export OPENCODE_EXPERIMENTAL=0
+export OTEL_SDK_DISABLED=true
+unset OPENCODE_CONFIG_CONTENT OPENCODE_DB OPENCODE_MODELS_PATH OPENCODE_MODELS_URL OPENCODE_PERMISSION OPENCODE_TUI_CONFIG OPENCODE_AUTO_SHARE OPENCODE_WORKSPACE_ID OPENCODE_CONSOLE_TOKEN
+unset OTEL_EXPORTER_OTLP_ENDPOINT OTEL_EXPORTER_OTLP_HEADERS
+unset HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy
+export npm_config_userconfig="$ai4science_prefix/empty-user.npmrc"
+export npm_config_globalconfig="$ai4science_prefix/empty-global.npmrc"
+export npm_config_cache="$ai4science_prefix/var/npm-cache"
+export npm_config_registry=https://registry.npmjs.org
+export npm_config_offline=true
+if [ "${AI4SCIENCE_INSTALL_DEPENDENCIES:-0}" = 1 ]; then
+  export npm_config_offline=false
+fi
+export AI4SCIENCE_BASE_URL=${AI4SCIENCE_BASE_URL:-http://127.0.0.1:8000/v1}
+export AI4SCIENCE_API_KEY=${AI4SCIENCE_API_KEY:-local-no-key}
+export AI4SCIENCE_MODEL=${AI4SCIENCE_MODEL:-local}
+for ai4science_arg do
+  case "$ai4science_arg" in
+    # Stop at another command so a run prompt can literally be "upgrade".
+    acp|mcp|attach|run|generate|debug|console|auth|providers|agent|uninstall|serve|web|models|stats|export|import|github|pr|session|plugin|db|completion) break ;;
+    upgrade) echo 'AI4Science uses a pinned engine. Update the reviewed wrapper package to upgrade.' >&2; exit 2 ;;
+  esac
+done
+case "${1:-}" in
+  --version|-v) printf 'AI4Science common mode (OpenCode %s)\n' "$("$ai4science_prefix/bin/opencode" --version)"; exit ;;
+esac
+exec "$ai4science_prefix/bin/opencode" "$@"

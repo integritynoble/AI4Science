@@ -1,0 +1,40 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "username": "AI4Science",
+  "default_agent": "ai4science",
+  "agent": {
+    "ai4science": {
+      "description": "AI4Science research assistant using your own model",
+      "mode": "primary",
+      "prompt": "You are AI4Science, a research assistant. Distinguish evidence from hypotheses, state uncertainty, and make computational work reproducible."
+    }
+  },
+  "model": "own-llm/local",
+  "small_model": "own-llm/local",
+  "enabled_providers": ["own-llm"],
+  "provider": {
+    "own-llm": {
+      "name": "Your own LLM",
+      "npm": "@ai-sdk/openai-compatible",
+      "options": {
+        "baseURL": "{env:AI4SCIENCE_BASE_URL}",
+        "apiKey": "{env:AI4SCIENCE_API_KEY}"
+      },
+      "models": {
+        "local": {
+          "id": "{env:AI4SCIENCE_MODEL}",
+          "name": "Your local model",
+          "limit": {"context": 32768, "output": 4096}
+        }
+      }
+    }
+  },
+  "plugin": [],
+  "mcp": {"pwm": {"enabled": false}},
+  "share": "disabled",
+  "autoupdate": false,
+  "snapshot": false,
+  "lsp": false,
+  "formatter": false,
+  "permission": {"webfetch": "deny", "websearch": "deny"}
+}
