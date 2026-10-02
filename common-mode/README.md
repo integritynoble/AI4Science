@@ -40,6 +40,10 @@ $env:PATH = "$env:LOCALAPPDATA\AI4Science\Common Test\bin;$env:PATH"
 ai4science.cmd --version
 ```
 
+From MSYS2 or Git Bash, run the same `powershell.exe ... -File common-mode/install.ps1` command (`install.sh`
+refuses these shells and points here), then call `ai4science.cmd` through `cmd //c` or run
+`powershell.exe -NoProfile -File "$(cygpath -w PREFIX/bin/ai4science.ps1)" ...`.
+
 Default prefix: `%LOCALAPPDATA%\AI4Science\Common`. `ai4science.cmd` starts a
 fresh PowerShell process and forwards arguments. The execution-policy switch is
 limited to that process; this does not change machine policy or bypass enterprise
@@ -118,17 +122,46 @@ downloads, sharing and automatic upgrades.
 Inherited HTTP proxy variables are removed so requests use the configured model
 endpoint directly.
 
-By default the engine starts in `PREFIX/var/config/opencode`, its private global
-config directory. This is deliberate: the pinned engine's newer config loader
-reads project settings even when `OPENCODE_DISABLE_PROJECT_CONFIG=1`; it skips
-project discovery only when opened in its global config directory. A default
-session therefore does not use your shell's current project as its workspace.
-To explicitly allow the current project's settings and workspace, set
-`AI4SCIENCE_PROJECT_CONFIG=1` (`$env:AI4SCIENCE_PROJECT_CONFIG = '1'` on Windows).
-That opts in to project config, including its providers, plugins and MCP servers.
-An explicit project/directory argument to upstream commands likewise chooses an
-external workspace and may read its settings. Installation always forces the
-private directory, even when the runtime opt-in is set.
+Where a session works:
+
+| Launch | Session folder | Project settings |
+|---|---|---|
+| `ai4science ...` | `PREFIX/var/config/opencode` (private) | none |
+| `ai4science --workspace DIR ...` or `AI4SCIENCE_WORKSPACE=DIR` | `DIR` | off |
+| `AI4SCIENCE_PROJECT_CONFIG=1 ai4science ...` | the current folder | loaded (explicit trust) |
+
+Without either choice, the engine starts in its private config folder. That is the one place where the pinned
+engine's newer (v2) config loader reads no project files: that loader ignores `OPENCODE_DISABLE_PROJECT_CONFIG`.
+
+**Use `--workspace DIR` to work on a project.** The agent's files and tools are in `DIR`, and project settings stay
+off. A hostile workspace was tested: its `opencode.json`, `.opencode/` folder (with plugin), `AGENTS.md` and MCP
+command loaded no provider, model, instructions, plugin, agent or MCP server.
+
+One upstream behaviour remains. The v2 loader still **opens** `opencode.json` and `.opencode/opencode.json` from
+`DIR` up to the project root (the git root, or `/` outside git), and takes only `experimental.policies` (policy
+statements such as provider access) from them. If that matters, make `DIR` its own git root. The walk then stops
+at `DIR`.
+
+`AI4SCIENCE_PROJECT_CONFIG=1` opts in to the current folder's whole project config, including its providers,
+plugins and MCP servers. With `--workspace`, it applies to `DIR` instead. An explicit project/directory argument to
+upstream commands also chooses an external workspace and may read its settings. Installation always forces the
+private folder, even when the runtime opt-in is set.
+
+### Non-interactive runs and the server
+
+```sh
+ai4science --workspace /path/to/task run --format json 'Solve the task described in problem.json.' </dev/null
+AI4SCIENCE_SERVER_PASSWORD=... ai4science serve --port 4096   # HTTP basic auth, user "opencode"
+```
+
+- `run` reads a piped standard input as part of the message. Give it `</dev/null` (or `stdin=DEVNULL`) when
+  nothing is piped, or it waits.
+- The launcher clears every inherited `OPENCODE_*` variable, `OPENCODE_SERVER_PASSWORD` included. A server
+  password is passed only as `AI4SCIENCE_SERVER_PASSWORD` (and optionally `AI4SCIENCE_SERVER_USERNAME`), which
+  the agent's own commands do not inherit.
+- A server serves any folder a client names (`?directory=`). Project settings stay off for those folders too.
+- Settings for a whole run (permissions, the model, an MCP server) go in the install's private `opencode.json`.
+  This is how AI4SCI-08's two E4 arms differ: one copy of the install each.
 
 To opt in to providers or MCP servers, edit the private
 `PREFIX/var/config/opencode/opencode.json` explicitly; global OpenCode settings

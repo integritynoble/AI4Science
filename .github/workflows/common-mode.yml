@@ -1,0 +1,33 @@
+# AI4SCI-06 common mode: Linux checks of the OpenCode wrapper in common-mode/ (no real model calls).
+# Test only: nothing is built for release or published.
+name: common-mode
+on:
+  push:
+    branches: ["fleet/ai4sci-06-**"]
+    paths: ["common-mode/**", ".github/workflows/common-mode.yml"]
+  pull_request:
+    paths: ["common-mode/**", ".github/workflows/common-mode.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ai4science-common-ci
+          key: common-mode-${{ hashFiles('common-mode/artifacts.lock', 'common-mode/ripgrep.lock') }}
+      - name: All common-mode checks (pwsh is preinstalled on ubuntu-latest)
+        run: |
+          export AI4SCIENCE_CI_CACHE="$HOME/.cache/ai4science-common-ci"
+          sh common-mode/tests/run_linux_ci.sh "$RUNNER_TEMP/common-mode-ci"
+      - name: Keep summaries (no prompts or credentials in them)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: common-mode-summaries
+          path: ${{ runner.temp }}/common-mode-ci/*/summary.json
+          if-no-files-found: ignore

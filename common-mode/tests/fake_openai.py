@@ -7,17 +7,27 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 
-def serve(port=0, ready=None, log=None):
+def serve(port=0, ready=None, log=None, tool_call=None, sentinels=()):
+    """tool_call: optional {"name": ..., "arguments": {...}}. When the request offers that tool and the last
+    message is not a tool result, the reply is that one tool call; otherwise it is AI4SCIENCE_LOCAL_OK.
+    sentinels: strings whose presence in a request is logged (as booleans, never the prompt itself)."""
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_args):
             pass
 
         def do_POST(self):
-            body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            raw = self.rfile.read(int(self.headers["Content-Length"]))
+            body = json.loads(raw)
             if self.path != "/v1/chat/completions":
                 self.send_error(404)
                 return
-            record = {"path": self.path, "model": body.get("model"), "stream": body.get("stream", False)}
+            tools = sorted(t.get("function", {}).get("name", "") for t in body.get("tools") or [])
+            messages = body.get("messages") or []
+            after_tool = bool(messages) and messages[-1].get("role") == "tool"
+            call = tool_call if tool_call and tool_call["name"] in tools and not after_tool else None
+            record = {"path": self.path, "model": body.get("model"), "stream": body.get("stream", False),
+                      "tools": tools, "after_tool_result": after_tool, "replied_tool_call": bool(call),
+                      "sentinels_seen": [x for x in sentinels if x.encode() in raw]}
             if log:
                 with Path(log).open("a") as out:
                     out.write(json.dumps(record) + "\n")
@@ -26,7 +36,13 @@ def serve(port=0, ready=None, log=None):
                 self.send_response(200)
                 self.send_header("Content-Type", "text/event-stream")
                 self.end_headers()
-                for delta, finish in [({"role": "assistant", "content": "AI4SCIENCE_LOCAL_OK"}, None), ({}, "stop")]:
+                if call:
+                    steps = [({"role": "assistant", "tool_calls": [{"index": 0, "id": "call_ai4science_test", "type": "function",
+                               "function": {"name": call["name"], "arguments": json.dumps(call["arguments"])}}]}, None),
+                             ({}, "tool_calls")]
+                else:
+                    steps = [({"role": "assistant", "content": "AI4SCIENCE_LOCAL_OK"}, None), ({}, "stop")]
+                for delta, finish in steps:
                     event = {**base, "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": delta, "finish_reason": finish}]}
                     self.wfile.write(("data: " + json.dumps(event) + "\n\n").encode())
                 self.wfile.write(b"data: [DONE]\n\n")

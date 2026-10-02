@@ -76,9 +76,15 @@ try {
     $ai4scienceOldInstall = $env:AI4SCIENCE_INSTALL_DEPENDENCIES
     try {
         $env:AI4SCIENCE_INSTALL_DEPENDENCIES = '1'
+        # Windows PowerShell 5.1 turns a redirected native stderr line into a terminating error under 'Stop';
+        # the engine logs to stderr here, so only its exit code decides.
+        $ErrorActionPreference = 'Continue'
         & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File (Join-Path $ai4scienceBin 'ai4science.ps1') models own-llm 1> (Join-Path $Prefix 'var/install-models.txt') 2> (Join-Path $Prefix 'var/install.log')
-        if ($LASTEXITCODE -ne 0) { throw 'Dependency setup failed. Private diagnostic log: PREFIX/var/install.log.' }
+        $ai4scienceDependencyExit = $LASTEXITCODE
+        $ErrorActionPreference = 'Stop'
+        if ($ai4scienceDependencyExit -ne 0) { throw 'Dependency setup failed. Private diagnostic log: PREFIX/var/install.log.' }
     } finally {
+        $ErrorActionPreference = 'Stop'
         $env:AI4SCIENCE_INSTALL_DEPENDENCIES = $ai4scienceOldInstall
         [IO.File]::WriteAllText((Join-Path $ai4scienceConfig 'opencode.json'), $ai4scienceDefaults, $ai4scienceUtf8)
         Remove-Item -LiteralPath (Join-Path $ai4scienceConfig 'install-prime.mjs')

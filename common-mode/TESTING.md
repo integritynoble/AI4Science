@@ -4,6 +4,59 @@ Use a disposable prefix and test account. Never copy real OAuth tokens or API
 keys into fixtures. Python 3 is needed for these **developer test fixtures**, not
 for users installing/running AI4Science. No Windows/macOS result is claimed yet.
 
+## All Linux checks at once (CI)
+
+```sh
+sh common-mode/tests/run_linux_ci.sh "$(mktemp -d)"
+```
+
+It runs everything below that works on Linux, and makes no real model calls:
+- static checks (shell syntax, JSON, ASCII-only PowerShell/cmd files, lock formats, PowerShell parse);
+- the stub-engine launcher checks (`sh` and, with pwsh, `ai4science.ps1`);
+- install and first-session isolation;
+- workspace sessions;
+- smoke (`--trace` only when strace is installed);
+- `install.ps1` under pwsh.
+
+The pinned engine and ripgrep archives are downloaded once and checked against the committed locks. The GitHub
+workflow `.github/workflows/common-mode.yml` runs this script on `fleet/ai4sci-06-**` pushes and on pull requests
+that touch `common-mode/`.
+
+## Workspace sessions: the E4 common arm and the worker server (Linux)
+
+```sh
+python3 common-mode/tests/workspace_session.py --prefix PREFIX --output "$PWD/workspace-evidence"
+```
+
+A loopback fake model makes one scripted `write` tool call, then answers. The test checks:
+- `ai4science --workspace DIR run --format json` (stdin closed) writes the file in `DIR`;
+- `ai4science serve` with `AI4SCIENCE_SERVER_PASSWORD` answers 401 without the password and 200 with it, and a
+  session created for `?directory=DIR` writes there;
+- requests carry only the configured model ID, and no PWM tool is offered;
+- a hostile `opencode.json`, `.opencode/` plugin, `AGENTS.md` and MCP command in and above `DIR` start nothing,
+  contact nothing and never reach the model;
+- only the two result files change;
+- the install's private settings are unchanged.
+
+A launcher that turned project settings on for `--workspace` fails this test (checked).
+
+## install.ps1 and ai4science.ps1 under PowerShell 7 on Linux
+
+```sh
+python3 common-mode/tests/install_ps1_on_linux.py --output "$PWD/ps-evidence"
+```
+
+This runs the real `install.ps1` logic in a copied source tree, then a `--workspace` session through
+`ai4science.ps1`. In the copy, one Windows lock line points at the pinned Linux engine repacked as `opencode.exe`.
+`powershell.exe`, `tar.exe` and `ai4science.cmd` are shims.
+
+It does **not** replace the Windows procedure below. It cannot show:
+- Windows PowerShell 5.1's own behaviour, such as a redirected native stderr line becoming a terminating error
+  (`install.ps1` now runs that step under `Continue` and checks the exit code);
+- Windows paths;
+- `cmd.exe` argument forwarding;
+- the Windows engine binary.
+
 ## Install and first-session isolation regression (Linux)
 
 ```sh
@@ -149,9 +202,14 @@ paths still require the committed checksum; they are useful for fleet caching.
    `opencode.json` / `.opencode/opencode.json` with the same fake conflicts used
    by `smoke.py`. Check they remain unchanged, global config/auth are not read,
    and settings resolve only from the private prefix. Do not use a real token.
-5. Confirm no PWM/ledger files, `ai4science.cmd upgrade` returns 2 and the engine
+5. Workspace and server: start the fixture with a tool call, e.g.
+   `python -c "import sys; sys.path.insert(0, r'common-mode\tests'); from fake_openai import serve; s = serve(8000, tool_call={'name': 'write', 'arguments': {'filePath': r'C:\ws\result.txt', 'content': 'OK'}}); s.serve_forever()"`.
+   Then run `& "$Prefix\bin\ai4science.cmd" --workspace C:\ws run --format json 'Write result.txt.'` and check that
+   `C:\ws\result.txt` exists. Also run `serve` with `$env:AI4SCIENCE_SERVER_PASSWORD` and check that it answers 401
+   without the password.
+6. Confirm no PWM/ledger files, `ai4science.cmd upgrade` returns 2 and the engine
    hash stays unchanged. Verify installed OpenCode/ripgrep/npm license files.
    Repeat existing-prefix refusal and corrupted-archive rejection (Get-FileHash
    verifies the committed SHA). Inspect a failure log without posting credentials.
-6. Record OS/CPU, PowerShell version, commands, pin, output, trace summary and all
+7. Record OS/CPU, PowerShell version, commands, pin, output, trace summary and all
    failures. Script presence/static review is not a Windows execution result.

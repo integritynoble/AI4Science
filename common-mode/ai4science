@@ -2,6 +2,16 @@
 set -eu
 # Installed beside the native executable; no Node, git, or npm launcher.
 ai4science_prefix=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
+# Wrapper-owned option (before any engine arguments): the folder a session works in.
+ai4science_workspace=${AI4SCIENCE_WORKSPACE:-}
+if [ "${1:-}" = --workspace ]; then
+  [ "$#" -ge 2 ] && [ -n "$2" ] || { echo 'Usage: ai4science --workspace DIRECTORY [command] [arguments]' >&2; exit 2; }
+  ai4science_workspace=$2
+  shift 2
+fi
+if [ -n "$ai4science_workspace" ]; then
+  ai4science_workspace=$(CDPATH= cd -- "$ai4science_workspace" 2>/dev/null && pwd -P) || { echo 'AI4Science workspace is not a directory.' >&2; exit 2; }
+fi
 ai4science_config="$ai4science_prefix/var/config/opencode"
 umask 077
 mkdir -p "$ai4science_config" "$ai4science_prefix/var/home" "$ai4science_prefix/var/managed"
@@ -56,14 +66,27 @@ fi
 export AI4SCIENCE_BASE_URL=${AI4SCIENCE_BASE_URL:-http://127.0.0.1:8000/v1}
 export AI4SCIENCE_API_KEY=${AI4SCIENCE_API_KEY:-local-no-key}
 export AI4SCIENCE_MODEL=${AI4SCIENCE_MODEL:-local}
-# The pinned engine's v2 loader ignores DISABLE_PROJECT_CONFIG. Its global
-# config directory is the only location that skips v2 project discovery.
-# Current-project settings/tools require an explicit, wrapper-owned opt-in.
-if [ "${AI4SCIENCE_PROJECT_CONFIG:-0}" = 1 ]; then
+# `serve` is password-protected only through our own variable (all OPENCODE_* were cleared above).
+if [ -n "${AI4SCIENCE_SERVER_PASSWORD:-}" ]; then
+  export OPENCODE_SERVER_PASSWORD="$AI4SCIENCE_SERVER_PASSWORD"
+  export OPENCODE_SERVER_USERNAME="${AI4SCIENCE_SERVER_USERNAME:-opencode}"
+fi
+unset AI4SCIENCE_SERVER_PASSWORD
+# Where the session works. Project settings stay off unless AI4SCIENCE_PROJECT_CONFIG=1.
+# - --workspace DIR: the session works in DIR. The pinned engine's v2 loader still opens
+#   opencode.json/.opencode files from DIR up to the project root, for experimental.policies only;
+#   providers, models, instructions, plugins, agents and MCP from them are not loaded.
+# - AI4SCIENCE_PROJECT_CONFIG=1: the current folder, with its settings (explicit trust).
+# - neither: the private config folder, the one place the v2 loader reads no project files.
+if [ -n "$ai4science_workspace" ]; then
+  cd -- "$ai4science_workspace"
+  [ "${AI4SCIENCE_PROJECT_CONFIG:-0}" != 1 ] || export OPENCODE_DISABLE_PROJECT_CONFIG=0
+elif [ "${AI4SCIENCE_PROJECT_CONFIG:-0}" = 1 ]; then
   export OPENCODE_DISABLE_PROJECT_CONFIG=0
 else
   cd -- "$ai4science_config"
 fi
+export PWD="$(pwd -P)"
 for ai4science_arg do
   case "$ai4science_arg" in
     # Stop at another command so a run prompt can literally be "upgrade".

@@ -10,7 +10,12 @@ fi
 case "$ai4science_prefix" in /*) ;; *) ai4science_prefix="$PWD/$ai4science_prefix" ;; esac
 # Do not replace an existing installation, user settings, or another ai4science.
 [ ! -e "$ai4science_prefix" ] || { echo 'Prefix already exists; choose an empty installation prefix.' >&2; exit 1; }
-case "$(uname -s)" in Linux) ai4science_os=linux ;; Darwin) ai4science_os=darwin ;; *) echo 'Supported systems: Linux and macOS.' >&2; exit 1 ;; esac
+case "$(uname -s)" in
+  Linux) ai4science_os=linux ;;
+  Darwin) ai4science_os=darwin ;;
+  MINGW*|MSYS*|CYGWIN*) echo 'On Windows (also from MSYS2 or Git Bash) use install.ps1: powershell.exe -NoProfile -ExecutionPolicy Bypass -File common-mode/install.ps1' >&2; exit 1 ;;
+  *) echo 'Supported systems: Linux and macOS (Windows: install.ps1).' >&2; exit 1 ;;
+esac
 case "$(uname -m)" in x86_64|amd64) ai4science_arch=x64 ;; aarch64|arm64) ai4science_arch=arm64 ;; *) echo 'Supported CPUs: x64 and arm64.' >&2; exit 1 ;; esac
 ai4science_package="opencode-$ai4science_os-$ai4science_arch"
 [ "$ai4science_arch" != x64 ] || ai4science_package="$ai4science_package-baseline"
