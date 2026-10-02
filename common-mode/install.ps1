@@ -15,7 +15,10 @@ $ai4scienceParts = $ai4scienceRecord.Split(' ')
 $ai4scienceStage = Join-Path ([IO.Path]::GetTempPath()) ('ai4science-install-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $ai4scienceStage | Out-Null
 $ai4scienceArchive = Join-Path $ai4scienceStage 'engine.tgz'
+$ai4scienceOldProjectConfig = $env:AI4SCIENCE_PROJECT_CONFIG
 try {
+    # Installation never imports project settings, even with a runtime opt-in.
+    $env:AI4SCIENCE_PROJECT_CONFIG = '0'
     if ($env:AI4SCIENCE_ARTIFACT) {
         Copy-Item -LiteralPath $env:AI4SCIENCE_ARTIFACT -Destination $ai4scienceArchive
     } else {
@@ -67,8 +70,9 @@ try {
     $ai4sciencePrime = $ai4scienceDefaults.Replace('"plugin": []', '"plugin": ["./install-prime.mjs"]')
     [IO.File]::WriteAllText((Join-Path $ai4scienceConfig 'opencode.json'), $ai4sciencePrime, $ai4scienceUtf8)
     [IO.File]::WriteAllText((Join-Path $ai4scienceConfig 'install-prime.mjs'), 'export default async () => ({})', $ai4scienceUtf8)
-    $ai4scienceVersion = & (Join-Path $ai4scienceBin 'opencode.exe') --version
-    if ($LASTEXITCODE -ne 0 -or $ai4scienceVersion -ne (Get-Content -Raw (Join-Path $ai4scienceSource 'opencode.version')).Trim()) { throw 'Unexpected engine version.' }
+    # Even the version probe must run in the isolated wrapper process.
+    $ai4scienceVersion = & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File (Join-Path $ai4scienceBin 'ai4science.ps1') --version
+    if ($LASTEXITCODE -ne 0 -or $ai4scienceVersion -ne "AI4Science common mode (OpenCode $((Get-Content -Raw (Join-Path $ai4scienceSource 'opencode.version')).Trim()))") { throw 'Unexpected engine version.' }
     $ai4scienceOldInstall = $env:AI4SCIENCE_INSTALL_DEPENDENCIES
     try {
         $env:AI4SCIENCE_INSTALL_DEPENDENCIES = '1'
@@ -84,6 +88,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Installed wrapper failed its version check.' }
     Write-Output "Installed. Add this directory to PATH: $ai4scienceBin"
 } finally {
+    $env:AI4SCIENCE_PROJECT_CONFIG = $ai4scienceOldProjectConfig
     # Only remove the unique temporary directory created by this installer.
     Remove-Item -LiteralPath $ai4scienceStage -Recurse
 }

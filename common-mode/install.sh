@@ -83,9 +83,10 @@ cp "$ai4science_source/THIRD_PARTY_NOTICES.md" "$ai4science_source/README.md" "$
 : > "$ai4science_prefix/empty-global.npmrc"
 # The native runtime includes its package manager. Prime its config dependency
 # during install (network allowed here), then require offline npm at runtime.
-ai4science_version=$("$ai4science_prefix/bin/opencode" --version)
-[ "$ai4science_version" = "$(cat "$ai4science_source/opencode.version")" ] || { echo 'Unexpected engine version.' >&2; exit 1; }
-if ! AI4SCIENCE_INSTALL_DEPENDENCIES=1 "$ai4science_prefix/bin/ai4science" models own-llm > "$ai4science_prefix/var/install-models.txt" 2> "$ai4science_prefix/var/install.log"; then
+# Every engine invocation, even --version, must use the isolated launcher.
+ai4science_version=$(AI4SCIENCE_PROJECT_CONFIG=0 "$ai4science_prefix/bin/ai4science" --version)
+[ "$ai4science_version" = "AI4Science common mode (OpenCode $(cat "$ai4science_source/opencode.version"))" ] || { echo 'Unexpected engine version.' >&2; exit 1; }
+if ! AI4SCIENCE_PROJECT_CONFIG=0 AI4SCIENCE_INSTALL_DEPENDENCIES=1 "$ai4science_prefix/bin/ai4science" models own-llm > "$ai4science_prefix/var/install-models.txt" 2> "$ai4science_prefix/var/install.log"; then
   cp "$ai4science_source/defaults.json" "$ai4science_prefix/var/config/opencode/opencode.json"
   find "$ai4science_prefix/var/config/opencode/install-prime.mjs" -type f -delete
   echo 'Dependency setup failed. Private diagnostic log is in PREFIX/var/install.log.' >&2; exit 1
@@ -93,5 +94,5 @@ fi
 cp "$ai4science_source/defaults.json" "$ai4science_prefix/var/config/opencode/opencode.json"
 find "$ai4science_prefix/var/config/opencode/install-prime.mjs" -type f -delete
 [ -d "$ai4science_prefix/var/config/opencode/node_modules/@opencode-ai/plugin" ] || { echo 'Config dependency setup did not finish; see PREFIX/var/install.log.' >&2; exit 1; }
-"$ai4science_prefix/bin/ai4science" --version
+AI4SCIENCE_PROJECT_CONFIG=0 "$ai4science_prefix/bin/ai4science" --version
 printf 'Installed. Add this directory to PATH: %s/bin\n' "$ai4science_prefix"

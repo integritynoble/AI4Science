@@ -27,15 +27,6 @@ $ai4scienceValues = @{
     npm_config_cache = (Join-Path $ai4sciencePrefix 'var/npm-cache')
     npm_config_registry = 'https://registry.npmjs.org'
     npm_config_offline = 'true'
-    OPENCODE_CONFIG_CONTENT = $null
-    OPENCODE_DB = $null
-    OPENCODE_MODELS_PATH = $null
-    OPENCODE_MODELS_URL = $null
-    OPENCODE_PERMISSION = $null
-    OPENCODE_TUI_CONFIG = $null
-    OPENCODE_AUTO_SHARE = $null
-    OPENCODE_WORKSPACE_ID = $null
-    OPENCODE_CONSOLE_TOKEN = $null
     OTEL_EXPORTER_OTLP_ENDPOINT = $null
     OTEL_EXPORTER_OTLP_HEADERS = $null
     HTTP_PROXY = $null
@@ -46,8 +37,16 @@ if ($env:AI4SCIENCE_INSTALL_DEPENDENCIES -eq '1') { $ai4scienceValues.npm_config
 $ai4scienceValues.AI4SCIENCE_BASE_URL = if ($env:AI4SCIENCE_BASE_URL) { $env:AI4SCIENCE_BASE_URL } else { 'http://127.0.0.1:8000/v1' }
 $ai4scienceValues.AI4SCIENCE_API_KEY = if ($env:AI4SCIENCE_API_KEY) { $env:AI4SCIENCE_API_KEY } else { 'local-no-key' }
 $ai4scienceValues.AI4SCIENCE_MODEL = if ($env:AI4SCIENCE_MODEL) { $env:AI4SCIENCE_MODEL } else { 'local' }
+# Clear every inherited upstream variable, then apply our private values.
+# Save them with the other overrides so invoking PowerShell callers are restored.
+foreach ($ai4scienceName in [Environment]::GetEnvironmentVariables('Process').Keys) {
+    if ($ai4scienceName -like 'OPENCODE_*' -and !$ai4scienceValues.ContainsKey($ai4scienceName)) {
+        $ai4scienceValues[$ai4scienceName] = $null
+    }
+}
 $ai4sciencePrevious = @{}
 $ai4scienceExit = 1
+$ai4sciencePreviousLocation = Get-Location
 try {
     foreach ($ai4scienceName in $ai4scienceValues.Keys) {
         $ai4sciencePrevious[$ai4scienceName] = [Environment]::GetEnvironmentVariable($ai4scienceName, 'Process')
@@ -55,6 +54,13 @@ try {
     }
     foreach ($ai4scienceDir in @($ai4scienceConfig, $ai4scienceValues.OPENCODE_TEST_HOME, $ai4scienceValues.OPENCODE_TEST_MANAGED_CONFIG_DIR)) {
         New-Item -ItemType Directory -Force -Path $ai4scienceDir | Out-Null
+    }
+    # The v2 loader ignores DISABLE_PROJECT_CONFIG; only its global config
+    # directory skips project discovery. Project settings require explicit opt-in.
+    if ($env:AI4SCIENCE_PROJECT_CONFIG -eq '1') {
+        $env:OPENCODE_DISABLE_PROJECT_CONFIG = '0'
+    } else {
+        Set-Location -LiteralPath $ai4scienceConfig
     }
     $ai4scienceEngine = Join-Path $ai4sciencePrefix 'bin/opencode.exe'
     $ai4scienceUpgrade = $false
@@ -74,6 +80,7 @@ try {
         $ai4scienceExit = $LASTEXITCODE
     }
 } finally {
+    Set-Location -LiteralPath $ai4sciencePreviousLocation.Path
     foreach ($ai4scienceName in $ai4sciencePrevious.Keys) {
         [Environment]::SetEnvironmentVariable($ai4scienceName, $ai4sciencePrevious[$ai4scienceName], 'Process')
     }

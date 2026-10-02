@@ -4,6 +4,34 @@ Use a disposable prefix and test account. Never copy real OAuth tokens or API
 keys into fixtures. Python 3 is needed for these **developer test fixtures**, not
 for users installing/running AI4Science. No Windows/macOS result is claimed yet.
 
+## Install and first-session isolation regression (Linux)
+
+```sh
+python3 common-mode/tests/install_isolation.py --output "$PWD/isolation-evidence"
+```
+
+This installs into a fresh prefix containing spaces with a synthetic HOME,
+XDG roots, hostile global/home/project configs, fake auth/state/cache, and
+inherited `OPENCODE_*` overrides. A runtime project opt-in is also planted
+during installation to verify the installer forces private mode. The hostile config supplies a provider and an
+enabled local MCP command that would leave a marker. The very first session
+uses the loopback fake chat-completions server; no real model is called.
+Linux inotify is required and self-checked. Each phase must have zero reads,
+opens, writes or creation events on protected global paths/project config
+files, unchanged fixture trees, no hostile endpoint requests or MCP marker,
+and only the private provider/disabled PWM slot in resolved settings.
+Install must not call the model fixture. This does not trace all network traffic.
+`--engine-archive` and `--ripgrep-archive` reuse local checksum-verified archives;
+`--source` allows running the same regression against an exported baseline.
+
+```sh
+python3 common-mode/tests/launcher_environment.py --output "$PWD/environment-evidence"
+```
+
+The stub-engine check verifies removal of known and future upstream flags,
+preservation of explicit model settings, the private default directory and
+current-directory project opt-in, and propagation of a failed version probe.
+
 ## Automated Linux proof (abraham now, integrity-wsl later)
 
 From the repository root:
@@ -23,7 +51,8 @@ from runtime PATH, then checks the version, resolved config, model list and JSON
 session output. It rejects even failed IPv4/IPv6 network attempts to anything
 except the fixture's dynamically assigned `127.0.0.1` port, including DNS. File
 traces must not read global OpenCode config/auth; fixture hashes must stay intact.
-Project files may be indexed as workspace data but their settings must not load.
+Default sessions start in the private directory; the external project configs
+must not load. Explicit project opt-in is tested separately with the stub engine.
 A successful session contains `AI4SCIENCE_LOCAL_OK`, all request models match the
 chosen ID, and there are no PWM/ledger files. The title helper can make a second
 request to the same server; that is expected.
@@ -38,7 +67,7 @@ To prove **installation** also needs no Node/npm/git, create a temporary PATH
 with symlinks to the OS shell utilities used by the installer (`sh`, `dirname`,
 `uname`, `awk`, `grep`, `ldd`, `mktemp`, `cp`, `curl` or `wget`, `sha512sum`,
 `sha256sum` or `shasum`, `tar`, `gzip`, `mkdir`, `chmod`, `cat`, `find`, `basename`,
-`sed`, `id`). Run the installer with that PATH and an otherwise empty environment,
+`sed`, `id`, `env`). Run the installer with that PATH and an otherwise empty environment,
 then run the harness against the resulting prefix. Do not add node/npm/git to it.
 
 Negative checks: provide a deliberately altered engine archive using

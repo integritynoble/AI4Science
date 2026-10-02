@@ -13,6 +13,15 @@ if [ "$(uname -s)" = Darwin ]; then
     fi
   done
 fi
+# Discard the entire inherited upstream namespace, including future flags.
+# Only the explicit AI4SCIENCE_* interface and private config are inputs.
+# Separate assignments propagate utility failures before the engine can start.
+ai4science_env_names=$(env)
+ai4science_env_names=$(printf '%s\n' "$ai4science_env_names" | sed -n 's/^\(OPENCODE_[A-Za-z0-9_]*\)=.*/\1/p')
+for ai4science_env in $ai4science_env_names; do
+  unset "$ai4science_env"
+done
+unset ai4science_env_names
 # The dedicated XDG roots isolate config AND stored auth, sessions, and caches.
 export XDG_CONFIG_HOME="$ai4science_prefix/var/config"
 export XDG_DATA_HOME="$ai4science_prefix/var/data"
@@ -34,7 +43,6 @@ export OPENCODE_DISABLE_FFF=1
 export OPENCODE_DISABLE_TERMINAL_TITLE=1
 export OPENCODE_EXPERIMENTAL=0
 export OTEL_SDK_DISABLED=true
-unset OPENCODE_CONFIG_CONTENT OPENCODE_DB OPENCODE_MODELS_PATH OPENCODE_MODELS_URL OPENCODE_PERMISSION OPENCODE_TUI_CONFIG OPENCODE_AUTO_SHARE OPENCODE_WORKSPACE_ID OPENCODE_CONSOLE_TOKEN
 unset OTEL_EXPORTER_OTLP_ENDPOINT OTEL_EXPORTER_OTLP_HEADERS
 unset HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy
 export npm_config_userconfig="$ai4science_prefix/empty-user.npmrc"
@@ -48,6 +56,14 @@ fi
 export AI4SCIENCE_BASE_URL=${AI4SCIENCE_BASE_URL:-http://127.0.0.1:8000/v1}
 export AI4SCIENCE_API_KEY=${AI4SCIENCE_API_KEY:-local-no-key}
 export AI4SCIENCE_MODEL=${AI4SCIENCE_MODEL:-local}
+# The pinned engine's v2 loader ignores DISABLE_PROJECT_CONFIG. Its global
+# config directory is the only location that skips v2 project discovery.
+# Current-project settings/tools require an explicit, wrapper-owned opt-in.
+if [ "${AI4SCIENCE_PROJECT_CONFIG:-0}" = 1 ]; then
+  export OPENCODE_DISABLE_PROJECT_CONFIG=0
+else
+  cd -- "$ai4science_config"
+fi
 for ai4science_arg do
   case "$ai4science_arg" in
     # Stop at another command so a run prompt can literally be "upgrade".
@@ -56,6 +72,6 @@ for ai4science_arg do
   esac
 done
 case "${1:-}" in
-  --version|-v) printf 'AI4Science common mode (OpenCode %s)\n' "$("$ai4science_prefix/bin/opencode" --version)"; exit ;;
+  --version|-v) ai4science_version=$("$ai4science_prefix/bin/opencode" --version); printf 'AI4Science common mode (OpenCode %s)\n' "$ai4science_version"; exit ;;
 esac
 exec "$ai4science_prefix/bin/opencode" "$@"

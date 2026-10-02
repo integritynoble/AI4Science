@@ -51,7 +51,7 @@ def main():
     # A PATH with only the wrapper's shell utilities: prove no Node/npm/git needed.
     path = out / "path"
     path.mkdir()
-    for command in ["sh", "dirname", "uname", "mkdir", "id"]:
+    for command in ["sh", "dirname", "uname", "mkdir", "id", "env", "sed"]:
         source = shutil.which(command)
         if source:
             (path / command).symlink_to(source)

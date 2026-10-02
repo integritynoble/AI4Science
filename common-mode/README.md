@@ -110,13 +110,33 @@ Config, sessions, stored auth, cache and state live under the installation's
 `var/` tree. The wrapper sets **all four XDG roots**, its own config directory and
 file, a private OpenCode home-discovery path, and a private managed-config path.
 Setting only `OPENCODE_CONFIG_DIR` would still load other upstream global files.
-It clears inherited inline config, database, model-catalog and TUI overrides and
-disables project config discovery, external skills, Claude settings, login
-plugins, model-catalog fetching, LSP downloads, sharing and automatic upgrades.
+Every installer engine check uses this same wrapper environment. The wrapper
+clears **all inherited `OPENCODE_*` variables** before setting its private values,
+including unknown/future upstream flags. It disables project config discovery,
+external skills, Claude settings, login plugins, model-catalog fetching, LSP
+downloads, sharing and automatic upgrades.
 Inherited HTTP proxy variables are removed so requests use the configured model
-endpoint directly. No PWM proxy or ledger is installed. Ordinary project files
-can still be indexed/read as workspace data, and the agent can use authorized
-local tools. This wrapper is configuration isolation, not an OS network sandbox.
+endpoint directly.
+
+By default the engine starts in `PREFIX/var/config/opencode`, its private global
+config directory. This is deliberate: the pinned engine's newer config loader
+reads project settings even when `OPENCODE_DISABLE_PROJECT_CONFIG=1`; it skips
+project discovery only when opened in its global config directory. A default
+session therefore does not use your shell's current project as its workspace.
+To explicitly allow the current project's settings and workspace, set
+`AI4SCIENCE_PROJECT_CONFIG=1` (`$env:AI4SCIENCE_PROJECT_CONFIG = '1'` on Windows).
+That opts in to project config, including its providers, plugins and MCP servers.
+An explicit project/directory argument to upstream commands likewise chooses an
+external workspace and may read its settings. Installation always forces the
+private directory, even when the runtime opt-in is set.
+
+To opt in to providers or MCP servers, edit the private
+`PREFIX/var/config/opencode/opencode.json` explicitly; global OpenCode settings
+are never imported automatically. Project settings require the opt-in above.
+No PWM proxy or ledger is installed.
+In an explicitly selected workspace, ordinary project files can be indexed/read
+as workspace data, and the agent can use authorized local tools. This wrapper is
+configuration isolation, not an OS network sandbox.
 
 OpenCode's managed macOS preferences cannot be disabled through a supported
 setting. The POSIX launcher refuses Macs with an `ai.opencode.managed` profile
