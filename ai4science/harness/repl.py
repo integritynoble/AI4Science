@@ -1134,8 +1134,8 @@ def run_common_repl(
     # receipt, and this session's own receipts are listable by session.
     os.environ["AI4SCIENCE_SESSION_ID"] = _sid
 
-    # A durable session budget (A03): AI4SCIENCE_SESSION_CAP_PWM=<pwm> caps this
-    # session and every sub-agent it dispatches; the ledger lives beside the
+    # AI4SCIENCE_SESSION_CAP_PWM is a child-dispatch accounting limit, not a
+    # spending cap: main/helper/provider/plugin charges are outside it. The
     # transcript and survives a kill. Unset and no ledger on disk → uncapped,
     # exactly as before. A resume reopens the ledger; it cannot change the cap.
     from ai4science.harness.runtime import budget as _budget_mod
@@ -1148,7 +1148,7 @@ def run_common_repl(
             persistence.sessions_dir(), _sid,
             float(_cap_env) if _cap_env not in (None, "") else None)
     except Exception as _bexc:
-        print(f"[harness] session budget unavailable: {_bexc}", flush=True)
+        raise _budget_mod.BudgetError(f"session budget unavailable; refusing service: {_bexc}") from _bexc
 
     def _make_wrapped_meter(b: str, m: str):
         """Return a meter that accumulates into turn_tokens AND calls real meter."""
@@ -1664,6 +1664,18 @@ def run_common_repl(
                     print(f"[harness] {e}", flush=True)
                 continue
 
+            if cmd == "reconcile":
+                try:
+                    reconcile = getattr(session.adapter, "reconcile_pending", None)
+                    if reconcile is None:
+                        print("[harness] /reconcile requires the PWM proxy route", flush=True)
+                    else:
+                        records = reconcile()
+                        print(f"[harness] platform reconciliation: {records}", flush=True)
+                except Exception as e:
+                    print(f"[harness] reconciliation failed; dispatch remains unresolved: {e}", flush=True)
+                continue
+
             # /cost needs the live session's ledger — handle inline.
             if cmd == "cost":
                 try:
@@ -1672,9 +1684,15 @@ def run_common_repl(
                     print(f"[harness] cost: {summary}", flush=True)
                 except Exception as e:
                     print(f"[harness] cost unavailable: {e}", flush=True)
+                import json as _json
+                for _rp in persistence.sessions_dir().glob("proxy-*.json"):
+                    for _rr in _json.loads(_rp.read_text()):
+                        if _rr["session"] == _sid:
+                            print(f"[harness] platform request {_rr['request_id']}: "
+                                  f"{_rr['status']}, receipt={_rr['receipt']}", flush=True)
                 if _budget is not None:
                     _snap = _budget.snapshot()
-                    print(f"[harness] session budget: {_snap['used_pwm']:g} of "
+                    print(f"[harness] child accounting ledger (not a spending cap): {_snap['used_pwm']:g} of "
                           f"{_snap['cap_pwm']:g} PWM in use or unresolved "
                           f"({_snap['remaining_pwm']:g} remaining)", flush=True)
                     for a in _snap["actions"]:
@@ -1837,8 +1855,9 @@ def run_common_repl(
             print("\n[harness] turn stopped — type a new message.", flush=True)
             try:
                 persistence.save(_sid, workspace, session.history)
-            except Exception:
-                pass
+            except Exception as save_exc:
+                print(f"[harness] interrupted-turn checkpoint failed: {save_exc}; "
+                      "reconcile tool effects before resuming", flush=True)
         except Exception as exc:
             # Walk the orchestration chain automatically: Opus 4.8 → GPT-5.5 →
             # Gemini (see routing.AGENT_CHAINS). If the primary model is
@@ -1846,7 +1865,10 @@ def run_common_repl(
             # without interrupting the user.
             from ai4science.harness.adapters.factory import harness_available
             last = exc
-            rest = [(b, m) for b, m in routing.AGENT_CHAINS.get("orchestration", [])
+            from ai4science.harness.loop import CheckpointError
+            unsafe_retry = (isinstance(exc, (CheckpointError, _budget_mod.BudgetError))
+                            or getattr(session.adapter, "bills_server_side", False))
+            rest = [] if unsafe_retry else [(b, m) for b, m in routing.AGENT_CHAINS.get("orchestration", [])
                     if (b, m) != (active_backend, active_model) and harness_available(b)]
             served = False
             for nb, nm in rest:
@@ -1865,8 +1887,13 @@ def run_common_repl(
                 except Exception as e2:
                     last = e2
             if not served:
-                print(f"\n[harness] all models are temporarily unavailable "
-                      f"({_clean_turn_error(last)}). Retry in a moment.", flush=True)
+                if unsafe_retry:
+                    print(f"\n[harness] turn stopped ({_clean_turn_error(last)}). "
+                          "Reconcile saved requests with /cost and /reconcile, and "
+                          "completed tool effects, before resuming.", flush=True)
+                else:
+                    print(f"\n[harness] all models are temporarily unavailable "
+                          f"({_clean_turn_error(last)}). Retry in a moment.", flush=True)
         finally:
             if _prev_sigint is not None:
                 try:

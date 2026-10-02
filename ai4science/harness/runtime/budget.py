@@ -1,6 +1,8 @@
-"""A durable session budget: one cap, shared by a session and everything it
-dispatches, that survives the process (ticket A03; the demo's controller,
-brought into the runtime).
+"""A durable child-dispatch accounting ledger, NOT a session spending cap.
+
+Main turns, compaction, recap, plugins and provider/server charges are not
+bounded by this ledger. Reservations are estimates, not enforced provider
+limits; reconciliation can detect an overrun only after service.
 
 Every dispatch is an *action* with an id. It is reserved before it runs and
 counts against the cap from that moment; it is reconciled afterwards as
@@ -15,6 +17,8 @@ the disk. Amounts are micro-PWM integers; floats never enter the arithmetic.
 """
 from __future__ import annotations
 
+import os
+import secrets
 import sqlite3
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -44,6 +48,9 @@ class BudgetError(RuntimeError):
 class Budget:
     def __init__(self, path, cap_pwm=None):
         self.path = Path(path)
+        fd = os.open(self.path, os.O_CREAT | os.O_RDWR, 0o600)
+        os.close(fd)
+        self.path.chmod(0o600)
         self.db = sqlite3.connect(str(self.path), isolation_level=None)
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("PRAGMA synchronous=FULL")
@@ -97,8 +104,7 @@ class Budget:
                                 "ORDER BY rowid")]}
 
     def next_id(self, prefix: str) -> str:
-        n = self.db.execute("SELECT COUNT(*) FROM actions").fetchone()[0]
-        return f"{prefix}:{n + 1}"
+        return f"{prefix}:{secrets.token_hex(12)}"
 
     # ── writing ────────────────────────────────────────────────────────
     def reserve(self, action_id: str, estimate_pwm, note: str = "") -> None:
@@ -127,7 +133,7 @@ class Budget:
         actual = None if actual_pwm is None else micro(actual_pwm)
         self.db.execute("BEGIN IMMEDIATE")
         try:
-            row = self.db.execute("SELECT status, actual FROM actions WHERE id=?",
+            row = self.db.execute("SELECT status, actual, estimate FROM actions WHERE id=?",
                                   (action_id,)).fetchone()
             if row is None:
                 raise BudgetError(f"unknown action id {action_id!r}")
@@ -139,11 +145,20 @@ class Budget:
                 return                      # idempotent replay
             if row[0] != "unknown":
                 raise BudgetError(f"action {action_id!r} is {row[0]}; cannot mark it {target}")
+            prior_cost = row[1] if row[1] is not None else row[2]
+            if delivered and actual is not None and self.used() - prior_cost + actual > self.cap:
+                # Service already happened. Keep the measured overrun instead
+                # of hiding it behind the original estimate, and stop further
+                # reservations until the owner reconciles this unknown action.
+                self.db.execute("UPDATE actions SET actual=? WHERE id=?", (actual, action_id))
+                self.db.execute("COMMIT")
+                raise BudgetError("actual cost exceeds the ledger cap; action remains unknown for reconciliation")
             self.db.execute("UPDATE actions SET status=?, actual=? WHERE id=?",
                             (target, actual if delivered else None, action_id))
             self.db.execute("COMMIT")
         except Exception:
-            self.db.execute("ROLLBACK")
+            if self.db.in_transaction:
+                self.db.execute("ROLLBACK")
             raise
 
     def close(self) -> None:

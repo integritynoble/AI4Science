@@ -11,6 +11,7 @@ Two routes:
 
 Resolution order (first match wins):
 
+  0. ``AI4SCIENCE_PWM_GATE`` explicitly off → own (billing opt-out)
   1. ``AI4SCIENCE_FUNDING=own|pwm``           env, for CI and scripts
   2. ``AI4SCIENCE_PWM_GATE`` truthy             the legacy "bill me" switch → pwm
   3. ``user.json`` ``"funding": "own"|"pwm"``   ``ai4science funding own|pwm``,
@@ -76,7 +77,8 @@ def _own_credential_present() -> bool:
         pass
     try:
         from ai4science.harness.adapters import creds
-        return any(creds.available(b) for b in user_cfg.PROVIDERS)
+        from ai4science.harness.adapters.factory import _local_available
+        return any(_local_available(b) for b in user_cfg.PROVIDERS)
     except Exception:
         return False
 
@@ -93,6 +95,8 @@ def _pwm_token_present() -> bool:
 
 def resolve() -> Route:
     """The route in force right now. Pure read; nothing is written."""
+    if _falsy(os.environ.get("AI4SCIENCE_PWM_GATE")):
+        return Route(OWN, "AI4SCIENCE_PWM_GATE disables PWM billing", True)
     env = (os.environ.get("AI4SCIENCE_FUNDING") or "").strip().lower()
     if env in ROUTES:
         return Route(env, f"AI4SCIENCE_FUNDING={env}", True)

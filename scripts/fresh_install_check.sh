@@ -41,7 +41,7 @@ grep -q "Not logged in" "$WORK/whoami.txt" || { echo "FAIL: whoami on a fresh HO
 
 echo "[4/4] a chat session opens and exits with nothing configured"
 mkdir -p "$WORK/proj"; cd "$WORK/proj"
-printf '/exit\n' | timeout 120 "$BIN" chat --mode ai4sci 2>&1 | tee "$WORK/chat.txt" || true
+printf '/exit\n' | timeout 120 "$BIN" chat --mode ai4sci 2>&1 | tee "$WORK/chat.txt" || { code=$?; echo "FAIL: chat exited $code (including timeout)"; exit "$code"; }
 grep -q "ai4science" "$WORK/chat.txt" || { echo "FAIL: banner missing"; exit 1; }
 grep -q "0 PWM" "$WORK/chat.txt" || { echo "FAIL: banner does not show the free route"; exit 1; }
 grep -qi "traceback" "$WORK/chat.txt" && { echo "FAIL: traceback on first run"; exit 1; }

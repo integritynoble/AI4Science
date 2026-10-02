@@ -55,7 +55,7 @@ def test_save_is_atomic_no_partial_file_on_failure(tmp_path, monkeypatch):
     assert [m.content for m in persistence.load("s")] == ["first"]     # the old file, intact
 
 
-def test_load_skips_torn_lines_and_drops_dangling_tool_calls(tmp_path, monkeypatch):
+def test_load_skips_torn_lines_and_marks_unresolved_tool_calls(tmp_path, monkeypatch):
     monkeypatch.setattr(persistence, "sessions_dir", lambda: tmp_path)
     ws = tmp_path / "ws"
     persistence.save("t", ws, [
@@ -69,8 +69,10 @@ def test_load_skips_torn_lines_and_drops_dangling_tool_calls(tmp_path, monkeypat
     p = tmp_path / "t.jsonl"
     p.write_text(p.read_text() + '{"role": "assistant", "content": "torn')
     hist = persistence.load("t")
-    assert [m.role for m in hist] == ["user", "assistant", "tool"]
-    assert hist[-1].tool_call_id == "c1"
+    assert [m.role for m in hist] == ["user", "assistant", "tool", "assistant", "tool", "tool"]
+    assert hist[-2].tool_call_id == "c2"
+    assert hist[-1].tool_call_id == "c3"
+    assert "unresolved after recovery" in hist[-1].content
 
 
 def test_unreadable_index_does_not_break_save_or_load(tmp_path, monkeypatch):
@@ -80,3 +82,17 @@ def test_unreadable_index_does_not_break_save_or_load(tmp_path, monkeypatch):
     persistence.save("u", ws, [Message(role="user", content="x")])
     assert persistence.most_recent(ws) == "u"
     assert [m.content for m in persistence.load("u")] == ["x"]
+
+
+def test_private_files_and_fsync_failure_propagates(tmp_path, monkeypatch):
+    import os
+    import pytest
+    monkeypatch.setattr(persistence, "sessions_dir", lambda: tmp_path)
+    persistence.save("private", tmp_path, [Message(role="user", content="secret")])
+    if os.name == "posix":
+        assert (tmp_path / "private.jsonl").stat().st_mode & 0o777 == 0o600
+        assert (tmp_path / "index.json").stat().st_mode & 0o777 == 0o600
+    monkeypatch.setattr(os, "fsync", lambda fd: (_ for _ in ()).throw(OSError("disk")))
+    with pytest.raises(OSError, match="disk"):
+        persistence.save("private", tmp_path, [Message(role="user", content="changed")])
+    assert persistence.load("private")[0].content == "secret"

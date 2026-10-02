@@ -106,3 +106,25 @@ def test_guard_session_reserves_before_and_reconciles_after(tmp_path):
         c3.run_turn("go")                                      # refused BEFORE running
     assert ("ran", "go") in calls and calls.count(("ran", "go")) == 1
     assert bud.status("task:3") is None
+
+
+def test_over_cap_reconciliation_stays_unknown(tmp_path):
+    bud = b.Budget(tmp_path / "s.sqlite", cap_pwm=0)
+    bud.reserve("a", 0)
+    with pytest.raises(b.BudgetError, match="exceeds"):
+        bud.reconcile("a", delivered=True, actual_pwm=5)
+    assert bud.status("a") == "unknown"
+    assert bud.snapshot()["used_pwm"] == 5
+    with pytest.raises(b.BudgetError, match="cap reached"):
+        bud.reserve("b", 0)
+    assert bud.path.stat().st_mode & 0o777 == 0o600
+
+
+def test_invalid_budget_stops_repl_before_adapter(tmp_path, monkeypatch):
+    from ai4science.harness import repl
+    monkeypatch.setenv("AI4SCIENCE_SESSION_CAP_PWM", "invalid")
+    calls = []
+    monkeypatch.setattr(repl, "adapter_for", lambda b: calls.append(b))
+    with pytest.raises(b.BudgetError, match="refusing service"):
+        repl.run_common_repl(tmp_path, backend="anthropic", model="stub")
+    assert calls == []

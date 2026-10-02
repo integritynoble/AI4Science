@@ -421,3 +421,35 @@ status — `AGENTS_STATUS_AND_ONE_WALLET_TEST_2026-06-10.md` · live prod test �
 pwm repo `pwm-team/doc/PWM_AI4SCIENCE_LOGIN_PWM_LIVE_TEST_2026-06-10.md` ·
 safety design — pwm repo
 `pwm-team/doc/PWM_LEDGER_SAFETY_AND_ONCHAIN_SETTLEMENT_QA_2026-06-10.md`.
+
+
+## Recovery and accounting limits
+
+`AI4SCIENCE_SESSION_CAP_PWM` limits reservations in the child-dispatch
+accounting ledger. It is **not a session spending cap**: main turns, recap,
+compaction, plugins and provider/server billing are outside that ledger.
+Reservations are estimates; a cost overrun is detected after service,
+persisted at its measured cost, and left unresolved. Further child reservations
+are refused until that overrun is reconciled. Invalid or unreadable ledgers stop startup. For a paid
+proxy request, `AI4SCIENCE_TURN_CAP_PWM` is sent to the platform; its actual
+upper-bound enforcement requires a compatible, verified server deployment.
+
+Paid requests and receipts are saved before/after service in private session
+files. `/cost` shows saved platform receipts separately from estimated usage.
+An uncertain paid dispatch blocks further requests for that payer/session;
+automatic model fallback is disabled after a paid proxy error. Receipt lookup
+is available with `/reconcile` on the PWM route, including after a restart.
+It fetches receipts without dispatching or retrying a model request.
+Confirm settlement and inspect `/cost` before resuming.
+This does not establish live server idempotency or settlement correctness.
+Remembered logins bind requests to the stored account ID across token rotation.
+Bare-token scripts without an account ID use a token digest; rotating that token
+cannot recover the old payer identity locally, so reconcile before rotation.
+
+Completed tool results survive recovery. Missing results are marked unresolved:
+a tool may have executed before the crash, so reconcile its effects before
+repeating it. Checkpoint failures stop the turn and prohibit automatic fallback.
+POSIX saves fsync the file and parent directory; errors propagate. Windows
+saves use atomic replacement and file fsync, without a directory power-loss
+guarantee. Session files, decision journals and budget files use private modes
+on POSIX; Windows access control depends on the user's profile ACLs.

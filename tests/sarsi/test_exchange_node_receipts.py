@@ -94,3 +94,13 @@ def test_it_still_moves_nothing():
     forbidden = ("transfer", "pay", "settle", "mint", "burn", "withdraw", "sell")
     assert [n for n in dir(exchange)
             if any(f in n.lower() for f in forbidden)] == []
+
+
+def test_final_delivery_replay_after_budget_exhaustion(config):
+    exchange.start(config, budget_pwm=1)
+    first = exchange.supplied(config, kind="llm", pwm=1, receipt="final")
+    replay = exchange.supplied(config, kind="llm", pwm=1, receipt="final")
+    assert replay.earned == first.earned == 1
+    assert not replay.running
+    with pytest.raises(exchange.NotAnAgent, match="conflict"):
+        exchange.supplied(config, kind="llm", pwm=2, receipt="final")

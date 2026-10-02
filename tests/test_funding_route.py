@@ -295,7 +295,12 @@ def test_a_proxied_turn_is_not_charged_again_by_the_client(clean, monkeypatch):
     from ai4science.harness import repl as repl_mod
     from ai4science.harness.pwm_gate import PwmGate
     _pwm_login()
-    monkeypatch.setattr(httpx, "stream", lambda *a, **k: _FakeGatewayStream())
+    def fake_stream(*a, **k):
+        stream = _FakeGatewayStream()
+        stream.LINES = [line.replace('"r1"', '"' + k["headers"]["X-Request-Id"] + '"')
+                        for line in stream.LINES]
+        return stream
+    monkeypatch.setattr(httpx, "stream", fake_stream)
     monkeypatch.setattr(repl_mod.routing, "_select_source",
                         lambda backend: ("src", "pid", "0xWALLET", 1.0))
     monkeypatch.setattr(repl_mod.pricing, "price_call",
@@ -318,3 +323,22 @@ def test_a_proxied_turn_is_not_charged_again_by_the_client(clean, monkeypatch):
     repl_mod.run_common_repl(clean, backend="anthropic", model="claude-sonnet-5")
     assert charged, "the turn never reached the charge step"
     assert all(a == 0 for a in charged), f"client charged {charged} on top of the platform"
+
+
+def test_codex_only_subscription_beats_remembered_pwm(clean, monkeypatch):
+    from ai4science.harness.adapters import codex_creds, factory
+    monkeypatch.setattr(codex_creds, "codex_available", lambda: True)
+    _pwm_login()
+    assert funding.resolve().route == funding.OWN
+    assert type(factory.adapter_for("openai")).__name__ == "CodexAdapter"
+
+
+def test_optout_overrides_saved_and_env_pwm_selection(clean, monkeypatch):
+    from ai4science.harness.adapters import factory
+    _own_login()
+    _pwm_login()
+    funding.select("pwm")
+    monkeypatch.setenv("AI4SCIENCE_FUNDING", "pwm")
+    monkeypatch.setenv("AI4SCIENCE_PWM_GATE", "0")
+    assert funding.resolve().route == funding.OWN
+    assert type(factory.adapter_for("anthropic")).__name__ != "ProxyAdapter"

@@ -16,6 +16,8 @@ plan asks for, made cheap to keep.
 from __future__ import annotations
 
 import json
+import os
+from contextlib import contextmanager
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -35,6 +37,29 @@ class Record:
     why: str = ""
     supersedes: Optional[int] = None
     ts: float = 0.0
+
+
+@contextmanager
+def _writer_lock(path):
+    fd = os.open(path, os.O_CREAT | os.O_RDWR, 0o600)
+    with os.fdopen(fd, "r+b") as f:
+        if os.name == "posix":
+            import fcntl
+            fcntl.flock(f, fcntl.LOCK_EX)
+        else:
+            import msvcrt
+            if not f.read(1):
+                f.write(b"\0"); f.flush()
+            f.seek(0)
+            msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)
+        try:
+            yield
+        finally:
+            if os.name == "posix":
+                fcntl.flock(f, fcntl.LOCK_UN)
+            else:
+                f.seek(0)
+                msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
 
 
 class Journal:
@@ -80,10 +105,33 @@ class Journal:
 
     # ── writing ────────────────────────────────────────────────────────
     def _append(self, **fields) -> Record:
-        rec = Record(id=len(self.history()) + 1, ts=time.time(), **fields)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        with self.path.open("a") as f:
-            f.write(json.dumps(asdict(rec)) + "\n")
+        self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        self.path.parent.chmod(0o700)
+        with _writer_lock(self.path.with_suffix(".lock")):
+            fd = os.open(self.path, os.O_CREAT | os.O_RDWR, 0o600)
+            with os.fdopen(fd, "r+b") as f:
+                os.chmod(self.path, 0o600)
+                data = f.read()
+                # A valid final record without newline is preserved; an
+                # incomplete tail is removed while holding the writer lock.
+                if data and not data.endswith(b"\n"):
+                    tail = data.rsplit(b"\n", 1)[-1]
+                    try:
+                        Record(**json.loads(tail))
+                    except (ValueError, TypeError):
+                        f.truncate(len(data) - len(tail))
+                    else:
+                        f.seek(0, os.SEEK_END)
+                        f.write(b"\n")
+                    f.flush()
+                rec = Record(id=max((r.id for r in self.history()), default=0) + 1,
+                             ts=time.time(), **fields)
+                f.seek(0, os.SEEK_END)
+                f.write((json.dumps(asdict(rec)) + "\n").encode())
+                f.flush()
+                os.fsync(f.fileno())
+            from ai4science.harness.persistence import _sync_directory
+            _sync_directory(self.path.parent)
         return rec
 
     def propose(self, key: str, value: str, *, source: str, why: str = "") -> Record:
@@ -167,8 +215,8 @@ def refresh_state_message(history: list, journal: Journal) -> None:
 
 def decision_tools(workspace: Path) -> list:
     """`decisions` (read) and `propose_decision` (a proposal, never an
-    approval). Both are non-mutating for the permission gate: neither can
-    change the approved state."""
+    approval). Proposals mutate the journal and require write permission, although they
+    cannot change approved state."""
     from ai4science.harness.tools.base import Tool
     journal = Journal(workspace)
 
@@ -192,5 +240,5 @@ def decision_tools(workspace: Path) -> list:
              {"type": "object",
               "properties": {"key": {"type": "string"}, "value": {"type": "string"},
                              "why": {"type": "string"}},
-              "required": ["key", "value"]}, _propose, mutating=False),
+              "required": ["key", "value"]}, _propose, mutating=True),
     ]

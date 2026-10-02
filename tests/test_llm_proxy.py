@@ -125,7 +125,125 @@ def test_proxy_adapter_sends_the_harness_session_id_when_set(monkeypatch):
     a = ProxyAdapter(backend="anthropic", base="https://x.example", token="pwm_t")
     monkeypatch.delenv("AI4SCIENCE_SESSION_ID", raising=False)
     list(a.stream([], [], model="m", reasoning="low"))
-    assert "X-PWM-Session-Id" not in seen["headers"]           # unset: no header, platform defaults it
+    assert seen["headers"]["X-PWM-Session-Id"] == a._singleton
     monkeypatch.setenv("AI4SCIENCE_SESSION_ID", "sess-abc123")
     list(a.stream([], [], model="m", reasoning="low"))
     assert seen["headers"]["X-PWM-Session-Id"] == "sess-abc123"
+
+
+def test_uncertain_dispatch_is_durable_and_blocks_restart(tmp_path, monkeypatch):
+    import json
+    import httpx
+    import pytest
+    from ai4science.harness import persistence
+    from ai4science.harness.adapters.proxy import ProxyAdapter
+    monkeypatch.setattr(persistence, "sessions_dir", lambda: tmp_path)
+    monkeypatch.setenv("AI4SCIENCE_SESSION_ID", "durable")
+    calls = []
+    def failed(*a, **kw):
+        records = json.loads(next(tmp_path.glob("proxy-*.json")).read_text())
+        assert records[-1]["request_id"] == kw["headers"]["X-Request-Id"]
+        assert records[-1]["status"] == "unknown"
+        calls.append(kw)
+        raise OSError("lost response")
+    monkeypatch.setattr(httpx, "stream", failed)
+    a = ProxyAdapter(backend="anthropic", base="https://x.example", token="fake")
+    with pytest.raises(RuntimeError, match="lost response"):
+        list(a.stream([], [], model="m"))
+    fresh = ProxyAdapter(backend="openai", base="https://x.example", token="fake")
+    with pytest.raises(RuntimeError, match="uncertain paid dispatch"):
+        list(fresh.stream([], [], model="m"))
+    assert len(calls) == 1
+    class Receipt:
+        def raise_for_status(self): pass
+        def json(self):
+            return {"request_id": a.last_request_id, "status": "delivered", "pwm_charged": .1}
+    monkeypatch.setattr(httpx, "get", lambda *a, **kw: Receipt())
+    # A newly constructed adapter can reconcile immediately, before stream().
+    fresh = ProxyAdapter(backend="openai", base="https://x.example", token="fake")
+    fresh.reconcile_pending()
+    records = json.loads(next(tmp_path.glob("proxy-*.json")).read_text())
+    assert records[-1]["status"] == "settled"
+    assert records[-1]["receipt"]["pwm_charged"] == .1
+    assert "fake" not in next(tmp_path.glob("proxy-*.json")).read_text()
+
+
+def test_checkpoint_failure_stops_before_next_tool(tmp_path):
+    import pytest
+    from ai4science.harness.adapters.stub import StubAdapter
+    from ai4science.harness.events import ToolCall, Done
+    from ai4science.harness.session import AgentSession
+    from ai4science.harness.loop import CheckpointError
+    from ai4science.harness.tools.base import Registry, Tool
+    calls = []
+    registry = Registry()
+    registry.add(Tool("record", "record", {}, lambda ws: calls.append(1) or "done", mutating=False))
+    adapter = StubAdapter([[ToolCall("a", "record", {}), ToolCall("b", "record", {}), Done("tool_use")]])
+    def fail(): raise OSError("disk full")
+    session = AgentSession(adapter=adapter, model="stub", backend="stub", workspace=tmp_path,
+                           registry=registry, on_checkpoint=fail)
+    with pytest.raises(CheckpointError, match="disk full"):
+        session.run_turn("go")
+    assert calls == [1]
+    assert session.history[-1].tool_call_id == "a"
+
+
+def test_repl_reconciles_saved_request_before_any_dispatch(tmp_path, monkeypatch, capsys):
+    import json
+    import httpx
+    from ai4science.harness import persistence, repl
+    from ai4science.harness.adapters.proxy import ProxyAdapter
+    monkeypatch.setattr(persistence, "sessions_dir", lambda: tmp_path)
+    monkeypatch.setenv("AI4SCIENCE_SESSION_ID", "reconcile-session")
+    adapter = ProxyAdapter(backend="anthropic", base="https://x.example", token="synthetic")
+    path, sid = adapter._log_path()
+    persistence._atomic_write(path, json.dumps([{
+        "payer": "synthetic-hash", "session": sid, "operation": "llm/proxy",
+        "request_id": "saved-request", "status": "unknown", "receipt": None}]))
+    calls = []
+    class Receipt:
+        def raise_for_status(self): pass
+        def json(self):
+            return {"request_id": "saved-request", "status": "delivered", "pwm_charged": .1}
+    def get(*a, **kw):
+        calls.append(a[0])
+        return Receipt()
+    monkeypatch.setattr(httpx, "get", get)
+    def no_dispatch(*a, **kw):
+        raise AssertionError("reconciliation must not dispatch")
+    monkeypatch.setattr(httpx, "stream", no_dispatch)
+    monkeypatch.setattr(repl, "adapter_for", lambda backend: adapter)
+    monkeypatch.setattr(repl, "make_meter", lambda **kw: lambda u: None)
+    inputs = iter(["/reconcile", "/cost", "/exit"])
+    monkeypatch.setattr("builtins.input", lambda *a: next(inputs))
+    repl.run_common_repl(tmp_path, backend="anthropic", model="stub", session_id=sid)
+    output = capsys.readouterr().out
+    assert calls == ["https://x.example/api/v1/llm/receipts/saved-request"]
+    assert "settled" in output and "pwm_charged" in output
+    assert json.loads(path.read_text())[0]["status"] == "settled"
+
+
+def test_known_payer_token_rotation_cannot_forget_pending_dispatch(tmp_path, monkeypatch):
+    import httpx
+    import pytest
+    from ai4science import pwm_account
+    from ai4science.harness import persistence
+    from ai4science.harness.adapters.proxy import ProxyAdapter
+    monkeypatch.setattr(persistence, "sessions_dir", lambda: tmp_path)
+    monkeypatch.setenv("AI4SCIENCE_SESSION_ID", "rotation")
+    account = {"base": "https://x.example", "token": "old-synthetic", "user_id": 123}
+    monkeypatch.setattr(pwm_account, "load", lambda: account)
+    calls = []
+    def fail(*a, **kw):
+        calls.append(1)
+        raise OSError("uncertain")
+    monkeypatch.setattr(httpx, "stream", fail)
+    original = ProxyAdapter(backend="openai", base=account["base"], token=account["token"])
+    with pytest.raises(RuntimeError):
+        list(original.stream([], [], model="m"))
+    account["token"] = "new-synthetic"
+    rotated = ProxyAdapter(backend="openai", base=account["base"], token=account["token"])
+    with pytest.raises(RuntimeError, match="uncertain paid dispatch"):
+        list(rotated.stream([], [], model="m"))
+    assert calls == [1]
+    assert original._request_path == rotated._request_path

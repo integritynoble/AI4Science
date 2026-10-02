@@ -65,7 +65,7 @@ def test_state_message_is_placed_after_the_prompt_and_refreshed(tmp_path):
 
 def test_tools_propose_but_never_approve(tmp_path):
     tools = {t.name: t for t in d.decision_tools(tmp_path)}
-    assert not tools["decisions"].mutating and not tools["propose_decision"].mutating
+    assert not tools["decisions"].mutating and tools["propose_decision"].mutating
     assert "no approved decisions" in tools["decisions"].func(tmp_path)
     out = tools["propose_decision"].func(tmp_path, key="dataset", value="v3", why="newest")
     assert "NOT approved" in out and "#1" in out
@@ -93,3 +93,27 @@ def test_repl_slash_commands_drive_the_journal(tmp_path, monkeypatch, capsys):
     j = d.Journal(tmp_path)
     assert j.current()["dataset"].value == "v2"
     assert (tmp_path / ".ai4science" / "decisions.jsonl").exists()
+
+
+def test_approval_after_torn_tail_survives_reopen(tmp_path):
+    j = d.Journal(tmp_path)
+    j.approve("dataset", "v1", source="owner:/approve")
+    with j.path.open("a") as f:
+        f.write('{"id": 2, "key": "dataset"')
+    second = j.approve("dataset", "v2", source="owner:/approve")
+    fresh = d.Journal(tmp_path)
+    assert fresh.current()["dataset"].value == "v2"
+    assert [r.id for r in fresh.history()] == [1, second.id]
+    assert j.path.stat().st_mode & 0o777 == 0o600
+
+
+def test_parallel_writers_allocate_unique_records(tmp_path):
+    import subprocess
+    import sys
+    code = ("from pathlib import Path; from ai4science.harness.runtime.decisions import Journal; "
+            "import sys; j=Journal(Path(sys.argv[1])); "
+            "[j.propose('key', str(i), source='agent:propose') for i in range(8)]")
+    children = [subprocess.Popen([sys.executable, "-c", code, str(tmp_path)]) for _ in range(3)]
+    assert all(p.wait(timeout=20) == 0 for p in children)
+    ids = [r.id for r in d.Journal(tmp_path).history()]
+    assert sorted(ids) == list(range(1, 25))

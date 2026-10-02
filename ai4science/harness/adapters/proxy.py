@@ -8,6 +8,7 @@ interface as the local adapters, so the harness loop is unchanged.
 from __future__ import annotations
 
 import json
+import hashlib
 from typing import Iterator, List, Optional
 
 from ai4science.harness import interrupt
@@ -63,7 +64,19 @@ class ProxyAdapter:
             "tools": [proto.tool_to_wire(t) for t in tools],
         }
         import secrets
-        self.last_request_id = secrets.token_urlsafe(12)
+        from ai4science.harness import persistence
+        from ai4science.harness.runtime.decisions import _writer_lock
+        path, session_id = self._log_path()
+        with _writer_lock(path.with_suffix(".lock")):
+            records = json.loads(path.read_text()) if path.exists() else []
+            if any(r["status"] == "unknown" for r in records):
+                raise RuntimeError("uncertain paid dispatch: reconcile its receipt before another request")
+            request_id = secrets.token_urlsafe(12)
+            records.append({"payer": self._payer_id(),
+                            "session": session_id, "operation": "llm/proxy",
+                            "request_id": request_id, "status": "unknown", "receipt": None})
+            persistence._atomic_write(path, json.dumps(records))
+        self.last_request_id = request_id
         self.last_receipt = None
         headers = {"Authorization": f"Bearer {self.token}",
                    "content-type": "application/json",
@@ -73,7 +86,6 @@ class ProxyAdapter:
         cap = _turn_cap()
         if cap:
             headers["X-PWM-Cap"] = cap
-        session_id = _session_id()
         if session_id:
             headers["X-PWM-Session-Id"] = session_id
         try:
@@ -101,7 +113,8 @@ class ProxyAdapter:
                         if d.get("t") == "bill":
                             continue            # billing handled server-side
                         if d.get("t") == "receipt":
-                            self.last_receipt = d   # the platform's word, kept for /cost
+                            self.last_receipt = d
+                            self._persist_receipt(d)
                             continue
                         ev = proto.event_from_wire(d)
                         if ev is not None:
@@ -109,7 +122,7 @@ class ProxyAdapter:
                 finally:
                     interrupt.unregister_canceller(r.close)
         except RuntimeError:
-            raise               # re-raise our own HTTP-status errors (triggers fallback)
+            raise               # paid failures must not trigger model fallback
         except Exception as exc:
             # A cancel (r.close from another thread) surfaces here as a read
             # error — that's intentional, so end quietly instead of showing a
@@ -117,3 +130,57 @@ class ProxyAdapter:
             if interrupt.requested():
                 return
             raise RuntimeError(f"proxy unreachable: {type(exc).__name__}: {exc}")
+
+    def _payer_id(self):
+        from ai4science import pwm_account
+        account = pwm_account.load() or {}
+        if (account.get("token") == self.token
+                and str(account.get("base", "")).rstrip("/") == self.base
+                and account.get("user_id") is not None):
+            return f"user:{account['user_id']}"
+        # Bare-token scripts have no verified account identity available locally.
+        # Never write the bearer token to request records.
+        return "token-sha256:" + hashlib.sha256(self.token.encode()).hexdigest()
+
+    def _log_path(self):
+        import secrets
+        from ai4science.harness import persistence
+        session_id = _session_id() or getattr(self, "_singleton", None) or secrets.token_hex(12)
+        self._singleton = session_id
+        scope = hashlib.sha256(f"{self.base}:{self._payer_id()}:{session_id}".encode()).hexdigest()
+        self._request_path = persistence.sessions_dir() / f"proxy-{scope}.json"
+        return self._request_path, session_id
+
+    def _persist_receipt(self, receipt):
+        from ai4science.harness import persistence
+        from ai4science.harness.runtime.decisions import _writer_lock
+        path = self._request_path
+        with _writer_lock(path.with_suffix(".lock")):
+            records = json.loads(path.read_text())
+            record = next(r for r in records if r["request_id"] == self.last_request_id)
+            if receipt.get("request_id") != self.last_request_id:
+                raise RuntimeError("receipt request identity mismatch; dispatch remains uncertain")
+            record["receipt"] = receipt
+            if receipt.get("status") in ("delivered", "delivered_over_cap", "failed", "not_dispatched"):
+                record["status"] = "settled"
+            persistence._atomic_write(path, json.dumps(records))
+
+    def reconcile_pending(self):
+        """Explicitly consult the configured platform for this adapter's uncertain request.
+
+        No new dispatch is made. A missing/nonterminal receipt remains unknown.
+        Reopened sessions encounter the durable pending record before dispatch.
+        """
+        import httpx
+        path, _ = self._log_path()
+        if not path.exists():
+            return []
+        for record in json.loads(path.read_text()):
+            if record["status"] == "unknown":
+                self.last_request_id = record["request_id"]
+                response = httpx.get(f"{self.base}/api/v1/llm/receipts/{self.last_request_id}",
+                                     headers={"Authorization": f"Bearer {self.token}",
+                                              "X-PWM-Session-Id": record["session"]}, timeout=30)
+                response.raise_for_status()
+                self._persist_receipt(response.json())
+        return json.loads(path.read_text())

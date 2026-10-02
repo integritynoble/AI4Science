@@ -116,9 +116,6 @@ def supplied(config: Config, *, kind: str, pwm: float, receipt: Optional[str] = 
     """
     amount = _amount(pwm)
     here = status(config)
-    if not here.running:
-        raise NotAnAgent(f"the exchange node is not running, so nothing was "
-                         f"supplied — {here.why}")
     if receipt is not None:
         receipt = str(receipt)
         seen = _receipts(config)
@@ -128,6 +125,9 @@ def supplied(config: Config, *, kind: str, pwm: float, receipt: Optional[str] = 
                     f"receipt {receipt!r} was already recorded for "
                     f"{seen[receipt]:g} PWM, not {amount:g} — a conflict, not a retry")
             return here
+    if not here.running:
+        raise NotAnAgent(f"the exchange node is not running, so nothing was "
+                         f"supplied — {here.why}")
     row: Dict[str, Any] = {"event": "supplied", "kind": str(kind), "pwm": amount}
     if receipt is not None:
         row["receipt"] = receipt

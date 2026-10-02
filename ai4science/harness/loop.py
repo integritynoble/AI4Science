@@ -11,6 +11,10 @@ from ai4science.harness.tools.base import Registry
 MAX_TOOL_ITERATIONS = 50
 
 
+
+class CheckpointError(RuntimeError):
+    """A completed tool action could not be saved; automatic retry is unsafe."""
+
 def _result_cap() -> int:
     """Longest tool result kept in the transcript. One `cat` of a large log
     must not fill the model's window for the rest of the session; the model
@@ -161,8 +165,8 @@ def run_loop(*, adapter, model: str, reasoning: str, history: List[Message],
             try:
                 on_tool_result(tc.name, tc.arguments, result)
                 on_checkpoint()
-            except Exception:
-                pass            # bookkeeping never ends a turn
+            except Exception as exc:
+                raise CheckpointError(f"tool checkpoint failed; reconcile before retry: {exc}") from exc
             if interrupt.requested():
                 interrupted = True
         if interrupted:

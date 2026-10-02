@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 from pathlib import Path
 from typing import List, Optional
 
@@ -11,7 +12,8 @@ from ai4science.harness.events import ImagePart, Message, ToolCall
 def sessions_dir() -> Path:
     from ai4science import user
     base = user.config_path().parent / "sessions"
-    base.mkdir(parents=True, exist_ok=True)
+    base.mkdir(parents=True, exist_ok=True, mode=0o700)
+    base.chmod(0o700)
     return base
 
 
@@ -49,15 +51,28 @@ def _atomic_write(path: Path, text: str) -> None:
     previous file intact rather than a truncated one. The rename is atomic on
     POSIX; the temp file is fsynced first so the rename never points at
     unflushed bytes."""
-    tmp = path.with_name(path.name + ".tmp")
-    with tmp.open("w") as f:
-        f.write(text)
-        f.flush()
-        try:
+    fd, name = tempfile.mkstemp(prefix=path.name + ".", dir=path.parent)
+    tmp = Path(name)
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(text)
+            f.flush()
             os.fsync(f.fileno())
-        except OSError:
-            pass
-    os.replace(tmp, path)
+        os.replace(tmp, path)
+        _sync_directory(path.parent)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+def _sync_directory(path: Path) -> None:
+    # Windows does not expose a directory fsync through os.open. POSIX saves
+    # include the rename in the durability guarantee; any failure propagates.
+    if os.name == "posix":
+        fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
 
 
 def save(session_id: str, workspace: Path, history: List[Message]) -> None:
@@ -85,9 +100,8 @@ def _read_index() -> dict:
 def load(session_id: str) -> List[Message]:
     """The saved history. A line that does not parse — a torn tail from a
     pre-atomic save, or a damaged file — is skipped, and a history is never
-    returned with a dangling tool call: a trailing assistant message whose
-    tool calls have no tool results would make the next request invalid, so
-    it is dropped too (the turn is simply re-asked)."""
+    returned with a dangling tool call: missing results are explicitly marked
+    unresolved, preserving completed actions and preventing blind replays."""
     path = sessions_dir() / f"{session_id}.jsonl"
     if not path.exists():
         return []
@@ -103,31 +117,30 @@ def load(session_id: str) -> List[Message]:
 
 
 def _without_dangling_tool_calls(history: List[Message]) -> List[Message]:
-    while history:
-        last = history[-1]
-        if last.role == "assistant" and last.tool_calls:
-            answered = {m.tool_call_id for m in history if m.role == "tool"}
-            if all(tc.id in answered for tc in last.tool_calls):
-                break
-            history.pop()
+    out = []
+    i = 0
+    while i < len(history):
+        msg = history[i]
+        if msg.role == "tool":
+            i += 1  # orphan result from an unreadable assistant record
             continue
-        if last.role == "tool":
-            # Tool results for a call that is (now) unanswered-for: find the
-            # assistant message they belong to; if some of its calls have no
-            # result, drop the whole group and re-check.
-            i = len(history) - 1
-            while i >= 0 and history[i].role == "tool":
-                i -= 1
-            if i < 0 or history[i].role != "assistant":
-                history.pop()
-                continue
-            answered = {m.tool_call_id for m in history[i + 1:]}
-            if all(tc.id in answered for tc in history[i].tool_calls):
-                break
-            del history[i:]
+        out.append(msg)
+        i += 1
+        if msg.role != "assistant" or not msg.tool_calls:
             continue
-        break
-    return history
+        results = []
+        while i < len(history) and history[i].role == "tool":
+            results.append(history[i])
+            i += 1
+        answered = {m.tool_call_id for m in results}
+        out.extend(results)
+        for tc in msg.tool_calls:
+            if tc.id not in answered:
+                out.append(Message(role="tool", tool_call_id=tc.id, content=(
+                    "[unresolved after recovery] No durable result for this call. "
+                    "It may already have executed. Reconcile its effects with the "
+                    "owner before repeating it; do not assume it failed.")))
+    return out
 
 
 def most_recent(workspace: Path) -> Optional[str]:
