@@ -209,3 +209,12 @@ def test_callback_denies_glob_pattern_outside_workspace(tmp_path):
                        ("Grep", {"pattern": r"\.\./", "glob": "*.py"})]:
         result = asyncio.run(cb(tool, args, None))
         assert isinstance(result, PermissionResultAllow), (tool, args)
+
+
+def test_sdk_denies_quoted_parent_paths_before_auto_approval(tmp_path):
+    from claude_agent_sdk import PermissionResultDeny
+    for auto_yes in (False, True):
+        cb = make_workspace_permission_callback(tmp_path, auto_yes=auto_yes)
+        for command in ["ls '..'", 'ls ".."', "cat '../private/key.txt'", 'cat "../private/key.txt"']:
+            result = asyncio.run(cb("Bash", {"command": command}, None))
+            assert isinstance(result, PermissionResultDeny), command

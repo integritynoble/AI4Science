@@ -412,3 +412,19 @@ status — `AGENTS_STATUS_AND_ONE_WALLET_TEST_2026-06-10.md` · live prod test �
 pwm repo `pwm-team/doc/PWM_AI4SCIENCE_LOGIN_PWM_LIVE_TEST_2026-06-10.md` ·
 safety design — pwm repo
 `pwm-team/doc/PWM_LEDGER_SAFETY_AND_ONCHAIN_SETTLEMENT_QA_2026-06-10.md`.
+
+
+## Permission checks and confidential evaluation data
+
+The SDK checks explicit Read/Grep/Glob/ListDir/NotebookRead paths for workspace
+containment. Native readonly tools intentionally permit paths outside the
+workspace. SDK reads within the workspace, including protected directories,
+can pass containment. The shared Bash guard rejects ordinary quoted/unquoted
+parent paths and literal protected-directory references; it is a shell syntax
+heuristic. Absolute paths, expansions and deliberate obfuscation can bypass
+that heuristic. These checks are defense in depth, not a complete read sandbox.
+
+For confidential answer keys, run the agent in an externally enforced filesystem
+or container boundary that does not expose those keys. Validate that boundary
+with denied-read checks before the evaluation. The external G2 delete/restore
+runner is outside this repository and has not been validated by this patch.

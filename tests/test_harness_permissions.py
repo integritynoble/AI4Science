@@ -68,3 +68,19 @@ def test_bash_cmd_safe_still_allows_ordinary_commands():
     for cmd in ["ls -la", "cat README.md", "echo hello", "ls ...", "mkdir mydir..other"]:
         ok, _ = _bash_cmd_safe(cmd)
         assert ok is True, f"{cmd!r} should not be blocked"
+
+
+def test_quoted_parent_paths_are_denied_by_guard_and_native_gate(tmp_path):
+    commands = ["ls '..'", 'ls ".."', "cat '../private/key.txt'",
+                'cat "../private/key.txt"', 'cat "src/../key.txt"',
+                'cat \'.\'"./key.txt"', "ls '..'; pwd"]
+    for command in commands:
+        assert not _bash_cmd_safe(command)[0], command
+        for readonly in (False, True):
+            gate = PermissionGate(workspace=tmp_path, read_only=readonly, auto_yes=True)
+            assert not gate.allow("bash", {"cmd": command})[0], command
+
+
+def test_quoted_workspace_paths_still_work():
+    for command in ["cat 'src/file name.py'", 'ls "..."', "cat 'mydir..other/x'", "echo '..literal'"]:
+        assert _bash_cmd_safe(command)[0], command

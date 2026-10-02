@@ -19,9 +19,19 @@ _BASH_BLOCK = re.compile(
 
 def _bash_cmd_safe(cmd: str) -> tuple:
     """Heuristic guard: block shell commands that reference protected dirs or
-    escape the workspace. NOT airtight against deliberate obfuscation (documented)."""
+    reference parent paths. This is a syntax guard, not a read sandbox;
+    absolute/expanded paths and native external reads remain possible."""
     if _BASH_BLOCK.search(cmd or ""):
         return False, "sandbox: bash command references a protected/parent path"
+    try:
+        words = shlex.split(cmd or "", posix=True)
+    except ValueError:
+        return False, "sandbox: malformed shell quoting"
+    # Remove ordinary shell quotes/concatenation before checking path segments:
+    # both cat "../key" and cat '.'".'/key" name a parent path.
+    for word in words:
+        if re.search(r"(^|[=:/])\.\.(?=/|$)", word) or _BASH_BLOCK.search(word):
+            return False, "sandbox: bash command references a protected/parent path"
     return True, ""
 
 
