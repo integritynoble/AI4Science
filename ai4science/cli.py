@@ -176,6 +176,22 @@ def version_cmd() -> None:
     console.print(f"ai4science {__version__} ({chan})")
 
 
+def _version_option(value: bool) -> None:
+    if value:
+        version_cmd()
+        raise typer.Exit()
+
+
+@app.callback()
+def _global_options(
+    version: bool = typer.Option(
+        False, "--version", "-V", callback=_version_option, is_eager=True,
+        help="Print the AI4Science CLI version + release channel and exit.",
+    ),
+) -> None:
+    pass
+
+
 @app.command("agents", help="List configured agent providers and their availability.")
 def agents_cmd() -> None:
     """Report on each known agent provider's availability + auth hint."""

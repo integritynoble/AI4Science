@@ -1,6 +1,8 @@
 """Smoke tests for the Typer CLI surface."""
 from __future__ import annotations
 
+import pytest
+
 from typer.testing import CliRunner
 
 from ai4science.cli import app
@@ -52,3 +54,28 @@ def test_upgrade_aliases_to_update(monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "update" in out.lower()
     assert "prompt" not in out.lower()      # did NOT fall through to the agent
+
+
+@pytest.mark.parametrize("flag", ["--version", "-V"])
+def test_version_flags_match_command(flag):
+    expected = runner.invoke(app, ["version"])
+    result = runner.invoke(app, [flag])
+    assert result.exit_code == expected.exit_code == 0
+    assert result.output == expected.output
+
+
+@pytest.mark.parametrize("flag", ["--version", "-V"])
+def test_entrypoint_version_flags_exit_without_chat(flag, monkeypatch, capsys):
+    import sys
+    from ai4science import cli
+
+    def unexpected(*args, **kwargs):
+        pytest.fail("version flag entered chat or prompt routing")
+
+    monkeypatch.setattr(cli, "_bare_launch", unexpected)
+    monkeypatch.setattr(cli, "_route_prompt", unexpected)
+    monkeypatch.setattr(sys, "argv", ["ai4science", flag])
+    with pytest.raises(SystemExit) as exc:
+        cli.main()
+    assert exc.value.code == 0
+    assert capsys.readouterr().out == runner.invoke(app, ["version"]).output
