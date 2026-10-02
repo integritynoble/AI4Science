@@ -26,22 +26,47 @@ jobs:
           pwm-agent-claude-gpu pwm-agent-codex-gpu
       # Optional claude extra — a handful of tests import claude_agent_sdk.
       - run: pip install claude-agent-sdk || true
-      # pwm-control-plane is a private repo, not on PyPI. With a read token in
-      # CONTROL_PLANE_READ_TOKEN it is installed and its 13 test modules run;
-      # without one, ci_gate.py reports those modules as NOT RUN (never green).
-      - name: pwm-control-plane
-        env: { TOKEN: "${{ secrets.CONTROL_PLANE_READ_TOKEN }}" }
+      # Secret-bearing private code is installed only on trusted main pushes.
+      # The owner must provision a reviewed immutable commit and a repo-only
+      # read token; a PR never receives that token or builds private code.
+      - name: Validate reviewed control-plane revision
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env: { REV: "${{ vars.CONTROL_PLANE_REV }}" }
+        run: '[[ "$REV" =~ ^[0-9a-f]{40}$ ]] || { echo "Missing reviewed immutable CONTROL_PLANE_REV"; exit 1; }'
+      - uses: actions/checkout@v4
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        with:
+          repository: integritynoble/pwm-control-plane
+          ref: ${{ vars.CONTROL_PLANE_REV }}
+          token: ${{ secrets.CONTROL_PLANE_READ_TOKEN }}
+          persist-credentials: false
+          path: .ci-control-plane
+      - name: Install reviewed control plane
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: pip install ./.ci-control-plane
+      - name: Independently collect expected tests
         run: |
-          if [ -n "$TOKEN" ]; then
-            pip install "git+https://x-access-token:${TOKEN}@github.com/integritynoble/pwm-control-plane@main"
-            echo "CONTROL_PLANE=1" >> "$GITHUB_ENV"
-          else
-            echo "::warning::CONTROL_PLANE_READ_TOKEN is not set; the pwm_control_plane test modules cannot run"
-          fi
-      # Run everything; the gate below decides from the JUnit report, so one
-      # module that cannot import no longer hides the other ~4,600 tests.
-      - run: python -m pytest -q --continue-on-collection-errors --junitxml=junit.xml || true
-      - run: python scripts/ci_gate.py junit.xml
+          set +e
+          python -m pytest --collect-only -q --continue-on-collection-errors -p scripts.ci_collect --ci-manifest=collection.json
+          status=$?
+          echo "$status" > collection-exit.txt
+          exit 0
+      - name: Run tests and capture termination
+        run: |
+          set +e
+          python -m pytest -q --continue-on-collection-errors --junitxml=junit.xml
+          status=$?
+          echo "$status" > pytest-exit.txt
+          exit 0
+      - name: Require complete full-suite evidence
+        if: always()
+        run: python scripts/ci_gate.py junit.xml --manifest collection.json --pytest-exit pytest-exit.txt
       - uses: actions/upload-artifact@v4
         if: always()
-        with: { name: junit, path: junit.xml }
+        with:
+          name: test-evidence
+          path: |
+            junit.xml
+            collection.json
+            collection-exit.txt
+            pytest-exit.txt
