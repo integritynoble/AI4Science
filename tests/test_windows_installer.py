@@ -67,6 +67,7 @@ function Test-Python {{
     if ($args[1] -eq 'venv') {{ $global:LASTEXITCODE = {venv_exit} }}
     else {{ $global:LASTEXITCODE = {pip_exit} }}
 }}
+function Invoke-VenvHelper($Mode) {{ [void]$global:calls.Add("helper " + $Mode); return 0 }}
 function Get-Process {{
     if (${str(locked).lower()}) {{
         [pscustomobject]@{{Path = (Join-Path $Venv 'Scripts') + '\\python.exe'; ProcessName = 'python'; Id = 123}}
@@ -93,6 +94,9 @@ ConvertTo-Json -Compress -InputObject @{{ calls = @($global:calls.ToArray()); me
     else:
         assert message == ""
         assert sum(c.startswith('-m pip install --upgrade ') for c in calls) == 3
+        # the legacy cleanup runs after pip's own upgrade and before the package install; the check runs last
+        assert calls.index("helper clean") == calls.index("-m pip install --upgrade pip") + 1
+        assert calls[-1] == "helper check"
 
 
 @pytest.mark.skipif(not PWSH, reason="PowerShell is not installed")

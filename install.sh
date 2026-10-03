@@ -125,6 +125,85 @@ say "Creating venv at $VENV"
 "$PY" -m venv "$VENV" || die "could not create venv (is python3-venv available?)"
 "$VENV/bin/pip" install --quiet --upgrade pip >/dev/null
 
+# One distribution must provide the ai4science package: an older pwm-ai4science left in the venv next to
+# pwm-agent-core breaks the CLI. Same helper as install.ps1 (run with the venv's Python).
+VENV_HELPER=$(cat <<'AI4SCIENCE_HELPER'
+# ai4science-venv-helper: keep exactly one distribution providing the `ai4science` package.
+# "clean": remove pip's "~*" leftovers from interrupted upgrades, then uninstall every distribution that
+# ships ai4science/ files except pwm-agent-core; if any was removed, pwm-agent-core is uninstalled too
+# (removing the legacy dist deletes files the two share), so the install step puts it back whole.
+# "check": exit 1 unless exactly one installed distribution provides ai4science.
+import importlib.metadata as md
+import os
+import shutil
+import site
+import subprocess
+import sys
+
+KEEP = "pwm-agent-core"
+
+
+def norm(name):
+    return (name or "").lower().replace("_", "-").replace(".", "-")
+
+
+def providers():
+    found = {}
+    for dist in md.distributions():
+        tops = set((dist.read_text("top_level.txt") or "").split())
+        tops.update(f.parts[0] for f in (dist.files or []) if f.parts)
+        if "ai4science" in tops:
+            found[norm(dist.metadata["Name"])] = dist.version
+    return found
+
+
+def clean():
+    for sp in site.getsitepackages():
+        if not os.path.isdir(sp):
+            continue
+        for entry in sorted(os.listdir(sp)):
+            if entry.startswith("~"):
+                path = os.path.join(sp, entry)
+                print("removing leftover from an interrupted pip run: " + path)
+                if os.path.isdir(path):
+                    shutil.rmtree(path, ignore_errors=True)
+                else:
+                    os.remove(path)
+    found = providers()
+    remove = sorted(n for n in found if n != KEEP)
+    if remove and KEEP in found:
+        remove.append(KEEP)
+    for name in remove:
+        print("uninstalling %s %s (provides the ai4science package)" % (name, found[name]))
+    if remove:
+        return subprocess.call([sys.executable, "-m", "pip", "uninstall", "-y"] + remove)
+    return 0
+
+
+def check():
+    found = providers()
+    if len(found) == 1:
+        print("ai4science is provided by %s" % ", ".join("%s %s" % kv for kv in found.items()))
+        return 0
+    detail = ", ".join("%s %s" % kv for kv in sorted(found.items())) or "nothing"
+    print("ERROR: the ai4science package must come from exactly one distribution; found: " + detail)
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(clean() if sys.argv[1:] == ["clean"] else check())
+AI4SCIENCE_HELPER
+)
+venv_helper() {
+  local f rc=0
+  f=$(mktemp)
+  printf '%s\n' "$VENV_HELPER" > "$f"
+  "$VENV/bin/python" "$f" "$1" || rc=$?
+  rm -f "$f"
+  return "$rc"
+}
+venv_helper clean || die "could not remove the older AI4Science package from $VENV; close ai4science and retry"
+
 # 3. Install the chosen channel: PyPI first for stable/rc (phase 2), then the
 #    branch ZIP from GitHub (no git needed), then dev (main) as a last resort.
 #
@@ -196,6 +275,7 @@ if [ "$NEED_AGENTS" = 1 ]; then
     && ok "Installed agent packages" \
     || printf '\033[33m⚠ agent packages failed to install — run:\n    %s/bin/pip install %s\033[0m\n' "$VENV" "$AGENT_PKGS"
 fi
+venv_helper check || die "the ai4science package must come from exactly one distribution in $VENV (see above)"
 # 3d. Claude chat extra (default on): the SDK behind `--mode claude`. The PyPI
 #     meta has no [claude] extra, so install it explicitly; best-effort.
 if [ "$WITH_CLAUDE" = "1" ]; then

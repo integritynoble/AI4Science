@@ -211,6 +211,91 @@ Options:
 
 Ok "Using $(& $py --version 2>&1)"
 
+# -- one provider of the ai4science package ----------------------------------------
+# An older pwm-ai4science left in the venv next to pwm-agent-core gives two copies of the
+# ai4science package and a broken CLI. The helper is written to a file and run with the venv's
+# Python (PS 5.1 mangles quotes in multi-line -c arguments). Identical in install.sh.
+$VenvHelper = @'
+# ai4science-venv-helper: keep exactly one distribution providing the `ai4science` package.
+# "clean": remove pip's "~*" leftovers from interrupted upgrades, then uninstall every distribution that
+# ships ai4science/ files except pwm-agent-core; if any was removed, pwm-agent-core is uninstalled too
+# (removing the legacy dist deletes files the two share), so the install step puts it back whole.
+# "check": exit 1 unless exactly one installed distribution provides ai4science.
+import importlib.metadata as md
+import os
+import shutil
+import site
+import subprocess
+import sys
+
+KEEP = "pwm-agent-core"
+
+
+def norm(name):
+    return (name or "").lower().replace("_", "-").replace(".", "-")
+
+
+def providers():
+    found = {}
+    for dist in md.distributions():
+        tops = set((dist.read_text("top_level.txt") or "").split())
+        tops.update(f.parts[0] for f in (dist.files or []) if f.parts)
+        if "ai4science" in tops:
+            found[norm(dist.metadata["Name"])] = dist.version
+    return found
+
+
+def clean():
+    for sp in site.getsitepackages():
+        if not os.path.isdir(sp):
+            continue
+        for entry in sorted(os.listdir(sp)):
+            if entry.startswith("~"):
+                path = os.path.join(sp, entry)
+                print("removing leftover from an interrupted pip run: " + path)
+                if os.path.isdir(path):
+                    shutil.rmtree(path, ignore_errors=True)
+                else:
+                    os.remove(path)
+    found = providers()
+    remove = sorted(n for n in found if n != KEEP)
+    if remove and KEEP in found:
+        remove.append(KEEP)
+    for name in remove:
+        print("uninstalling %s %s (provides the ai4science package)" % (name, found[name]))
+    if remove:
+        return subprocess.call([sys.executable, "-m", "pip", "uninstall", "-y"] + remove)
+    return 0
+
+
+def check():
+    found = providers()
+    if len(found) == 1:
+        print("ai4science is provided by %s" % ", ".join("%s %s" % kv for kv in found.items()))
+        return 0
+    detail = ", ".join("%s %s" % kv for kv in sorted(found.items())) or "nothing"
+    print("ERROR: the ai4science package must come from exactly one distribution; found: " + detail)
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(clean() if sys.argv[1:] == ["clean"] else check())
+'@
+function Invoke-VenvHelper([string]$Mode) {
+    $file = Join-Path $InstallDir ".venv-helper.py"
+    [IO.File]::WriteAllText($file, $VenvHelper, (New-Object Text.UTF8Encoding($false)))
+    $oldPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        & $venvPython $file $Mode 2>&1 | ForEach-Object { Write-Host $_ }
+        $code = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $oldPreference
+        Remove-Item -Force $file -ErrorAction SilentlyContinue
+    }
+    return $code
+}
+
 # -- venv + install ------------------------------------------------------------
 if ($ReuseVenv) {
     Say "Upgrading existing venv at $Venv"
@@ -249,6 +334,9 @@ function Install-VenvPackages([string[]]$Packages) {
     }
 }
 Install-VenvPackages -Packages @("pip")
+if ((Invoke-VenvHelper "clean") -ne 0) {
+    throw "Could not remove the older AI4Science package from $Venv. Close ai4science and Python processes using it, then retry."
+}
 
 # Install from the channel's GitHub branch zip (PyPI is not published yet).
 $src = Get-SrcSpec
@@ -262,6 +350,9 @@ if (-not $IsLegacyTag) {
     Say "Installing the first-party agent packages..."
     Install-VenvPackages -Packages $AgentPkgs
     Ok "Installed agent packages"
+}
+if ((Invoke-VenvHelper "check") -ne 0) {
+    throw "The ai4science package must come from exactly one distribution in $Venv (see above). Close ai4science and rerun this installer."
 }
 
 # -- PATH ----------------------------------------------------------------------
