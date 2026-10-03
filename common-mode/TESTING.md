@@ -22,6 +22,16 @@ The pinned engine and ripgrep archives are downloaded once and checked against t
 workflow `.github/workflows/common-mode.yml` runs this script on `fleet/ai4sci-06-**` pushes and on pull requests
 that touch `common-mode/`.
 
+## Taking an OpenCode update
+
+`python3 common-mode/tools/pin_opencode.py VERSION` rewrites `artifacts.lock` and `opencode.version` from npm's
+published integrity data. Then run `run_linux_ci.sh`, and the Windows and macOS procedures below.
+
+Rehearsal on 2026-10-03:
+- re-pinning 1.18.34 reproduced the committed lock exactly;
+- re-pinned to 1.18.33, all Linux checks passed and the installed engine reported 1.18.33;
+- the pin was then kept at 1.18.34.
+
 ## Workspace sessions: the E4 common arm and the worker server (Linux)
 
 ```sh

@@ -204,7 +204,22 @@ ripgrep notices live in `share/ripgrep/`; npm dependency notices stay with their
 packages. Before any binary redistribution, audit the full upstream dependency
 bundle and obtain the owner's release approval.
 
-The pin has not been updated or rehearsed in this job. A later update must review
-both lock files, the source license and isolation hooks, then repeat installation
-and [the smoke checks](TESTING.md). Automatic updates and the direct `upgrade`
-command are disabled by the launcher. Do not publish or push this packet.
+**Taking an OpenCode update** changes only `artifacts.lock` and `opencode.version`:
+
+```sh
+python3 common-mode/tools/pin_opencode.py 1.18.35       # from npm's published sha512 integrity
+sh common-mode/tests/run_linux_ci.sh "$(mktemp -d)"     # every Linux check against the new engine
+```
+
+Before accepting an update, also review:
+- the upstream source licence;
+- the upstream hooks the launcher relies on (the private home/managed variables, the v2 config loader);
+- `ripgrep.lock`.
+
+**Rehearsed on 2026-10-03:**
+- 1.18.34 was still the newest release, so I re-pinned the engine to 1.18.33.
+- `pin_opencode.py 1.18.34` reproduces the committed lock byte for byte.
+- With the 1.18.33 pin, the whole suite passed, and the installed engine reported 1.18.33.
+
+Automatic updates and the direct `upgrade` command are disabled by the launcher. No release is published from
+this folder.

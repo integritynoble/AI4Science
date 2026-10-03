@@ -31,7 +31,7 @@ for line in (root / 'ripgrep.lock').read_text().splitlines():
     assert len(digest) == 64 and url.startswith('https://github.com/BurntSushi/ripgrep/releases/'), line
 print('ascii, lock formats: ok')
 EOF
-python3 -m py_compile "$tests"/*.py
+python3 -m py_compile "$tests"/*.py "$source"/tools/*.py
 if command -v pwsh >/dev/null 2>&1; then
   for f in "$source"/*.ps1; do
     pwsh -NoLogo -NoProfile -Command "\$t=\$null;\$e=\$null;[void][System.Management.Automation.Language.Parser]::ParseFile('$f',[ref]\$t,[ref]\$e); if (\$e.Count) { \$e | ForEach-Object { \$_.ToString() }; exit 1 }"
