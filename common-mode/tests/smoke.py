@@ -86,6 +86,7 @@ def main():
         assert config["enabled_providers"] == ["own-llm"]
         assert config["plugin"] == []
         assert config["mcp"] == {"pwm": {"enabled": False}}
+        assert not config.get("instructions"), "Opt-in workflow loaded without --pwm"
         assert config["share"] == "disabled" and config["autoupdate"] is False
         assert run("models", ["models"]).strip() == "own-llm/local"
         session = run("session", ["run", "--format", "json", "Reply with exactly AI4SCIENCE_LOCAL_OK. Do not use tools."])
@@ -112,7 +113,9 @@ def main():
                     if p.is_file():
                         assert f'"{p}"' not in text, f"Read external file: {p}"
             assert destinations, "No traced request reached the fixture"
-        billing = [str(p.relative_to(prefix)) for p in prefix.rglob("*") if p.is_file() and re.search(r"pwm|ledger", p.name, re.I)]
+        shipped = {"bin/pwm-config.py", "share/agent/pwm-loop.md"}
+        billing = [str(p.relative_to(prefix)) for p in prefix.rglob("*") if p.is_file()
+                   and str(p.relative_to(prefix)) not in shipped and re.search(r"pwm|ledger", p.name, re.I)]
         assert not billing, billing
         summary = {"version": version, "session": "AI4SCIENCE_LOCAL_OK", "requests": len(requests),
                    "model_id": args.model_id,

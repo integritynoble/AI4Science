@@ -2,12 +2,29 @@
 set -eu
 # Installed beside the native executable; no Node, git, or npm launcher.
 ai4science_prefix=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
-# Wrapper-owned option (before any engine arguments): the folder a session works in.
+# Wrapper-owned options must precede engine arguments; either order is accepted.
+ai4science_pwm=0
 ai4science_workspace=${AI4SCIENCE_WORKSPACE:-}
-if [ "${1:-}" = --workspace ]; then
-  [ "$#" -ge 2 ] && [ -n "$2" ] || { echo 'Usage: ai4science --workspace DIRECTORY [command] [arguments]' >&2; exit 2; }
-  ai4science_workspace=$2
-  shift 2
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --pwm) ai4science_pwm=1; shift ;;
+    --workspace)
+      [ "$#" -ge 2 ] && [ -n "$2" ] || { echo 'Usage: ai4science --workspace DIRECTORY [command] [arguments]' >&2; exit 2; }
+      ai4science_workspace=$2; shift 2 ;;
+    *) break ;;
+  esac
+done
+case "${1:-}" in
+  pwm)
+    [ "$#" = 2 ] || { echo 'Usage: ai4science pwm login|logout' >&2; exit 2; }
+    case "$2" in login|logout) ;; *) echo 'Usage: ai4science pwm login|logout' >&2; exit 2 ;; esac
+    exec python3 -I "$ai4science_prefix/bin/pwm-config.py" "$ai4science_prefix" "$2" ;;
+esac
+# No helper or environment changes on the ordinary path unless restoring a prior opt-in.
+if [ "$ai4science_pwm" = 1 ]; then
+  python3 -I "$ai4science_prefix/bin/pwm-config.py" "$ai4science_prefix" on
+elif [ -e "$ai4science_prefix/var/pwm/base-config" ]; then
+  python3 -I "$ai4science_prefix/bin/pwm-config.py" "$ai4science_prefix" off
 fi
 if [ -n "$ai4science_workspace" ]; then
   ai4science_workspace=$(CDPATH= cd -- "$ai4science_workspace" 2>/dev/null && pwd -P) || { echo 'AI4Science workspace is not a directory.' >&2; exit 2; }

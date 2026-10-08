@@ -31,7 +31,7 @@ for line in (root / 'ripgrep.lock').read_text().splitlines():
     assert len(digest) == 64 and url.startswith('https://github.com/BurntSushi/ripgrep/releases/'), line
 print('ascii, lock formats: ok')
 EOF
-python3 -m py_compile "$tests"/*.py "$source"/tools/*.py
+python3 -m py_compile "$tests"/*.py "$source"/tools/*.py "$source"/pwm-config.py
 if command -v pwsh >/dev/null 2>&1; then
   for f in "$source"/*.ps1; do
     pwsh -NoLogo -NoProfile -Command "\$t=\$null;\$e=\$null;[void][System.Management.Automation.Language.Parser]::ParseFile('$f',[ref]\$t,[ref]\$e); if (\$e.Count) { \$e | ForEach-Object { \$_.ToString() }; exit 1 }"
@@ -39,9 +39,12 @@ if command -v pwsh >/dev/null 2>&1; then
   echo 'PowerShell parse: ok'
 fi
 
+step remote configuration '(stub engine, no connections)'
+python3 "$tests/pwm_session.py" --output "$out/pwm"
+
 step pinned downloads
 python3 - "$source" "$cache" <<'EOF'
-import hashlib, sys, urllib.request
+import hashlib, os, sys, urllib.request
 from pathlib import Path
 source, cache = Path(sys.argv[1]), Path(sys.argv[2])
 def get(lock, key, algorithm, name):
@@ -50,6 +53,8 @@ def get(lock, key, algorithm, name):
         if k == key:
             dest = cache / name
             if not dest.exists() or hashlib.new(algorithm, dest.read_bytes()).hexdigest() != digest:
+                if os.environ.get('AI4SCIENCE_CI_OFFLINE') == '1':
+                    raise SystemExit(f'Offline cache missing or invalid: {name}; nothing downloaded')
                 urllib.request.urlretrieve(url, dest)
             assert hashlib.new(algorithm, dest.read_bytes()).hexdigest() == digest, name
             return

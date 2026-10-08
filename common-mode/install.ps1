@@ -57,12 +57,14 @@ try {
         Copy-Item -LiteralPath (Join-Path $ai4scienceRgDir $ai4scienceFile) -Destination $ai4scienceRgNotices
     }
     Copy-Item -LiteralPath (Join-Path $ai4scienceStage 'package/bin/opencode.exe') -Destination $ai4scienceBin
-    foreach ($ai4scienceFile in @('ai4science.ps1', 'ai4science.cmd')) {
+    foreach ($ai4scienceFile in @('ai4science.ps1', 'ai4science.cmd', 'pwm-config.ps1')) {
         Copy-Item -LiteralPath (Join-Path $ai4scienceSource $ai4scienceFile) -Destination $ai4scienceBin
     }
     foreach ($ai4scienceFile in @('THIRD_PARTY_NOTICES.md', 'README.md', 'opencode.version', 'artifacts.lock', 'ripgrep.lock')) {
         Copy-Item -LiteralPath (Join-Path $ai4scienceSource $ai4scienceFile) -Destination $ai4scienceShare
     }
+    New-Item -ItemType Directory -Path (Join-Path $ai4scienceShare 'agent') -Force | Out-Null
+    Copy-Item -LiteralPath (Join-Path $ai4scienceSource 'agent/pwm-loop.md') -Destination (Join-Path $ai4scienceShare 'agent/pwm-loop.md')
     $ai4scienceUtf8 = New-Object Text.UTF8Encoding($false)
     [IO.File]::WriteAllText((Join-Path $Prefix 'empty-user.npmrc'), '', $ai4scienceUtf8)
     [IO.File]::WriteAllText((Join-Path $Prefix 'empty-global.npmrc'), '', $ai4scienceUtf8)

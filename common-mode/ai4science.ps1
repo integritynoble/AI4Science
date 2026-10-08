@@ -4,13 +4,37 @@ $ai4scienceConfig = Join-Path $ai4sciencePrefix 'var/config/opencode'
 # Wrapper-owned option (before any engine arguments): the folder a session works in.
 $ai4scienceArgs = @($args)
 $ai4scienceWorkspace = $env:AI4SCIENCE_WORKSPACE
-if ($ai4scienceArgs.Count -gt 0 -and $ai4scienceArgs[0] -eq '--workspace') {
-    if ($ai4scienceArgs.Count -lt 2 -or !$ai4scienceArgs[1]) {
-        [Console]::Error.WriteLine('Usage: ai4science --workspace DIRECTORY [command] [arguments]')
+$ai4sciencePwm = $false
+while ($ai4scienceArgs.Count -gt 0) {
+    if ($ai4scienceArgs[0] -eq '--pwm') {
+        $ai4sciencePwm = $true
+        $ai4scienceArgs = @($ai4scienceArgs | Select-Object -Skip 1)
+    } elseif ($ai4scienceArgs[0] -eq '--workspace') {
+        if ($ai4scienceArgs.Count -lt 2 -or !$ai4scienceArgs[1]) {
+            [Console]::Error.WriteLine('Usage: ai4science --workspace DIRECTORY [command] [arguments]')
+            exit 2
+        }
+        $ai4scienceWorkspace = $ai4scienceArgs[1]
+        $ai4scienceArgs = @($ai4scienceArgs | Select-Object -Skip 2)
+    } else { break }
+}
+$ai4scienceRemoteAction = $null
+if ($ai4scienceArgs.Count -gt 0 -and $ai4scienceArgs[0] -eq 'pwm') {
+    if ($ai4scienceArgs.Count -ne 2 -or $ai4scienceArgs[1] -notin @('login', 'logout')) {
+        [Console]::Error.WriteLine('Usage: ai4science pwm login|logout')
         exit 2
     }
-    $ai4scienceWorkspace = $ai4scienceArgs[1]
-    $ai4scienceArgs = @($ai4scienceArgs | Select-Object -Skip 2)
+    $ai4scienceRemoteAction = $ai4scienceArgs[1]
+} elseif ($ai4sciencePwm) { $ai4scienceRemoteAction = 'on' }
+elseif (Test-Path -LiteralPath (Join-Path $ai4sciencePrefix 'var/pwm/base-config')) { $ai4scienceRemoteAction = 'off' }
+if ($ai4scienceRemoteAction) {
+    . (Join-Path $PSScriptRoot 'pwm-config.ps1')
+    try { Invoke-Ai4ScienceRemote $ai4sciencePrefix $ai4scienceRemoteAction }
+    catch {
+        [Console]::Error.WriteLine('Unable to prepare private remote configuration; check AI4SCIENCE_PWM_URL (https required), saved login and private storage.')
+        exit 2
+    }
+    if ($ai4scienceRemoteAction -in @('login', 'logout')) { exit 0 }
 }
 if ($ai4scienceWorkspace) {
     if (!(Test-Path -LiteralPath $ai4scienceWorkspace -PathType Container)) {

@@ -223,3 +223,25 @@ Before accepting an update, also review:
 
 Automatic updates and the direct `upgrade` command are disabled by the launcher. No release is published from
 this folder.
+
+## Optional remote workflow
+
+The optional workflow needs Python 3 on Linux/macOS. Run `ai4science pwm login`
+to read a key once from a hidden prompt (or one line of redirected stdin). The
+wrapper stores it under `PREFIX/var/pwm/key` with private permissions. Do not
+pass a key as an argument. On Windows, the PowerShell wrapper uses a private
+ACL for the current user.
+
+Set `AI4SCIENCE_PWM_URL` to the https URL of a remote MCP server and launch
+`ai4science --pwm [normal arguments]`. There is no default URL. The wrapper
+adds a Bearer header to its private config and loads the shipped workflow
+instruction. Both `--pwm --workspace DIR` and `--workspace DIR --pwm` work.
+Launching without `--pwm` restores the exact previous config bytes. The
+existing disabled remote placeholder is preserved. `ai4science pwm logout`
+restores the config and removes the saved key. Use one session per install
+prefix: simultaneous sessions share private settings. Treat the private config
+as sensitive, including when requesting engine diagnostics.
+
+For CI without downloads, set `AI4SCIENCE_CI_OFFLINE=1`; missing or invalid
+cache artifacts fail before any download. The synthetic remote configuration
+checks run before the artifact checks and make no remote connections.
