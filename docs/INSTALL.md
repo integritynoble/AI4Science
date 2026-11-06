@@ -108,7 +108,7 @@ pip install -e .
 
 That's the full CLI. Verify:
 ```bash
-ai4science --version
+ai4science version
 ai4science init demo
 cd demo
 ai4science validate
