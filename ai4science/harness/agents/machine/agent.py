@@ -47,12 +47,13 @@ def _default_execute(op: Operation, caps: Dict) -> Dict:
         return {"ran": False, "argv": list(recipe), "error": type(e).__name__}
 
 
-def _audit(audit: Optional[Callable], event: Dict) -> None:
+def _audit(audit: Optional[Callable], event: Dict) -> Dict[str, str]:
     if audit is not None:
         try:
             audit(event)
-        except Exception:
-            pass
+        except Exception as e:
+            return {"audit_failed": type(e).__name__}
+    return {}
 
 
 def run_machine(*, intent: str,
@@ -84,16 +85,16 @@ def run_machine(*, intent: str,
     # read-only ops: run directly, audited
     if not op.consequential:
         result = _read_op(op, caps)
-        _audit(audit, {"op": op.name, "side_effect": op.side_effect, "consequential": False})
-        return {"status": "done", "op": op.name, "result": result}
+        audit_status = _audit(audit, {"op": op.name, "side_effect": op.side_effect, "consequential": False})
+        return {"status": "done", "op": op.name, "result": result, **audit_status}
 
     # 3. consequential ⇒ owner gate
     approved = bool(approve and approve(op.name, {"os": caps.get("os"), "summary": op.summary,
                                                   "recipe": list(op.recipe_for(caps["os"]) or ())}))
     if not approved:
-        _audit(audit, {"op": op.name, "consequential": True, "outcome": "needs_approval"})
+        audit_status = _audit(audit, {"op": op.name, "consequential": True, "outcome": "needs_approval"})
         return {"status": "needs_approval", "op": op.name, "proposal": op.summary,
-                "recipe": list(op.recipe_for(caps["os"]) or ())}
+                "recipe": list(op.recipe_for(caps["os"]) or ()), **audit_status}
 
     # 4. credential ops ⇒ broker (agent never sees the secret)
     if op.side_effect == "credential":
@@ -103,15 +104,15 @@ def run_machine(*, intent: str,
         lease = broker.lease(op.account_scope)          # scoped, time-boxed handle
         result = {"leased": True, "scope": op.account_scope,
                   "lease_id": (lease or {}).get("lease_id") if isinstance(lease, dict) else None}
-        _audit(audit, {"op": op.name, "side_effect": "credential", "scope": op.account_scope,
+        audit_status = _audit(audit, {"op": op.name, "side_effect": "credential", "scope": op.account_scope,
                        "outcome": "leased"})
-        return {"status": "done", "op": op.name, "result": result}
+        return {"status": "done", "op": op.name, "result": result, **audit_status}
 
     # 5. execute the vetted recipe (install/config) + audit
     result = execute(op, caps)
-    _audit(audit, {"op": op.name, "side_effect": op.side_effect, "consequential": True,
+    audit_status = _audit(audit, {"op": op.name, "side_effect": op.side_effect, "consequential": True,
                    "outcome": "executed", "result": result})
-    return {"status": "done", "op": op.name, "result": result}
+    return {"status": "done", "op": op.name, "result": result, **audit_status}
 
 
 def _read_op(op: Operation, caps: Dict) -> Dict:

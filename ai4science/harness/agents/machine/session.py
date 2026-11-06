@@ -473,6 +473,6 @@ class SessionDriver:
         if self.audit is not None:
             try:
                 self.audit(entry)
-            except Exception:
-                pass
+            except Exception as e:
+                verdict["audit_failed"] = type(e).__name__
         return verdict

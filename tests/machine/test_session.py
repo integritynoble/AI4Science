@@ -1,3 +1,5 @@
+import pytest
+
 import json
 import subprocess
 import sys
@@ -363,3 +365,22 @@ def test_session_ceiling_prefers_pid_record_over_cwd():
         def get_by_cwd(self, c): return None
     c, rec = _session_ceiling(1, "/x", "A2", Empty())
     assert c == "A2" and rec is None
+
+
+@pytest.mark.parametrize("command", ["ls -la", "sudo install example", "rm -rf /"])
+def test_audit_failure_is_visible_without_changing_the_verdict_or_tripwire(command):
+    def broken_audit(entry):
+        raise RuntimeError("private callback detail")
+
+    normal = SessionDriver(ceiling="A1")
+    broken = SessionDriver(ceiling="A1", audit=broken_audit)
+    # The second call also checks that a tripwire still halts the session.
+    for current in (command, "ls -la"):
+        call = {"tool_name": "Bash", "tool_input": {"command": current}}
+        baseline = normal.drive(call)
+        verdict = broken.drive(call)
+        assert {k: v for k, v in verdict.items() if k != "audit_failed"} == baseline
+        assert normal.tripped == broken.tripped
+        assert verdict.get("audit_failed") == "RuntimeError"
+        assert broken.log[-1]["verdict"] == verdict
+        assert "private callback detail" not in str(verdict)

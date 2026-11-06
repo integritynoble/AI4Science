@@ -1,3 +1,5 @@
+import pytest
+
 from ai4science.harness.agents.machine.agent import run_machine
 from ai4science.harness.agents.machine.operations import default_operations, Operation
 
@@ -91,3 +93,46 @@ def test_registry_has_no_arbitrary_command_operation():
         # recipes are fixed argv tuples, never templated with free input
         for argv in op.recipes.values():
             assert isinstance(argv, tuple)
+
+
+@pytest.mark.parametrize("intent,approved", [
+    ("capabilities", True), ("install claude code", False),
+    ("login to my account", True), ("install claude code", True),
+])
+def test_audit_failure_is_visible_without_changing_the_action(intent, approved):
+    class Broker:
+        def lease(self, scope):
+            return {"lease_id": "L1"}
+
+    def broken_audit(event):
+        raise RuntimeError("private callback detail")
+
+    # Exercise every audited exit: read, owner refusal, lease and execution.
+    executions = []
+    leases = []
+
+    class SpyBroker(Broker):
+        def lease(self, scope):
+            leases.append(scope)
+            return super().lease(scope)
+
+    def execute(op, caps):
+        executions.append(op.name)
+        return {"ran": True, "ok": True}
+
+    kwargs = dict(intent=intent, caps=LINUX, approve=lambda op, ctx: approved,
+                  broker=SpyBroker(), execute=execute)
+    baseline = run_machine(**kwargs)
+    expected_executions, expected_leases = list(executions), list(leases)
+    executions.clear()
+    leases.clear()
+    successful = run_machine(**kwargs, audit=lambda event: None)
+    assert successful == baseline
+    executions.clear()
+    leases.clear()
+    out = run_machine(**kwargs, audit=broken_audit)
+    assert executions == expected_executions
+    assert leases == expected_leases
+    assert {k: v for k, v in out.items() if k != "audit_failed"} == baseline
+    assert out.get("audit_failed") == "RuntimeError"
+    assert "private callback detail" not in str(out)

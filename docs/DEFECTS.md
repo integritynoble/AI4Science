@@ -62,3 +62,37 @@ Done on 2026-08-07: the guard fails with exactly that signature, and the
 the owner with a stopped loop and nowhere to go — the same run left its task
 reading `planning` while the finished report sat in the folder. The fix that
 matters is not only "stop looping" but "say what to do instead."
+
+---
+
+## D-002 · An audit callback could fail without leaving a visible gap
+
+**Status:** fixed, 2026-11-06. Guards:
+`tests/machine/test_agent.py::test_audit_failure_is_visible_without_changing_the_action`
+and
+`tests/machine/test_session.py::test_audit_failure_is_visible_without_changing_the_verdict_or_tripwire`.
+
+**Symptom.** A raising injected audit callback left a machine result or session
+verdict indistinguishable from one whose audit succeeded.
+
+**Cause.** `machine/agent.py::_audit` and `machine/session.py::SessionDriver.drive`
+caught `Exception` and passed. Neither caller could see the missing record.
+
+**Fix.** Add `audit_failed` with only the exception type to the returned result
+or verdict. Execution, approval, leases, decisions and tripwire state stay the
+same; the session's existing log also carries the annotated verdict. Successful
+or absent callbacks preserve the existing result shape. Exception messages are
+not exposed.
+
+**Proving the guards.** Restore those two production files from the parent of
+the fix commit, then run:
+
+```bash
+.venv/bin/python -m pytest tests/machine/test_agent.py tests/machine/test_session.py \
+  -q -k test_audit_failure_is_visible
+```
+
+Watched on the base: seven failures, each because `audit_failed` was absent.
+The same seven cases pass with the fix. They compare the complete original
+result/verdict after removing the added key, check execution and lease counts,
+and check that a tripwire still halts the next call.
