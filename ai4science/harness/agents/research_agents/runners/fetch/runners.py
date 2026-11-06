@@ -257,7 +257,7 @@ def dude(argv=()) -> str:
     return "%s: %d molecules across %d targets → %s" % (c.key, n, len(targets), d)
 
 
-# ---------------------------------------------------------- not yet implemented
+# -------------------------------------------------------------- OpenKBP fetcher
 
 _KBP_RAW = ("https://raw.githubusercontent.com/ababier/open-kbp/master/"
             "provided-data/%s/pt_%d/%s")
