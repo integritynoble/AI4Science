@@ -23,6 +23,7 @@ Each covers a **field**, not a project. This page is what they share.
 | What is a research agent, in the product? | [`../AI4SCIENCE_ONE_MACHINE_DESIGN.md`](../AI4SCIENCE_ONE_MACHINE_DESIGN.md) §11b |
 | Where does the PWM come from? | `singularity/docs/specs/2026-08-04-sarsi-agent-market-and-pwm-design.md` §13b |
 | What is the self-awareness contract? | `sarsi_intelligence_level/` — *Functional Self-Awareness for SARSI Agents* |
+| What are the nine sections of an agent's page? | [`nine-sections.md`](nine-sections.md) |
 
 ---
 
