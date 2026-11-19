@@ -15,9 +15,9 @@ they are shown, not what they are; the history is at the end.
 |---|---|---|
 | 01 | Problems | the field's problems, one by one, until it collapses |
 | 02 | Tools, solutions, sub-agents | what a user comes to the agent to get |
-| 03 | Self-awareness and recursive self-improvement | what the agent may change about itself, and what it may never touch |
+| 03 | Self-awareness and self-improvement | what the agent knows about its own standing, and how it improves within its charter |
 | 04 | Subfields | the agent's scope |
-| 05 | Self-model | measured, not claimed: what the agent knows about its own state, including its stage |
+| 05 | Self-model | measured, not claimed: its stage, its profile by contract, the four numbers; the unmeasured listed apart |
 | 06 | Principles | the physics the field reduces to, where a claim reaches beyond the data |
 | 07 | Digital twin | the forward model, and how far it is trusted |
 | 08 | Benchmarks | **required**: each frozen contract, its floor, and who verifies it |
@@ -105,15 +105,30 @@ measurement).
 
 ---
 
-## 03 · Self-awareness and recursive self-improvement
+## 03 · Self-awareness and self-improvement
 
 **Original words:** "be self-aware, and recursively self-improving".
 
-**What it holds.** What the agent may change about itself, what must stay
-outside its write set, its open weak spots taken from real failures, and the
+**What it holds.** Two things.
+
+*Self-awareness:* what the agent knows about its own standing, in five parts
+(see [`lifecycle.md`](lifecycle.md), "Self-awareness, functionally"):
+
+| part | what the agent knows |
+|---|---|
+| charter | the field it may work in, and what it may never touch |
+| self-model | what it has measured about itself, on which dimensions, and how well (shown in section 05) |
+| field map | what it has **not** measured, and what would settle each gap |
+| budget | what it has spent and what remains |
+| ledgers | who asked for each piece of work |
+
+*Self-improvement:* its open weak spots, taken from real failures, and the
 record of repairs (step S7).
 
 **Rules.**
+- Self-awareness here is narrow and checkable: bookkeeping about evidence,
+  held to a standard the agent cannot relax because the standard lives outside
+  it. It is not introspection about experience.
 - **May improve:** its own methods, retrieval, reproduction efficiency, field
   map, and procedures it has repeated often enough to consolidate.
 - **May never touch:** the evaluation protocol, the held-out sets, the
@@ -164,13 +179,20 @@ reference structure.
 agent must represent to act honestly, its **stage** on each contract it holds,
 its overall stage, and the four numbers: the verifier's false-accept rate, the
 share of invalid results among those accepted, the valid yield, and the cost.
+What is not yet measured is listed apart, each line with the measurement that
+would settle it. Section 05 is the measured record inside the agent's
+self-awareness (section 03).
 
 **Rules.**
 - Each dimension exists because a specific claim becomes dishonest without it.
 - The stage is stated per contract (the agent's work under one frozen contract);
   the agent's overall stage is the lowest among its core contracts.
+- The self-model is written by observation, never by assertion: its lines come
+  from verdicts, benchmark results and refusals, recorded by the part of the
+  system that judges, not by the agent.
 - Numbers that have not been measured are written as `unknown`, never
-  estimated.
+  estimated, and kept apart from the measured ones. "Unmeasured" must stay
+  expensive to write: each such line names what would settle it.
 
 **Example (computational imaging).** Operator confidence (how well the forward
 model is known, and by what calibration); prior strength (how much of the
@@ -298,7 +320,7 @@ of sections 03, 05 and 08, not the number of sections.
 | 27 September | "The nine sections are still there", but they are a pool, not a form: an agent shows only the sections it has and never an empty one; a benchmark stays required. |
 | 16–17 October | The nine sections are confirmed as the original ones of 15 August, with each agent's filled pages kept per agent; an attempt to map them onto other parts was withdrawn. |
 | 18 November | "An agent may show all nine when it has all nine." |
-| 19 November | The One Method paper (draft v1.32, section 5, "What a field agent's page holds") states the nine sections in this form, with section 08 required and section 05 holding the stage. |
+| 19 November | The One Method paper (draft v1.33, section 5, "What a field agent's page holds") states the nine sections in this form, with section 08 required and section 05 holding the stage. Section 03 is named "Self-awareness and self-improvement". |
 
 ## Sources
 
