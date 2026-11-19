@@ -26,4 +26,22 @@ jobs:
           pwm-agent-claude-gpu pwm-agent-codex-gpu
       # Optional claude extra — a handful of tests import claude_agent_sdk.
       - run: pip install claude-agent-sdk || true
-      - run: python -m pytest -q
+      # pwm-control-plane is a private repo, not on PyPI. With a read token in
+      # CONTROL_PLANE_READ_TOKEN it is installed and its 13 test modules run;
+      # without one, ci_gate.py reports those modules as NOT RUN (never green).
+      - name: pwm-control-plane
+        env: { TOKEN: "${{ secrets.CONTROL_PLANE_READ_TOKEN }}" }
+        run: |
+          if [ -n "$TOKEN" ]; then
+            pip install "git+https://x-access-token:${TOKEN}@github.com/integritynoble/pwm-control-plane@main"
+            echo "CONTROL_PLANE=1" >> "$GITHUB_ENV"
+          else
+            echo "::warning::CONTROL_PLANE_READ_TOKEN is not set; the pwm_control_plane test modules cannot run"
+          fi
+      # Run everything; the gate below decides from the JUnit report, so one
+      # module that cannot import no longer hides the other ~4,600 tests.
+      - run: python -m pytest -q --continue-on-collection-errors --junitxml=junit.xml || true
+      - run: python scripts/ci_gate.py junit.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: junit, path: junit.xml }

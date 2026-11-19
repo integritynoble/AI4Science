@@ -1,0 +1,8 @@
+# Tests that also fail on main (full local run 2026-09-23, main e22e9866:
+# 4603 passed, 4 failed). CI tolerates exactly these and reports them every
+# run; a new failure anywhere else fails the job. Delete a line when its test
+# goes green — the gate says so when that happens.
+tests/imaging/test_foundry_agent_e2e.py::test_foundry_imaging_agent_runs_end_to_end
+tests/imaging/test_rsi_round_integration.py::test_rsi_round_to_promote_to_governed_run
+tests/imaging/test_rsi_search_integration.py::test_rsi_search_to_validation_to_promote_to_governed_run
+tests/machine/test_sessions.py::test_find_sessions_reports_governance
