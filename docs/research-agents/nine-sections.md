@@ -193,6 +193,14 @@ self-awareness (section 03).
 - Numbers that have not been measured are written as `unknown`, never
   estimated, and kept apart from the measured ones. "Unmeasured" must stay
   expensive to write: each such line names what would settle it.
+- The agent's own capability, measured separately (for example its SI-Level
+  label: level, reasoning, self-awareness, delegation, trust), is shown beside
+  the stage and never in place of it: "Stage 2 on the CASSI contract ·
+  SI-Level 2 Adaptive · Reasoning 4 Expert · Trust 2 Bounded". The stage says
+  how far the results can be trusted; the capability label says how capable
+  the agent is. Holding a contract at stage 2 requires at least Trust 2
+  (Bounded), and at stage 3 at least Trust 3 (Resistant) with no
+  test-tampering finding; "Trust untested" does not qualify.
 
 **Example (computational imaging).** Operator confidence (how well the forward
 model is known, and by what calibration); prior strength (how much of the
